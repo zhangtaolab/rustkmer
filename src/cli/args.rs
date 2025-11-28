@@ -53,6 +53,10 @@ pub enum Commands {
         #[arg(short, long)]
         verbose: bool,
 
+        /// Show warnings for invalid k-mer characters (default: false)
+        #[arg(long, help = "Display warnings when skipping k-mers with invalid characters")]
+        show_warnings: bool,
+
         /// Sort output by k-mer sequence (default: unsorted for performance)
         #[arg(long)]
         sort: bool,

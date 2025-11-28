@@ -31,6 +31,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             sort,
             min_count,
             max_count,
+            show_warnings,
         } => {
             // Validate k-mer size
             if *k < 1 || *k > 127 {
@@ -123,7 +124,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
 
                         // Process FASTA file
                         let processor = FastaProcessor::new(path);
-                        process_fasta_file(&processor, &counter, *k, *canonical, *quiet, *verbose)
+                        process_fasta_file(&processor, &counter, *k, *canonical, *quiet, *verbose, *show_warnings)
                     },
                     Some("fastq") => {
                         // Validate FASTQ file
@@ -134,18 +135,18 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                         if *verbose {
                             eprintln!("  FASTQ file detected (compression: {})", processor.compression_type().name());
                         }
-                        process_fastq_file(&processor, &counter, *k, *canonical, *quiet, *verbose)
+                        process_fastq_file(&processor, &counter, *k, *canonical, *quiet, *verbose, *show_warnings)
                     },
                     _ => {
                         // Try to auto-detect format
                         if file_path.to_ascii_lowercase().contains("fastq") ||
                            file_path.to_ascii_lowercase().contains("fq") {
                             let processor = FastqProcessor::new(path);
-                            process_fastq_file(&processor, &counter, *k, *canonical, *quiet, *verbose)
+                            process_fastq_file(&processor, &counter, *k, *canonical, *quiet, *verbose, *show_warnings)
                         } else {
                             // Default to FASTA
                             let processor = FastaProcessor::new(path);
-                            process_fasta_file(&processor, &counter, *k, *canonical, *quiet, *verbose)
+                            process_fasta_file(&processor, &counter, *k, *canonical, *quiet, *verbose, *show_warnings)
                         }
                     }
                 };
@@ -221,6 +222,7 @@ fn process_fasta_file(
     canonical: bool,
     quiet: bool,
     verbose: bool,
+    show_warnings: bool,
 ) -> ProcessingResult<()> {
     processor.process_file(|record| {
         let sequence = record.seq();
@@ -251,7 +253,7 @@ fn process_fasta_file(
                 },
                 Err(_) => {
                     // Skip k-mers with invalid characters (N, etc.)
-                    if verbose {
+                    if show_warnings {
                         eprintln!("Warning: Skipping k-mer with invalid characters at position {} in sequence {}",
                                 i, record.id());
                     }
@@ -271,6 +273,7 @@ fn process_fastq_file(
     canonical: bool,
     quiet: bool,
     verbose: bool,
+    show_warnings: bool,
 ) -> ProcessingResult<()> {
     processor.process_file(|record| {
         let sequence = record.seq();
@@ -301,7 +304,7 @@ fn process_fastq_file(
                 },
                 Err(_) => {
                     // Skip k-mers with invalid characters (N, etc.)
-                    if verbose {
+                    if show_warnings {
                         eprintln!("Warning: Skipping k-mer with invalid characters at position {} in sequence {}",
                                 i, record.id());
                     }
