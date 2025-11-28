@@ -124,7 +124,7 @@ pub enum Commands {
         /// Output file
         #[arg(short, long)]
         output: Option<String>,
-    },
+    }
 }
 
 // Filtering helper functions for the Count command
