@@ -81,12 +81,33 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 }
 
                 // Determine file format and process
-                let file_extension = path.extension()
-                    .and_then(|ext| ext.to_str())
-                    .map(|s| s.to_ascii_lowercase());
+                // Helper function to get file extension with support for compressed files
+                let get_file_type = |path: &Path| -> Option<&'static str> {
+                    let file_str = path.to_string_lossy().to_ascii_lowercase();
 
-                let result = match file_extension.as_deref() {
-                    Some("fa") | Some("fasta") | Some("fna") | Some("ffn") => {
+                    // Check for compressed files first
+                    if file_str.ends_with(".fa.gz") || file_str.ends_with(".fasta.gz") ||
+                       file_str.ends_with(".fna.gz") || file_str.ends_with(".ffn.gz") {
+                        return Some("fasta");
+                    }
+                    if file_str.ends_with(".fq.gz") || file_str.ends_with(".fastq.gz") {
+                        return Some("fastq");
+                    }
+
+                    // Check for uncompressed files
+                    let extension = path.extension()
+                        .and_then(|ext| ext.to_str())
+                        .map(|s| s.to_ascii_lowercase());
+
+                    match extension.as_deref() {
+                        Some("fa") | Some("fasta") | Some("fna") | Some("ffn") => Some("fasta"),
+                        Some("fq") | Some("fastq") => Some("fastq"),
+                        _ => None,
+                    }
+                };
+
+                let result = match get_file_type(path) {
+                    Some("fasta") => {
                         // Validate FASTA file
                         validate_fasta_file(path)?;
 
@@ -94,12 +115,15 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                         let processor = FastaProcessor::new(path);
                         process_fasta_file(&processor, &counter, *k, *canonical, *quiet, *verbose)
                     },
-                    Some("fq") | Some("fastq") => {
+                    Some("fastq") => {
                         // Validate FASTQ file
                         validate_fastq_file(path)?;
 
                         // Process FASTQ file
                         let processor = FastqProcessor::new(path);
+                        if *verbose {
+                            eprintln!("  FASTQ file detected (compression: {})", processor.compression_type().name());
+                        }
                         process_fastq_file(&processor, &counter, *k, *canonical, *quiet, *verbose)
                     },
                     _ => {

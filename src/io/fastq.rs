@@ -1,6 +1,6 @@
 //! FASTQ file parsing using the bio crate
 //!
-//! Provides efficient FASTQ file reading and processing capabilities.
+//! Provides efficient FASTQ file reading and processing capabilities with transparent compression support.
 
 use std::io;
 use std::path::Path;
@@ -10,10 +10,88 @@ use bio::io::fastq::Record;
 
 use crate::error::{KmerError, ProcessingError, ProcessingResult};
 
-/// FASTQ file processor for efficient genomic data reading
+/// Compression types supported for FASTQ files
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompressionType {
+    None,
+    Gzip,
+    Bzip2,
+    Xz,
+}
+
+impl CompressionType {
+    /// Detect compression type from file extension
+    pub fn from_path(path: &Path) -> Self {
+        if let Some(extension) = path.extension() {
+            if let Some(ext_str) = extension.to_str() {
+                match ext_str.to_lowercase().as_str() {
+                    "gz" => return CompressionType::Gzip,
+                    "bz2" => return CompressionType::Bzip2,
+                    "xz" => return CompressionType::Xz,
+                    _ => {}
+                }
+            }
+        }
+        CompressionType::None
+    }
+
+    /// Get the compression format name
+    pub fn name(&self) -> &'static str {
+        match self {
+            CompressionType::None => "uncompressed",
+            CompressionType::Gzip => "gzip",
+            CompressionType::Bzip2 => "bzip2",
+            CompressionType::Xz => "xz",
+        }
+    }
+}
+
+/// Trait for compressed file reading
+pub trait CompressedFileReader {
+    /// Open a file with transparent compression detection
+    fn open_compressed(path: &Path) -> ProcessingResult<(Box<dyn io::BufRead>, CompressionType)>;
+}
+
+pub struct DefaultCompressedFileReader;
+
+impl CompressedFileReader for DefaultCompressedFileReader {
+    fn open_compressed(path: &Path) -> ProcessingResult<(Box<dyn io::BufRead>, CompressionType)> {
+        let compression_type = CompressionType::from_path(path);
+
+        let file = std::fs::File::open(path)
+            .map_err(|e| ProcessingError::with_context(
+                format!("Failed to open file: {:?}", path),
+                e,
+            ))?;
+
+        let reader: Box<dyn io::BufRead> = match compression_type {
+            CompressionType::None => {
+                Box::new(io::BufReader::new(file))
+            }
+            CompressionType::Gzip => {
+                let decoder = flate2::read::GzDecoder::new(file);
+                Box::new(io::BufReader::new(decoder))
+            }
+            CompressionType::Bzip2 => {
+                let decoder = bzip2::read::BzDecoder::new(file);
+                Box::new(io::BufReader::new(decoder))
+            }
+            CompressionType::Xz => {
+                let decoder = xz2::read::XzDecoder::new(file);
+                Box::new(io::BufReader::new(decoder))
+            }
+        };
+
+        Ok((reader, compression_type))
+    }
+}
+
+/// FASTQ file processor for efficient genomic data reading with compression support
 pub struct FastqProcessor {
     /// File path
     file_path: String,
+    /// Compression type
+    compression_type: CompressionType,
 }
 
 impl FastqProcessor {
@@ -25,9 +103,23 @@ impl FastqProcessor {
     /// # Returns
     /// New FastqProcessor instance
     pub fn new<P: AsRef<Path>>(file_path: P) -> Self {
+        let path = file_path.as_ref();
+        let compression_type = CompressionType::from_path(path);
+
         Self {
-            file_path: file_path.as_ref().to_string_lossy().to_string(),
+            file_path: path.to_string_lossy().to_string(),
+            compression_type,
         }
+    }
+
+    /// Get the compression type
+    pub fn compression_type(&self) -> CompressionType {
+        self.compression_type
+    }
+
+    /// Check if the file is compressed
+    pub fn is_compressed(&self) -> bool {
+        self.compression_type != CompressionType::None
     }
 
     /// Process a FASTQ file with a callback function
@@ -41,26 +133,79 @@ impl FastqProcessor {
     where
         F: FnMut(&Record) -> ProcessingResult<()>,
     {
-        let file = io::BufReader::new(
-            std::fs::File::open(&self.file_path)
-                .map_err(|e| ProcessingError::with_context(
-                    format!("Failed to open FASTQ file: {}", self.file_path),
-                    e,
-                ))?,
-        );
+        let (reader, compression_type) = DefaultCompressedFileReader::open_compressed(Path::new(&self.file_path))
+            .map_err(|e| ProcessingError::with_context(
+                format!("Failed to open FASTQ file: {} ({})", self.file_path, self.compression_type.name()),
+                e,
+            ))?;
 
-        let mut reader = Reader::new(file);
+        let mut fastq_reader = Reader::new(reader);
 
-        for record_result in reader.records() {
+        for record_result in fastq_reader.records() {
             let record = record_result
                 .map_err(|e| ProcessingError::with_context(
-                    format!("Error reading FASTQ record from file: {}", &self.file_path),
+                    format!("Error reading FASTQ record from file: {} ({})", &self.file_path, compression_type.name()),
                     e
                 ))?;
 
             if let Err(e) = processor(&record) {
                 eprintln!("Error processing record {}: {}", record.id(), e);
                 return Err(e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Process a FASTQ file with progress tracking
+    ///
+    /// # Arguments
+    /// * `processor` - Function to process each sequence record
+    /// * `progress_callback` - Optional progress callback (record_count, total_estimate)
+    ///
+    /// # Returns
+    /// Processing result
+    pub fn process_file_with_progress<F, G>(&self, mut processor: F, mut progress_callback: Option<G>) -> ProcessingResult<()>
+    where
+        F: FnMut(&Record) -> ProcessingResult<()>,
+        G: FnMut(usize, Option<u64>) -> ProcessingResult<()>,
+    {
+        let (reader, compression_type) = DefaultCompressedFileReader::open_compressed(Path::new(&self.file_path))
+            .map_err(|e| ProcessingError::with_context(
+                format!("Failed to open FASTQ file: {} ({})", self.file_path, self.compression_type.name()),
+                e,
+            ))?;
+
+        let mut fastq_reader = Reader::new(reader);
+        let mut record_count = 0;
+
+        // Get file size for progress estimation (only meaningful for uncompressed files)
+        let total_size = if compression_type == CompressionType::None {
+            self.file_size().ok()
+        } else {
+            None
+        };
+
+        for record_result in fastq_reader.records() {
+            let record = record_result
+                .map_err(|e| ProcessingError::with_context(
+                    format!("Error reading FASTQ record from file: {} ({})", &self.file_path, compression_type.name()),
+                    e
+                ))?;
+
+            if let Err(e) = processor(&record) {
+                eprintln!("Error processing record {}: {}", record.id(), e);
+                return Err(e);
+            }
+
+            record_count += 1;
+
+            // Call progress callback if provided
+            if let Some(ref mut callback) = progress_callback {
+                if let Err(e) = callback(record_count, total_size) {
+                    eprintln!("Error in progress callback: {}", e);
+                    return Err(e);
+                }
             }
         }
 
@@ -145,22 +290,22 @@ pub fn validate_fastq_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
         )));
     }
 
-    // Try to read the first few records to validate format
-    let file = io::BufReader::new(
-        std::fs::File::open(path)
-            .map_err(|e| ProcessingError::with_context(
-                format!("Failed to open FASTQ file: {:?}", path),
-                e,
-            ))?,
-    );
+    let compression_type = CompressionType::from_path(path);
 
-    let mut reader = Reader::new(file);
+    // Try to read the first few records to validate format
+    let (reader, _) = DefaultCompressedFileReader::open_compressed(path)
+        .map_err(|e| ProcessingError::with_context(
+            format!("Failed to open FASTQ file: {:?} ({})", path, compression_type.name()),
+            e,
+        ))?;
+
+    let mut reader = Reader::new(reader);
     let mut record_count = 0;
 
     for record_result in reader.records() {
         let record = record_result
             .map_err(|e| ProcessingError::with_context(
-                format!("Error reading FASTQ record during validation: {:?}", &path),
+                format!("Error reading FASTQ record during validation: {:?} ({})", &path, compression_type.name()),
                 e
             ))?;
 
@@ -203,16 +348,15 @@ pub fn validate_fastq_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
 /// Number of sequences or error
 pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> {
     let path = file_path.as_ref();
+    let compression_type = CompressionType::from_path(path);
 
-    let file = io::BufReader::new(
-        std::fs::File::open(path)
-            .map_err(|e| ProcessingError::with_context(
-                format!("Failed to open FASTQ file: {:?}", path),
-                e,
-            ))?,
-    );
+    let (reader, _) = DefaultCompressedFileReader::open_compressed(path)
+        .map_err(|e| ProcessingError::with_context(
+            format!("Failed to open FASTQ file: {:?} ({})", path, compression_type.name()),
+            e,
+        ))?;
 
-    let mut reader = Reader::new(file);
+    let mut reader = Reader::new(reader);
     let mut count = 0;
 
     for _ in reader.records() {
