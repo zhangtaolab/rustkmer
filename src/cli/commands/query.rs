@@ -1,0 +1,299 @@
+//! Query command implementation
+//!
+//! Implements k-mer querying functionality with support for individual k-mers,
+//! multiple k-mers, sequence files, and interactive mode.
+
+use clap::Parser;
+use std::io::{self, Write, BufRead};
+use std::path::Path;
+
+use crate::cli::args::Args;
+use crate::database::{DatabaseQuery, format::DatabaseHeader};
+use crate::error::{KmerError, ProcessingResult};
+use crate::io::fasta::{FastaProcessor, validate_fasta_file};
+
+/// Execute the query command
+pub fn execute_query(args: &Args) -> ProcessingResult<()> {
+    match &args.command {
+        crate::cli::args::Commands::Query {
+            database,
+            kmers,
+            sequence,
+            output,
+            interactive,
+            load,
+            no_load,
+        } => {
+            // Validate input parameters
+            if kmers.is_empty() && sequence.is_none() && !interactive {
+                return Err(KmerError::ProcessingError(
+                    "Must specify k-mers, sequence file, or interactive mode".to_string()
+                ).into());
+            }
+
+            // Determine preload strategy
+            let preload = *load || (!*no_load && (*interactive || sequence.is_some()));
+
+            // Open database
+            let mut db_query = DatabaseQuery::open(database, preload)
+                .map_err(|e| KmerError::ProcessingError(format!("Failed to open database: {}", e)))?;
+
+            // Output setup
+            let mut writer: Box<dyn Write> = if let Some(output_file) = output {
+                let file = std::fs::File::create(output_file)
+                    .map_err(|e| KmerError::FileWriteError(format!("Failed to create output file: {}", e)))?;
+                Box::new(std::io::BufWriter::new(file))
+            } else {
+                Box::new(std::io::stdout())
+            };
+
+            // Handle different query modes
+            if *interactive {
+                let db_info = db_query.get_info().clone();
+                handle_interactive_mode(&mut db_query, &mut writer, &db_info)?;
+            } else if let Some(sequence_file) = sequence {
+                let db_info = db_query.get_info().clone();
+                handle_sequence_query(&mut db_query, &mut writer, sequence_file, &db_info)?;
+            } else if !kmers.is_empty() {
+                let db_info = db_query.get_info().clone();
+                handle_kmer_queries(&mut db_query, &mut writer, kmers, &db_info)?;
+            }
+
+            Ok(())
+        },
+        _ => Err(KmerError::ProcessingError("Invalid command for execute_query".to_string()).into()),
+    }
+}
+
+/// Handle individual k-mer queries
+fn handle_kmer_queries(
+    db_query: &mut DatabaseQuery,
+    writer: &mut Box<dyn Write>,
+    kmers: &[String],
+    db_info: &DatabaseHeader,
+) -> ProcessingResult<()> {
+    eprintln!("Querying {} k-mers from database (k={})...", kmers.len(), db_info.kmer_size);
+
+    let results = db_query.query_multiple(kmers)?;
+
+    for (kmer, count) in results {
+        if count > 0 {
+            writeln!(writer, "{}\t{}", kmer, count)
+                .map_err(|e| KmerError::FileWriteError(format!("Failed to write result: {}", e)))?;
+        } else {
+            // For jellyfish compatibility, show invalid k-mer error instead of 0 count
+            if kmer.len() != db_info.kmer_size as usize {
+                writeln!(writer, "Invalid mer '{}'", kmer)
+                    .map_err(|e| KmerError::FileWriteError(format!("Failed to write error: {}", e)))?;
+            }
+        }
+    }
+
+    eprintln!("Query completed successfully");
+    Ok(())
+}
+
+/// Handle sequence file queries
+fn handle_sequence_query(
+    db_query: &mut DatabaseQuery,
+    writer: &mut Box<dyn Write>,
+    sequence_file: &str,
+    db_info: &DatabaseHeader,
+) -> ProcessingResult<()> {
+    eprintln!("Querying k-mers from sequence file: {}", sequence_file);
+
+    // Validate sequence file
+    let path = Path::new(sequence_file);
+    if !path.exists() {
+        return Err(KmerError::FileNotFound(sequence_file.to_string()).into());
+    }
+
+    validate_fasta_file(path)?;
+
+    // Process sequence file
+    let processor = FastaProcessor::new(path);
+    let mut total_queries = 0;
+    let mut found_kmers = 0;
+
+    processor.process_file(|record| {
+        let sequence = record.seq();
+
+        // Skip sequences shorter than k
+        if sequence.len() < db_info.kmer_size as usize {
+            return Ok(());
+        }
+
+        // Extract all k-mers from sequence
+        for i in 0..=(sequence.len() - db_info.kmer_size as usize) {
+            let kmer_seq = std::str::from_utf8(&sequence[i..i + db_info.kmer_size as usize])
+                .unwrap_or("INVALID");
+
+            total_queries += 1;
+
+            if let Ok(Some(count)) = db_query.query_kmer(kmer_seq) {
+                writeln!(writer, "{}\t{}", kmer_seq, count)?;
+                if count > 0 {
+                    found_kmers += 1;
+                }
+            } else {
+                // For jellyfish compatibility, show k-mer with 0 count
+                writeln!(writer, "{}\t0", kmer_seq)?;
+            }
+        }
+
+        Ok(())
+    })?;
+
+    eprintln!("Processed {} k-mers, found {} with non-zero counts", total_queries, found_kmers);
+    Ok(())
+}
+
+/// Handle interactive query mode
+fn handle_interactive_mode(
+    db_query: &mut DatabaseQuery,
+    writer: &mut Box<dyn Write>,
+    db_info: &DatabaseHeader,
+) -> ProcessingResult<()> {
+    eprintln!("Interactive query mode (k={})", db_info.kmer_size);
+    eprintln!("Enter k-mers to query (Ctrl+D to exit):");
+
+    let stdin = io::stdin();
+    let mut lines = stdin.lock().lines();
+
+    while let Some(line) = lines.next() {
+        let line = line
+            .map_err(|e| KmerError::ProcessingError(format!("Failed to read input: {}", e)))?;
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // Handle multiple k-mers in one line
+        let kmer_strings: Vec<&str> = trimmed.split_whitespace().collect();
+
+        for kmer_str in kmer_strings {
+            match db_query.query_kmer(kmer_str) {
+                Ok(Some(count)) => {
+                    writeln!(writer, "{}\t{}", kmer_str, count)?;
+                },
+                Ok(None) => {
+                    if kmer_str.len() != db_info.kmer_size as usize {
+                        writeln!(writer, "Invalid mer '{}'", kmer_str)?;
+                    } else {
+                        writeln!(writer, "{}\t0", kmer_str)?;
+                    }
+                },
+                Err(e) => {
+                    writeln!(writer, "Error querying '{}': {}", kmer_str, e)?;
+                }
+            }
+        }
+    }
+
+    eprintln!("Interactive mode ended");
+    Ok(())
+}
+
+/// Validate query parameters
+pub fn validate_query_args(args: &Args) -> Result<(), Vec<String>> {
+    match &args.command {
+        crate::cli::args::Commands::Query { database, kmers, sequence, interactive, load, no_load, .. } => {
+            let mut errors = Vec::new();
+
+            // Check if database file exists
+            if !Path::new(database).exists() {
+                errors.push(format!("Database file not found: {}", database));
+            }
+
+            // Check for contradictory options
+            if *load && *no_load {
+                errors.push("Cannot specify both --load and --no-load".to_string());
+            }
+
+            // Check for conflicting input modes
+            if !kmers.is_empty() && sequence.is_some() {
+                errors.push("Cannot specify both k-mers and sequence file".to_string());
+            }
+            if !kmers.is_empty() && *interactive {
+                errors.push("Cannot specify both k-mers and interactive mode".to_string());
+            }
+            if sequence.is_some() && *interactive {
+                errors.push("Cannot specify both sequence file and interactive mode".to_string());
+            }
+
+            // Validate k-mer sequences if provided
+            for (i, kmer) in kmers.iter().enumerate() {
+                if kmer.is_empty() {
+                    errors.push(format!("Empty k-mer at position {}", i + 1));
+                } else if !kmer.chars().all(|c| matches!(c, 'A' | 'T' | 'G' | 'C' | 'a' | 't' | 'g' | 'c')) {
+                    errors.push(format!("Invalid characters in k-mer '{}'", kmer));
+                }
+            }
+
+            if errors.is_empty() {
+                Ok(())
+            } else {
+                Err(errors)
+            }
+        },
+        _ => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::args::{Commands, Args};
+
+    #[test]
+    fn test_validate_query_args_valid() {
+        let args = Args {
+            command: Commands::Query {
+                database: "test.rkdb".to_string(),
+                kmers: vec!["ATGCG".to_string()],
+                sequence: None,
+                output: None,
+                interactive: false,
+                load: false,
+                no_load: false,
+            },
+        };
+
+        assert!(validate_query_args(&args).is_ok());
+    }
+
+    #[test]
+    fn test_validate_query_args_conflicting_options() {
+        let args = Args {
+            command: Commands::Query {
+                database: "test.rkdb".to_string(),
+                kmers: vec!["ATGCG".to_string()],
+                sequence: Some("test.fa".to_string()),
+                output: None,
+                interactive: false,
+                load: false,
+                no_load: false,
+            },
+        };
+
+        assert!(validate_query_args(&args).is_err());
+    }
+
+    #[test]
+    fn test_validate_query_args_invalid_kmer() {
+        let args = Args {
+            command: Commands::Query {
+                database: "test.rkdb".to_string(),
+                kmers: vec!["ATXCG".to_string()], // Invalid character
+                sequence: None,
+                output: None,
+                interactive: false,
+                load: false,
+                no_load: false,
+            },
+        };
+
+        assert!(validate_query_args(&args).is_err());
+    }
+}

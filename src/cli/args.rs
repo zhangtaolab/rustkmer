@@ -81,12 +81,29 @@ pub enum Commands {
         /// Database file
         database: String,
 
-        /// K-mer to query
-        kmer: String,
+        /// K-mers to query (multiple values supported)
+        #[arg(num_args = 0..)]
+        kmers: Vec<String>,
 
-        /// K-mer size
+        /// Query k-mers from sequence file
+        #[arg(short = 's', long, conflicts_with_all = ["kmers"])]
+        sequence: Option<String>,
+
+        /// Output file (stdout if not specified)
         #[arg(short, long)]
-        k: usize,
+        output: Option<String>,
+
+        /// Interactive mode (queries from stdin)
+        #[arg(short, long)]
+        interactive: bool,
+
+        /// Force pre-loading of database file into memory
+        #[arg(short, long)]
+        load: bool,
+
+        /// Disable pre-loading of database file into memory
+        #[arg(short = 'L', long, conflicts_with = "load")]
+        no_load: bool,
     },
 
     /// Generate statistics about k-mer database

@@ -21,6 +21,7 @@
 //! ```
 
 pub mod cli;
+pub mod database;
 pub mod error;
 pub mod hash;
 pub mod io;

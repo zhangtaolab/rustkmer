@@ -14,6 +14,7 @@ use crate::io::fasta::{FastaProcessor, validate_fasta_file};
 use crate::io::fastq::{FastqProcessor, validate_fastq_file};
 use crate::kmer::encoding::encode_kmer_bytes;
 use crate::kmer::operations::{canonical_kmer, reverse_complement};
+use crate::database::format::{DatabaseHeader, KmerEntry, DATABASE_MAGIC, DATABASE_VERSION};
 
 /// Execute the count command
 pub fn execute_count(args: &Args) -> ProcessingResult<()> {
@@ -369,7 +370,7 @@ fn output_text_format(
     Ok(())
 }
 
-/// Output results in binary format
+/// Output results in RKDB format
 fn output_binary_format(
     counter: &Arc<KmerCounter>,
     output_path: &Path,
@@ -377,37 +378,57 @@ fn output_binary_format(
     sort: bool,
     filter: &Option<crate::hash::CountFilter>,
 ) -> ProcessingResult<()> {
-    use bincode;
+    use std::io::Write;
+    use byteorder::{LittleEndian, WriteBytesExt};
 
     if !quiet {
-        eprintln!("Writing results in binary format...");
+        eprintln!("Writing results in RKDB database format...");
     }
 
     let mut kmers = counter.get_filtered_kmers(filter);
     let kmer_count = kmers.len();
 
-    // Sort k-mers if requested
+    // Sort k-mers if requested (required for binary search)
     if sort {
         if !quiet {
             eprintln!("Sorting {} k-mers...", kmer_count);
         }
-        kmers.sort_by(|(a, _), (b, _)| {
-            // Decode both k-mers and compare sequences
-            let seq_a = decode_kmer(*a, counter.get_kmer_length());
-            let seq_b = decode_kmer(*b, counter.get_kmer_length());
-            seq_a.cmp(&seq_b)
-        });
+        kmers.sort_by(|(a, _), (b, _)| a.cmp(b));
     }
 
     let file = std::fs::File::create(output_path)
         .map_err(|e| KmerError::FileWriteError(format!("Failed to create output file: {}", e)))?;
+    let mut writer = std::io::BufWriter::new(file);
 
-    // Serialize using bincode
-    bincode::serialize_into(file, &(counter.get_kmer_length(), kmers))
-        .map_err(|e| KmerError::FileWriteError(format!("Failed to serialize k-mers: {}", e)))?;
+    // Write RKDB database header with correct data offset
+    // Header size = 4 (magic) + 2 (version) + 1 (kmer_size) + 3 (padding) + 8 (total_kmers) + 1 (flags) + 7 (padding) + 8 (data_offset) + 8 (index_offset) = 42 bytes
+    let header = DatabaseHeader {
+        magic: *DATABASE_MAGIC,
+        version: DATABASE_VERSION,
+        kmer_size: counter.get_kmer_length() as u8,
+        total_kmers: kmer_count as u64,
+        sorted: sort,
+        data_offset: 42, // Fixed header size for RKDB format
+        index_offset: 0,
+        canonical: counter.canonical_mode(),
+    };
 
     if !quiet {
-        eprintln!("Completed writing {} k-mers in binary format", kmer_count);
+        eprintln!("DEBUG: Writing header with data_offset: {}", header.data_offset);
+    }
+
+    // Write header
+    header.write_to(&mut writer)
+        .map_err(|e| KmerError::FileWriteError(format!("Failed to write database header: {}", e)))?;
+
+    // Write k-mer entries
+    for (kmer, count) in kmers {
+        writer.write_u64::<LittleEndian>(kmer)?;
+        writer.write_u32::<LittleEndian>(count as u32)?;
+    }
+
+    if !quiet {
+        eprintln!("Completed writing {} k-mers in RKDB format", kmer_count);
     }
 
     Ok(())

@@ -3,4 +3,6 @@
 //! Contains the implementation of all rustkmer subcommands.
 
 pub mod count;
+pub mod query;
+pub mod dump;
 pub mod args;
