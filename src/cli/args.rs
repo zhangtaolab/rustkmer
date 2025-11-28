@@ -56,6 +56,20 @@ pub enum Commands {
         /// Sort output by k-mer sequence (default: unsorted for performance)
         #[arg(long)]
         sort: bool,
+
+        /// Minimum k-mer count threshold (jellyfish compatible)
+        #[arg(short = 'L', long = "min-count")]
+        #[arg(alias = "lower-count")]
+        #[arg(alias = "low-count")]
+        #[arg(help = "Filter out k-mers with count below this threshold")]
+        min_count: Option<u64>,
+
+        /// Maximum k-mer count threshold (jellyfish compatible)
+        #[arg(short = 'U', long = "max-count")]
+        #[arg(alias = "upper-count")]
+        #[arg(alias = "high-count")]
+        #[arg(help = "Filter out k-mers with count above this threshold")]
+        max_count: Option<u64>,
     },
 
     /// Query k-mer counts from a database
@@ -86,4 +100,75 @@ pub enum Commands {
         #[arg(short, long)]
         output: Option<String>,
     },
+}
+
+// Filtering helper functions for the Count command
+impl Commands {
+    /// Create a count filter from the command parameters
+    ///
+    /// # Returns
+    /// Option<CountFilter> for the filtering parameters
+    pub fn create_count_filter(&self) -> Option<crate::hash::CountFilter> {
+        match self {
+            Commands::Count { min_count, max_count, .. } => {
+                if min_count.is_some() || max_count.is_some() {
+                    Some(crate::hash::CountFilter::new(*min_count, *max_count))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// Validate filtering parameters for the Count command
+    ///
+    /// # Returns
+    /// Result<(), Vec<String>> with validation errors if any
+    pub fn validate_filtering(&self) -> Result<(), Vec<String>> {
+        match self {
+            Commands::Count { min_count, max_count, .. } => {
+                let mut errors = Vec::new();
+
+                if let Some(min) = min_count {
+                    if *min == 0 {
+                        // Allow min_count = 0 for jellyfish compatibility
+                        // but warn that it includes all k-mers
+                    }
+                }
+
+                if let Some(max) = max_count {
+                    if *max == 0 {
+                        errors.push("Maximum count must be positive".to_string());
+                    }
+                }
+
+                if let (Some(min), Some(max)) = (min_count, max_count) {
+                    if min > max {
+                        errors.push("Minimum count cannot exceed maximum count".to_string());
+                    }
+                }
+
+                if errors.is_empty() {
+                    Ok(())
+                } else {
+                    Err(errors)
+                }
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Check if filtering is enabled for this command
+    ///
+    /// # Returns
+    /// true if filtering parameters are specified
+    pub fn has_filtering(&self) -> bool {
+        match self {
+            Commands::Count { min_count, max_count, .. } => {
+                min_count.is_some() || max_count.is_some()
+            }
+            _ => false,
+        }
+    }
 }

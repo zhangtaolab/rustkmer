@@ -6,5 +6,7 @@
 pub mod table;
 pub mod overflow;
 pub mod matrix;
+pub mod filtering;
 
 pub use table::KmerCounter;
+pub use filtering::{CountFilter, CountFilterConfig, FilteringResult};

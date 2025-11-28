@@ -8,6 +8,7 @@ use std::sync::{Arc, RwLock};
 use parking_lot::RwLock as ParkingLotRwLock;
 
 use crate::error::{KmerError, ProcessingError, ProcessingResult};
+use super::filtering::{CountFilter, FilteringResult};
 
 /// Thread-safe k-mer counter with concurrent operations
 #[derive(Debug)]
@@ -134,6 +135,54 @@ impl KmerCounter {
             .filter(|&(_, &count)| count >= min_count && count <= max_count)
             .map(|(&k, &v)| (k, v))
             .collect()
+    }
+
+    /// Get k-mers with filtering applied using CountFilter
+    ///
+    /// # Arguments
+    /// * `filter` - Optional count filter to apply
+    ///
+    /// # Returns
+    /// Vector of (kmer_encoded, count) pairs after filtering
+    pub fn get_filtered_kmers(&self, filter: &Option<CountFilter>) -> Vec<(u64, u32)> {
+        let all_kmers = self.get_all_counts();
+
+        match filter {
+            Some(f) => all_kmers.into_iter()
+                .filter(|(_, count)| {
+                    let count_u64 = *count as u64;
+                    f.passes(count_u64)
+                })
+                .collect(),
+            None => all_kmers,
+        }
+    }
+
+    /// Get filtering statistics
+    ///
+    /// # Arguments
+    /// * `filter` - Optional count filter to analyze
+    ///
+    /// # Returns
+    /// FilteringResult with statistics
+    pub fn get_filtering_stats(&self, filter: &Option<CountFilter>) -> FilteringResult {
+        let all_kmers = self.get_all_counts();
+        let total_before = self.total_kmers.load(std::sync::atomic::Ordering::Relaxed);
+        let unique_before = all_kmers.len() as u64;
+
+        match filter {
+            Some(f) => {
+                let kept_after = all_kmers.iter()
+                    .filter(|(_, count)| {
+                        let count_u64 = *count as u64;
+                        f.passes(count_u64)
+                    })
+                    .count() as u64;
+
+                FilteringResult::new(total_before, unique_before, kept_after, f.clone())
+            }
+            None => FilteringResult::new(total_before, unique_before, unique_before, CountFilter::default()),
+        }
     }
 
     /// Get total number of k-mers processed

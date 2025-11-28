@@ -29,6 +29,8 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             quiet,
             verbose,
             sort,
+            min_count,
+            max_count,
         } => {
             // Validate k-mer size
             if *k < 1 || *k > 127 {
@@ -45,6 +47,14 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             } else {
                 *threads
             };
+
+            // Validate filtering parameters
+            if let Err(errors) = args.command.validate_filtering() {
+                for error in errors {
+                    eprintln!("Error: {}", error);
+                }
+                return Err(KmerError::ProcessingError("Invalid filtering parameters".to_string()).into());
+            }
 
             if *verbose {
                 eprintln!("rustkmer count starting...");
@@ -155,27 +165,41 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 }
             }
 
+            // Create filter if filtering parameters are specified
+            let filter = args.command.create_count_filter();
+
             // Generate output
             if let Some(output_file) = output {
                 let output_path = Path::new(output_file);
 
                 match format.as_str() {
                     "text" => {
-                        output_text_format(&counter, output_path, *quiet, *sort)?;
+                        output_text_format(&counter, output_path, *quiet, *sort, &filter)?;
                     },
                     "binary" | _ => {
-                        output_binary_format(&counter, output_path, *quiet, *sort)?;
+                        output_binary_format(&counter, output_path, *quiet, *sort, &filter)?;
                     },
                 }
             }
 
             let total_time = start_time.elapsed();
             let final_stats = counter.get_stats();
+            let filtering_stats = counter.get_filtering_stats(&filter);
 
             if !*quiet {
                 eprintln!("Counting completed successfully!");
                 eprintln!("Total k-mers: {}", final_stats.total_kmers);
                 eprintln!("Unique k-mers: {}", final_stats.unique_kmers);
+
+                // Report filtering statistics if filtering was applied
+                if filter.as_ref().map_or(false, |f| f.min_count.is_some() || f.max_count.is_some()) {
+                    eprintln!("K-mers kept after filtering: {}", filtering_stats.kept_after);
+                    eprintln!("K-mers filtered out: {}", filtering_stats.filtered_out);
+                    if filtering_stats.unique_before > 0 {
+                        eprintln!("Filtering retention: {:.1}%", filtering_stats.kept_percentage());
+                    }
+                }
+
                 eprintln!("Total time: {:.2} seconds", total_time.as_secs_f64());
 
                 if let Some(output_file) = output {
@@ -295,6 +319,7 @@ fn output_text_format(
     output_path: &Path,
     quiet: bool,
     sort: bool,
+    filter: &Option<crate::hash::CountFilter>,
 ) -> ProcessingResult<()> {
     use std::io::Write;
 
@@ -306,8 +331,8 @@ fn output_text_format(
         eprintln!("Writing results in text format...");
     }
 
-    // Get all k-mers from the counter
-    let mut kmers = counter.get_all_kmers();
+    // Get k-mers from the counter (filtered if applicable)
+    let mut kmers = counter.get_filtered_kmers(filter);
     let total = kmers.len();
 
     // Sort k-mers if requested
@@ -347,6 +372,7 @@ fn output_binary_format(
     output_path: &Path,
     quiet: bool,
     sort: bool,
+    filter: &Option<crate::hash::CountFilter>,
 ) -> ProcessingResult<()> {
     use bincode;
 
@@ -354,7 +380,7 @@ fn output_binary_format(
         eprintln!("Writing results in binary format...");
     }
 
-    let mut kmers = counter.get_all_kmers();
+    let mut kmers = counter.get_filtered_kmers(filter);
     let kmer_count = kmers.len();
 
     // Sort k-mers if requested
