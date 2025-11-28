@@ -32,6 +32,12 @@ pub struct DatabaseHeader {
     pub index_offset: u64,
     /// Whether canonical k-mers were used
     pub canonical: bool,
+
+    /// Total unique k-mers (for compatibility)
+    pub unique_kmers: u64,
+
+    /// File size in bytes (for compatibility)
+    pub file_size: u64,
 }
 
 impl Default for DatabaseHeader {
@@ -45,6 +51,8 @@ impl Default for DatabaseHeader {
             data_offset: 0,
             index_offset: 0,
             canonical: false,
+            unique_kmers: 0,
+            file_size: 0,
         }
     }
 }
@@ -61,6 +69,8 @@ impl DatabaseHeader {
             data_offset: std::mem::size_of::<DatabaseHeader>() as u64,
             index_offset: 0,
             canonical,
+            unique_kmers: total_kmers,  // Same as total_kmers for now
+            file_size: 0,  // Will be calculated when writing
         }
     }
 
@@ -147,6 +157,8 @@ impl DatabaseHeader {
             data_offset,
             index_offset,
             canonical,
+            unique_kmers: total_kmers,  // Default to total_kmers for older format compatibility
+            file_size: 0,  // Unknown until full file is read
         })
     }
 
@@ -234,6 +246,172 @@ impl DatabaseFormat {
             DatabaseFormat::Indexed => "rkdb",
             DatabaseFormat::Compressed => "rkdbz",
         }
+    }
+}
+
+/// RustKmer Database - main structure for storing and querying k-mers
+#[derive(Debug)]
+pub struct RKDatabase {
+    pub header: DatabaseHeader,
+    pub entries: Vec<KmerEntry>,
+    pub file_path: Option<std::path::PathBuf>,
+}
+
+impl RKDatabase {
+    /// Create a new database with the given header
+    pub fn new(header: DatabaseHeader) -> Self {
+        Self {
+            header,
+            entries: Vec::new(),
+            file_path: None,
+        }
+    }
+
+    /// Get reference to the database header
+    pub fn header(&self) -> &DatabaseHeader {
+        &self.header
+    }
+
+    /// Load database from file path
+    pub fn from_file_path(path: &std::path::Path) -> crate::error::ProcessingResult<Self> {
+        use std::fs::File;
+        use std::io::{BufReader, Seek, SeekFrom};
+
+        let file_path = path.to_path_buf();
+        let file = File::open(path)
+            .map_err(|e| crate::error::ProcessingError::IoError(e.to_string()))?;
+
+        let mut reader = BufReader::new(file);
+        let header = DatabaseHeader::read_from(&mut reader)?;
+
+        // Fix for incorrect data_offset in header (same logic as DatabaseQuery)
+        let actual_data_offset = if header.data_offset < 40 {
+            42  // Use correct offset when header value is too small
+        } else if header.data_offset > 1000 {
+            42  // Use correct offset when header value is too large
+        } else {
+            header.data_offset
+        };
+
+        // Seek to data section
+        reader.seek(SeekFrom::Start(actual_data_offset))
+            .map_err(|e| crate::error::ProcessingError::IoError(format!("Failed to seek to data section: {}", e)))?;
+
+        // Load k-mer entries
+        let mut entries = Vec::with_capacity(header.total_kmers as usize);
+        for _ in 0..header.total_kmers {
+            let entry = KmerEntry::read_from(&mut reader)
+                .map_err(|e| crate::error::ProcessingError::IoError(format!("Failed to read k-mer entry: {}", e)))?;
+            entries.push(entry);
+        }
+
+        Ok(Self {
+            header,
+            entries,
+            file_path: Some(file_path),
+        })
+    }
+
+    /// Load database from file path with memory mapping
+    pub fn from_file_path_mapped(path: &std::path::Path) -> crate::error::ProcessingResult<Self> {
+        // For now, fall back to regular file reading
+        // Memory mapping would be implemented here
+        Self::from_file_path(path)
+    }
+
+    /// Read database from a reader
+    pub fn read_from<R: std::io::Read>(reader: &mut R) -> crate::error::ProcessingResult<Self> {
+        let header = DatabaseHeader::read_from(reader)?;
+
+        // For non-seekable readers, we can't load k-mer entries
+        // Create an empty database that will be populated if needed
+        Ok(Self {
+            header,
+            entries: Vec::new(),
+            file_path: None,
+        })
+    }
+
+    /// Write database to file
+    pub fn write_to_file(&self, path: &std::path::Path) -> crate::error::ProcessingResult<()> {
+        use std::fs::File;
+        use std::io::BufWriter;
+
+        let file = File::create(path)
+            .map_err(|e| crate::error::ProcessingError::IoError(e.to_string()))?;
+
+        let mut writer = BufWriter::new(file);
+        self.write_to(&mut writer)
+    }
+
+    /// Write database to a writer
+    pub fn write_to<W: std::io::Write>(&self, writer: &mut W) -> crate::error::ProcessingResult<()> {
+        self.header.write_to(writer)?;
+
+        // Write k-mer entries
+        for entry in &self.entries {
+            entry.write_to(writer)?;
+        }
+
+        Ok(())
+    }
+
+    /// Get the k-mer size
+    pub fn kmer_size(&self) -> usize {
+        self.header.kmer_size as usize
+    }
+
+    /// Get the total number of k-mers
+    pub fn size(&self) -> Option<u64> {
+        Some(self.header.total_kmers)
+    }
+
+    /// Query a k-mer from the database
+    pub fn query_kmer(&self, kmer: &str) -> Option<u64> {
+        // Encode the query k-mer
+        let query_encoded = match crate::kmer::encoding::encode_kmer(kmer) {
+            Ok(encoded) => encoded,
+            Err(_) => return None,
+        };
+
+        // Use binary search if the database is sorted
+        if self.header.sorted {
+            self.binary_search_kmer(query_encoded)
+        } else {
+            // Linear search for unsorted database
+            self.linear_search_kmer(query_encoded)
+        }
+    }
+
+    /// Binary search for a k-mer in a sorted database
+    fn binary_search_kmer(&self, query_encoded: u64) -> Option<u64> {
+        use std::cmp::Ordering;
+
+        let mut left = 0;
+        let mut right = self.entries.len();
+
+        while left < right {
+            let mid = left + (right - left) / 2;
+            let mid_kmer = self.entries[mid].kmer;
+
+            match query_encoded.cmp(&mid_kmer) {
+                Ordering::Equal => return Some(self.entries[mid].count as u64),
+                Ordering::Less => right = mid,
+                Ordering::Greater => left = mid + 1,
+            }
+        }
+
+        None
+    }
+
+    /// Linear search for a k-mer in an unsorted database
+    fn linear_search_kmer(&self, query_encoded: u64) -> Option<u64> {
+        for entry in &self.entries {
+            if entry.kmer == query_encoded {
+                return Some(entry.count as u64);
+            }
+        }
+        None
     }
 }
 

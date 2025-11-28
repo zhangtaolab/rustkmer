@@ -38,6 +38,39 @@ fn main() -> anyhow::Result<()> {
         rustkmer::cli::args::Commands::Dump { .. } => {
             rustkmer::cli::commands::dump::execute_dump(&args)?;
         }
+        rustkmer::cli::args::Commands::FuzzyQuery { database, query, mutations, max_variants, parallel, batch_size, format, output, verbose, quiet, profile } => {
+            let args = rustkmer::cli::commands::fuzzy::FuzzyQueryArgs {
+                database: database.into(),
+                query,
+                mutations,
+                max_variants,
+                enable_parallel: parallel,
+                batch_size,
+                format,
+                output: output.map(|o| o.into()),
+                verbose,
+                quiet,
+                profile,
+            };
+            rustkmer::cli::commands::fuzzy::execute_fuzzy_query(&args)?;
+        }
+        rustkmer::cli::args::Commands::FuzzyQueryBatch { database, sequence, default_mutations, default_max_variants, batch_size, format, output, verbose, quiet, progress, fail_fast, include_headers } => {
+            let args = rustkmer::cli::commands::fuzzy::FuzzyQueryBatchArgs {
+                database: database.into(),
+                query_file: sequence.into(),
+                default_mutations,
+                default_max_variants,
+                batch_size,
+                format,
+                output: output.map(|o| o.into()),
+                verbose,
+                quiet,
+                progress,
+                fail_fast,
+                include_headers,
+            };
+            rustkmer::cli::commands::fuzzy::execute_fuzzy_query_batch(&args)?;
+        }
     }
 
     Ok(())

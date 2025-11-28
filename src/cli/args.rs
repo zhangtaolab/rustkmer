@@ -124,6 +124,101 @@ pub enum Commands {
         /// Output file
         #[arg(short, long)]
         output: Option<String>,
+    },
+
+    /// Fuzzy query with wildcard support and mutation tolerance
+    FuzzyQuery {
+        /// Database file
+        database: String,
+
+        /// Query string (may contain 'N' wildcards)
+        query: String,
+
+        /// Maximum Hamming distance for mutations
+        #[arg(short = 'm', long, default_value = "0")]
+        mutations: usize,
+
+        /// Maximum number of variants to generate
+        #[arg(short = 'M', long, default_value = "10000")]
+        max_variants: usize,
+
+        /// Enable parallel processing
+        #[arg(short = 'p', long, default_value = "true")]
+        parallel: bool,
+
+        /// Batch size for processing variants
+        #[arg(short = 'b', long, default_value = "1000")]
+        batch_size: usize,
+
+        /// Output format
+        #[arg(short = 'f', long, default_value = "table", value_parser = ["table", "json", "tsv", "csv"])]
+        format: String,
+
+        /// Output file
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// Enable verbose output
+        #[arg(short = 'v', long)]
+        verbose: bool,
+
+        /// Suppress non-error output
+        #[arg(short = 'q', long)]
+        quiet: bool,
+
+        /// Show performance profiling
+        #[arg(long)]
+        profile: bool,
+    },
+
+    /// Batch fuzzy queries from file
+    FuzzyQueryBatch {
+        /// Database file
+        database: String,
+
+        /// File containing queries (one per line)
+        #[arg(short = 's', long)]
+        sequence: String,
+
+        /// Default maximum Hamming distance for mutations
+        #[arg(long, default_value = "0")]
+        default_mutations: usize,
+
+        /// Default maximum number of variants to generate
+        #[arg(long, default_value = "10000")]
+        default_max_variants: usize,
+
+        /// Batch size for processing queries
+        #[arg(short = 'b', long, default_value = "100")]
+        batch_size: usize,
+
+        /// Output format
+        #[arg(short = 'f', long, default_value = "table", value_parser = ["table", "json", "tsv", "csv"])]
+        format: String,
+
+        /// Output file
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// Enable verbose output
+        #[arg(short = 'v', long)]
+        verbose: bool,
+
+        /// Suppress non-error output
+        #[arg(short = 'q', long)]
+        quiet: bool,
+
+        /// Show progress bar
+        #[arg(long, default_value = "true")]
+        progress: bool,
+
+        /// Stop on first error
+        #[arg(long)]
+        fail_fast: bool,
+
+        /// Include header row in CSV/TSV output
+        #[arg(long)]
+        include_headers: bool,
     }
 }
 

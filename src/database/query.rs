@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 use crate::error::{KmerError, ProcessingResult};
 use crate::kmer::encoding::encode_kmer_bytes;
 use crate::kmer::canonical_kmer;
-use super::format::{DatabaseHeader, KmerEntry};
+use super::format::{DatabaseHeader, KmerEntry, RKDatabase};
 
 /// Database query engine for fast k-mer lookups
 #[derive(Debug)]
@@ -230,6 +230,65 @@ impl DatabaseQuery {
     /// Get database size estimate
     pub fn size_bytes(&self) -> u64 {
         self.header.data_offset + (self.header.total_kmers * 12) // 8 bytes kmer + 4 bytes count
+    }
+}
+
+/// K-mer query result
+#[derive(Debug, Clone)]
+pub struct QueryResult {
+    pub kmer: String,
+    pub count: u32,
+    pub found: bool,
+}
+
+impl QueryResult {
+    pub fn new(kmer: String, count: u32, found: bool) -> Self {
+        Self { kmer, count, found }
+    }
+}
+
+/// K-mer query interface for compatibility with parallel query
+#[derive(Debug)]
+pub struct KmerQuery<'a> {
+    database: &'a RKDatabase,
+}
+
+impl<'a> KmerQuery<'a> {
+    /// Create a new k-mer query interface
+    pub fn new(database: &'a RKDatabase) -> Self {
+        Self { database }
+    }
+
+    /// Query a single k-mer
+    pub fn query(&mut self, kmer: &str) -> crate::error::ProcessingResult<QueryResult> {
+        // Fixed: Use actual database query instead of mock implementation
+        // Reopens database file for each thread-safe query operation
+
+        // Encode the k-mer to check validity
+        let _encoded = encode_kmer_bytes(kmer.as_bytes())
+            .map_err(|e| crate::error::ProcessingError::new(format!("Invalid k-mer: {}", e)))?;
+
+        // Use the stored file path to reopen the database for actual query
+        if let Some(file_path) = &self.database.file_path {
+            let mut db_query = DatabaseQuery::open(file_path, false)?;
+            match db_query.query_kmer(kmer)? {
+                Some(count) => Ok(QueryResult::new(kmer.to_uppercase(), count, true)),
+                None => Ok(QueryResult::new(kmer.to_uppercase(), 0, false)),
+            }
+        } else {
+            Err(crate::error::ProcessingError::new("Database file path not available for query"))
+        }
+    }
+
+    /// Query multiple k-mers
+    pub fn query_multiple(&mut self, kmers: &[String]) -> crate::error::ProcessingResult<Vec<QueryResult>> {
+        let mut results = Vec::with_capacity(kmers.len());
+
+        for kmer in kmers {
+            results.push(self.query(kmer)?);
+        }
+
+        Ok(results)
     }
 }
 

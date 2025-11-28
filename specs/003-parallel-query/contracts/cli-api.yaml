@@ -1,0 +1,389 @@
+# CLI API Specification: queryx Command
+# RustKmer Parallel Query Processing
+
+openapi: 3.0.3
+info:
+  title: RustKmer queryx Command API
+  description: |
+    Multi-threaded batch k-mer querying functionality with performance analysis.
+    The queryx command provides high-performance parallel processing of k-mer queries
+    against rustkmer databases, with adaptive thread management and comprehensive
+    performance reporting.
+  version: 1.0.0
+  contact:
+    name: RustKmer Project
+  license:
+    name: MIT
+
+servers:
+  - url: cli://rustkmer/queryx
+    description: Command-line interface
+
+paths:
+  /queryx:
+    post:
+      summary: Execute parallel k-mer queries
+      description: |
+        Process multiple k-mers in parallel using adaptive thread management.
+        Supports various input sources and provides detailed performance analysis.
+      operationId: executeQueryX
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryXRequest'
+            examples:
+              batch_from_file:
+                summary: Batch query from file
+                value:
+                  database: "/path/to/database.rkdb"
+                  input:
+                    file: "/path/to/kmers.txt"
+                  config:
+                    threads: 8
+                    batch_size: 1000
+                    preload: true
+                    profile: true
+                    progress: true
+              interactive_query:
+                summary: Interactive k-mer queries
+                value:
+                  database: "/path/to/database.rkdb"
+                  input:
+                    kmers: ["ATGCGAT", "GCTAGCTA", "TTAGGCC"]
+                  config:
+                    threads: 4
+                    batch_size: 10
+                    verbose: true
+              stdin_input:
+                summary: Pipeline input from stdin
+                value:
+                  database: "/path/to/database.rkdb"
+                  input:
+                    stdin: true
+                  config:
+                    threads: 0  # Auto-detect
+                    quiet: false
+
+      responses:
+        '200':
+          description: Query execution completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryXResponse'
+              examples:
+                successful_batch:
+                  summary: Successful batch query
+                  value:
+                    success: true
+                    results:
+                      - kmer: "ATGCGAT"
+                        count: 42
+                        found: true
+                      - kmer: "GCTAGCTA"
+                        count: null
+                        found: false
+                    performance:
+                      total_time_ms: 1250
+                      queries_per_second: 8000
+                      threads_used: 8
+                      cache_hit_rate: 0.95
+                      memory_peak_mb: 128
+                      speedup_factor: 3.2
+                      recommendations:
+                        - "Excellent parallel performance for this batch size"
+                        - "Consider using memory mapping for larger databases"
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_database:
+                  summary: Database file not found
+                  value:
+                    success: false
+                    error:
+                      code: "DATABASE_NOT_FOUND"
+                      message: "Database file '/invalid/path.rkdb' does not exist"
+                      details: "Verify the database file path and permissions"
+        '500':
+          description: Internal processing error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                processing_error:
+                  summary: Processing failure
+                  value:
+                    success: false
+                    error:
+                      code: "PROCESSING_ERROR"
+                      message: "Failed to process k-mer queries"
+                      details: "Memory allocation failed during batch processing"
+
+components:
+  schemas:
+    QueryXRequest:
+      type: object
+      required:
+        - database
+        - input
+      properties:
+        database:
+          type: string
+          description: Path to rustkmer database file
+          example: "/data/genome.rkdb"
+        input:
+          $ref: '#/components/schemas/QueryInput'
+        output:
+          type: string
+          description: Output file path (optional, defaults to stdout)
+          example: "/data/results.txt"
+        config:
+          $ref: '#/components/schemas/ProcessingConfig'
+
+    QueryInput:
+      type: object
+      description: Input source for k-mers to query
+      oneOf:
+        - type: object
+          required:
+            - kmers
+          properties:
+            kmers:
+              type: array
+              items:
+                type: string
+                pattern: '^[ACGT]+$'
+                minLength: 1
+                maxLength: 127
+              description: Array of k-mer sequences to query
+              example: ["ATGCGAT", "GCTAGCTA", "TTAGGCC"]
+        - type: object
+          required:
+            - file
+          properties:
+            file:
+              type: string
+              description: Path to file containing k-mers (one per line)
+              example: "/data/query_kmers.txt"
+        - type: object
+          required:
+            - stdin
+          properties:
+            stdin:
+              type: boolean
+              description: Read k-mers from standard input
+              example: true
+
+    ProcessingConfig:
+      type: object
+      description: Configuration for parallel processing
+      properties:
+        threads:
+          type: integer
+          minimum: 0
+          maximum: 128
+          default: 0
+          description: |
+            Number of worker threads. 0 means auto-detect based on CPU cores.
+            Will be automatically adjusted based on batch size for optimal performance.
+          example: 8
+        batch_size:
+          type: integer
+          minimum: 1
+          maximum: 100000
+          default: 1000
+          description: Number of k-mers per processing batch
+          example: 1000
+        preload:
+          type: boolean
+          default: false
+          description: Preload entire database into memory for faster access
+        verbose:
+          type: boolean
+          default: false
+          description: Enable verbose output with detailed progress information
+        quiet:
+          type: boolean
+          default: false
+          description: Suppress non-error output
+        profile:
+          type: boolean
+          default: false
+          description: Enable performance profiling and detailed metrics
+        progress:
+          type: boolean
+          default: false
+          description: Show progress bar during processing
+        memory_limit_mb:
+          type: integer
+          minimum: 64
+          maximum: 65536
+          description: Maximum memory usage in MB
+          example: 1024
+
+    QueryXResponse:
+      type: object
+      required:
+        - success
+        - results
+        - performance
+      properties:
+        success:
+          type: boolean
+          description: Whether the query execution completed successfully
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryResult'
+        performance:
+          $ref: '#/components/schemas/PerformanceMetrics'
+        warnings:
+          type: array
+          items:
+            type: string
+          description: Warning messages generated during processing
+          example:
+            - "Some k-mers were skipped due to invalid characters"
+            - "Performance may be limited by system I/O bandwidth"
+
+    QueryResult:
+      type: object
+      required:
+        - kmer
+        - found
+      properties:
+        kmer:
+          type: string
+          description: The queried k-mer sequence
+          example: "ATGCGAT"
+        found:
+          type: boolean
+          description: Whether the k-mer was found in the database
+        count:
+          type: integer
+          minimum: 0
+          maximum: 4294967295
+          nullable: true
+          description: Count of occurrences (null if not found)
+          example: 42
+        query_time_ms:
+          type: number
+          format: float
+          minimum: 0
+          description: Time taken to process this individual query in milliseconds
+          example: 0.125
+
+    PerformanceMetrics:
+      type: object
+      required:
+        - total_time_ms
+        - queries_per_second
+        - threads_used
+      properties:
+        total_time_ms:
+          type: number
+          format: float
+          minimum: 0
+          description: Total processing time in milliseconds
+        queries_processed:
+          type: integer
+          minimum: 0
+          description: Total number of k-mers processed
+        queries_per_second:
+          type: number
+          format: float
+          minimum: 0
+          description: Average queries processed per second
+        threads_used:
+          type: integer
+          minimum: 1
+          maximum: 128
+          description: Number of threads actually used
+        cache_hit_rate:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Fraction of queries served from cache (0-1)
+        memory_peak_mb:
+          type: number
+          format: float
+          minimum: 0
+          description: Peak memory usage in megabytes
+        speedup_factor:
+          type: number
+          format: float
+          minimum: 1
+          description: Performance improvement factor compared to single-threaded
+        database_load_time_ms:
+          type: number
+          format: float
+          minimum: 0
+          description: Time taken to load and initialize the database
+        efficiency_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Overall parallel efficiency score
+        recommendations:
+          type: array
+          items:
+            type: string
+          description: Performance optimization recommendations
+          example:
+            - "Excellent parallel performance for this batch size"
+            - "Consider increasing batch size for better throughput"
+            - "Memory mapping would improve performance for this database size"
+
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+
+    ErrorDetail:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+          enum:
+            - DATABASE_NOT_FOUND
+            - INVALID_DATABASE_FORMAT
+            - INVALID_KMER_SEQUENCE
+            - INSUFFICIENT_MEMORY
+            - THREAD_CREATION_FAILED
+            - PROCESSING_ERROR
+            - I/O_ERROR
+            - VALIDATION_ERROR
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: string
+          description: Additional error context and suggestions
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+security: []

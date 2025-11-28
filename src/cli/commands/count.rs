@@ -419,6 +419,8 @@ fn output_binary_format(
         data_offset: 42, // Fixed header size for RKDB format
         index_offset: 0,
         canonical: counter.canonical_mode(),
+        unique_kmers: kmer_count as u64,  // Same as total_kmers for now
+        file_size: 42 + (kmer_count as u64 * 12),  // Header + k-mer entries (8+4 bytes each)
     };
 
     if !quiet {

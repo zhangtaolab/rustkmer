@@ -100,3 +100,52 @@ impl From<std::io::Error> for ProcessingError {
         Self::with_context("I/O error", err)
     }
 }
+
+/// Additional error types for queryx functionality
+#[derive(Debug, thiserror::Error)]
+pub enum RustKmerError {
+    #[error("Invalid k-mer sequence: {0}")]
+    InvalidKmer(String),
+
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+
+    #[error("Query error: {0}")]
+    QueryError(String),
+
+    #[error("Database error: {0}")]
+    DatabaseError(String),
+
+    #[error("Thread creation failed: {0}")]
+    ThreadCreationError(String),
+
+    #[error("Processing error: {0}")]
+    ProcessingError(String),
+
+    #[error("I/O error: {0}")]
+    IoError(String),
+
+    #[error("Insufficient memory: {0}")]
+    InsufficientMemory(String),
+
+    #[error("Database not found: {0}")]
+    DatabaseNotFound(String),
+
+    #[error("Invalid database format: {0}")]
+    InvalidDatabaseFormat(String),
+}
+
+/// Additional processing error constructors for convenience
+impl ProcessingError {
+    pub fn IoError(message: impl Into<String>) -> Self {
+        Self::new(message)
+    }
+
+    pub fn DatabaseError(message: impl Into<String>) -> Self {
+        Self::new(format!("Database error: {}", message.into()))
+    }
+
+    pub fn QueryError(message: impl Into<String>) -> Self {
+        Self::new(format!("Query error: {}", message.into()))
+    }
+}
