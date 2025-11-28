@@ -1,0 +1,51 @@
+# Reference directory
+reference/
+
+# Rust build artifacts
+target/
+Cargo.lock
+**/*.rs.bk
+debug/
+release/
+*.rlib
+*.prof*
+*.d
+*.pdb
+
+# Output files
+*.jf
+*.rk
+*.txt
+
+# Test and temporary files (stored in /Users/forrest/Temp/demodata/)
+test_output/
+temp_files/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment files
+.env*
+!.env.example
+
+# Benchmark results
+benches/
+criterion/
+
+# Test coverage
+tarpaulin-report.html
+coverage/
+
+# Added by cargo
+
+/target
