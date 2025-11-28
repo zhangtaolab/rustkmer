@@ -57,9 +57,13 @@ pub enum Commands {
         #[arg(long, help = "Display warnings when skipping k-mers with invalid characters")]
         show_warnings: bool,
 
-        /// Sort output by k-mer sequence (default: unsorted for performance)
-        #[arg(long)]
+        /// Sort output by k-mer sequence (default: sorted for optimal query performance)
+        #[arg(long, default_value = "true")]
         sort: bool,
+
+        /// Disable sorting of output k-mers (creates unsorted database for faster counting)
+        #[arg(long, conflicts_with = "sort")]
+        no_sort: bool,
 
         /// Minimum k-mer count threshold (jellyfish compatible)
         #[arg(short = 'L', long = "min-count")]

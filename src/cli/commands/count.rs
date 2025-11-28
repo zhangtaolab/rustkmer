@@ -30,6 +30,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             quiet,
             verbose,
             sort,
+            no_sort,
             min_count,
             max_count,
             show_warnings,
@@ -38,6 +39,13 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             if *k < 1 || *k > 127 {
                 return Err(KmerError::InvalidKmerSize(*k as u32).into());
             }
+
+            // Determine if we should sort the output
+            let should_sort = if *no_sort {
+                false
+            } else {
+                *sort
+            };
 
             // Validate thread count
             let num_threads = if *threads == 0 {
@@ -176,10 +184,10 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
 
                 match format.as_str() {
                     "text" => {
-                        output_text_format(&counter, output_path, *quiet, *sort, &filter)?;
+                        output_text_format(&counter, output_path, *quiet, should_sort, &filter)?;
                     },
                     "binary" | _ => {
-                        output_binary_format(&counter, output_path, *quiet, *sort, &filter)?;
+                        output_binary_format(&counter, output_path, *quiet, should_sort, &filter)?;
                     },
                 }
             }
