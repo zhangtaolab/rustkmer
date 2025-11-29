@@ -49,3 +49,97 @@ coverage/
 # Added by cargo
 
 /target
+
+# Rust build artifacts
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Python cache and temp files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Test databases and temporary files
+*.rkdb.test
+test_*.rkdb
+debug_*.py
+bug_*.md
+test_encoding.*
+test_endian.*
+test_*.fasta
+test_*.fa
+
+# Rust compilation artifacts
+*.0.s
+*.1.s
+*.2.s
+*.3.s
+*.4.s
+*.5.s
+*.6.s
+*.7.s
+*.8.s
+*.9.s
+*.10.s
+*.11.s
+*.12.s
+*.13.s
+*.14.s
+*.15.s
+*.16.s
+*.17.s
+*.18.s
+*.19.s
+*.20.s
+*.o
+*.rcgu.o
+*.rcgu
+*.lto.o
+*.lto.rcgu.o
+
+# Performance profiling files
+*.prof
+*.profraw
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+*.tmp
+*.temp
