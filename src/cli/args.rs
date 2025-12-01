@@ -219,6 +219,107 @@ pub enum Commands {
         /// Include header row in CSV/TSV output
         #[arg(long)]
         include_headers: bool,
+    },
+
+    /// Run comprehensive performance benchmarks
+    Benchmark {
+        /// Test data directory (default: /Users/forrest/Temp/demodata)
+        #[arg(long, default_value = "/Users/forrest/Temp/demodata")]
+        data_dir: String,
+
+        /// Output directory for results
+        #[arg(short = 'o', long, default_value = "/Users/forrest/Temp/demodata/performance_comparison")]
+        output_dir: String,
+
+        /// K-mer sizes to test (comma-separated)
+        #[arg(long, default_value = "13,21,31")]
+        kmer_sizes: String,
+
+        /// Include compression performance tests
+        #[arg(long)]
+        compression: bool,
+
+        /// Include memory profiling
+        #[arg(long)]
+        memory: bool,
+
+        /// Number of iterations for each test
+        #[arg(long, default_value = "3")]
+        iterations: usize,
+
+        /// Output format
+        #[arg(short = 'f', long, default_value = "json", value_parser = ["json", "csv", "table"])]
+        format: String,
+
+        /// Generate visualizations
+        #[arg(long)]
+        visualize: bool,
+
+        /// Compare against Jellyfish
+        #[arg(long)]
+        compare_jellyfish: bool,
+    },
+
+    /// Direct performance comparison with Jellyfish
+    Compare {
+        /// Database files to compare (space-separated)
+        #[arg(short = 'd', long, num_args = 1..)]
+        databases: Vec<String>,
+
+        /// Query file for testing
+        #[arg(short = 'q', long)]
+        queries: String,
+
+        /// Number of queries to test
+        #[arg(long, default_value = "1000")]
+        query_count: usize,
+
+        /// Output directory for results
+        #[arg(short = 'o', long, default_value = "/Users/forrest/Temp/demodata/performance_comparison")]
+        output_dir: String,
+
+        /// Output format
+        #[arg(short = 'f', long, default_value = "json", value_parser = ["json", "csv", "table"])]
+        format: String,
+
+        /// Include fuzzy queries in comparison
+        #[arg(long)]
+        fuzzy: bool,
+
+        /// Enable detailed profiling
+        #[arg(long)]
+        profile: bool,
+    },
+
+    /// Performance profiling and analysis
+    Profile {
+        /// Command to profile (query, fuzzy-query, count)
+        #[arg(long)]
+        command: String,
+
+        /// Arguments for the command being profiled
+        #[arg(short = 'a', long, num_args = 1..)]
+        args: Vec<String>,
+
+        /// Output file for profiling results
+        #[arg(short = 'o', long)]
+        output: Option<String>,
+
+        /// Profile depth (basic, detailed, full)
+        #[arg(long, default_value = "detailed", value_parser = ["basic", "detailed", "full"])]
+        depth: String,
+
+        /// Include memory profiling
+        #[arg(long)]
+        memory: bool,
+
+        /// Include CPU profiling
+        #[arg(long)]
+        cpu: bool,
+
+        /// Duration of profiling (seconds)
+        #[arg(long, default_value = "60")]
+        duration: u64,
     }
 }
 

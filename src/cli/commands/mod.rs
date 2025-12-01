@@ -6,4 +6,5 @@ pub mod count;
 pub mod query;
 pub mod dump;
 pub mod fuzzy;
+pub mod benchmark;
 pub mod args;
