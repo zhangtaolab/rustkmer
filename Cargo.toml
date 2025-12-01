@@ -52,6 +52,12 @@ num_cpus = "1.16"
 # Progress reporting
 indicatif = "0.17"
 
+# Interactive file selection
+inquire = "0.7"
+
+# Directory traversal
+walkdir = "2.4"
+
 # Compression support
 niffler = "2.5"
 flate2 = "1.0"

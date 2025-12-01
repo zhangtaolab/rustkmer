@@ -52,7 +52,7 @@ pub struct QueryExpansion {
 pub fn generate_query_expansion(query: &crate::fuzzy::FuzzyQuery) -> FuzzyResult<QueryExpansion> {
     let start_time = Instant::now();
     let mut concrete_kmers = Vec::new();
-    let (normalized_query, mut expansion_method) = if query.query_string.len() != query.kmer_size {
+    let (normalized_query, expansion_method) = if query.query_string.len() != query.kmer_size {
         let variants = normalization::generate_normalized_variants(&query.query_string, query.kmer_size)?;
         (
             variants,
@@ -87,16 +87,16 @@ pub fn generate_query_expansion(query: &crate::fuzzy::FuzzyQuery) -> FuzzyResult
         concrete_kmers = mutation_variants;
 
         // Update expansion method to combined
-        let final_expansion_method = if let ExpansionMethod::WildcardOnly { wildcard_count } = expansion_method {
+        
+
+        if let ExpansionMethod::WildcardOnly { wildcard_count } = expansion_method {
             ExpansionMethod::Combined {
                 wildcard_count,
                 mutation_distance: query.mutation_tolerance,
             }
         } else {
             expansion_method
-        };
-
-        final_expansion_method
+        }
     } else {
         // No mutation tolerance, use initial expansion method
         expansion_method

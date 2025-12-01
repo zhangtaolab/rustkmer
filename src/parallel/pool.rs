@@ -87,6 +87,7 @@ impl ThreadPool {
 /// Worker thread in the thread pool
 struct Worker {
     /// Worker ID
+    #[allow(dead_code)]
     id: usize,
     /// Thread handle
     thread: Option<JoinHandle<()>>,
@@ -260,7 +261,7 @@ mod tests {
             }),
         };
 
-        task.execute().unwrap();
+        Box::new(task).execute().unwrap();
         assert_eq!(counter.load(Ordering::Relaxed), 6); // ATG, TGC, GCA, CAT, ATG, TGC
     }
 

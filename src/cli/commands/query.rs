@@ -3,7 +3,6 @@
 //! Implements k-mer querying functionality with support for individual k-mers,
 //! multiple k-mers, sequence files, and interactive mode.
 
-use clap::Parser;
 use std::io::{self, Write, BufRead};
 use std::path::Path;
 
@@ -158,9 +157,9 @@ fn handle_interactive_mode(
     eprintln!("Enter k-mers to query (Ctrl+D to exit):");
 
     let stdin = io::stdin();
-    let mut lines = stdin.lock().lines();
+    let lines = stdin.lock().lines();
 
-    while let Some(line) = lines.next() {
+    for line in lines {
         let line = line
             .map_err(|e| KmerError::ProcessingError(format!("Failed to read input: {}", e)))?;
 

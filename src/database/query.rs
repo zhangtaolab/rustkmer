@@ -45,7 +45,7 @@ impl DatabaseQuery {
         let mut file = BufReader::new(file);
 
         // Read and validate header
-        let mut header = DatabaseHeader::read_from(&mut file)
+        let header = DatabaseHeader::read_from(&mut file)
             .map_err(|e| KmerError::FileFormatError {
                 file: "database".to_string(),
                 reason: format!("Failed to read database header: {}", e)
@@ -83,13 +83,13 @@ impl DatabaseQuery {
 
         // Seek to data section
         file.seek(SeekFrom::Start(actual_data_offset))
-            .map_err(|e| KmerError::Io(e))?;
+            .map_err(KmerError::Io)?;
 
         let mut entries = Vec::with_capacity(header.total_kmers as usize);
 
         for _ in 0..header.total_kmers {
             let entry = KmerEntry::read_from(file)
-                .map_err(|e| KmerError::Io(e))?;
+                .map_err(KmerError::Io)?;
             entries.push(entry);
         }
 
@@ -191,7 +191,7 @@ impl DatabaseQuery {
         let entry_offset = actual_data_offset + (index * 12); // 8 + 4 bytes per entry
 
         self.file.seek(SeekFrom::Start(entry_offset))
-            .map_err(|e| KmerError::Io(e))?;
+            .map_err(KmerError::Io)?;
 
         KmerEntry::read_from(&mut self.file)
             .map_err(|e| KmerError::Io(e).into())
@@ -295,8 +295,7 @@ impl<'a> KmerQuery<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
+      use tempfile::NamedTempFile;
 
     fn create_test_database(kmer_size: u8, entries: Vec<(u64, u32)>) -> NamedTempFile {
         let mut file = NamedTempFile::new().unwrap();

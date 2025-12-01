@@ -172,7 +172,7 @@ pub fn expand_wildcards_streaming(
     batch_size: usize,
     mut processor: impl FnMut(&[String]) -> FuzzyResult<()>,
 ) -> FuzzyResult<()> {
-    let wildcard_count = count_wildcards(query);
+    let _wildcard_count = count_wildcards(query);
     let total_variants = estimate_wildcard_variants(query);
 
     if total_variants > constants::DEFAULT_MAX_VARIANTS {

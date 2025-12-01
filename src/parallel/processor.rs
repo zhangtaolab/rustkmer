@@ -4,7 +4,7 @@
 
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::sync::mpsc::{channel, Sender, Receiver};
+use std::sync::mpsc::channel;
 use rayon::prelude::*;
 use crate::error::{ProcessingError, ProcessingResult};
 use crate::hash::table::KmerCounter;
@@ -14,6 +14,7 @@ use crate::kmer::canonical::canonical_kmer;
 /// Parallel sequence processor
 pub struct ParallelProcessor {
     /// Number of worker threads
+    #[allow(dead_code)]
     num_threads: usize,
     /// Shared k-mer counter
     counter: Arc<KmerCounter>,
@@ -127,6 +128,7 @@ pub struct WorkItem {
 /// Parallel processor using work queue
 pub struct QueueProcessor {
     /// Number of worker threads
+    #[allow(dead_code)]
     num_threads: usize,
     /// Shared k-mer counter
     counter: Arc<KmerCounter>,

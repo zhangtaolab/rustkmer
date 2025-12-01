@@ -3,7 +3,7 @@
 //! This module handles length normalization by padding or truncating queries
 //! to match the database k-mer size using 'N' characters.
 
-use crate::fuzzy::{constants, FuzzyError, FuzzyResult};
+use crate::fuzzy::{FuzzyError, FuzzyResult};
 use std::cmp::Ordering;
 
 /// Normalize query length to match k-mer size
@@ -109,18 +109,14 @@ pub fn validate_normalization_params(query: &str, kmer_size: usize) -> FuzzyResu
     let query_len = query.len();
 
     // Check k-mer size is reasonable
-    if kmer_size < 5 || kmer_size > 31 {
+    if !(5..=31).contains(&kmer_size) {
         return Err(FuzzyError::InvalidParameters(
             "k-mer size must be between 5 and 31".to_string(),
         ));
     }
 
     // Check length difference constraints
-    let length_diff = if query_len > kmer_size {
-        query_len - kmer_size
-    } else {
-        kmer_size - query_len
-    };
+    let length_diff = query_len.abs_diff(kmer_size);
 
     if length_diff > 3 {
         return Err(FuzzyError::InvalidParameters(
@@ -166,11 +162,7 @@ pub fn would_exceed_normalization_limit(query: &str, kmer_size: usize, max_varia
 /// based on the query and database characteristics.
 pub fn intelligent_normalization(query: &str, kmer_size: usize) -> FuzzyResult<Vec<String>> {
     let query_len = query.len();
-    let length_diff = if query_len > kmer_size {
-        query_len - kmer_size
-    } else {
-        kmer_size - query_len
-    };
+    let length_diff = query_len.abs_diff(kmer_size);
 
     // If lengths are equal, no normalization needed
     if query_len == kmer_size {

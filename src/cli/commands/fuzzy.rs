@@ -3,9 +3,8 @@
 //! This module implements the command-line interface for fuzzy k-mer queries,
 //! supporting wildcard expansion, length normalization, and mutation tolerance.
 
-use crate::cli::commands::args::Commands;
 use crate::database::format::RKDatabase;
-use crate::fuzzy::{FuzzyQuery, FuzzyQueryEngine, FuzzyError};
+use crate::fuzzy::{FuzzyQuery, FuzzyQueryEngine};
 use anyhow::Result;
 use clap::Args;
 use serde_json;

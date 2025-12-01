@@ -4,7 +4,6 @@
 //! with minimal contention and efficient memory usage.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
 use parking_lot::RwLock as ParkingLotRwLock;
 
 use crate::error::{KmerError, ProcessingError, ProcessingResult};
@@ -38,8 +37,8 @@ impl KmerCounter {
     ///
     /// # Returns
     /// New KmerCounter instance
-    pub fn new(kmer_length: usize, canonical_mode: bool, initial_capacity: usize, num_threads: usize) -> ProcessingResult<Self> {
-        if kmer_length < 1 || kmer_length > 127 {
+    pub fn new(kmer_length: usize, canonical_mode: bool, initial_capacity: usize, _num_threads: usize) -> ProcessingResult<Self> {
+        if !(1..=127).contains(&kmer_length) {
             return Err(KmerError::InvalidKmerSize(kmer_length as u32).into());
         }
 

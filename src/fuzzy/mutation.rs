@@ -178,7 +178,7 @@ pub fn generate_mutation_variants_iterative(sequence: &str, mutation_distance: u
     variants.insert(sequence.to_string());
 
     // Generate variants iteratively for each mutation level
-    for current_distance in 1..=mutation_distance {
+    for _current_distance in 1..=mutation_distance {
         let mut new_variants = Vec::new();
 
         for existing_variant in &variants {
@@ -243,7 +243,7 @@ pub fn estimate_mutation_variants(sequence_length: usize, mutation_distance: usi
             sequence_length * (sequence_length - 1) / 2
         } else {
             // Approximate for higher orders
-            sequence_length.pow(i as u32) / (i as usize).pow(i as u32)
+            sequence_length.pow(i as u32) / i.pow(i as u32)
         };
 
         total += combinations * 3_usize.pow(i as u32);

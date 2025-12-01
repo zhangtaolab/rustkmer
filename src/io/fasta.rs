@@ -8,7 +8,7 @@ use std::path::Path;
 use bio::io::fasta::Reader;
 use bio::io::fasta::Record;
 
-use crate::error::{KmerError, ProcessingError, ProcessingResult};
+use crate::error::{ProcessingError, ProcessingResult};
 
 /// FASTA file processor for efficient genomic data reading
 pub struct FastaProcessor {
@@ -49,7 +49,7 @@ impl FastaProcessor {
                 ))?,
         );
 
-        let mut reader = Reader::new(file);
+        let reader = Reader::new(file);
 
         for record_result in reader.records() {
             let record = record_result
@@ -130,7 +130,7 @@ pub fn validate_fasta_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
             ))?,
     );
 
-    let mut reader = Reader::new(file);
+    let reader = Reader::new(file);
     let mut record_count = 0;
 
     for record_result in reader.records() {
@@ -184,7 +184,7 @@ pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> 
             ))?,
     );
 
-    let mut reader = Reader::new(file);
+    let reader = Reader::new(file);
     let mut count = 0;
 
     for _ in reader.records() {
@@ -212,7 +212,7 @@ pub fn total_sequence_length<P: AsRef<Path>>(file_path: P) -> ProcessingResult<u
             ))?,
     );
 
-    let mut reader = Reader::new(file);
+    let reader = Reader::new(file);
     let mut total_length = 0;
 
     for record_result in reader.records() {
@@ -243,22 +243,22 @@ mod tests {
     #[test]
     fn test_read_all_sequences() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(">seq1\nATGCATGC\n>seq2\nGCTAGCTA\n").unwrap();
+        temp_file.write_all(b">seq1\nATGCATGC\n>seq2\nGCTAGCTA\n").unwrap();
 
         let processor = FastaProcessor::new(temp_file.path());
         let sequences = processor.read_all().unwrap();
 
         assert_eq!(sequences.len(), 2);
         assert_eq!(sequences[0].id(), "seq1");
-        assert_eq!(sequences[0].seq(), "ATGCATGC");
+        assert_eq!(sequences[0].seq(), b"ATGCATGC");
         assert_eq!(sequences[1].id(), "seq2");
-        assert_eq!(sequences[1].seq(), "GCTAGCTA");
+        assert_eq!(sequences[1].seq(), b"GCTAGCTA");
     }
 
     #[test]
     fn test_validate_fasta_file() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(">valid_seq\nATGC\n>another_seq\nGCTA\n").unwrap();
+        temp_file.write_all(b">valid_seq\nATGC\n>another_seq\nGCTA\n").unwrap();
 
         assert!(validate_fasta_file(temp_file.path()).is_ok());
     }
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn test_count_sequences() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(">seq1\nATGC\n>seq2\nGCTA\n>seq3\nATGCGAT\n").unwrap();
+        temp_file.write_all(b">seq1\nATGC\n>seq2\nGCTA\n>seq3\nATGCGAT\n").unwrap();
 
         let count = count_sequences(temp_file.path()).unwrap();
         assert_eq!(count, 3);
@@ -284,7 +284,7 @@ mod tests {
     #[test]
     fn test_total_sequence_length() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(">seq1\nATGCATGC\n>seq2\nGCTAGCTA\n").unwrap();
+        temp_file.write_all(b">seq1\nATGCATGC\n>seq2\nGCTAGCTA\n").unwrap();
 
         let total_length = total_sequence_length(temp_file.path()).unwrap();
         assert_eq!(total_length, 15); // 8 + 7

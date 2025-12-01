@@ -279,7 +279,7 @@ impl RKDatabase {
 
         let file_path = path.to_path_buf();
         let file = File::open(path)
-            .map_err(|e| crate::error::ProcessingError::IoError(e.to_string()))?;
+            .map_err(|e| crate::error::ProcessingError::io_error(e.to_string()))?;
 
         let mut reader = BufReader::new(file);
         let header = DatabaseHeader::read_from(&mut reader)?;
@@ -295,13 +295,13 @@ impl RKDatabase {
 
         // Seek to data section
         reader.seek(SeekFrom::Start(actual_data_offset))
-            .map_err(|e| crate::error::ProcessingError::IoError(format!("Failed to seek to data section: {}", e)))?;
+            .map_err(|e| crate::error::ProcessingError::io_error(format!("Failed to seek to data section: {}", e)))?;
 
         // Load k-mer entries
         let mut entries = Vec::with_capacity(header.total_kmers as usize);
         for _ in 0..header.total_kmers {
             let entry = KmerEntry::read_from(&mut reader)
-                .map_err(|e| crate::error::ProcessingError::IoError(format!("Failed to read k-mer entry: {}", e)))?;
+                .map_err(|e| crate::error::ProcessingError::io_error(format!("Failed to read k-mer entry: {}", e)))?;
             entries.push(entry);
         }
 
@@ -338,7 +338,7 @@ impl RKDatabase {
         use std::io::BufWriter;
 
         let file = File::create(path)
-            .map_err(|e| crate::error::ProcessingError::IoError(e.to_string()))?;
+            .map_err(|e| crate::error::ProcessingError::io_error(e.to_string()))?;
 
         let mut writer = BufWriter::new(file);
         self.write_to(&mut writer)

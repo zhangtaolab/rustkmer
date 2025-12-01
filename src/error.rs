@@ -137,15 +137,15 @@ pub enum RustKmerError {
 
 /// Additional processing error constructors for convenience
 impl ProcessingError {
-    pub fn IoError(message: impl Into<String>) -> Self {
+    pub fn io_error(message: impl Into<String>) -> Self {
         Self::new(message)
     }
 
-    pub fn DatabaseError(message: impl Into<String>) -> Self {
+    pub fn database_error(message: impl Into<String>) -> Self {
         Self::new(format!("Database error: {}", message.into()))
     }
 
-    pub fn QueryError(message: impl Into<String>) -> Self {
+    pub fn query_error(message: impl Into<String>) -> Self {
         Self::new(format!("Query error: {}", message.into()))
     }
 }

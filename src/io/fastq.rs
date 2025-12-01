@@ -8,7 +8,7 @@ use std::path::Path;
 use bio::io::fastq::Reader;
 use bio::io::fastq::Record;
 
-use crate::error::{KmerError, ProcessingError, ProcessingResult};
+use crate::error::{ProcessingError, ProcessingResult};
 
 /// Compression types supported for FASTQ files
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,7 +139,7 @@ impl FastqProcessor {
                 e,
             ))?;
 
-        let mut fastq_reader = Reader::new(reader);
+        let fastq_reader = Reader::new(reader);
 
         for record_result in fastq_reader.records() {
             let record = record_result
@@ -176,7 +176,7 @@ impl FastqProcessor {
                 e,
             ))?;
 
-        let mut fastq_reader = Reader::new(reader);
+        let fastq_reader = Reader::new(reader);
         let mut record_count = 0;
 
         // Get file size for progress estimation (only meaningful for uncompressed files)
@@ -299,7 +299,7 @@ pub fn validate_fastq_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
             e,
         ))?;
 
-    let mut reader = Reader::new(reader);
+    let reader = Reader::new(reader);
     let mut record_count = 0;
 
     for record_result in reader.records() {
@@ -356,7 +356,7 @@ pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> 
             e,
         ))?;
 
-    let mut reader = Reader::new(reader);
+    let reader = Reader::new(reader);
     let mut count = 0;
 
     for _ in reader.records() {
@@ -384,7 +384,7 @@ pub fn total_sequence_length<P: AsRef<Path>>(file_path: P) -> ProcessingResult<u
             ))?,
     );
 
-    let mut reader = Reader::new(file);
+    let reader = Reader::new(file);
     let mut total_length = 0;
 
     for record_result in reader.records() {
@@ -417,7 +417,7 @@ pub fn average_quality<P: AsRef<Path>>(file_path: P) -> ProcessingResult<f64> {
             ))?,
     );
 
-    let mut reader = Reader::new(file);
+    let reader = Reader::new(file);
     let mut total_quality = 0u64;
     let mut total_positions = 0u64;
 
@@ -457,24 +457,24 @@ mod tests {
     #[test]
     fn test_read_all_sequences() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all("@seq1\nATGCATGC\nIIIIIIII\n@seq2\nGCTAGCTA\nHHHHHHHHH\n").unwrap();
+        temp_file.write_all(b"@seq1\nATGCATGC\nIIIIIIII\n@seq2\nGCTAGCTA\nHHHHHHHHH\n").unwrap();
 
         let processor = FastqProcessor::new(temp_file.path());
         let sequences = processor.read_all().unwrap();
 
         assert_eq!(sequences.len(), 2);
         assert_eq!(sequences[0].id(), "@seq1");
-        assert_eq!(sequences[0].seq(), "ATGCATGC");
-        assert_eq!(sequences[0].qual(), "IIIIIIII");
+        assert_eq!(sequences[0].seq(), b"ATGCATGC");
+        assert_eq!(sequences[0].qual(), b"IIIIIIII");
         assert_eq!(sequences[1].id(), "@seq2");
-        assert_eq!(sequences[1].seq(), "GCTAGCTA");
-        assert_eq!(sequences[1].qual(), "HHHHHHHHH");
+        assert_eq!(sequences[1].seq(), b"GCTAGCTA");
+        assert_eq!(sequences[1].qual(), b"HHHHHHHHH");
     }
 
     #[test]
     fn test_validate_fastq_file() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all("@valid_seq\nATGC\n+IIII\n@another_seq\nGCTA\n+HHHH\n").unwrap();
+        temp_file.write_all(b"@valid_seq\nATGC\n+IIII\n@another_seq\nGCTA\n+HHHH\n").unwrap();
 
         assert!(validate_fastq_file(temp_file.path()).is_ok());
     }
@@ -491,7 +491,7 @@ mod tests {
     #[test]
     fn test_count_sequences() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all("@seq1\nATGC\n+IIII\n@seq2\nGCTA\n+HHHH\n@seq3\nATGCGAT\n+JJJJJJJJ\n").unwrap();
+        temp_file.write_all(b"@seq1\nATGC\n+IIII\n@seq2\nGCTA\n+HHHH\n@seq3\nATGCGAT\n+JJJJJJJJ\n").unwrap();
 
         let count = count_sequences(temp_file.path()).unwrap();
         assert_eq!(count, 3);
@@ -500,7 +500,7 @@ mod tests {
     #[test]
     fn test_total_sequence_length() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all("@seq1\nATGCATGC\n+IIIIII\n@seq2\nGCTAGCTA\n+HHHHHH\n").unwrap();
+        temp_file.write_all(b"@seq1\nATGCATGC\n+IIIIII\n@seq2\nGCTAGCTA\n+HHHHHH\n").unwrap();
 
         let total_length = total_sequence_length(temp_file.path()).unwrap();
         assert_eq!(total_length, 15); // 8 + 7
@@ -509,7 +509,7 @@ mod tests {
     #[test]
     fn test_average_quality() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all("@seq1\nATGC\n+IIII\n@seq2\nGCTA\n+HHHH\n").unwrap();
+        temp_file.write_all(b"@seq1\nATGC\n+IIII\n@seq2\nGCTA\n+HHHH\n").unwrap();
 
         let avg_quality = average_quality(temp_file.path()).unwrap();
         // Average of [40, 40, 40, 40, 40, 40] and [40, 40, 40, 40, 40, 40]
@@ -519,7 +519,7 @@ mod tests {
     #[test]
     fn test_filter_by_quality() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all("@seq1\nATGC\n+IIII\n@seq2\nGCTA\n+HHHH\n@seq3\nNNNN\n+JJJJ\n").unwrap();
+        temp_file.write_all(b"@seq1\nATGC\n+IIII\n@seq2\nGCTA\n+HHHH\n@seq3\nNNNN\n+JJJJ\n").unwrap();
 
         let processor = FastqProcessor::new(temp_file.path());
         let filtered = processor.filter_by_quality(39).unwrap();

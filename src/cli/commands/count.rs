@@ -2,7 +2,6 @@
 //!
 //! Implements the k-mer counting functionality.
 
-use clap::Parser;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
@@ -12,9 +11,10 @@ use crate::error::{KmerError, ProcessingResult};
 use crate::hash::table::KmerCounter;
 use crate::io::fasta::{FastaProcessor, validate_fasta_file};
 use crate::io::fastq::{FastqProcessor, validate_fastq_file};
+use crate::io::discovery::{FileDiscovery, DiscoveryConfig};
 use crate::kmer::encoding::encode_kmer_bytes;
-use crate::kmer::operations::{canonical_kmer, reverse_complement};
-use crate::database::format::{DatabaseHeader, KmerEntry, DATABASE_MAGIC, DATABASE_VERSION};
+use crate::kmer::operations::canonical_kmer;
+use crate::database::format::{DatabaseHeader, DATABASE_MAGIC, DATABASE_VERSION};
 
 /// Execute the count command
 pub fn execute_count(args: &Args) -> ProcessingResult<()> {
@@ -22,6 +22,10 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
         crate::cli::args::Commands::Count {
             k,
             input,
+            directory,
+            select,
+            recursive,
+            no_recursive,
             output,
             canonical,
             size,
@@ -31,8 +35,8 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             verbose,
             sort,
             no_sort,
-            min_count,
-            max_count,
+            min_count: _,
+            max_count: _,
             show_warnings,
         } => {
             // Validate k-mer size
@@ -66,13 +70,57 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 return Err(KmerError::ProcessingError("Invalid filtering parameters".to_string()).into());
             }
 
+            // Validate input parameters
+            if let Err(errors) = args.command.validate_input() {
+                for error in errors {
+                    eprintln!("Error: {}", error);
+                }
+                return Err(KmerError::ProcessingError("Invalid input parameters".to_string()).into());
+            }
+
+            // Determine recursive mode
+            let is_recursive = if *no_recursive {
+                false
+            } else {
+                *recursive
+            };
+
+            // Handle directory mode vs file list mode
+            let files_to_process = if let Some(dir_path) = directory {
+                // Directory mode: discover files
+                let config = DiscoveryConfig {
+                    recursive: is_recursive,
+                    ..Default::default()
+                };
+                let discovery = FileDiscovery::new(config);
+
+                let dir_path_obj = Path::new(dir_path);
+                let discovered_files = discovery.discover(dir_path_obj)
+                    .map_err(|e| KmerError::ProcessingError(format!("Failed to discover files in directory: {}", e)))?;
+
+                // For now, use all discovered files (default behavior)
+                discovered_files.iter().map(|file_info| file_info.path.clone()).collect::<Vec<_>>()
+            } else {
+                // File list mode: use provided input files
+                input.iter().map(|s| Path::new(s).to_path_buf()).collect()
+            };
+
             if *verbose {
                 eprintln!("rustkmer count starting...");
                 eprintln!("K-mer size: {}", k);
                 eprintln!("Canonical mode: {}", canonical);
                 eprintln!("Thread count: {}", num_threads);
                 eprintln!("Hash table size: {}", size);
-                eprintln!("Input files: {:?}", input);
+
+                if directory.is_some() {
+                    eprintln!("Directory: {:?}", directory);
+                    eprintln!("Recursive: {}", is_recursive);
+                    eprintln!("Interactive selection: {}", select);
+                    eprintln!("Files discovered: {}", files_to_process.len());
+                } else {
+                    eprintln!("Input files: {:?}", input);
+                }
+
                 if let Some(out) = output {
                     eprintln!("Output file: {}", out);
                 }
@@ -88,16 +136,10 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
 
             let start_time = Instant::now();
 
-            // Process each input file
-            for (file_idx, file_path) in input.iter().enumerate() {
-                let path = Path::new(file_path);
-
-                if !path.exists() {
-                    return Err(KmerError::FileNotFound(file_path.clone()).into());
-                }
-
+            // Process each file
+            for (file_idx, file_path_obj) in files_to_process.iter().enumerate() {
                 if !*quiet {
-                    eprintln!("Processing file {}/{}: {}", file_idx + 1, input.len(), file_path);
+                    eprintln!("Processing file {}/{}: {}", file_idx + 1, files_to_process.len(), file_path_obj.display());
                 }
 
                 // Determine file format and process
@@ -126,21 +168,21 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                     }
                 };
 
-                let result = match get_file_type(path) {
+                let result = match get_file_type(file_path_obj) {
                     Some("fasta") => {
                         // Validate FASTA file
-                        validate_fasta_file(path)?;
+                        validate_fasta_file(file_path_obj)?;
 
                         // Process FASTA file
-                        let processor = FastaProcessor::new(path);
+                        let processor = FastaProcessor::new(file_path_obj);
                         process_fasta_file(&processor, &counter, *k, *canonical, *quiet, *verbose, *show_warnings)
                     },
                     Some("fastq") => {
                         // Validate FASTQ file
-                        validate_fastq_file(path)?;
+                        validate_fastq_file(file_path_obj)?;
 
                         // Process FASTQ file
-                        let processor = FastqProcessor::new(path);
+                        let processor = FastqProcessor::new(file_path_obj);
                         if *verbose {
                             eprintln!("  FASTQ file detected (compression: {})", processor.compression_type().name());
                         }
@@ -148,13 +190,14 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                     },
                     _ => {
                         // Try to auto-detect format
-                        if file_path.to_ascii_lowercase().contains("fastq") ||
-                           file_path.to_ascii_lowercase().contains("fq") {
-                            let processor = FastqProcessor::new(path);
+                        let file_path_str = file_path_obj.to_string_lossy();
+                        if file_path_str.to_ascii_lowercase().contains("fastq") ||
+                           file_path_str.to_ascii_lowercase().contains("fq") {
+                            let processor = FastqProcessor::new(file_path_obj);
                             process_fastq_file(&processor, &counter, *k, *canonical, *quiet, *verbose, *show_warnings)
                         } else {
                             // Default to FASTA
-                            let processor = FastaProcessor::new(path);
+                            let processor = FastaProcessor::new(file_path_obj);
                             process_fasta_file(&processor, &counter, *k, *canonical, *quiet, *verbose, *show_warnings)
                         }
                     }
@@ -162,7 +205,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
 
                 if let Err(e) = result {
                     return Err(KmerError::ProcessingError(format!(
-                        "Failed to process file {}: {}", file_path, e
+                        "Failed to process file {}: {}", file_path_obj.display(), e
                     )).into());
                 }
 
@@ -202,7 +245,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 eprintln!("Unique k-mers: {}", final_stats.unique_kmers);
 
                 // Report filtering statistics if filtering was applied
-                if filter.as_ref().map_or(false, |f| f.min_count.is_some() || f.max_count.is_some()) {
+                if filter.as_ref().is_some_and(|f| f.min_count.is_some() || f.max_count.is_some()) {
                     eprintln!("K-mers kept after filtering: {}", filtering_stats.kept_after);
                     eprintln!("K-mers filtered out: {}", filtering_stats.filtered_out);
                     if filtering_stats.unique_before > 0 {
@@ -229,8 +272,8 @@ fn process_fasta_file(
     counter: &Arc<KmerCounter>,
     k: usize,
     canonical: bool,
-    quiet: bool,
-    verbose: bool,
+    _quiet: bool,
+    _verbose: bool,
     show_warnings: bool,
 ) -> ProcessingResult<()> {
     processor.process_file(|record| {
@@ -280,8 +323,8 @@ fn process_fastq_file(
     counter: &Arc<KmerCounter>,
     k: usize,
     canonical: bool,
-    quiet: bool,
-    verbose: bool,
+    _quiet: bool,
+    _verbose: bool,
     show_warnings: bool,
 ) -> ProcessingResult<()> {
     processor.process_file(|record| {
@@ -386,7 +429,6 @@ fn output_binary_format(
     sort: bool,
     filter: &Option<crate::hash::CountFilter>,
 ) -> ProcessingResult<()> {
-    use std::io::Write;
     use byteorder::{LittleEndian, WriteBytesExt};
 
     if !quiet {
@@ -434,7 +476,7 @@ fn output_binary_format(
     // Write k-mer entries
     for (kmer, count) in kmers {
         writer.write_u64::<LittleEndian>(kmer)?;
-        writer.write_u32::<LittleEndian>(count as u32)?;
+        writer.write_u32::<LittleEndian>(count)?;
     }
 
     if !quiet {

@@ -4,7 +4,7 @@
 //! against k-mer databases.
 
 use crate::database::format::RKDatabase;
-use crate::fuzzy::{constants, expansion, performance, PerformanceMetrics, FuzzyError, FuzzyResult};
+use crate::fuzzy::{constants, expansion, PerformanceMetrics, FuzzyError, FuzzyResult};
 pub type FuzzyQueryResult<T> = Result<T, crate::fuzzy::FuzzyError>;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;

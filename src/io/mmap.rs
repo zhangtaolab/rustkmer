@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-use crate::error::{KmerError, ProcessingError, ProcessingResult};
+use crate::error::{ProcessingError, ProcessingResult};
 
 /// Memory-mapped file reader for efficient large file processing
 #[derive(Debug)]
@@ -116,7 +116,7 @@ pub fn read_file_to_string<P: AsRef<Path>>(path: P) -> ProcessingResult<String> 
 /// File size in bytes
 pub fn file_size<P: AsRef<Path>>(path: P) -> ProcessingResult<u64> {
     let path_ref = path.as_ref();
-    let metadata = std::fs::metadata(&path_ref)
+    let metadata = std::fs::metadata(path_ref)
         .map_err(|e| ProcessingError::with_context(
             format!("Failed to get file metadata: {:?}", path_ref),
             e

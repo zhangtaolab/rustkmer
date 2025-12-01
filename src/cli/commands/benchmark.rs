@@ -3,11 +3,10 @@
 //! Provides systematic performance testing and comparison capabilities
 //! for RustKmer against Jellyfish across multiple dimensions.
 
-use crate::cli::args::Commands;
 use crate::error::ProcessingResult;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{Duration, Instant};
-use std::process::{Command, Stdio};
 use std::fs;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -95,7 +94,7 @@ impl BenchmarkRunner {
         let test_files = self.find_test_files()?;
 
         if test_files.is_empty() {
-            return Err(crate::error::ProcessingError::IoError(
+            return Err(crate::error::ProcessingError::io_error(
                 "No test files found in the specified data directory".to_string(),
             ));
         }
@@ -147,7 +146,7 @@ impl BenchmarkRunner {
             for entry in fs::read_dir(fasta_dir)? {
                 let entry = entry?;
                 let path = entry.path();
-                if path.extension().map_or(false, |ext| {
+                if path.extension().is_some_and(|ext| {
                     ext == "fa" || ext == "fasta" || ext == "fna"
                 }) {
                     test_files.push(path);
@@ -165,7 +164,7 @@ impl BenchmarkRunner {
                 }
                 let entry = entry?;
                 let path = entry.path();
-                if path.extension().map_or(false, |ext| {
+                if path.extension().is_some_and(|ext| {
                     ext == "fq" || ext == "fastq"
                 }) {
                     test_files.push(path);
@@ -214,7 +213,7 @@ impl BenchmarkRunner {
         output_file: &Path,
     ) -> ProcessingResult<()> {
         let output = Command::new("cargo")
-            .args(&[
+            .args([
                 "run", "--release", "--",
                 "count",
                 "-k", &kmer_size.to_string(),
@@ -227,7 +226,7 @@ impl BenchmarkRunner {
             .output()?;
 
         if !output.status.success() {
-            return Err(crate::error::ProcessingError::IoError(
+            return Err(crate::error::ProcessingError::io_error(
                 format!("Failed to create database: {}", String::from_utf8_lossy(&output.stderr)),
             ));
         }
@@ -270,7 +269,7 @@ impl BenchmarkRunner {
 
         let start_time = Instant::now();
         let output = Command::new("cargo")
-            .args(&[
+            .args([
                 "run", "--release", "--",
                 "count",
                 "-k", &kmer_size.to_string(),
@@ -317,7 +316,7 @@ impl BenchmarkRunner {
 
         let start_time = Instant::now();
         let output = Command::new("jellyfish")
-            .args(&[
+            .args([
                 "count",
                 "-m", &kmer_size.to_string(),
                 "-s", "100M",
@@ -387,7 +386,7 @@ impl BenchmarkRunner {
         for query in queries {
             let start_time = Instant::now();
             let output = Command::new("cargo")
-                .args(&[
+                .args([
                     "run", "--release", "--",
                     "query",
                     database.to_str().unwrap(),
@@ -433,7 +432,7 @@ impl BenchmarkRunner {
         for query in queries {
             let start_time = Instant::now();
             let output = Command::new("cargo")
-                .args(&[
+                .args([
                     "run", "--release", "--",
                     "fuzzy-query",
                     database.to_str().unwrap(),
@@ -590,34 +589,33 @@ impl BenchmarkRunner {
 
     /// Save results to files
     fn save_results(&self, results: &[BenchmarkResult], summary: &BenchmarkSummary) -> ProcessingResult<()> {
-        use std::io::Write;
 
         // Save detailed results
         let results_file = self.output_dir.join("results").join("benchmark_results.json");
         let results_json = serde_json::to_string_pretty(results)
-            .map_err(|e| crate::error::ProcessingError::IoError(format!("JSON serialization failed: {}", e)))?;
+            .map_err(|e| crate::error::ProcessingError::io_error(format!("JSON serialization failed: {}", e)))?;
         fs::write(&results_file, results_json)?;
 
         // Save summary
         let summary_file = self.output_dir.join("results").join("benchmark_summary.json");
         let summary_json = serde_json::to_string_pretty(summary)
-            .map_err(|e| crate::error::ProcessingError::IoError(format!("JSON serialization failed: {}", e)))?;
+            .map_err(|e| crate::error::ProcessingError::io_error(format!("JSON serialization failed: {}", e)))?;
         fs::write(&summary_file, summary_json)?;
 
         // Save CSV if requested
         if self.config.format == "csv" {
             let csv_file = self.output_dir.join("results").join("benchmark_results.csv");
             let mut wtr = csv::Writer::from_path(csv_file)
-                .map_err(|e| crate::error::ProcessingError::IoError(format!("CSV writer creation failed: {}", e)))?;
+                .map_err(|e| crate::error::ProcessingError::io_error(format!("CSV writer creation failed: {}", e)))?;
             // Write headers
-            wtr.write_record(&BenchmarkResult::csv_headers())
-                .map_err(|e| crate::error::ProcessingError::IoError(format!("CSV header write failed: {}", e)))?;
+            wtr.write_record(BenchmarkResult::csv_headers())
+                .map_err(|e| crate::error::ProcessingError::io_error(format!("CSV header write failed: {}", e)))?;
             for result in results {
                 wtr.serialize(result)
-                    .map_err(|e| crate::error::ProcessingError::IoError(format!("CSV row write failed: {}", e)))?;
+                    .map_err(|e| crate::error::ProcessingError::io_error(format!("CSV row write failed: {}", e)))?;
             }
             wtr.flush()
-                .map_err(|e| crate::error::ProcessingError::IoError(format!("CSV flush failed: {}", e)))?;
+                .map_err(|e| crate::error::ProcessingError::io_error(format!("CSV flush failed: {}", e)))?;
         }
 
         Ok(())

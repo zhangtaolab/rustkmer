@@ -127,7 +127,9 @@ pub struct PerformanceMonitor {
 struct PerformanceCheckpoint {
     name: String,
     timestamp: Instant,
+    #[allow(dead_code)]
     memory_mb: f64,
+    #[allow(dead_code)]
     operation_count: usize,
 }
 
@@ -148,6 +150,12 @@ struct QueryTracker {
     fastest_query_ms: u64,
     slowest_query_ms: u64,
     query_times: Vec<u64>,
+}
+
+impl Default for PerformanceMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PerformanceMonitor {
@@ -507,7 +515,7 @@ pub mod utils {
     /// Determine if query should be aborted based on performance
     pub fn should_abort_query(
         elapsed_time: Duration,
-        variant_count: usize,
+        _variant_count: usize,
         timeout_seconds: u64,
     ) -> bool {
         elapsed_time.as_secs() > timeout_seconds
@@ -516,7 +524,7 @@ pub mod utils {
     /// Optimize variant processing order for better cache performance
     pub fn optimize_variant_order(variants: &mut [String]) {
         // Sort by first character for better cache locality
-        variants.sort_by(|a, b| a.cmp(b));
+        variants.sort();
 
         // TODO: Implement more sophisticated ordering based on database structure
     }

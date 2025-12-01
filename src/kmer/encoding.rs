@@ -102,7 +102,7 @@ pub fn decode_kmer(encoded: u64, length: usize) -> String {
     let mut result = String::with_capacity(length);
 
     // Start from the most significant bits
-    let mut bits_to_shift = (64 - (length * 2)) as u32;
+    let bits_to_shift = (64 - (length * 2)) as u32;
     let mut encoded = encoded << bits_to_shift;
 
     for _ in 0..length {
@@ -135,7 +135,7 @@ pub fn reverse_complement(encoded: u64, length: usize) -> u64 {
     }
 
     let mut rc = 0u64;
-    let mut bits_to_shift = (64 - (length * 2)) as u32;
+    let bits_to_shift = (64 - (length * 2)) as u32;
     let mut encoded = encoded << bits_to_shift;
 
     // Process each base
@@ -264,9 +264,9 @@ mod tests {
         let encoded_c = encode_kmer("C").unwrap();
 
         // A = 00, T = 11, G = 10, C = 01
-        assert_eq!(encoded_a & 0b11, A);
-        assert_eq!(encoded_t & 0b11, T);
-        assert_eq!(encoded_g & 0b11, G);
-        assert_eq!(encoded_c & 0b11, C);
+        assert_eq!((encoded_a & 0b11) as u8, A);
+        assert_eq!((encoded_t & 0b11) as u8, T);
+        assert_eq!((encoded_g & 0b11) as u8, G);
+        assert_eq!((encoded_c & 0b11) as u8, C);
     }
 }

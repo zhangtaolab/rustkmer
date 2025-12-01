@@ -3,10 +3,10 @@
 //! Provides temporary disk storage when hash table memory is insufficient.
 
 use std::fs::{self, File};
-use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
-use crate::error::{KmerError, ProcessingError, ProcessingResult};
+use crate::error::{ProcessingError, ProcessingResult};
 
 /// Disk overflow storage for k-mer counts
 #[derive(Debug)]
@@ -68,7 +68,7 @@ impl DiskOverflow {
             self.kmer_count += 1;
 
             // Check if we need a new file
-            if self.kmer_count % self.records_per_file as u64 == 0 {
+            if self.kmer_count.is_multiple_of(self.records_per_file as u64) {
                 self.close_current_file()?;
                 self.current_file += 1;
             }
@@ -198,9 +198,7 @@ impl Iterator for OverflowFileReader {
             }
 
             // Return None if no files left
-            if self.current_reader.is_none() {
-                return None;
-            }
+            self.current_reader.as_ref()?;
 
             // Try to read from current file
             if let Some(ref mut reader) = self.current_reader {

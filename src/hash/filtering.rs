@@ -5,6 +5,7 @@
 
 /// Filtering criteria for k-mer counts based on occurrence frequency
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub struct CountFilter {
     /// Minimum count threshold (inclusive)
     /// k-mers with count < min_count will be filtered out
@@ -56,14 +57,6 @@ impl CountFilter {
     }
 }
 
-impl Default for CountFilter {
-    fn default() -> Self {
-        Self {
-            min_count: None,
-            max_count: None,
-        }
-    }
-}
 
 /// Configuration for count filtering with validation state
 #[derive(Debug, Clone)]

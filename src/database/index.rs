@@ -7,7 +7,7 @@ use std::io::Write;
 use std::collections::HashMap;
 
 use crate::error::ProcessingResult;
-use super::format::{DatabaseHeader, KmerEntry};
+use super::format::KmerEntry;
 
 /// Index for fast k-mer lookup
 #[derive(Debug)]
@@ -15,7 +15,14 @@ pub struct DatabaseIndex {
     /// Hash table for O(1) lookup
     hash_table: HashMap<u64, u32>,
     /// Whether index is loaded in memory
+    #[allow(dead_code)]
     memory_loaded: bool,
+}
+
+impl Default for DatabaseIndex {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DatabaseIndex {
@@ -96,7 +103,7 @@ impl DatabaseStats {
         // Calculate median
         let mut counts: Vec<u32> = entries.iter().map(|e| e.count).collect();
         counts.sort();
-        let median_count = if counts.len() % 2 == 0 {
+        let median_count = if counts.len().is_multiple_of(2) {
             (counts[counts.len() / 2 - 1] + counts[counts.len() / 2]) / 2
         } else {
             counts[counts.len() / 2]

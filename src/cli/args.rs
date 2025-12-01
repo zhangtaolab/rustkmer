@@ -22,8 +22,24 @@ pub enum Commands {
         k: usize,
 
         /// Input sequence files
-        #[arg(short, long, num_args = 1..)]
+        #[arg(short, long, num_args = 1.., conflicts_with = "directory")]
         input: Vec<String>,
+
+        /// Process all files in directory
+        #[arg(long = "directory", short = 'd', conflicts_with = "input")]
+        directory: Option<String>,
+
+        /// Select specific files from directory (interactive)
+        #[arg(long, short = 'i', requires = "directory")]
+        select: bool,
+
+        /// Recursive directory search
+        #[arg(long, default_value_t = true)]
+        recursive: bool,
+
+        /// Disable recursive directory search
+        #[arg(long = "no-recursive", conflicts_with = "recursive")]
+        no_recursive: bool,
 
         /// Output file
         #[arg(short, long)]
@@ -389,6 +405,84 @@ impl Commands {
             Commands::Count { min_count, max_count, .. } => {
                 min_count.is_some() || max_count.is_some()
             }
+            _ => false,
+        }
+    }
+
+    /// Validate input parameters for the Count command
+    ///
+    /// # Returns
+    /// Result<(), Vec<String>> with validation errors if any
+    pub fn validate_input(&self) -> Result<(), Vec<String>> {
+        match self {
+            Commands::Count {
+                input,
+                directory,
+                k,
+                ..
+            } => {
+                let mut errors = Vec::new();
+
+                // Check if either input files or directory is provided
+                if input.is_empty() && directory.is_none() {
+                    errors.push("Either input files (-i) or directory (-d) must be specified".to_string());
+                }
+
+                // Validate k-mer size
+                if *k == 0 || *k > 127 {
+                    errors.push("K-mer size must be between 1 and 127".to_string());
+                }
+
+                if errors.is_empty() {
+                    Ok(())
+                } else {
+                    Err(errors)
+                }
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Check if directory processing is enabled
+    ///
+    /// # Returns
+    /// true if directory parameter is specified
+    pub fn is_directory_mode(&self) -> bool {
+        match self {
+            Commands::Count { directory, .. } => directory.is_some(),
+            _ => false,
+        }
+    }
+
+    /// Get directory path if directory mode is enabled
+    ///
+    /// # Returns
+    /// Option<&str> with the directory path
+    pub fn get_directory(&self) -> Option<&str> {
+        match self {
+            Commands::Count { directory, .. } => directory.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// Check if interactive file selection is enabled
+    ///
+    /// # Returns
+    /// true if select parameter is specified
+    pub fn is_select_mode(&self) -> bool {
+        match self {
+            Commands::Count { select, .. } => *select,
+            _ => false,
+        }
+    }
+
+    /// Check if recursive directory search is enabled
+    ///
+    /// # Returns
+    /// true if recursive parameter is specified
+    pub fn is_recursive(&self) -> bool {
+        match self {
+            Commands::Count { recursive, .. } => *recursive,
             _ => false,
         }
     }

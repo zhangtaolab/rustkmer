@@ -2,8 +2,7 @@
 //!
 //! Implements database inspection and conversion functionality.
 
-use std::fs::File;
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufWriter, Write};
 use std::path::Path;
 
 use crate::cli::args::Args;
@@ -58,6 +57,7 @@ fn dump_database(database_path: &str, output_path: Option<&str>) -> ProcessingRe
 enum DatabaseFormat {
     RKDB,
     Bincode,
+    #[allow(dead_code)]
     Unknown,
 }
 
@@ -67,13 +67,13 @@ fn detect_database_format(path: &Path) -> ProcessingResult<DatabaseFormat> {
     use std::io::{BufReader, Read};
 
     let file = File::open(path)
-        .map_err(|e| KmerError::Io(e))?;
+        .map_err(KmerError::Io)?;
 
     let mut reader = BufReader::new(file);
     let mut header_bytes = [0u8; 4];
 
     // Try to read first 4 bytes to detect magic number
-    if let Ok(_) = reader.read_exact(&mut header_bytes) {
+    if reader.read_exact(&mut header_bytes).is_ok() {
         if header_bytes == *DATABASE_MAGIC {
             return Ok(DatabaseFormat::RKDB);
         }
@@ -90,7 +90,7 @@ fn dump_rkdb_database(path: &Path, output_path: Option<&str>) -> ProcessingResul
     use std::io::{BufReader, BufWriter};
 
     let file = File::open(path)
-        .map_err(|e| KmerError::Io(e))?;
+        .map_err(KmerError::Io)?;
 
     let mut reader = BufReader::new(file);
 
@@ -146,7 +146,7 @@ fn dump_rkdb_database(path: &Path, output_path: Option<&str>) -> ProcessingResul
                         processed += 1;
 
                         // Progress reporting for large databases
-                        if processed % 100_000 == 0 {
+                        if processed.is_multiple_of(100_000) {
                             eprintln!("Processed {} k-mers...", processed);
                         }
                     },
@@ -180,7 +180,7 @@ fn dump_bincode_database(path: &Path, output_path: Option<&str>) -> ProcessingRe
     use std::io::BufReader;
 
     let file = File::open(path)
-        .map_err(|e| KmerError::Io(e))?;
+        .map_err(KmerError::Io)?;
 
     let mut reader = BufReader::new(file);
 

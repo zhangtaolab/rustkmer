@@ -157,7 +157,7 @@ pub fn analyze_sequence_quality(sequence: &str) -> String {
         .count();
     let invalid_bases = total_len - valid_bases;
     let ambiguous_count = sequence.chars()
-        .filter(|ch| ch.to_ascii_uppercase() == 'N')
+        .filter(|ch| ch.eq_ignore_ascii_case(&'N'))
         .count();
 
     format!(
