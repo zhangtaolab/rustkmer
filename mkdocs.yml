@@ -56,6 +56,7 @@ nav:
   - Getting Started:
     - getting-started/index.md
     - Installation: getting-started/installation.md
+    - Virtual Environments: getting-started/virtual-environments.md
     - Quick Start: getting-started/first-steps.md
     - Troubleshooting: getting-started/troubleshooting.md
   - User Guide:

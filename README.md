@@ -31,12 +31,77 @@
 
 ## 📦 安装
 
-### Python包 (推荐)
+### Python包 + 虚拟环境 (强烈推荐)
 
-使用maturin构建的Python包支持pip安装：
+使用虚拟环境安装，避免与系统包冲突：
 
 ```bash
-# 从PyPI安装 (发布后)
+# 1. 创建虚拟环境
+python3 -m venv .venv
+
+# 2. 激活虚拟环境
+# Linux/macOS:
+source .venv/bin/activate
+# Windows (Command Prompt):
+.venv\Scripts\activate.bat
+# Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+
+# 3. 安装RustKmer
+pip install rustkmer
+
+# 4. 验证安装
+python -c "from rustkmer import KmerCounter; print('✅ 安装成功!')"
+
+# 5. 完成后退出虚拟环境
+deactivate
+```
+
+**使用虚拟环境的优势:**
+- 🛡️ **隔离性**: 避免与系统Python包冲突
+- 🔄 **可重现**: 确保项目环境一致性
+- 🧹 **清洁**: 易于删除或重建环境
+- 👥 **协作**: 可与团队成员共享确切环境
+
+### 现代Python + uv (超快安装) ⚡
+
+[uv](https://github.com/astral-sh/uv) 是下一代Python包管理器，比pip快10-100倍：
+
+```bash
+# 1. 安装uv
+# macOS/Linux:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows PowerShell:
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 2. 创建新项目并安装RustKmer
+uv init rustkmer-analysis
+cd rustkmer-analysis
+uv add rustkmer
+
+# 3. 立即开始使用！
+uv run python -c "from rustkmer import KmerCounter; print('✅ RustKmer就绪!')"
+
+# 4. 创建分析脚本
+echo 'from rustkmer import KmerCounter
+counter = KmerCounter(k=21, canonical=True)
+print("🧬 开始k-mer分析!")' > analysis.py
+
+# 5. 运行分析
+uv run python analysis.py
+```
+
+**选择uv的优势:**
+- 🚀 **极速**: 比pip快10-100倍
+- 🎯 **简单**: 一条命令完成环境设置
+- 📦 **现代**: 内置项目管理和依赖管理
+- 🔄 **可靠**: 更好的缓存和依赖解析
+
+### 系统级Python安装
+
+```bash
+# 直接安装到系统（不推荐用于开发）
 pip install rustkmer
 
 # 或从源码构建
@@ -45,7 +110,7 @@ cd rustkmer
 pip install .
 ```
 
-### 从源码编译 (CLI工具)
+### 从源码编译 (CLI工具) 🦀
 
 ```bash
 git clone https://github.com/your-username/rustkmer.git
@@ -57,6 +122,7 @@ cargo build --release
 
 ### 系统要求
 
+- Python 3.8+
 - Rust 1.80+ (推荐使用stable版本)
 - 足够的内存处理大型数据集
 - 对于大型基因组文件，建议使用SSD存储

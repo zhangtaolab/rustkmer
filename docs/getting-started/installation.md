@@ -4,12 +4,81 @@ RustKmer offers multiple installation methods to suit different use cases and en
 
 ## Quick Install
 
-### Python (Recommended for most users)
+### Python with Virtual Environment (Recommended for most users) 🐍
+
+Using a virtual environment is highly recommended to avoid conflicts with system packages:
+
+```bash
+# Create a virtual environment
+python3 -m venv .venv
+
+# Activate the virtual environment
+# On Linux/macOS:
+source .venv/bin/activate
+# On Windows:
+.venv\Scripts\activate
+
+# Install RustKmer
+pip install rustkmer
+
+# Verify installation
+python -c "from rustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
+
+# Deactivate when done
+deactivate
+```
+
+**Benefits of using .venv:**
+- 🛡️ **Isolation**: Prevents conflicts with system Python packages
+- 🔄 **Reproducibility**: Ensures consistent environments across projects
+- 🧹 **Cleanliness**: Easy to remove or recreate environments
+- 👥 **Collaboration**: Share exact environment requirements with team
+
+### System-wide Python Installation
 ```bash
 pip install rustkmer
 ```
 
-### Rust (For library integration)
+### Modern Python with uv (Ultra-fast) ⚡
+
+[uv](https://github.com/astral-sh/uv) is a next-generation Python package manager written in Rust that's 10-100x faster than pip:
+
+```bash
+# Install uv (macOS/Linux)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install uv (Windows PowerShell)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or install uv with pip
+pip install uv
+
+# Create new RustKmer project with uv
+uv init rustkmer-analysis
+cd rustkmer-analysis
+
+# Add RustKmer dependency
+uv add rustkmer
+
+# Run RustKmer immediately
+uv run python -c "from rustkmer import KmerCounter; print('✅ RustKmer ready with uv!')"
+
+# Create a simple analysis script
+echo 'from rustkmer import KmerCounter
+counter = KmerCounter(k=21, canonical=True)
+print("🧬 RustKmer is ready for k-mer analysis!")' > analysis.py
+
+# Run your analysis
+uv run python analysis.py
+```
+
+**Why choose uv?**
+- 🚀 **Speed**: 10-100x faster than pip
+- 🎯 **Simplicity**: Single command for environment setup
+- 📦 **Projects**: Built-in project management
+- 🔄 **Reliability**: Better caching and dependency resolution
+
+### Rust (For library integration) 🦀
 ```bash
 cargo install rustkmer
 ```
@@ -18,10 +87,29 @@ cargo install rustkmer
 
 ## Detailed Installation Methods
 
-### Method 1: Python Package Manager (PyPI) 🐍
+### Method 1: Python Package Manager (PyPI) with Virtual Environment 🐍
 
-The easiest way to install RustKmer for Python development and bioinformatics workflows.
+The recommended way to install RustKmer for Python development and bioinformatics workflows.
 
+#### Step 1: Create Virtual Environment
+```bash
+# Create a dedicated virtual environment for RustKmer
+python3 -m venv .venv
+```
+
+#### Step 2: Activate Virtual Environment
+```bash
+# On Linux and macOS:
+source .venv/bin/activate
+
+# On Windows (Command Prompt):
+.venv\Scripts\activate.bat
+
+# On Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+```
+
+#### Step 3: Install RustKmer
 ```bash
 # Install the latest version
 pip install rustkmer
@@ -29,8 +117,13 @@ pip install rustkmer
 # Install a specific version
 pip install rustkmer==1.0.0
 
-# Install with development dependencies
+# Install with development dependencies (optional)
 pip install rustkmer[dev]
+```
+
+#### Step 4: Verify Installation
+```bash
+python -c "from rustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
 ```
 
 **Verification:**
