@@ -20,6 +20,7 @@
 - **排序数据库**: 二分搜索优化，无需预加载
 - **Jellyfish兼容**: 命令行接口与jellyfish高度兼容
 - **Python集成**: 完整的Python API和示例代码
+- **压缩文件支持**: 自动处理.gz压缩的FASTA/FASTQ文件
 - **跨平台**: 支持Linux、macOS和Windows
 - **内存映射**: 高效的文件I/O操作
 
@@ -30,7 +31,21 @@
 
 ## 📦 安装
 
-### 从源码编译
+### Python包 (推荐)
+
+使用maturin构建的Python包支持pip安装：
+
+```bash
+# 从PyPI安装 (发布后)
+pip install rustkmer
+
+# 或从源码构建
+git clone https://github.com/your-username/rustkmer.git
+cd rustkmer
+pip install .
+```
+
+### 从源码编译 (CLI工具)
 
 ```bash
 git clone https://github.com/your-username/rustkmer.git
@@ -81,21 +96,36 @@ rustkmer query database.rkdb ATGCGATGCTAGCGCTAGCTA
 ### Python集成
 
 ```python
-# 安装依赖
-pip install -r examples/requirements.txt
+# 导入RustKmer Python模块
+import rustkmer
+from rustkmer import KmerCounter, Database, FuzzyQuery
 
-# 使用Python API
-from examples.python_integration import RustKmer
+# 创建k-mer计数器
+counter = KmerCounter(k=21, canonical=True, threads=4)
 
-# 创建查询器
-rk = RustKmer('genome.rkdb')
+# 处理FASTA文件（支持压缩格式）
+counter.process_fasta("genome.fa")          # 常规文件
+counter.process_fasta("genome.fa.gz")       # 压缩文件
+counter.count_file("reads.fq.gz")          # 自动识别格式
 
-# 单个查询
-count = rk.query_kmer('ATGCGATGCTAGCGCTAGCTA')
+# 获取k-mer计数
+count = counter.get_count("ATGCGATGCTAGCGCTAGCTA")
+print(f"k-mer count: {count}")
 
-# 批量查询
-queries = ['ATGCGATGCTAGCGCTAGCTA', 'GCTAGCTAGCTAGCTAGCTAC']
-results = rk.query_kmers_batch(queries)
+# 获取所有计数
+all_counts = counter.get_all_counts()
+print(f"Unique k-mers: {len(all_counts)}")
+
+# 创建数据库
+db = Database(k=21)
+db.insert("ATGCGATGCTAGCGCTAGCTA", 100)
+result = db.query("ATGCGATGCTAGCGCTAGCTA")
+print(f"Query result: {result}")
+
+# 模糊查询
+fq = FuzzyQuery(k=21, max_distance=1)
+fuzzy_result = fq.query("ATGCGATGCTAGCGCTAGCTA")
+print(f"Fuzzy matches: {fuzzy_result.get_match_count()}")
 ```
 
 ### Jellyfish兼容示例
@@ -346,21 +376,35 @@ python3 examples/python_integration.py
 ### 基本Python API
 
 ```python
-from examples.python_integration import RustKmer
+import rustkmer
+from rustkmer import KmerCounter, Database, FuzzyQuery
 
-# 初始化查询器
-rk = RustKmer('genome_k21.rkdb')
+# 创建k-mer计数器
+counter = KmerCounter(k=21, canonical=True)
 
-# 单个查询
-count = rk.query_kmer('ATGCGATGCTAGCGCTAGCTA')
+# 内存中处理序列
+sequence = "ATGCGATGCTAGCGCTAGCTATGCGATGCTAGCGCTAGC"
+# 在Phase 2中实现实际序列处理
 
-# 批量查询
-queries = ['ATGCGATGCTAGCGCTAGCTA', 'GCTAGCTAGCTAGCTAGCTAC']
-results = rk.query_kmers_batch(queries)
+# 创建数据库
+db = Database(k=21)
+db.insert("ATGCGATGCTAGCGCTAGCTA", 42)
 
-# 数据库信息
-info = rk.get_database_info()
-print(info)
+# 批量插入
+data = {
+    "ATGCGATGCTAGCGCTAGCTA": 42,
+    "GCTAGCTAGCTAGCTAGCTAC": 38
+}
+db.insert_batch(data)
+
+# 查询
+result = db.query("ATGCGATGCTAGCGCTAGCTA")
+print(f"Count: {result}")
+
+# 模糊查询
+fq = FuzzyQuery(k=21, max_distance=1)
+result = fq.query("ATGCGATGCTAGCGCTAGCTA")
+print(f"Fuzzy matches: {result.get_match_count()}")
 ```
 
 ### 高级分析示例

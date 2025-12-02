@@ -9,6 +9,10 @@ Auto-generated from all feature plans. Last updated: 2025-11-28
 - Binary database files (Jellyfish .jf format, RustKmer .rkdb format) (003-parallel-query)
 - Rust 1.80+ stable channel + clap (CLI), serde (serialization), rayon (parallel processing), memmap2 (memory mapping), thiserror (error handling), anyhow (error handling) (004-fuzzy-query)
 - RKDB binary database format (existing) + memory-mapped file access (004-fuzzy-query)
+- Rust 1.80+ (stable) + Python 3.8+ + PyO3 (Rust-Python bindings), setuptools-rust, serde, thiserror, anyhow, rayon (001-python-bindings)
+- Existing RKDB binary database format + memory-mapped file access (001-python-bindings)
+- Rust 1.80+ stable channel + PyO3 0.23.4 (Python bindings), serde 1.0 (serialization), thiserror 2.0 (error handling), rayon 1.10 (parallel processing), clap 4.5 (CLI), bio 2.0 (genomics), memmap2 0.9 (memory mapping) (005-python-api-improvements)
+- Hybrid JSON + binary .rkdb format for database persistence, memory-mapped files for large datasets (005-python-api-improvements)
 
 - Rust 1.80+ stable channel (latest stable for performance optimizations) + clap v4.0+ (CLI with derive macros), serde (serialization), thiserror (error handling), anyhow (error handling), rayon (parallel processing), criterion (benchmarks), bio (FASTA/FASTQ parsing), memmap2 (memory-mapped files) (001-jellyfish-rust-port)
 
@@ -28,9 +32,9 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 Rust 1.80+ stable channel (latest stable for performance optimizations): Follow standard conventions
 
 ## Recent Changes
+- 005-python-api-improvements: Added Rust 1.80+ stable channel + PyO3 0.23.4 (Python bindings), serde 1.0 (serialization), thiserror 2.0 (error handling), rayon 1.10 (parallel processing), clap 4.5 (CLI), bio 2.0 (genomics), memmap2 0.9 (memory mapping)
+- 001-python-bindings: Added Rust 1.80+ (stable) + Python 3.8+ + PyO3 (Rust-Python bindings), setuptools-rust, serde, thiserror, anyhow, rayon
 - 004-fuzzy-query: Added Rust 1.80+ stable channel + clap (CLI), serde (serialization), rayon (parallel processing), memmap2 (memory mapping), thiserror (error handling), anyhow (error handling)
-- 003-parallel-query: Added Rust 1.80+ stable channel + clap v4.0+ (CLI), serde (serialization), rayon (parallel processing), bio (FASTA parsing), memmap2 (memory-mapped files)
-- 003-parallel-query: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 
 
 <!-- MANUAL ADDITIONS START -->

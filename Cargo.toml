@@ -13,6 +13,9 @@ categories = ["science", "command-line-utilities"]
 # CLI framework
 clap = { version = "4.5", features = ["derive"] }
 
+# Python bindings
+pyo3 = { version = "0.23.4", features = ["extension-module"], optional = true }
+
 # Error handling
 thiserror = "2.0"
 anyhow = "1.0"
@@ -64,6 +67,12 @@ flate2 = "1.0"
 bzip2 = "0.4"
 xz2 = "0.1"
 
+# Additional compression for database persistence
+sha2 = "0.10"
+
+# Date/time handling for metadata
+chrono = { version = "0.4", features = ["serde"] }
+
 # Logging
 log = "0.4"
 env_logger = "0.11"
@@ -84,6 +93,16 @@ lto = true
 codegen-units = 1
 panic = "abort"
 
+[lib]
+name = "rustkmer_python"
+crate-type = ["cdylib", "rlib"]
+path = "src/python/lib.rs"
+
 [[bin]]
 name = "rustkmer"
 path = "src/main.rs"
+
+[features]
+default = []
+python = ["pyo3"]
+profiling = []

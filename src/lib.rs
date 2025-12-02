@@ -21,6 +21,7 @@
 //! ```
 
 pub mod cli;
+pub mod core;
 pub mod database;
 pub mod error;
 pub mod fuzzy;
@@ -29,6 +30,9 @@ pub mod io;
 pub mod kmer;
 pub mod output;
 pub mod parallel;
+
+#[cfg(feature = "python")]
+pub mod python;
 
 // Re-export key types for convenience
 pub use error::{KmerError, ProcessingError, ProcessingResult};
