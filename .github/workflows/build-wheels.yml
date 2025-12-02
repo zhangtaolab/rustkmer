@@ -102,19 +102,18 @@ jobs:
         fi
 
         # Test basic import and functionality
-        python -c "
-import rustkmer
-print('✓ Import successful')
-print('✓ Python bindings working')
+        python -c |
+          import rustkmer
+          print('✓ Import successful')
+          print('✓ Python bindings working')
 
-# Test basic functionality
-from rustkmer import KmerCounter, Database, FuzzyQuery
-counter = KmerCounter(k=21, canonical=True)
-db = Database(k=21)
-fq = FuzzyQuery(k=21, max_distance=1)
+          # Test basic functionality
+          from rustkmer import KmerCounter, Database, FuzzyQuery
+          counter = KmerCounter(k=21, canonical=True)
+          db = Database(k=21)
+          fq = FuzzyQuery(k=21, max_distance=1)
 
-print('✓ All functionality tests passed')
-"
+          print('✓ All functionality tests passed')
 
   publish:
     name: Publish to PyPI
