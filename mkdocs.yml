@@ -1,0 +1,130 @@
+site_name: RustKmer Documentation
+site_description: High-performance k-mer counting library and genomic analysis toolkit
+site_author: RustKmer Team
+site_url: https://rustkmer.github.io
+
+repo_name: rustkmer/rustkmer
+repo_url: https://github.com/rustkmer/rustkmer
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - search.highlight
+    - search.share
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+    - content.action.view
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [python]
+          options:
+            docstring_options:
+              ignore_init_summary: false
+            merge_init_into_class: true
+  - gen-files:
+      scripts:
+        - scripts/generate_rust_docs.py
+  - section-index
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - getting-started/index.md
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/first-steps.md
+    - Troubleshooting: getting-started/troubleshooting.md
+  - User Guide:
+    - user-guide/index.md
+    - Counting k-mers: user-guide/counting-kmers.md
+    - Querying Databases: user-guide/querying.md
+    - Fuzzy Search: user-guide/fuzzy-search.md
+    - Performance Tips: user-guide/performance-tips.md
+  - API Reference:
+    - api-reference/index.md
+    - Rust:
+      - api-reference/rust/index.md
+      - KmerCounter: api-reference/rust/counter.md
+      - Database: api-reference/rust/database.md
+      - Fuzzy Query: api-reference/rust/fuzzy.md
+      - CLI: api-reference/rust/cli.md
+    - Python:
+      - api-reference/python/index.md
+      - KmerCounter: api-reference/python/kmercounter.md
+      - Database: api-reference/python/database.md
+      - Examples: api-reference/python/examples.md
+  - Tutorials:
+    - tutorials/index.md
+    - Basic Workflow: tutorials/basic-workflow.md
+    - Large Genomes: tutorials/large-genomes.md
+    - Batch Processing: tutorials/batch-processing.md
+    - Integration: tutorials/integration.md
+  - Deployment:
+    - deployment/index.md
+    - Production: deployment/production.md
+    - Containers: deployment/containers.md
+    - CI/CD: deployment/ci-cd.md
+  - Background:
+    - background/index.md
+    - Algorithms: background/algorithms.md
+    - Performance: background/performance.md
+    - Comparison: background/comparison.md
+  - Appendix:
+    - appendix/index.md
+    - Troubleshooting: appendix/troubleshooting.md
+    - FAQ: appendix/faq.md
+    - Changelog: appendix/changelog.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/rustkmer/rustkmer
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/rustkmer/
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/extra.js
