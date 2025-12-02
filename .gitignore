@@ -143,3 +143,15 @@ test_*.fa
 *.orig
 *.tmp
 *.temp
+
+# Documentation build
+site/
+docs/.doctrees/
+*.doctree
+
+# MkDocs build output
+mkdocs.yml.local
+
+# Python wheel builds
+*.whl
+wheelhouse/
