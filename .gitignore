@@ -77,6 +77,10 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+#
+.claude/
+.serena/
+.specify/
 
 # IDE files
 .vscode/
