@@ -155,3 +155,6 @@ mkdocs.yml.local
 # Python wheel builds
 *.whl
 wheelhouse/
+
+.venv/
+examples/marimo/__marimo__/
