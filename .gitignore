@@ -158,3 +158,5 @@ wheelhouse/
 
 .venv/
 examples/marimo/__marimo__/
+
+tmp/
