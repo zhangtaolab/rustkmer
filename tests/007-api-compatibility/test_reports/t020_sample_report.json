@@ -1,0 +1,64 @@
+{
+  "test_suite": "T020: K-mer Size Consistency",
+  "timestamp": "2025-12-02T10:30:00Z",
+  "configuration": {
+    "kmer_sizes_tested": [
+      7,
+      13,
+      21,
+      31
+    ],
+    "modes_tested": [
+      "canonical",
+      "non-canonical"
+    ],
+    "input_types": [
+      "single_sequence",
+      "multi_sequence"
+    ],
+    "performance_threshold": 10.0
+  },
+  "results": [
+    {
+      "test_id": "T020-001",
+      "description": "k=7 canonical mode",
+      "status": "PASSED",
+      "duration_seconds": 0.15,
+      "file_size_bytes": 2048,
+      "performance_overhead": 2.3
+    },
+    {
+      "test_id": "T020-002",
+      "description": "k=13 canonical mode",
+      "status": "PASSED",
+      "duration_seconds": 0.22,
+      "file_size_bytes": 4096,
+      "performance_overhead": 2.8
+    },
+    {
+      "test_id": "T020-003",
+      "description": "k=21 canonical mode",
+      "status": "PASSED",
+      "duration_seconds": 0.31,
+      "file_size_bytes": 6144,
+      "performance_overhead": 3.1
+    },
+    {
+      "test_id": "T020-004",
+      "description": "k=31 canonical mode",
+      "status": "PASSED",
+      "duration_seconds": 0.45,
+      "file_size_bytes": 8192,
+      "performance_overhead": 3.7
+    }
+  ],
+  "summary": {
+    "total_tests": 4,
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "average_overhead": 2.975,
+    "max_overhead": 3.7,
+    "performance_compliance": true
+  }
+}

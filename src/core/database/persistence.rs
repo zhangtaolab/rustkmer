@@ -3,7 +3,7 @@
 use crate::core::metadata::{DatabaseMetadata, create_metadata, save_metadata, load_metadata, validate_metadata};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self, Write, BufWriter, BufReader};
+use std::io::{self, Write, BufWriter, BufReader, Read, BufRead};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
@@ -78,7 +78,6 @@ pub fn save_kmer_database(
     metadata.total_kmers = kmer_counts.values().sum();
     metadata.unique_kmers = kmer_counts.len() as u64;
     metadata.performance.creation_time_seconds = 0.0; // Not tracked in this context
-    metadata.performance.total_kmers = metadata.total_kmers;
     metadata.performance.files_processed = 1; // Single save operation
 
     // Generate data file path
@@ -190,7 +189,7 @@ fn save_kmer_data_uncompressed(
 /// Load k-mer counts from a hybrid database format
 pub fn load_kmer_database(
     database_path: &Path,
-    config: PersistenceConfig,
+    config: &PersistenceConfig,
 ) -> Result<(HashMap<String, u64>, DatabaseMetadata), PersistenceError> {
     // Load and validate metadata
     let metadata_path = database_path.join("metadata.json");
@@ -348,7 +347,7 @@ pub fn validate_checksums(database_path: &Path) -> Result<bool, PersistenceError
     }
 
     // Verify each file's checksum
-    for (filename, expected_checksum) in stored_checksums {
+    for (filename, expected_checksum) in stored_checksums.iter() {
         let file_path = database_path.join(filename);
         if !file_path.exists() {
             return Err(PersistenceError::ChecksumError);
@@ -356,7 +355,7 @@ pub fn validate_checksums(database_path: &Path) -> Result<bool, PersistenceError
 
         let actual_checksums = generate_checksums(&[(&filename, &file_path)])?;
         if let Some((_, actual_checksum)) = actual_checksums.first() {
-            if actual_checksum != &expected_checksum {
+            if actual_checksum != expected_checksum {
                 return Err(PersistenceError::ChecksumError);
             }
         }
@@ -370,7 +369,7 @@ pub fn merge_databases(
     db1_path: &Path,
     db2_path: &Path,
     output_path: &Path,
-    config: PersistenceConfig,
+    config: &PersistenceConfig,
 ) -> Result<DatabaseMetadata, PersistenceError> {
     // Load both databases
     let (mut counts1, mut metadata1) = load_kmer_database(db1_path, config)?;
@@ -402,14 +401,14 @@ pub fn merge_databases(
     metadata1.update_timestamp();
 
     // Merge source files
-    metadata1.source_files.extend(metadata2.source_files);
+    metadata1.source_files.extend(metadata2.source_files.clone());
 
     // Create output directory
     fs::create_dir_all(output_path)?;
 
     // Save merged database
     save_kmer_database(&counts1, output_path, metadata1.kmer_size, metadata1.canonical,
-                      metadata1.source_files, config)?;
+                      metadata1.source_files.clone(), config.clone())?;
 
     Ok(metadata1)
 }
@@ -435,7 +434,7 @@ mod tests {
         save_kmer_database(&kmer_counts, &db_path, 4, false, vec!["test.fa".to_string()], config.clone()).unwrap();
 
         // Load database
-        let (loaded_counts, metadata) = load_kmer_database(&db_path, config).unwrap();
+        let (loaded_counts, metadata) = load_kmer_database(&db_path, &config).unwrap();
 
         assert_eq!(loaded_counts.len(), kmer_counts.len());
         assert_eq!(metadata.kmer_size, 4);
@@ -504,10 +503,10 @@ mod tests {
         save_kmer_database(&counts2, &db2_path, 4, false, vec!["db2.fa".to_string()], config.clone()).unwrap();
 
         // Merge databases
-        let merged_metadata = merge_databases(&db1_path, &db2_path, &output_path, config).unwrap();
+        let merged_metadata = merge_databases(&db1_path, &db2_path, &output_path, &config).unwrap();
 
         // Verify merged result
-        let (merged_counts, _) = load_kmer_database(&output_path, PersistenceConfig::default()).unwrap();
+        let (merged_counts, _) = load_kmer_database(&output_path, &PersistenceConfig::default()).unwrap();
 
         assert_eq!(merged_counts.get("ATGC"), Some(&13)); // 10 + 3
         assert_eq!(merged_counts.get("CGAT"), Some(&5));  // From db1 only

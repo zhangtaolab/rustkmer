@@ -213,14 +213,10 @@ impl PerformanceStats {
         }
     }
 
-    pub fn calculate_processing_rate(&mut self) {
+    pub fn calculate_processing_rate(&mut self, total_kmers: u64) {
         if self.creation_time_seconds > 0.0 {
-            self.processing_rate = self.total_kmers as f64 / self.creation_time_seconds;
+            self.processing_rate = total_kmers as f64 / self.creation_time_seconds;
         }
-    }
-
-    pub fn total_kmers(&self) -> u64 {
-        self.total_kmers
     }
 }
 
@@ -451,7 +447,7 @@ pub fn load_metadata<P: AsRef<Path>>(path: P) -> Result<DatabaseMetadata, Metada
     // Validate loaded metadata
     metadata.validate()?;
 
-    Ok(())
+    Ok(metadata)
 }
 
 /// Validate metadata file and return validation results

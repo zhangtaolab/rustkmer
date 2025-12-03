@@ -1,0 +1,30 @@
+{
+  "test_id": "T031",
+  "test_name": "Large-Scale Production Validation",
+  "dataset_path": "/Users/forrest/Temp/demodata/fasta/osa1_r7.asm.fa",
+  "use_sample": false,
+  "execution_time_seconds": 1.110231876373291,
+  "results": {
+    "database_compatibility": {
+      "status": "error",
+      "error": "'NoneType' object has no attribute 'get'",
+      "summary": {
+        "overall_status": "FAILED"
+      }
+    },
+    "fuzzy_query_compatibility": {
+      "status": "error",
+      "error": "'FuzzyQueryComparator' object has no attribute 'database_comparator'",
+      "summary": {
+        "overall_status": "FAILED"
+      }
+    },
+    "cross_platform_interchangeability": {
+      "status": "error",
+      "error": "[Errno 2] No such file or directory: 'rustkmer'",
+      "overall_status": "FAILED"
+    }
+  },
+  "overall_status": "FAILED",
+  "timestamp": 1764678177
+}

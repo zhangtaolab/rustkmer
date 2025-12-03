@@ -16,6 +16,13 @@ release/
 *.jf
 *.rk
 *.txt
+*.rkdb
+
+# Examples output and data
+examples/output/
+examples/data/*.fa
+examples/data/*.fa.gz
+!examples/data/small_dataset.fa
 
 # Test and temporary files (stored in /Users/forrest/Temp/demodata/)
 test_output/
@@ -77,6 +84,10 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Python compiled modules (including rustkmer)
+python/rustkmer/*.so
+python/rustkmer/*.cpython-*.so
 #
 .claude/
 .serena/
@@ -107,6 +118,11 @@ test_encoding.*
 test_endian.*
 test_*.fasta
 test_*.fa
+
+# Test fixtures (large files)
+tests/data/
+tests/python/fixtures/large_scale/
+!tests/python/fixtures/small_dataset.fa
 
 # Rust compilation artifacts
 *.0.s

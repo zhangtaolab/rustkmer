@@ -6,8 +6,13 @@ pub mod database;
 
 // Re-export commonly used types
 pub use monitoring::{
-    MonitoringConfig, OperationMetrics, PerformanceTimer, MetricsCollector,
-    initialize_monitoring, start_timer, record_metric, time_operation, if_profiling
+    MonitoringConfig, OperationMetrics, PerformanceTimer,
+    initialize_monitoring, start_timer, record_metric
+};
+
+#[cfg(feature = "profiling")]
+pub use monitoring::{
+    MetricsCollector, time_operation, if_profiling
 };
 
 pub use metadata::{

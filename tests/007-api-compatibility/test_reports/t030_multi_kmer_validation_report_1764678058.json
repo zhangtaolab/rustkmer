@@ -1,0 +1,188 @@
+{
+  "test_id": "T030",
+  "test_name": "Multi K-mer Size Validation Matrix",
+  "kmer_sizes": [
+    7,
+    13,
+    21,
+    31
+  ],
+  "canonical_modes": [
+    true,
+    false
+  ],
+  "execution_time_seconds": 0.02565908432006836,
+  "results": {
+    "database_creation": {
+      "test_name": "T030.1_Multi_Kmer_Database_Creation",
+      "summary": {
+        "total_configurations": 8,
+        "successful_tests": 0,
+        "failed_tests": 8,
+        "success_rate_percent": 0.0,
+        "overall_status": "FAILED",
+        "execution_time_seconds": 0.011841058731079102
+      },
+      "detailed_results": [
+        {
+          "configuration": "k7_canon",
+          "kmer_size": 7,
+          "canonical": true,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k7_noncanon",
+          "kmer_size": 7,
+          "canonical": false,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k13_canon",
+          "kmer_size": 13,
+          "canonical": true,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k13_noncanon",
+          "kmer_size": 13,
+          "canonical": false,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k21_canon",
+          "kmer_size": 21,
+          "canonical": true,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k21_noncanon",
+          "kmer_size": 21,
+          "canonical": false,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k31_canon",
+          "kmer_size": 31,
+          "canonical": true,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k31_noncanon",
+          "kmer_size": 31,
+          "canonical": false,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        }
+      ]
+    },
+    "query_compatibility": {
+      "test_name": "T030.2_Multi_Kmer_Query_Compatibility",
+      "summary": {
+        "total_configurations": 8,
+        "successful_configurations": 0,
+        "failed_configurations": 8,
+        "success_rate_percent": 0.0,
+        "overall_status": "FAILED",
+        "execution_time_seconds": 0.009897947311401367
+      },
+      "detailed_results": [
+        {
+          "configuration": "k7_canon",
+          "kmer_size": 7,
+          "canonical": true,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k7_noncanon",
+          "kmer_size": 7,
+          "canonical": false,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k13_canon",
+          "kmer_size": 13,
+          "canonical": true,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k13_noncanon",
+          "kmer_size": 13,
+          "canonical": false,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k21_canon",
+          "kmer_size": 21,
+          "canonical": true,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k21_noncanon",
+          "kmer_size": 21,
+          "canonical": false,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k31_canon",
+          "kmer_size": 31,
+          "canonical": true,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k31_noncanon",
+          "kmer_size": 31,
+          "canonical": false,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        }
+      ]
+    },
+    "fuzzy_query_compatibility": {
+      "test_name": "T030.3_Multi_Kmer_Fuzzy_Query",
+      "summary": {
+        "total_configurations": 3,
+        "successful_configurations": 0,
+        "failed_configurations": 3,
+        "success_rate_percent": 0.0,
+        "overall_status": "FAILED",
+        "execution_time_seconds": 0.0037522315979003906
+      },
+      "detailed_results": [
+        {
+          "configuration": "k7_fuzzy",
+          "kmer_size": 7,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k13_fuzzy",
+          "kmer_size": 13,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        },
+        {
+          "configuration": "k21_fuzzy",
+          "kmer_size": 21,
+          "error": "[Errno 2] No such file or directory: 'rustkmer'",
+          "status": "error"
+        }
+      ]
+    }
+  },
+  "overall_status": "FAILED",
+  "timestamp": 1764678058
+}

@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
 /// Performance monitoring configuration
+#[cfg(feature = "profiling")]
 #[derive(Debug, Clone)]
 pub struct MonitoringConfig {
     pub enabled: bool,
@@ -20,15 +21,30 @@ pub struct MonitoringConfig {
     pub max_samples: usize,
 }
 
+#[cfg(feature = "profiling")]
 impl Default for MonitoringConfig {
     fn default() -> Self {
         Self {
-            enabled: cfg!(feature = "profiling"),
+            enabled: true,
             track_memory: true,
             track_timing: true,
             track_operations: true,
             max_samples: 10_000,
         }
+    }
+}
+
+/// Performance monitoring configuration (non-profiling stub)
+#[cfg(not(feature = "profiling"))]
+#[derive(Debug, Clone)]
+pub struct MonitoringConfig {
+    pub enabled: bool,
+}
+
+#[cfg(not(feature = "profiling"))]
+impl Default for MonitoringConfig {
+    fn default() -> Self {
+        Self { enabled: false }
     }
 }
 
@@ -393,18 +409,6 @@ impl PerformanceTimer {
     }
 }
 
-#[cfg(not(feature = "profiling"))]
-#[derive(Debug, Clone)]
-pub struct MonitoringConfig {
-    pub enabled: bool,
-}
-
-#[cfg(not(feature = "profiling"))]
-impl Default for MonitoringConfig {
-    fn default() -> Self {
-        Self { enabled: false }
-    }
-}
 
 #[cfg(not(feature = "profiling"))]
 pub fn start_timer(_operation: &str) -> PerformanceTimer {

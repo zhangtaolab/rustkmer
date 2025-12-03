@@ -163,35 +163,41 @@ rustkmer query database.rkdb ATGCGATGCTAGCGCTAGCTA
 
 ```python
 # 导入RustKmer Python模块
-import rustkmer
-from rustkmer import KmerCounter, Database, FuzzyQuery
+from rustkmer import KmerCounter, Database
 
 # 创建k-mer计数器
 counter = KmerCounter(k=21, canonical=True, threads=4)
 
-# 处理FASTA文件（支持压缩格式）
-counter.process_fasta("genome.fa")          # 常规文件
-counter.process_fasta("genome.fa.gz")       # 压缩文件
-counter.count_file("reads.fq.gz")          # 自动识别格式
+# 处理文件（自动支持压缩格式）
+counter.count_file("genome.fa")     # 常规FASTA文件
+counter.count_file("genome.fa.gz")  # 压缩FASTA文件
+counter.count_file("reads.fq.gz")   # 压缩FASTQ文件
+counter.count_string("ACGTACGT")  # 从字符串计数
 
 # 获取k-mer计数
 count = counter.get_count("ATGCGATGCTAGCGCTAGCTA")
 print(f"k-mer count: {count}")
 
-# 获取所有计数
-all_counts = counter.get_all_counts()
-print(f"Unique k-mers: {len(all_counts)}")
+# 获取统计信息
+unique_count = counter.get_unique_count()
+total_count = counter.get_total_count()
+print(f"Unique k-mers: {unique_count}")
+print(f"Total k-mers: {total_count}")
 
-# 创建数据库
-db = Database(k=21)
-db.insert("ATGCGATGCTAGCGCTAGCTA", 100)
+# 保存到数据库
+counter.save_to_database("output.rkdb", False)
+
+# 加载数据库
+db = Database()
+db.load("output.rkdb")
+
+# 查询k-mer
 result = db.query("ATGCGATGCTAGCGCTAGCTA")
-print(f"Query result: {result}")
+print(f"Query result: {result.count}, found: {result.found}")
 
-# 模糊查询
-fq = FuzzyQuery(k=21, max_distance=1)
-fuzzy_result = fq.query("ATGCGATGCTAGCGCTAGCTA")
-print(f"Fuzzy matches: {fuzzy_result.get_match_count()}")
+# 获取数据库统计
+stats = db.get_stats()
+print(f"Database stats: k={stats.kmer_size}, total={stats.total_kmers}")
 ```
 
 ### Jellyfish兼容示例
@@ -442,35 +448,41 @@ python3 examples/python_integration.py
 ### 基本Python API
 
 ```python
-import rustkmer
-from rustkmer import KmerCounter, Database, FuzzyQuery
+from rustkmer import KmerCounter, Database
 
 # 创建k-mer计数器
-counter = KmerCounter(k=21, canonical=True)
+counter = KmerCounter(k=21, canonical=True, threads=4)
 
-# 内存中处理序列
-sequence = "ATGCGATGCTAGCGCTAGCTATGCGATGCTAGCGCTAGC"
-# 在Phase 2中实现实际序列处理
+# 处理文件（自动支持压缩格式）
+counter.count_file("genome.fa")     # 常规FASTA文件
+counter.count_file("genome.fa.gz")  # 压缩FASTA文件
+counter.count_file("reads.fq.gz")   # 压缩FASTQ文件
+counter.count_string("ACGTACGT")    # 从字符串计数
 
-# 创建数据库
-db = Database(k=21)
-db.insert("ATGCGATGCTAGCGCTAGCTA", 42)
+# 获取k-mer计数
+count = counter.get_count("ATGCGATGCTAGCGCTAGCTA")
+print(f"k-mer count: {count}")
 
-# 批量插入
-data = {
-    "ATGCGATGCTAGCGCTAGCTA": 42,
-    "GCTAGCTAGCTAGCTAGCTAC": 38
-}
-db.insert_batch(data)
+# 获取统计信息
+unique_count = counter.get_unique_count()
+total_count = counter.get_total_count()
+print(f"Unique k-mers: {unique_count}")
+print(f"Total k-mers: {total_count}")
 
-# 查询
+# 保存到数据库
+counter.save_to_database("output.rkdb", False)
+
+# 加载数据库
+db = Database()
+db.load("output.rkdb")
+
+# 查询k-mer
 result = db.query("ATGCGATGCTAGCGCTAGCTA")
-print(f"Count: {result}")
+print(f"Query result: {result.count}, found: {result.found}")
 
-# 模糊查询
-fq = FuzzyQuery(k=21, max_distance=1)
-result = fq.query("ATGCGATGCTAGCGCTAGCTA")
-print(f"Fuzzy matches: {result.get_match_count()}")
+# 获取数据库统计
+stats = db.get_stats()
+print(f"Database stats: k={stats.kmer_size}, total={stats.total_kmers}")
 ```
 
 ### 高级分析示例
