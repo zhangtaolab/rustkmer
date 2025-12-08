@@ -71,20 +71,6 @@ fn main() -> anyhow::Result<()> {
             };
             rustkmer::cli::commands::fuzzy::execute_fuzzy_query_batch(&args)?;
         }
-        rustkmer::cli::args::Commands::Benchmark { .. } => {
-            rustkmer::cli::commands::benchmark::execute_benchmark(&args.command)?;
-        }
-        rustkmer::cli::args::Commands::Compare { databases, queries, query_count, output_dir, format, fuzzy, profile } => {
-            eprintln!("Compare command not yet implemented");
-            eprintln!("Databases: {:?}", databases);
-            eprintln!("Queries: {}", queries);
-            eprintln!("Query count: {}", query_count);
-            eprintln!("Output dir: {}", output_dir);
-            eprintln!("Format: {}", format);
-            eprintln!("Fuzzy: {}", fuzzy);
-            eprintln!("Profile: {}", profile);
-            std::process::exit(1);
-        }
         rustkmer::cli::args::Commands::Merge { input, output, temp_dir, threads, verbose, quiet, force, keep_intermediate } => {
             let args = rustkmer::cli::commands::merge::MergeArgs {
                 input,
@@ -97,17 +83,6 @@ fn main() -> anyhow::Result<()> {
                 keep_intermediate,
             };
             rustkmer::cli::commands::merge::execute_merge(&args)?;
-        }
-        rustkmer::cli::args::Commands::Profile { command, args, output, depth, memory, cpu, duration } => {
-            eprintln!("Profile command not yet implemented");
-            eprintln!("Command: {}", command);
-            eprintln!("Args: {:?}", args);
-            eprintln!("Output: {:?}", output);
-            eprintln!("Depth: {}", depth);
-            eprintln!("Memory: {}", memory);
-            eprintln!("CPU: {}", cpu);
-            eprintln!("Duration: {}", duration);
-            std::process::exit(1);
         }
     }
 

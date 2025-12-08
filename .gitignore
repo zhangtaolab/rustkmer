@@ -211,3 +211,16 @@ validation_analysis_*
 
 # Validation study (completed research)
 validation_study/
+
+# CLI Test Framework - temporary files and outputs
+/Users/forrest/Temp/demodata/rustkmer_cli_test/
+rustkmer_cli_test/
+specs/009-rustkmer-cli-test/demo_*.sh
+specs/009-rustkmer-cli-test/demo_*.txt
+specs/009-rustkmer-cli-test/demo_*.rkdb
+specs/009-rustkmer-cli-test/demo_*_test.*
+
+# Large dump and query output files
+*_dump.txt
+*_kmers.txt
+temp_*.txt
