@@ -11,7 +11,7 @@ use serde::{Serialize, Deserialize};
 pub const DATABASE_MAGIC: &[u8; 4] = b"RKDB";
 
 /// Database version
-pub const DATABASE_VERSION: u16 = 1;
+pub const DATABASE_VERSION: u16 = 2;
 
 /// Database file header containing metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -183,27 +183,27 @@ impl DatabaseHeader {
 /// Represents a k-mer entry in the database
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KmerEntry {
-    /// Packed k-mer representation
-    pub kmer: u64,
+    /// Packed k-mer representation (u128 for k≤64)
+    pub kmer: u128,
     /// Count of this k-mer
     pub count: u32,
 }
 
 impl KmerEntry {
     /// Create a new k-mer entry
-    pub fn new(kmer: u64, count: u32) -> Self {
+    pub fn new(kmer: u128, count: u32) -> Self {
         Self { kmer, count }
     }
 
-    /// Write entry to binary format
+    /// Write entry to binary format (16 bytes kmer + 4 bytes count)
     pub fn write_to<W: Write>(&self, writer: &mut W) -> IoResult<()> {
-        writer.write_u64::<LittleEndian>(self.kmer)?;
+        writer.write_u128::<LittleEndian>(self.kmer)?;
         writer.write_u32::<LittleEndian>(self.count)
     }
 
-    /// Read entry from binary format
+    /// Read entry from binary format (16 bytes kmer + 4 bytes count)
     pub fn read_from<R: Read>(reader: &mut R) -> IoResult<Self> {
-        let kmer = reader.read_u64::<LittleEndian>()?;
+        let kmer = reader.read_u128::<LittleEndian>()?;
 
         // Fix for endianness issue: count might be written as big-endian
         let count_bytes = {
@@ -368,8 +368,8 @@ impl RKDatabase {
 
     /// Query a k-mer from the database
     pub fn query_kmer(&self, kmer: &str) -> Option<u64> {
-        // Encode the query k-mer
-        let query_encoded = match crate::kmer::encoding::encode_kmer(kmer) {
+        // Encode the query k-mer using u128 encoding
+        let query_encoded = match crate::kmer::encoding::encode_kmer_u128(kmer) {
             Ok(encoded) => encoded,
             Err(_) => return None,
         };
@@ -384,7 +384,7 @@ impl RKDatabase {
     }
 
     /// Binary search for a k-mer in a sorted database
-    fn binary_search_kmer(&self, query_encoded: u64) -> Option<u64> {
+    fn binary_search_kmer(&self, query_encoded: u128) -> Option<u64> {
         use std::cmp::Ordering;
 
         let mut left = 0;
@@ -405,13 +405,79 @@ impl RKDatabase {
     }
 
     /// Linear search for a k-mer in an unsorted database
-    fn linear_search_kmer(&self, query_encoded: u64) -> Option<u64> {
+    fn linear_search_kmer(&self, query_encoded: u128) -> Option<u64> {
         for entry in &self.entries {
             if entry.kmer == query_encoded {
                 return Some(entry.count as u64);
             }
         }
         None
+    }
+
+    /// Get all k-mers from the database as a vector
+    pub fn all_kmers(&self) -> crate::error::ProcessingResult<Vec<(u128, u32)>> {
+        let mut kmers = Vec::with_capacity(self.entries.len());
+        for entry in &self.entries {
+            kmers.push((entry.kmer, entry.count));
+        }
+        Ok(kmers)
+    }
+
+    /// Create an RKDatabase from k-mer pairs
+    pub fn from_kmer_pairs(
+        kmer_pairs: Vec<(u128, u32)>,
+        kmer_size: u8,
+        canonical: bool,
+        sorted: bool,
+    ) -> crate::error::ProcessingResult<Self> {
+        let mut entries: Vec<KmerEntry> = kmer_pairs
+            .into_iter()
+            .map(|(kmer, count)| KmerEntry::new(kmer, count))
+            .collect();
+
+        if sorted && !entries.is_empty() {
+            entries.sort_by_key(|entry| entry.kmer);
+        }
+
+        let header = DatabaseHeader {
+            magic: *crate::database::format::DATABASE_MAGIC,
+            version: crate::database::format::DATABASE_VERSION,
+            kmer_size,
+            total_kmers: entries.len() as u64,
+            canonical,
+            sorted,
+            data_offset: 42, // Standard header size for version 2
+            index_offset: 0,
+            unique_kmers: entries.len() as u64,
+            file_size: 0, // Will be calculated when writing
+        };
+
+        Ok(Self {
+            header,
+            entries,
+            file_path: None,
+        })
+    }
+
+    /// Save database to file path
+    pub fn to_file_path(&self, path: &std::path::Path) -> crate::error::ProcessingResult<()> {
+        self.write_to_file(path)?;
+        Ok(())
+    }
+
+    /// Get k-mer size from header
+    pub fn kmer_size_u8(&self) -> u8 {
+        self.header.kmer_size
+    }
+
+    /// Get total k-mers from header
+    pub fn total_kmers(&self) -> u64 {
+        self.header.total_kmers
+    }
+
+    /// Check if database is canonical
+    pub fn is_canonical(&self) -> bool {
+        self.header.canonical
     }
 }
 
@@ -436,7 +502,7 @@ mod tests {
 
     #[test]
     fn test_kmer_entry_serialization() {
-        let entry = KmerEntry::new(0x123456789ABCDEF0, 42);
+        let entry = KmerEntry::new(0x0123456789ABCDEF0123456789ABCDEF0, 42);
 
         let mut buffer = Vec::new();
         entry.write_to(&mut buffer).unwrap();

@@ -8,8 +8,8 @@ use std::fs::File;
 use std::cmp::Ordering;
 
 use crate::error::{KmerError, ProcessingResult};
-use crate::kmer::encoding::encode_kmer_bytes;
-use crate::kmer::canonical_kmer;
+use crate::kmer::encoding::{encode_kmer_bytes_u128, reverse_complement_u128};
+use crate::kmer::canonical::{canonical_kmer_u128};
 use super::format::{DatabaseHeader, KmerEntry, RKDatabase};
 
 /// Database query engine for fast k-mer lookups
@@ -112,13 +112,13 @@ impl DatabaseQuery {
             ).into());
         }
 
-        // Encode k-mer
-        let mut encoded_kmer = encode_kmer_bytes(kmer_seq.as_bytes())
+        // Encode k-mer using u128 encoding
+        let mut encoded_kmer = encode_kmer_bytes_u128(kmer_seq.as_bytes())
             .map_err(|e| KmerError::ProcessingError(format!("Failed to encode k-mer: {}", e)))?;
 
         // Apply canonical transformation if database was created in canonical mode
         if self.header.canonical {
-            encoded_kmer = canonical_kmer(encoded_kmer, self.header.kmer_size as usize)
+            encoded_kmer = canonical_kmer_u128(encoded_kmer, self.header.kmer_size as usize)
                 .map_err(|e| KmerError::ProcessingError(format!("Failed to get canonical k-mer: {}", e)))?;
         }
 
@@ -130,7 +130,7 @@ impl DatabaseQuery {
     }
 
     /// Query from in-memory cache
-    fn query_from_memory(&self, encoded_kmer: u64) -> ProcessingResult<Option<u32>> {
+    fn query_from_memory(&self, encoded_kmer: u128) -> ProcessingResult<Option<u32>> {
         let entries = self.cached_entries.as_ref().unwrap();
 
         if self.header.sorted {
@@ -148,7 +148,7 @@ impl DatabaseQuery {
     }
 
     /// Query from disk using binary search
-    fn query_from_disk(&mut self, encoded_kmer: u64) -> ProcessingResult<Option<u32>> {
+    fn query_from_disk(&mut self, encoded_kmer: u128) -> ProcessingResult<Option<u32>> {
         if !self.header.sorted {
             return Err(KmerError::ProcessingError(
                 "Cannot query unsorted database from disk without preloading".to_string()
@@ -188,7 +188,7 @@ impl DatabaseQuery {
             self.header.data_offset
         };
 
-        let entry_offset = actual_data_offset + (index * 12); // 8 + 4 bytes per entry
+        let entry_offset = actual_data_offset + (index * 20); // 16 + 4 bytes per entry (u128 + u32)
 
         self.file.seek(SeekFrom::Start(entry_offset))
             .map_err(KmerError::Io)?;
@@ -265,7 +265,7 @@ impl<'a> KmerQuery<'a> {
         // Reopens database file for each thread-safe query operation
 
         // Encode the k-mer to check validity
-        let _encoded = encode_kmer_bytes(kmer.as_bytes())
+        let _encoded = encode_kmer_bytes_u128(kmer.as_bytes())
             .map_err(|e| crate::error::ProcessingError::new(format!("Invalid k-mer: {}", e)))?;
 
         // Use the stored file path to reopen the database for actual query
@@ -300,11 +300,11 @@ mod tests {
     fn create_test_database(kmer_size: u8, entries: Vec<(u64, u32)>) -> NamedTempFile {
         let mut file = NamedTempFile::new().unwrap();
 
-        let header = DatabaseHeader::new(kmer_size, entries.len() as u64, false);
+        let header = DatabaseHeader::new(kmer_size, entries.len() as u64, true);  // Sort the database
         header.write_to(&mut file).unwrap();
 
         for (kmer, count) in entries {
-            let entry = KmerEntry::new(kmer, count);
+            let entry = KmerEntry::new(kmer.into(), count);
             entry.write_to(&mut file).unwrap();
         }
 
@@ -319,19 +319,19 @@ mod tests {
             (0x3456789ABCDEF012, 30),
         ];
 
-        let temp_file = create_test_database(21, entries);
-        let mut query = DatabaseQuery::open(temp_file.path(), false).unwrap();
+        let temp_file = create_test_database(20, entries);
+        let mut query = DatabaseQuery::open(temp_file.path(), false).unwrap();  // Database is sorted, no need to preload
 
-        assert_eq!(query.query_kmer("ATGCGATGCTAGCGCTAGCTA").unwrap(), Some(10));
-        assert_eq!(query.query_kmer("TGCGATGCTAGCGCTAGCTAG").unwrap(), Some(20));
-        assert_eq!(query.query_kmer("GCGATGCTAGCGCTAGCTAGC").unwrap(), Some(30));
+        assert_eq!(query.query_kmer("ATGCGATGCTAGCGCTAGCT").unwrap(), Some(10));
+        assert_eq!(query.query_kmer("TGCGATGCTAGCGCTAGCTA").unwrap(), Some(20));
+        assert_eq!(query.query_kmer("GCGATGCTAGCGCTAGCTAG").unwrap(), Some(30));
     }
 
     #[test]
     fn test_database_query_not_found() {
         let entries = vec![(0x123456789ABCDEF0, 10)];
-        let temp_file = create_test_database(21, entries);
-        let mut query = DatabaseQuery::open(temp_file.path(), false).unwrap();
+        let temp_file = create_test_database(20, entries);
+        let mut query = DatabaseQuery::open(temp_file.path(), false).unwrap();  // Database is sorted, no need to preload
 
         assert_eq!(query.query_kmer("AAAAAAAAAAAAAAAAAAAA").unwrap(), None);
     }
@@ -343,12 +343,12 @@ mod tests {
             (0x23456789ABCDEF01, 20),
         ];
 
-        let temp_file = create_test_database(21, entries);
-        let mut query = DatabaseQuery::open(temp_file.path(), false).unwrap();
+        let temp_file = create_test_database(20, entries);
+        let mut query = DatabaseQuery::open(temp_file.path(), false).unwrap();  // Database is sorted, no need to preload
 
         let kmer_seqs = vec![
-            "ATGCGATGCTAGCGCTAGCTA".to_string(),
-            "TGCGATGCTAGCGCTAGCTAG".to_string(),
+            "ATGCGATGCTAGCGCTAGCT".to_string(),
+            "TGCGATGCTAGCGCTAGCTA".to_string(),
             "AAAAAAAAAAAAAAAAAAAA".to_string(), // Not in database
         ];
 

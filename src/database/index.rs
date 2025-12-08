@@ -13,7 +13,7 @@ use super::format::KmerEntry;
 #[derive(Debug)]
 pub struct DatabaseIndex {
     /// Hash table for O(1) lookup
-    hash_table: HashMap<u64, u32>,
+    hash_table: HashMap<u128, u32>,
     /// Whether index is loaded in memory
     #[allow(dead_code)]
     memory_loaded: bool,
@@ -49,7 +49,7 @@ impl DatabaseIndex {
     }
 
     /// Query k-mer count from index
-    pub fn query(&self, kmer: u64) -> Option<u32> {
+    pub fn query(&self, kmer: u128) -> Option<u32> {
         self.hash_table.get(&kmer).copied()
     }
 

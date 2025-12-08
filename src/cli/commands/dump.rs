@@ -134,37 +134,77 @@ fn dump_rkdb_database(path: &Path, output_path: Option<&str>) -> ProcessingResul
 
     let mut processed = 0u64;
     while processed < header.total_kmers {
-        match reader.read_u64::<LittleEndian>() {
-            Ok(kmer) => {
-                match reader.read_u32::<LittleEndian>() {
-                    Ok(count) => {
-                        // Decode k-mer back to DNA sequence
-                        let sequence = decode_kmer_to_sequence(kmer, header.kmer_size as usize);
-                        writeln!(writer, "{}\t{}", sequence, count)
-                            .map_err(|e| KmerError::FileWriteError(format!("Failed to write k-mer entry: {}", e)))?;
+        // Read k-mer based on format version
+        if header.version == 2 && header.kmer_size > 32 {
+            // u128 encoding for k > 32 in version 2
+            match reader.read_u128::<LittleEndian>() {
+                Ok(kmer) => {
+                    match reader.read_u32::<LittleEndian>() {
+                        Ok(count) => {
+                            // Decode k-mer back to DNA sequence
+                            let sequence = decode_kmer_to_sequence_u128(kmer, header.kmer_size as usize);
+                            writeln!(writer, "{}\t{}", sequence, count)
+                                .map_err(|e| KmerError::FileWriteError(format!("Failed to write k-mer entry: {}", e)))?;
 
-                        processed += 1;
+                            processed += 1;
 
-                        // Progress reporting for large databases
-                        if processed.is_multiple_of(100_000) {
-                            eprintln!("Processed {} k-mers...", processed);
+                            // Progress reporting for large databases
+                            if processed.is_multiple_of(100_000) {
+                                eprintln!("Processed {} k-mers...", processed);
+                            }
+                        },
+                        Err(e) => {
+                            return Err(KmerError::ProcessingError(
+                                format!("Failed to read k-mer count at position {}: {}", processed, e)
+                            ).into());
                         }
-                    },
-                    Err(e) => {
+                    }
+                },
+                Err(e) => {
+                    if processed == header.total_kmers {
+                        // Expected EOF
+                        break;
+                    } else {
                         return Err(KmerError::ProcessingError(
-                            format!("Failed to read k-mer count at position {}: {}", processed, e)
+                            format!("Failed to read k-mer entry at position {}: {}", processed, e)
                         ).into());
                     }
                 }
-            },
-            Err(e) => {
-                if processed == header.total_kmers {
-                    // Expected EOF
-                    break;
-                } else {
-                    return Err(KmerError::ProcessingError(
-                        format!("Failed to read k-mer entry at position {}: {}", processed, e)
-                    ).into());
+            }
+        } else {
+            // u64 encoding (version 1 or k <= 32)
+            match reader.read_u64::<LittleEndian>() {
+                Ok(kmer) => {
+                    match reader.read_u32::<LittleEndian>() {
+                        Ok(count) => {
+                            // Decode k-mer back to DNA sequence
+                            let sequence = decode_kmer_to_sequence(kmer, header.kmer_size as usize);
+                            writeln!(writer, "{}\t{}", sequence, count)
+                                .map_err(|e| KmerError::FileWriteError(format!("Failed to write k-mer entry: {}", e)))?;
+
+                            processed += 1;
+
+                            // Progress reporting for large databases
+                            if processed.is_multiple_of(100_000) {
+                                eprintln!("Processed {} k-mers...", processed);
+                            }
+                        },
+                        Err(e) => {
+                            return Err(KmerError::ProcessingError(
+                                format!("Failed to read k-mer count at position {}: {}", processed, e)
+                            ).into());
+                        }
+                    }
+                },
+                Err(e) => {
+                    if processed == header.total_kmers {
+                        // Expected EOF
+                        break;
+                    } else {
+                        return Err(KmerError::ProcessingError(
+                            format!("Failed to read k-mer entry at position {}: {}", processed, e)
+                        ).into());
+                    }
                 }
             }
         }
@@ -231,6 +271,27 @@ fn dump_bincode_database(path: &Path, output_path: Option<&str>) -> ProcessingRe
 
 /// Decode a k-mer from encoded format back to DNA sequence
 fn decode_kmer_to_sequence(kmer: u64, k: usize) -> String {
+    let mut sequence = String::with_capacity(k);
+    let mut encoded = kmer;
+
+    for _ in 0..k {
+        let base = encoded & 0b11;
+        let char = match base {
+            0 => 'A',
+            1 => 'C',
+            2 => 'G',
+            3 => 'T',
+            _ => 'N',
+        };
+        sequence.push(char);
+        encoded >>= 2;
+    }
+
+    sequence.chars().rev().collect()
+}
+
+/// Decode a u128 k-mer from encoded format back to DNA sequence
+fn decode_kmer_to_sequence_u128(kmer: u128, k: usize) -> String {
     let mut sequence = String::with_capacity(k);
     let mut encoded = kmer;
 

@@ -12,8 +12,8 @@ use super::filtering::{CountFilter, FilteringResult};
 /// Thread-safe k-mer counter with concurrent operations
 #[derive(Debug)]
 pub struct KmerCounter {
-    /// Core hash table storing k-mer counts
-    table: ParkingLotRwLock<HashMap<u64, u32>>,
+    /// Core hash table storing k-mer counts (u128 for k≤64 support)
+    table: ParkingLotRwLock<HashMap<u128, u32>>,
     /// Total k-mers processed
     total_kmers: std::sync::atomic::AtomicU64,
     /// Number of unique k-mers
@@ -38,7 +38,7 @@ impl KmerCounter {
     /// # Returns
     /// New KmerCounter instance
     pub fn new(kmer_length: usize, canonical_mode: bool, initial_capacity: usize, _num_threads: usize) -> ProcessingResult<Self> {
-        if !(1..=127).contains(&kmer_length) {
+        if !(1..=64).contains(&kmer_length) {
             return Err(KmerError::InvalidKmerSize(kmer_length as u32).into());
         }
 
@@ -55,11 +55,11 @@ impl KmerCounter {
     /// Increment the count for a k-mer
     ///
     /// # Arguments
-    /// * `kmer_encoded` - Packed k-mer representation
+    /// * `kmer_encoded` - Packed k-mer representation (u128 for k≤64)
     ///
     /// # Returns
     /// Result indicating success or error
-    pub fn increment(&self, kmer_encoded: u64) -> ProcessingResult<()> {
+    pub fn increment(&self, kmer_encoded: u128) -> ProcessingResult<()> {
         self.total_kmers.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut table = self.table.write();
@@ -85,11 +85,11 @@ impl KmerCounter {
     /// Get the count for a specific k-mer
     ///
     /// # Arguments
-    /// * `kmer_encoded` - Packed k-mer representation
+    /// * `kmer_encoded` - Packed k-mer representation (u128 for k≤64)
     ///
     /// # Returns
     /// Number of occurrences, or None if not found
-    pub fn get_count(&self, kmer_encoded: u64) -> Option<u32> {
+    pub fn get_count(&self, kmer_encoded: u128) -> Option<u32> {
         let table = self.table.read();
         table.get(&kmer_encoded).copied()
     }
@@ -98,7 +98,7 @@ impl KmerCounter {
     ///
     /// # Returns
     /// Vector of (kmer_encoded, count) pairs
-    pub fn get_all_counts(&self) -> Vec<(u64, u32)> {
+    pub fn get_all_counts(&self) -> Vec<(u128, u32)> {
         let table = self.table.read();
         table.iter().map(|(&k, &v)| (k, v)).collect()
     }
@@ -110,9 +110,9 @@ impl KmerCounter {
     ///
     /// # Returns
     /// Vector of (kmer_encoded, count) pairs sorted by count descending
-    pub fn get_top_n(&self, n: usize) -> Vec<(u64, u32)> {
+    pub fn get_top_n(&self, n: usize) -> Vec<(u128, u32)> {
         let table = self.table.read();
-        let mut pairs: Vec<(u64, u32)> = table.iter().map(|(&k, &v)| (k, v)).collect();
+        let mut pairs: Vec<(u128, u32)> = table.iter().map(|(&k, &v)| (k, v)).collect();
 
         // Sort by count descending, then by kmer value for deterministic ordering
         pairs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
@@ -128,7 +128,7 @@ impl KmerCounter {
     ///
     /// # Returns
     /// Vector of (kmer_encoded, count) pairs within the specified range
-    pub fn filter_by_count(&self, min_count: u32, max_count: u32) -> Vec<(u64, u32)> {
+    pub fn filter_by_count(&self, min_count: u32, max_count: u32) -> Vec<(u128, u32)> {
         let table = self.table.read();
         table.iter()
             .filter(|&(_, &count)| count >= min_count && count <= max_count)
@@ -143,7 +143,7 @@ impl KmerCounter {
     ///
     /// # Returns
     /// Vector of (kmer_encoded, count) pairs after filtering
-    pub fn get_filtered_kmers(&self, filter: &Option<CountFilter>) -> Vec<(u64, u32)> {
+    pub fn get_filtered_kmers(&self, filter: &Option<CountFilter>) -> Vec<(u128, u32)> {
         let all_kmers = self.get_all_counts();
 
         match filter {
@@ -218,8 +218,8 @@ impl KmerCounter {
     /// Estimated memory usage in bytes
     pub fn memory_usage(&self) -> usize {
         let table = self.table.read();
-        // Estimate: each entry uses ~24 bytes (HashMap overhead) + 12 bytes for (u64, u32)
-        table.len() * (24 + 12)
+        // Estimate: each entry uses ~24 bytes (HashMap overhead) + 20 bytes for (u128, u32)
+        table.len() * (24 + 20)
     }
 
     /// Get statistics for the counter
@@ -239,7 +239,7 @@ impl KmerCounter {
     ///
     /// # Returns
     /// Vector of (kmer_encoded, count) pairs
-    pub fn get_all_kmers(&self) -> Vec<(u64, u32)> {
+    pub fn get_all_kmers(&self) -> Vec<(u128, u32)> {
         self.get_all_counts()
     }
 
@@ -418,8 +418,10 @@ mod tests {
         counter.increment(0x4).unwrap();
 
         let filtered = counter.filter_by_count(2, 2);
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0], (0x2, 2));
+        assert_eq!(filtered.len(), 2);
+        // Check that both entries have count 2 (order may vary)
+        assert!(filtered.contains(&(0x2, 2)));
+        assert!(filtered.contains(&(0x4, 2)));
     }
 
     #[test]

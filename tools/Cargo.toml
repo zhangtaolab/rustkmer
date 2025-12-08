@@ -1,0 +1,24 @@
+[package]
+name = "rustkmer-debug-tools"
+version = "0.1.0"
+edition = "2021"
+description = "Debug tools for rustkmer canonical processing analysis"
+authors = ["rustkmer developers"]
+license = "MIT"
+
+[[bin]]
+name = "debug_canonical_trace"
+path = "debug_canonical_trace.rs"
+
+[[bin]]
+name = "analyze_database"
+path = "analyze_database.rs"
+
+[[bin]]
+name = "verify_canonical"
+path = "verify_canonical.rs"
+
+[dependencies]
+# For the debug tools, we keep dependencies minimal
+# These are standalone scripts that include their own implementations
+# No external dependencies required to keep them simple and portable

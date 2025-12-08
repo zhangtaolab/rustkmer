@@ -85,6 +85,19 @@ fn main() -> anyhow::Result<()> {
             eprintln!("Profile: {}", profile);
             std::process::exit(1);
         }
+        rustkmer::cli::args::Commands::Merge { input, output, temp_dir, threads, verbose, quiet, force, keep_intermediate } => {
+            let args = rustkmer::cli::commands::merge::MergeArgs {
+                input,
+                output,
+                temp_dir,
+                threads,
+                verbose,
+                quiet,
+                force,
+                keep_intermediate,
+            };
+            rustkmer::cli::commands::merge::execute_merge(&args)?;
+        }
         rustkmer::cli::args::Commands::Profile { command, args, output, depth, memory, cpu, duration } => {
             eprintln!("Profile command not yet implemented");
             eprintln!("Command: {}", command);

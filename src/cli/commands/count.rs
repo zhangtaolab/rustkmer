@@ -12,8 +12,8 @@ use crate::hash::table::KmerCounter;
 use crate::io::fasta::{FastaProcessor, validate_fasta_file};
 use crate::io::fastq::{FastqProcessor, validate_fastq_file};
 use crate::io::discovery::{FileDiscovery, DiscoveryConfig};
-use crate::kmer::encoding::encode_kmer_bytes;
-use crate::kmer::operations::canonical_kmer;
+use crate::kmer::encoding::{encode_kmer_bytes_u128};
+use crate::kmer::canonical::canonical_kmer_u128;
 use crate::database::format::{DatabaseHeader, DATABASE_MAGIC, DATABASE_VERSION};
 
 /// Execute the count command
@@ -39,8 +39,8 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             max_count: _,
             show_warnings,
         } => {
-            // Validate k-mer size
-            if *k < 1 || *k > 127 {
+            // Validate k-mer size (u128 supports k up to 64)
+            if *k < 1 || *k > 64 {
                 return Err(KmerError::InvalidKmerSize(*k as u32).into());
             }
 
@@ -288,10 +288,10 @@ fn process_fasta_file(
         for i in 0..=(sequence.len() - k) {
             let kmer_seq = &sequence[i..i + k];
 
-            match encode_kmer_bytes(kmer_seq) {
+            match encode_kmer_bytes_u128(kmer_seq) {
                 Ok(encoded_kmer) => {
                     let final_kmer = if canonical {
-                        match canonical_kmer(encoded_kmer, k) {
+                        match canonical_kmer_u128(encoded_kmer, k) {
                             Ok(canonical) => canonical,
                             Err(_) => continue, // Skip invalid k-mers
                         }
@@ -339,10 +339,10 @@ fn process_fastq_file(
         for i in 0..=(sequence.len() - k) {
             let kmer_seq = &sequence[i..i + k];
 
-            match encode_kmer_bytes(kmer_seq) {
+            match encode_kmer_bytes_u128(kmer_seq) {
                 Ok(encoded_kmer) => {
                     let final_kmer = if canonical {
-                        match canonical_kmer(encoded_kmer, k) {
+                        match canonical_kmer_u128(encoded_kmer, k) {
                             Ok(canonical) => canonical,
                             Err(_) => continue, // Skip invalid k-mers
                         }
@@ -475,7 +475,7 @@ fn output_binary_format(
 
     // Write k-mer entries
     for (kmer, count) in kmers {
-        writer.write_u64::<LittleEndian>(kmer)?;
+        writer.write_u128::<LittleEndian>(kmer)?;
         writer.write_u32::<LittleEndian>(count)?;
     }
 
@@ -487,7 +487,7 @@ fn output_binary_format(
 }
 
 /// Decode a k-mer from encoded format back to DNA sequence
-fn decode_kmer(kmer: u64, k: usize) -> String {
+fn decode_kmer(kmer: u128, k: usize) -> String {
     let mut sequence = String::with_capacity(k);
     let mut encoded = kmer;
 

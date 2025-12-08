@@ -180,3 +180,34 @@ wheelhouse/
 examples/marimo/__marimo__/
 
 tmp/
+
+# Additional ignore patterns for safety
+# Validation outputs
+validation_outputs/
+validate_*_output/
+
+# Debug and test binaries
+debug_*
+test_*
+bug_*
+
+# Temporary analysis scripts
+analyze_*
+verify_*
+
+# Extracted data files
+data/extracted/
+extracted/
+
+# Intermediate reports and analysis files
+*_report.md
+*_summary.md
+*_ANALYSIS.md
+*_PROGRESS.md
+*_IMPLEMENTATION.md
+canonical_fix_*
+validation_analysis_*
+*_COMPLETION.md
+
+# Validation study (completed research)
+validation_study/

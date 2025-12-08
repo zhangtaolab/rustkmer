@@ -17,12 +17,12 @@ pub struct Args {
 pub enum Commands {
     /// Count k-mers in sequence files
     Count {
-        /// K-mer size (1-127)
+        /// K-mer size (1-64)
         #[arg(short, long)]
         k: usize,
 
         /// Input sequence files
-        #[arg(short, long, num_args = 1.., conflicts_with = "directory")]
+        #[arg(short = 'i', long, num_args = 1.., conflicts_with = "directory")]
         input: Vec<String>,
 
         /// Process all files in directory
@@ -30,7 +30,7 @@ pub enum Commands {
         directory: Option<String>,
 
         /// Select specific files from directory (interactive)
-        #[arg(long, short = 'i', requires = "directory")]
+        #[arg(short = 's', long, requires = "directory")]
         select: bool,
 
         /// Recursive directory search
@@ -336,6 +336,41 @@ pub enum Commands {
         /// Duration of profiling (seconds)
         #[arg(long, default_value = "60")]
         duration: u64,
+    },
+
+    /// Merge multiple RKDB databases
+    Merge {
+        /// Input database files to merge
+        #[arg(short = 'i', long, num_args = 2.., help = "Input database files to merge (at least 2 required)")]
+        input: Vec<std::path::PathBuf>,
+
+        /// Output database file
+        #[arg(short = 'o', long, help = "Output merged database file")]
+        output: std::path::PathBuf,
+
+        /// Temporary directory for merge operations
+        #[arg(long, help = "Temporary directory for merge operations (default: system temp)")]
+        temp_dir: Option<std::path::PathBuf>,
+
+        /// Number of threads for merging
+        #[arg(short = 't', long, default_value = "0", help = "Number of threads for merging (0 = auto-detect)")]
+        threads: usize,
+
+        /// Enable verbose output
+        #[arg(short = 'v', long, help = "Enable verbose output")]
+        verbose: bool,
+
+        /// Suppress non-error output
+        #[arg(short = 'q', long, help = "Suppress non-error output")]
+        quiet: bool,
+
+        /// Force merge even if databases have incompatible settings
+        #[arg(long, help = "Force merge even if databases have incompatible settings (not recommended)")]
+        force: bool,
+
+        /// Keep intermediate files (for debugging)
+        #[arg(long, help = "Keep intermediate files (for debugging)")]
+        keep_intermediate: bool,
     }
 }
 

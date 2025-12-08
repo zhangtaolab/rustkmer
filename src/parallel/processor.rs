@@ -8,8 +8,8 @@ use std::sync::mpsc::channel;
 use rayon::prelude::*;
 use crate::error::{ProcessingError, ProcessingResult};
 use crate::hash::table::KmerCounter;
-use crate::kmer::encoding::encode_kmer;
-use crate::kmer::canonical::canonical_kmer;
+use crate::kmer::encoding::{encode_kmer_u128, encode_kmer};
+use crate::kmer::canonical::{canonical_kmer, canonical_kmer_u128};
 
 /// Parallel sequence processor
 pub struct ParallelProcessor {
@@ -86,12 +86,21 @@ impl ParallelProcessor {
         for i in 0..=(sequence.len() - self.kmer_length) {
             let kmer_seq = &sequence[i..i + self.kmer_length];
 
-            match encode_kmer(kmer_seq) {
+            // Use u128 encoding for k>32
+            let encoded_result = if self.kmer_length > 32 {
+                encode_kmer_u128(kmer_seq).map(|k| k as u128)
+            } else {
+                encode_kmer(kmer_seq).map(|k| k as u128)
+            };
+
+            match encoded_result {
                 Ok(encoded_kmer) => {
                     let final_kmer = if self.canonical_mode {
-                        match canonical_kmer(encoded_kmer, self.kmer_length) {
-                            Ok(canonical) => canonical,
-                            Err(_) => continue, // Skip invalid k-mers
+                        if self.kmer_length > 32 {
+                            canonical_kmer_u128(encoded_kmer, self.kmer_length)
+                                .map_err(|_| ProcessingError::new("Failed to get canonical k-mer"))?
+                        } else {
+                            canonical_kmer(encoded_kmer as u64, self.kmer_length)? as u128
                         }
                     } else {
                         encoded_kmer
@@ -241,12 +250,21 @@ impl QueueProcessor {
         for i in 0..=(sequence.len() - kmer_length) {
             let kmer_seq = &sequence[i..i + kmer_length];
 
-            match encode_kmer(kmer_seq) {
+            // Use u128 encoding for k>32
+            let encoded_result = if kmer_length > 32 {
+                encode_kmer_u128(kmer_seq).map(|k| k as u128)
+            } else {
+                encode_kmer(kmer_seq).map(|k| k as u128)
+            };
+
+            match encoded_result {
                 Ok(encoded_kmer) => {
                     let final_kmer = if canonical_mode {
-                        match canonical_kmer(encoded_kmer, kmer_length) {
-                            Ok(canonical) => canonical,
-                            Err(_) => continue, // Skip invalid k-mers
+                        if kmer_length > 32 {
+                            canonical_kmer_u128(encoded_kmer, kmer_length)
+                                .map_err(|_| ProcessingError::new("Failed to get canonical k-mer"))?
+                        } else {
+                            canonical_kmer(encoded_kmer as u64, kmer_length)? as u128
                         }
                     } else {
                         encoded_kmer

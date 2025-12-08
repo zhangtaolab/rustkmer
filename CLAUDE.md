@@ -15,6 +15,9 @@ Auto-generated from all feature plans. Last updated: 2025-11-28
 - Hybrid JSON + binary .rkdb format for database persistence, memory-mapped files for large datasets (005-python-api-improvements)
 - Rust 1.80+ stable + Python 3.8+ via PyO3 0.23.4 + PyO3 (Python bindings), serde (serialization), thiserror (error handling), rayon (parallel processing), clap (CLI), bio (genomics) (007-api-compatibility)
 - Single binary .rkdb files (RKDB format) - unified storage for both CLI and Python API (007-api-compatibility)
+- Rust 1.80+ stable + PyO3 0.23.4, clap, serde, byteorder, rayon, criterion (008-u128-encoding)
+- Binary RKDB files with memory-mapped access (008-u128-encoding)
+- Binary RKDB files with memory-mapped access (version 2 format) (008-u128-encoding)
 
 - Rust 1.80+ stable channel (latest stable for performance optimizations) + clap v4.0+ (CLI with derive macros), serde (serialization), thiserror (error handling), anyhow (error handling), rayon (parallel processing), criterion (benchmarks), bio (FASTA/FASTQ parsing), memmap2 (memory-mapped files) (001-jellyfish-rust-port)
 
@@ -34,9 +37,9 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 Rust 1.80+ stable channel (latest stable for performance optimizations): Follow standard conventions
 
 ## Recent Changes
-- 007-api-compatibility: Added Rust 1.80+ stable + Python 3.8+ via PyO3 0.23.4 + PyO3 (Python bindings), serde (serialization), thiserror (error handling), rayon (parallel processing), clap (CLI), bio (genomics)
-- 007-api-compatibility: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
-- 005-python-api-improvements: Added Rust 1.80+ stable channel + PyO3 0.23.4 (Python bindings), serde 1.0 (serialization), thiserror 2.0 (error handling), rayon 1.10 (parallel processing), clap 4.5 (CLI), bio 2.0 (genomics), memmap2 0.9 (memory mapping)
+- 008-u128-encoding: Added Rust 1.80+ stable + PyO3 0.23.4, clap, serde, byteorder, rayon, criterion
+- 008-u128-encoding: Added Rust 1.80+ stable + PyO3 0.23.4, clap, serde, byteorder, rayon, criterion
+- 001-u128-encoding: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 
 
 <!-- MANUAL ADDITIONS START -->

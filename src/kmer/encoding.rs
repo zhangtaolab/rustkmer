@@ -13,6 +13,9 @@ const T: u8 = 3; // T = 11
 /// Maximum k-mer size that fits in a u64 (64 / 2 = 32)
 pub const MAX_KMER_SIZE_IN_U64: usize = 32;
 
+/// Maximum k-mer size that fits in a u128 (128 / 2 = 64)
+pub const MAX_KMER_SIZE_IN_U128: usize = 64;
+
 /// Encode a DNA sequence into a packed bit representation
 ///
 /// # Arguments
@@ -181,6 +184,175 @@ pub fn has_ambiguous_bases(sequence: &str) -> bool {
         matches!(ch.to_ascii_uppercase(), 'A' | 'C' | 'G' | 'T')
     })
 }
+
+// ========== U128 ENCODING FUNCTIONS ==========
+
+/// Encode a DNA sequence into a packed u128 representation
+///
+/// Supports k-mers up to length 64
+///
+/// # Arguments
+/// * `sequence` - DNA sequence string (must contain only A, C, G, T)
+///
+/// # Returns
+/// * `Ok(u128)` - Packed representation if valid
+/// * `Err(KmerError)` - Error if invalid characters found
+///
+/// # Examples
+/// ```
+/// use rustkmer::kmer::encoding::encode_kmer_u128;
+///
+/// let encoded = encode_kmer_u128("ATGC").unwrap();
+/// // ATGC -> 00110110 (A=00, T=11, G=10, C=01)
+/// assert_eq!(encoded, 0b00110110);
+/// ```
+pub fn encode_kmer_u128(sequence: &str) -> Result<u128, KmerError> {
+    encode_kmer_bytes_u128(sequence.as_bytes())
+}
+
+/// Encode a DNA sequence from byte slice into a packed u128 representation
+///
+/// # Arguments
+/// * `sequence` - DNA sequence as bytes (must contain only A, C, G, T, case insensitive)
+///
+/// # Returns
+/// * `Ok(u128)` - Packed representation if valid
+/// * `Err(KmerError)` - Error if invalid characters found
+pub fn encode_kmer_bytes_u128(sequence: &[u8]) -> Result<u128, KmerError> {
+    if sequence.is_empty() || sequence.len() > MAX_KMER_SIZE_IN_U128 {
+        return Err(KmerError::InvalidKmerSize(
+            (sequence.len() as u32).try_into().unwrap_or(u32::MAX),
+        ));
+    }
+
+    let mut encoded: u128 = 0;
+    let length = sequence.len();
+
+    // Start from the most significant bits
+    let bits_to_shift = (128 - (length * 2)) as u32;
+    encoded <<= bits_to_shift;
+
+    for &byte in sequence {
+        let base = byte.to_ascii_uppercase();
+        let value = match base {
+            b'A' => A,
+            b'C' => C,
+            b'G' => G,
+            b'T' => T,
+            _ => {
+                return Err(KmerError::InvalidCharacter {
+                    pos: encoded.trailing_zeros() as usize / 2,
+                    char: byte as char,
+                });
+            }
+        };
+
+        encoded = (encoded << 2) | (value as u128);
+    }
+
+    Ok(encoded)
+}
+
+/// Decode a packed u128 representation back to a DNA sequence
+///
+/// # Arguments
+/// * `encoded` - Packed k-mer representation
+/// * `length` - Length of the original k-mer
+///
+/// # Returns
+/// The decoded DNA sequence
+pub fn decode_kmer_u128(encoded: u128, length: usize) -> String {
+    if length == 0 || length > MAX_KMER_SIZE_IN_U128 {
+        return String::new();
+    }
+
+    let mut result = String::with_capacity(length);
+
+    // Start from the most significant bits
+    let bits_to_shift = (128 - (length * 2)) as u32;
+    let mut encoded = encoded << bits_to_shift;
+
+    for _ in 0..length {
+        let base = (encoded >> 126) & 0b11;
+        let char = match base {
+            0 => 'A',
+            1 => 'C',
+            2 => 'G',
+            3 => 'T',
+            _ => 'N', // Should not happen with valid encoding
+        };
+        result.push(char);
+        encoded <<= 2;
+    }
+
+    result
+}
+
+/// Encode a DNA sequence using u64 if possible, otherwise u128
+///
+/// This function automatically chooses the appropriate encoding based on k-mer size.
+/// For k ≤ 32, it uses u64 encoding. For k > 32, it uses u128 encoding.
+///
+/// # Arguments
+/// * `sequence` - DNA sequence string (must contain only A, C, G, T)
+///
+/// # Returns
+/// Tuple of (encoded_value, k_size, is_u128)
+pub fn encode_kmer_auto(sequence: &str) -> (u128, u8, bool) {
+    if sequence.len() <= MAX_KMER_SIZE_IN_U64 {
+        let encoded_u64 = encode_kmer_u64(sequence).unwrap_or(0);
+        (encoded_u64 as u128, sequence.len() as u8, false)
+    } else {
+        let encoded_u128 = encode_kmer_u128(sequence).unwrap_or(0);
+        (encoded_u128, sequence.len() as u8, true)
+    }
+}
+
+/// Legacy functions for u64 encoding (renamed for clarity)
+pub fn encode_kmer_u64(sequence: &str) -> Result<u64, KmerError> {
+    encode_kmer(sequence)
+}
+
+pub fn decode_kmer_u64(encoded: u64, length: usize) -> String {
+    decode_kmer(encoded, length)
+}
+
+
+/// Get the reverse complement of a packed u128 k-mer
+///
+/// # Arguments
+/// * `encoded` - Packed k-mer representation
+/// * `length` - Length of the k-mer
+///
+/// # Returns
+/// Packed reverse complement representation
+pub fn reverse_complement_u128(encoded: u128, length: usize) -> u128 {
+    if length > MAX_KMER_SIZE_IN_U128 {
+        return 0;
+    }
+
+    let mut rc = 0u128;
+    let bits_to_shift = (128 - (length * 2)) as u32;
+    let mut encoded = encoded << bits_to_shift;
+
+    // Process each base
+    for _ in 0..length {
+        let base = (encoded >> 126) & 0b11;
+
+        // Complement and add to result
+        let complement = 3 - base; // 3-base for complement (A<->T, C<->G, G<->C, T<->A)
+        rc <<= 2;
+        rc |= complement;
+
+        encoded <<= 2;
+    }
+
+    // Shift to proper position
+    rc <<= bits_to_shift;
+
+    rc
+}
+
 
 #[cfg(test)]
 mod tests {
