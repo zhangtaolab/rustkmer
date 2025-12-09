@@ -18,6 +18,10 @@ Auto-generated from all feature plans. Last updated: 2025-11-28
 - Rust 1.80+ stable + PyO3 0.23.4, clap, serde, byteorder, rayon, criterion (008-u128-encoding)
 - Binary RKDB files with memory-mapped access (008-u128-encoding)
 - Binary RKDB files with memory-mapped access (version 2 format) (008-u128-encoding)
+- Rust 1.80+ stable channel + clap v4.0+, serde, thiserror, anyhow, rayon, criterion, bio, memmap2 (009-rustkmer-cli-test)
+- Rust 1.80+ stable channel + clap v4.5 (CLI), serde 1.0 (serialization), rayon 1.10 (parallel processing), memmap2 0.9 (memory mapping) (010-rkdb-merge)
+- Binary RKDB format (custom k-mer database format) (010-rkdb-merge)
+- Binary RKDB (.rkdb) files with custom database forma (010-rkdb-merge)
 
 - Rust 1.80+ stable channel (latest stable for performance optimizations) + clap v4.0+ (CLI with derive macros), serde (serialization), thiserror (error handling), anyhow (error handling), rayon (parallel processing), criterion (benchmarks), bio (FASTA/FASTQ parsing), memmap2 (memory-mapped files) (001-jellyfish-rust-port)
 
@@ -37,9 +41,9 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 Rust 1.80+ stable channel (latest stable for performance optimizations): Follow standard conventions
 
 ## Recent Changes
-- 008-u128-encoding: Added Rust 1.80+ stable + PyO3 0.23.4, clap, serde, byteorder, rayon, criterion
-- 008-u128-encoding: Added Rust 1.80+ stable + PyO3 0.23.4, clap, serde, byteorder, rayon, criterion
-- 001-u128-encoding: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
+- 010-rkdb-merge: Added Rust 1.80+ stable channel
+- 010-rkdb-merge: Added Rust 1.80+ stable channel + clap v4.5 (CLI), serde 1.0 (serialization), rayon 1.10 (parallel processing), memmap2 0.9 (memory mapping)
+- 010-rkdb-merge: Added Rust 1.80+ stable channel + clap v4.5 (CLI), serde 1.0 (serialization), rayon 1.10 (parallel processing), memmap2 0.9 (memory mapping)
 
 
 <!-- MANUAL ADDITIONS START -->

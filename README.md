@@ -144,6 +144,9 @@ rustkmer query genome.rkdb --sequence queries.fa -o results.txt
 # 数据库信息
 rustkmer info genome.rkdb
 
+# 合并数据库
+rustkmer merge -i genome1.rkdb genome2.rkdb -o merged.rkdb
+
 ```
 
 ### 🆕 大k-mer支持 (k > 32)
@@ -315,6 +318,39 @@ rustkmer info <DATABASE>
 rustkmer dump [OPTIONS] <DATABASE>
 ```
 
+#### `merge` - 数据库合并
+
+```bash
+rustkmer merge -i <DB1> <DB2> [...] -o <OUTPUT> [OPTIONS]
+```
+
+**核心参数**:
+- `-i, --input <FILES>`: 输入数据库文件 (至少2个)
+- `-o, --output <FILE>`: 输出合并数据库文件 (必须)
+- `-t, --threads <THREADS>`: 合并线程数 (默认: 自动检测)
+- `--check-compatibility`: 仅检查兼容性，不执行合并
+- `--temp-dir <DIR>`: 临时文件目录 (默认: 系统临时目录)
+
+**兼容性要求**:
+- 所有数据库必须具有相同的k-mer大小
+- 所有数据库必须具有相同的canonical模式
+- 不支持强制合并不兼容的数据库
+
+**使用示例**:
+```bash
+# 基本合并
+rustkmer merge -i db1.rkdb db2.rkdb -o merged.rkdb
+
+# 多数据库合并
+rustkmer merge -i *.rkdb -o all_merged.rkdb
+
+# 检查兼容性
+rustkmer merge -i db1.rkdb db2.rkdb --check-compatibility --verbose
+
+# 详细输出合并
+rustkmer merge -i db1.rkdb db2.rkdb -o merged.rkdb --verbose
+```
+
 ### 性能优化指南
 
 #### 🏆 最佳性能配置
@@ -445,6 +481,9 @@ rustkmer query genome_k21.rkdb --sequence research_queries.fa -o results.txt
 # 3. 结果统计分析
 awk '$2 > 0' results.txt | wc -l  # 非零计数
 sort -k2,2nr results.txt | head -10  # 最丰富k-mers
+
+# 4. 合并多个数据库
+rustkmer merge -i genome_k21_part1.rkdb genome_k21_part2.rkdb -o genome_k21_merged.rkdb
 ```
 
 ## 🧪 测试和验证
@@ -630,6 +669,7 @@ rustkmer/
 ✅ **已完成功能**:
 - 高性能k-mer计数
 - 批量k-mer查询
+- 数据库合并功能
 - 排序数据库优化
 - Python API集成
 - 完整的性能测试验证

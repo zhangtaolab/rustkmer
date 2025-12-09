@@ -349,7 +349,7 @@ impl SimpleKmerCounter {
         let mut entries: Vec<KmerEntry> = counts.iter()
             .filter_map(|(kmer, count)| {
                 match encode_kmer(kmer) {
-                    Ok(encoded) => Some(KmerEntry::new(encoded, *count as u32)),
+                    Ok(encoded) => Some(KmerEntry::new(encoded.into(), *count as u32)),
                     Err(_) => None, // Skip invalid k-mers
                 }
             })

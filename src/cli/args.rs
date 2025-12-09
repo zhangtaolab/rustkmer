@@ -264,13 +264,14 @@ pub enum Commands {
         #[arg(short = 'q', long, help = "Suppress non-error output")]
         quiet: bool,
 
-        /// Force merge even if databases have incompatible settings
-        #[arg(long, help = "Force merge even if databases have incompatible settings (not recommended)")]
-        force: bool,
-
+        
         /// Keep intermediate files (for debugging)
         #[arg(long, help = "Keep intermediate files (for debugging)")]
         keep_intermediate: bool,
+
+        /// Check compatibility of databases without merging
+        #[arg(long, help = "Check compatibility of databases without performing the merge")]
+        check_compatibility: bool,
     }
 }
 
