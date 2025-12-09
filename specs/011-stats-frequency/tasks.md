@@ -17,9 +17,9 @@ description: "Task list for implementing stats command with k-mer count frequenc
 
 **Purpose**: Initialize project and add dependencies
 
-- [ ] T001 Add tdigest dependency to Cargo.toml for streaming quantile estimation
-- [ ] T002 [P] Create stats module structure in src/database/stats.rs
-- [ ] T003 [P] Create command module placeholder in src/cli/commands/stats.rs
+- [x] T001 Add tdigest dependency to Cargo.toml for streaming quantile estimation
+- [x] T002 [P] Create stats module structure in src/database/stats.rs
+- [x] T003 [P] Create command module placeholder in src/cli/commands/stats.rs
 
 ---
 
@@ -27,11 +27,11 @@ description: "Task list for implementing stats command with k-mer count frequenc
 
 **Purpose**: Implement core data structures and error handling that all user stories depend on
 
-- [ ] T004 Implement DatabaseStatistics struct with serde serialization in src/database/stats.rs
-- [ ] T005 Implement StatsConfiguration struct for command options in src/database/stats.rs
-- [ ] T006 [P] Implement StreamingStatsProcessor for memory-efficient calculation in src/database/stats.rs
-- [ ] T007 [P] Define StatsError enum with thiserror in src/database/stats.rs
-- [ ] T008 [P] Implement OutputFormat enum and formatters in src/database/stats.rs
+- [x] T004 Implement DatabaseStatistics struct with serde serialization in src/database/stats.rs
+- [x] T005 Implement StatsConfiguration struct for command options in src/database/stats.rs
+- [x] T006 [P] Implement StreamingStatsProcessor for memory-efficient calculation in src/database/stats.rs
+- [x] T007 [P] Define StatsError enum with thiserror in src/database/stats.rs
+- [x] T008 [P] Implement OutputFormat enum and formatters in src/database/stats.rs
 
 ---
 
@@ -43,20 +43,20 @@ description: "Task list for implementing stats command with k-mer count frequenc
 
 ### Implementation Tasks
 
-- [ ] T009 Add Stats command variant to CLI Commands enum in src/cli/args.rs
-- [ ] T010 Implement stats argument parsing with clap in src/cli/args.rs
-- [ ] T011 [P] Implement basic statistics calculation (total, unique, min, max, mean) in StreamingStatsProcessor
-- [ ] T012 [P] Implement TDigest integration for approximate median calculation
-- [ ] T013 [P] Implement memory-mapped database reading for stats in src/database/stats.rs
-- [ ] T014 [P] Implement text output formatter for human-readable statistics
-- [ ] T015 Implement stats command handler in src/cli/commands/stats.rs
-- [ ] T016 Wire stats command into main.rs command routing
+- [x] T009 Add Stats command variant to CLI Commands enum in src/cli/args.rs
+- [x] T010 Implement stats argument parsing with clap in src/cli/args.rs
+- [x] T011 [P] Implement basic statistics calculation (total, unique, min, max, mean) in StreamingStatsProcessor
+- [x] T012 [P] Implement TDigest integration for approximate median calculation
+- [x] T013 [P] Implement memory-mapped database reading for stats in src/database/stats.rs
+- [x] T014 [P] Implement text output formatter for human-readable statistics
+- [x] T015 Implement stats command handler in src/cli/commands/stats.rs
+- [x] T016 Wire stats command into main.rs command routing
 
 ### Tests for User Story 1
 
-- [ ] T017 [P] Create unit test for statistics calculation accuracy in tests/unit/stats_tests.rs
-- [ ] T018 [P] Create integration test for basic stats command in tests/integration/stats_integration.rs
-- [ ] T019 Create property-based test for statistical invariants in tests/property/stats_properties.rs
+- [x] T017 [P] Create unit test for statistics calculation accuracy in tests/unit/stats_tests.rs
+- [x] T018 [P] Create integration test for basic stats command in tests/integration/stats_integration.rs
+- [x] T019 Create property-based test for statistical invariants in tests/property/stats_properties.rs
 
 ---
 
@@ -68,18 +68,18 @@ description: "Task list for implementing stats command with k-mer count frequenc
 
 ### Implementation Tasks
 
-- [ ] T020 [P] Implement frequency histogram with configurable bin limits in StreamingStatsProcessor
-- [ ] T021 [P] Implement zero-filling for complete frequency distribution range
-- [ ] T022 [P] Add --detailed flag to CLI arguments for frequency distribution
-- [ ] T023 [P] Implement --max-bins parameter for configurable histogram limits
-- [ ] T024 [P] Extend output formatters to include frequency distribution
-- [ ] T025 [P] Optimize frequency distribution memory usage for large ranges
+- [x] T020 [P] Implement frequency histogram with configurable bin limits in StreamingStatsProcessor
+- [x] T021 [P] Implement zero-filling for complete frequency distribution range
+- [x] T022 [P] Add --detailed flag to CLI arguments for frequency distribution
+- [x] T023 [P] Implement --max-bins parameter for configurable histogram limits
+- [x] T024 [P] Extend output formatters to include frequency distribution
+- [x] T025 [P] Optimize frequency distribution memory usage for large ranges
 
 ### Tests for User Story 2
 
-- [ ] T026 [P] Create unit test for frequency distribution accuracy in tests/unit/stats_tests.rs
-- [ ] T027 [P] Create integration test for detailed frequency distribution in tests/integration/stats_integration.rs
-- [ ] T028 [P] Create test for zero-filling frequency gaps in tests/property/stats_properties.rs
+- [x] T026 [P] Create unit test for frequency distribution accuracy in tests/unit/stats_tests.rs
+- [x] T027 [P] Create integration test for detailed frequency distribution in tests/integration/stats_integration.rs
+- [x] T028 [P] Create test for zero-filling frequency gaps in tests/property/stats_properties.rs
 
 ---
 
@@ -91,17 +91,17 @@ description: "Task list for implementing stats command with k-mer count frequenc
 
 ### Implementation Tasks
 
-- [ ] T029 [P] Implement file existence validation in stats command handler
-- [ ] T030 [P] Implement RKDB format validation before processing
-- [ ] T031 [P] Implement empty database detection and error handling
-- [ ] T032 [P] Implement memory limit checking with helpful error messages
-- [ ] T033 [P] Add error context and suggestions to all error messages
-- [ ] T034 Implement proper exit codes for different error types
+- [x] T029 [P] Implement file existence validation in stats command handler
+- [x] T030 [P] Implement RKDB format validation before processing
+- [x] T031 [P] Implement empty database detection and error handling
+- [x] T032 [P] Implement memory limit checking with helpful error messages
+- [x] T033 [P] Add error context and suggestions to all error messages
+- [x] T034 Implement proper exit codes for different error types
 
 ### Tests for User Story 3
 
-- [ ] T035 [P] Create unit test for error handling scenarios in tests/unit/stats_tests.rs
-- [ ] T036 [P] Create integration test for error messages in tests/integration/stats_integration.rs
+- [x] T035 [P] Create unit test for error handling scenarios in tests/unit/stats_tests.rs
+- [x] T036 [P] Create integration test for error messages in tests/integration/stats_integration.rs
 
 ---
 
@@ -111,31 +111,31 @@ description: "Task list for implementing stats command with k-mer count frequenc
 
 ### Output Format Support
 
-- [ ] T037 [P] Implement JSON output formatter with serde serialization
-- [ ] T038 [P] Implement CSV output formatter for spreadsheet analysis
-- [ ] T039 [P] Implement TSV output formatter for tab-separated values
-- [ ] T040 Add --format argument validation to CLI
+- [x] T037 [P] Implement JSON output formatter with serde serialization
+- [x] T038 [P] Implement CSV output formatter for spreadsheet analysis
+- [x] T039 [P] Implement TSV output formatter for tab-separated values
+- [x] T040 Add --format argument validation to CLI
 
 ### Performance & UX Features
 
-- [ ] T041 [P] Implement progress bar with indicatif for large databases
-- [ ] T042 [P] Add --progress flag to CLI arguments
-- [ ] T043 [P] Add --approximate flag for faster median calculation
+- [x] T041 [P] Implement progress bar with indicatif for large databases
+- [x] T042 [P] Add --progress flag to CLI arguments
+- [x] T043 [P] Add --approximate flag for faster median calculation
 - [ ] T044 [P] Implement parallel processing with rayon for CPU-bound operations
-- [ ] T045 [P] Add processing time and memory usage tracking
+- [x] T045 [P] Add processing time and memory usage tracking
 
 ### Documentation & Integration
 
-- [ ] T046 [P] Update CLI help text and man pages
+- [x] T046 [P] Update CLI help text and man pages
 - [ ] T047 [P] Add stats command examples to README.md
-- [ ] T048 Update src/database/mod.rs to export stats module
-- [ ] T049 Update src/cli/commands/mod.rs to export stats command
+- [x] T048 Update src/database/mod.rs to export stats module
+- [x] T049 Update src/cli/commands/mod.rs to export stats command
 
 ### Final Tests
 
 - [ ] T050 Create performance benchmark test in tests/bench/stats_bench.rs
-- [ ] T051 [P] Create end-to-end test with real genomic database
-- [ ] T052 Run clippy with zero warnings policy
+- [x] T051 [P] Create end-to-end test with real genomic database
+- [x] T052 Run clippy with zero warnings policy
 - [ ] T053 Verify test coverage meets 90%+ requirement for critical paths
 
 ---
