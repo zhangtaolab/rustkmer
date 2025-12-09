@@ -7,4 +7,5 @@ pub mod query;
 pub mod dump;
 pub mod fuzzy;
 pub mod merge;
+pub mod stats;
 pub mod args;

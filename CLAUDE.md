@@ -41,8 +41,8 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 Rust 1.80+ stable channel (latest stable for performance optimizations): Follow standard conventions
 
 ## Recent Changes
+- 011-stats-frequency: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 - 010-rkdb-merge: Added Rust 1.80+ stable channel
-- 010-rkdb-merge: Added Rust 1.80+ stable channel + clap v4.5 (CLI), serde 1.0 (serialization), rayon 1.10 (parallel processing), memmap2 0.9 (memory mapping)
 - 010-rkdb-merge: Added Rust 1.80+ stable channel + clap v4.5 (CLI), serde 1.0 (serialization), rayon 1.10 (parallel processing), memmap2 0.9 (memory mapping)
 
 

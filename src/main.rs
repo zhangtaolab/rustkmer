@@ -30,10 +30,8 @@ fn main() -> anyhow::Result<()> {
         rustkmer::cli::args::Commands::Query { .. } => {
             rustkmer::cli::commands::query::execute_query(&args)?;
         }
-        rustkmer::cli::args::Commands::Stats { database } => {
-            eprintln!("Stats command not yet implemented");
-            eprintln!("Database: {}", database);
-            std::process::exit(1);
+        rustkmer::cli::args::Commands::Stats { .. } => {
+            rustkmer::cli::commands::stats::execute_stats(&args)?;
         }
         rustkmer::cli::args::Commands::Dump { .. } => {
             rustkmer::cli::commands::dump::execute_dump(&args)?;

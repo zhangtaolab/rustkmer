@@ -45,6 +45,9 @@ smallvec = "1.13"
 hashbrown = "0.14"
 ahash = "0.8"
 
+# Streaming quantile estimation
+tdigest = "0.2"
+
 # Property-based testing
 proptest = "1.5"
 

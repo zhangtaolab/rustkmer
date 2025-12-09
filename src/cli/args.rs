@@ -126,12 +126,7 @@ pub enum Commands {
         no_load: bool,
     },
 
-    /// Generate statistics about k-mer database
-    Stats {
-        /// Database file
-        database: String,
-    },
-
+    
     /// Dump k-mer database to text format
     Dump {
         /// Database file
@@ -272,6 +267,36 @@ pub enum Commands {
         /// Check compatibility of databases without merging
         #[arg(long, help = "Check compatibility of databases without performing the merge")]
         check_compatibility: bool,
+    },
+
+    /// Calculate statistics for a k-mer database
+    Stats {
+        /// Database file
+        database: String,
+
+        /// Output format (text, json, csv, tsv)
+        #[arg(short = 'f', long, default_value = "text", value_parser = ["text", "json", "csv", "tsv"])]
+        format: String,
+
+        /// Output file (stdout if not specified)
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// Include detailed frequency distribution
+        #[arg(long)]
+        detailed: bool,
+
+        /// Maximum bins for frequency distribution
+        #[arg(long, default_value = "1000")]
+        max_bins: usize,
+
+        /// Use approximate median (faster, less memory)
+        #[arg(long)]
+        approximate: bool,
+
+        /// Enable progress reporting for large databases
+        #[arg(short, long)]
+        progress: bool,
     }
 }
 
