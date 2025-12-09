@@ -568,14 +568,14 @@ impl RKDatabase {
         input_paths: &[std::path::PathBuf],
         config: &crate::database::MergeConfig,
     ) -> crate::error::ProcessingResult<Self> {
-        use std::collections::HashMap;
+        // use std::collections::HashMap; // Unused import
         use hashbrown::HashMap as HashMapBrown;
         use hashbrown::hash_map::DefaultHashBuilder;
-        use ahash::AHasher;
+        // use ahash::AHasher; // Unused import
         use std::time::Instant;
         use indicatif::{ProgressBar, ProgressStyle};
 
-        let start_time = Instant::now();
+        let _start_time = Instant::now();
 
         if input_paths.is_empty() {
             return Err(crate::error::ProcessingError::new(
@@ -587,10 +587,13 @@ impl RKDatabase {
         type KmerMap = HashMapBrown<u128, u32, DefaultHashBuilder>;
         let mut all_kmers: KmerMap = KmerMap::default();
 
+        // Variables are assigned now and used later - suppress false positive warnings
+        #[allow(unused_assignments)]
         let mut kmer_size = None;
+        #[allow(unused_assignments)]
         let mut canonical = None;
         let mut sorted = true;
-        let mut total_input_kmers = 0u64;
+        let mut _total_input_kmers = 0u64;
 
         // Create progress bar for loading databases
         let progress = if config.verbose && input_paths.len() > 1 {
@@ -638,7 +641,7 @@ impl RKDatabase {
                         u32::MAX
                     }
                 };
-                total_input_kmers += count as u64;
+                _total_input_kmers += count as u64;
             }
 
             sorted = sorted && db.header().sorted;

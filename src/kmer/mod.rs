@@ -1,7 +1,10 @@
 //! K-mer representation and operations
 //!
 //! Provides efficient k-mer encoding, decoding, and manipulation functions
-//! for genomic sequence analysis. Supports both u64 (k≤32) and u128 (k≤64) encodings.
+//! for genomic sequence analysis.
+//!
+//! NOTE: Python bindings (FR-005) use u128-only encoding for all k-mers (1-64).
+//! Legacy u64 encoding functions are kept for backward compatibility with existing CLI tools.
 
 pub mod canonical;
 pub mod encoding;

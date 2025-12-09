@@ -8,7 +8,7 @@ use std::fs::File;
 use std::cmp::Ordering;
 
 use crate::error::{KmerError, ProcessingResult};
-use crate::kmer::encoding::{encode_kmer_bytes_u128, reverse_complement_u128};
+use crate::kmer::encoding::encode_kmer_bytes_u128;
 use crate::kmer::canonical::{canonical_kmer_u128};
 use super::format::{DatabaseHeader, KmerEntry, RKDatabase};
 

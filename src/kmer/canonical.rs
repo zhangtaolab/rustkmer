@@ -3,7 +3,7 @@
 //! Implements canonical k-mer representation (forward/reverse complement lexicographically smaller).
 
 use crate::error::ProcessingResult;
-use crate::kmer::encoding::{decode_kmer, reverse_complement, reverse_complement_u128};
+use crate::kmer::encoding::{decode_kmer, reverse_complement_u128};
 use crate::kmer::operations::reverse_complement_bits;
 
 /// Get the canonical representation of a k-mer

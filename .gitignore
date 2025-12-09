@@ -91,7 +91,22 @@ python/rustkmer/*.cpython-*.so
 #
 .claude/
 .serena/
+.spekrit/
 .specify/
+
+# Documentation build
+site/
+docs/venv/
+docs/_build/
+
+# Temporary scripts
+check_rustkmer_methods.py
+fix_warnings.py
+IMPLEMENTATION_STATUS.md
+
+# Large test data
+tests/python/fixtures/large_scale/sequence_xlarge.fa
+tests/python/fixtures/large_scale/rnaseq_reads.fq.gz
 
 # IDE files
 .vscode/

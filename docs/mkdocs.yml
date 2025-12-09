@@ -1,0 +1,190 @@
+site_name: RustKmer Python API Documentation
+site_description: High-performance k-mer analysis library for Python
+repo_name: rustkmer/rustkmer
+repo_url: https://github.com/rustkmer/rustkmer
+edit_uri: edit/main/docs/
+
+# Copyright
+copyright: Copyright &copy; 2025 RustKmer Team
+
+# Configuration
+theme:
+  name: material
+  language: en
+  palette:
+    # Light mode
+    - scheme: default
+      primary: blue
+      accent: orange
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    # Dark mode
+    - scheme: slate
+      primary: blue
+      accent: orange
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+  logo: assets/logo.png
+  favicon: assets/favicon.png
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - search.highlight
+    - search.share
+    - search.suggest
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - toc.follow
+
+# Plugins
+plugins:
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [python]
+          options:
+            # Core options
+            docstring_style: google
+            show_source: true
+            show_signature: true
+            show_signature_annotations: true
+            separate_signature: false
+
+            # Organization
+            group_by_category: true
+            members_order: alphabetical
+            show_root_heading: true
+            show_root_toc_entry: true
+
+            # Content filtering
+            filters: ["!^_"]
+            show_if_no_docstring: false
+
+            # Advanced features
+            show_inheritance_diagram: true
+            backlinks: true
+            merge_init_into_class: true
+
+            # Summary options
+            summary:
+              attributes: true
+              functions: true
+              classes: true
+              modules: true
+
+          # Cross-references to standard library
+          inventories:
+            - url: https://docs.python.org/3/objects.inv
+              base_url: https://docs.python.org/3/
+            - url: https://numpy.org/doc/stable/objects.inv
+              base_url: https://numpy.org/doc/stable/
+
+  - search:
+      lang: en
+
+# Markdown extensions
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+# Navigation
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - User Guide:
+      - Quick Start: user-guide/quickstart.md
+      - Concepts: user-guide/concepts.md
+      - Examples: user-guide/examples.md
+      - Tutorials:
+          - Basic Workflow: user-guide/tutorials/basic-workflow.md
+          - Large Datasets: user-guide/tutorials/large-datasets.md
+          - Performance: user-guide/tutorials/performance.md
+          - Integration: user-guide/tutorials/integration.md
+  - API Reference:
+      - Overview: api-reference/overview.md
+      - KmerCounter: api-reference/kmercounter.md
+      - Database: api-reference/database.md
+      - FuzzyQuery: api-reference/fuzzyquery.md
+      - Exceptions: api-reference/exceptions.md
+  - Examples:
+      - Basic Usage: examples/basic-usage.md
+      - Database Operations: examples/database-ops.md
+      - Fuzzy Search: examples/fuzzy-search.md
+      - Batch Processing: examples/batch-processing.md
+      - Merging Databases: examples/merging.md
+      - Statistics: examples/statistics.md
+      - Data Export: examples/data-export.md
+      - Advanced Features: examples/advanced.md
+  - Developer Guide:
+      - Contributing: dev-guide/contributing.md
+      - Architecture: dev-guide/architecture.md
+
+# Customization
+extra:
+  # Social links
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/rustkmer
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/rustkmer
+
+  # Version selector
+  version:
+    provider: mike
+
+  # Alternate languages
+  alternate:
+    - name: English
+      link: /
+      lang: en
+    - name: 中文
+      link: /zh/
+      lang: zh
+
+# Extra CSS/JS
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/extra.js
+
+# Development server (for local testing)
+dev_addr: 0.0.0.0:8000
+
+# Directory where documentation markdown files are located
+docs_dir: .
+
+# Directory where the output site will be built
+site_dir: ../site
+
+# Requirements for documentation
+# Install with: pip install -r docs/requirements.txt

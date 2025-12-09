@@ -1,7 +1,7 @@
 # RustKmer
 
 [![Rust](https://img.shields.io/badge/rust-1.80+-orange.svg)](https://www.rust-lang.org)
-[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://rustkmer.github.io)
 
@@ -64,11 +64,17 @@ rustkmer fuzzy-query -d genome_k21.rkdb -q "AATN" -m 1
 
 ## 📖 Documentation
 
-- **[Getting Started](getting-started/)** - Installation and first steps
-- **[User Guide](user-guide/)** - Comprehensive usage guide
-- **[API Reference](api-reference/)** - Rust and Python API documentation
-- **[Tutorials](tutorials/)** - Step-by-step tutorials and examples
-- **[Performance Guide](user-guide/performance-tips.md)** - Optimization tips and best practices
+- **[Installation](installation.md)** - Installation guide for Python API
+- **[User Guide](user-guide/)** - Comprehensive Python API guide
+  - [Quick Start](user-guide/quickstart.md) - Get started in 5 minutes
+  - [Examples](user-guide/examples.md) - Practical code examples
+  - [Tutorials](user-guide/tutorials/) - Step-by-step tutorials
+- **[API Reference](api-reference/)** - Complete Python API documentation
+  - [KmerCounter](api-reference/kmercounter.md) - k-mer counting
+  - [Database](api-reference/database.md) - Database operations
+  - [FuzzyQuery](api-reference/fuzzyquery.md) - Fuzzy searching
+- **[Examples](examples/)** - Real-world code examples
+- **[Developer Guide](dev-guide/)** - Contributing and architecture
 
 ## 🏆 Performance
 
