@@ -62,6 +62,22 @@ As a user, I want clear error messages when trying to get stats from invalid or 
 
 ---
 
+### User Story 4 - Split Output Files (Priority: P2)
+
+As a bioinformatics analyst, I want to save basic statistics and frequency distribution to separate files, so that I can integrate the stats output into different parts of my analysis workflow more efficiently.
+
+**Why this priority**: Split output enables better workflow integration, allowing users to pipe basic statistics to one process and frequency distribution to another, improving productivity.
+
+**Independent Test**: Can be tested by running stats with split output options and verifying both files are created with correct content and format.
+
+**Acceptance Scenarios**:
+
+1. **Given** a database with frequency distribution, **When** I run `rustkmer stats --split-output --freq-output freq.tsv database.rkdb`, **Then** basic statistics are saved to one file and frequency distribution to another
+2. **Given** I specify CSV format with split output, **When** I run stats, **Then** both files are in CSV format with appropriate headers
+3. **Given** I only specify --split-output without --freq-output, **When** I run stats, **Then** the system provides an error asking for the frequency output path
+
+---
+
 ### Edge Cases
 
 - Empty database: System returns error message indicating database is empty and cannot generate statistics
@@ -69,6 +85,7 @@ As a user, I want clear error messages when trying to get stats from invalid or 
 - Large frequency distributions: System always displays complete distribution from 1 to max count regardless of size
 - Non-existent files: Clear error message indicating file not found
 - Invalid file formats: Clear error message indicating incompatible or corrupted RKDB format
+- Split output without freq-output path: System provides clear error message asking for the missing path
 
 ## Requirements *(mandatory)*
 
@@ -85,6 +102,11 @@ As a user, I want clear error messages when trying to get stats from invalid or 
 - **FR-009**: System MUST return error message for empty databases (no k-mers present)
 - **FR-010**: System MUST validate database format and compatibility before processing
 - **FR-011**: System MUST handle u128 count values without overflow or precision loss
+- **FR-012**: System MUST support --split-output flag to enable splitting basic statistics and frequency distribution into separate files
+- **FR-013**: System MUST support --freq-output argument to specify output path for frequency distribution when split-output is enabled
+- **FR-014**: System MUST require --freq-output when --split-output is specified and provide clear error if missing
+- **FR-015**: System MUST maintain the same output format (text, json, csv, tsv) for both split files as specified by --format
+- **FR-016**: System MUST include appropriate headers in frequency distribution files when using CSV/TSV formats
 
 ### Key Entities *(include if feature involves data)*
 
@@ -101,3 +123,6 @@ As a user, I want clear error messages when trying to get stats from invalid or 
 - **SC-003**: Frequency distribution correctly displays all counts from 1 to maximum count with proper zero-filling
 - **SC-004**: Command handles databases with up to 1 billion unique k-mers without memory issues
 - **SC-005**: Error messages are clear and actionable for all invalid input scenarios
+- **SC-006**: Users can successfully split output into separate files with --split-output and --freq-output flags
+- **SC-007**: Split output maintains format consistency across both files (same format as specified by --format)
+- **SC-008**: Frequency distribution files include proper headers and formatting for CSV/TSV outputs

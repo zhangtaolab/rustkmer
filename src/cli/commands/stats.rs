@@ -19,6 +19,8 @@ pub fn execute_stats(args: &Args) -> anyhow::Result<()> {
         max_bins,
         approximate,
         progress,
+        split_output,
+        freq_output,
     } = &args.command
     {
         // Parse output format
@@ -38,6 +40,8 @@ pub fn execute_stats(args: &Args) -> anyhow::Result<()> {
             approximate: *approximate,
             show_progress: *progress,
             output_path: output.as_ref().map(PathBuf::from),
+            split_output: *split_output,
+            freq_output_path: freq_output.as_ref().map(PathBuf::from),
         };
 
         // Execute statistics calculation
@@ -148,20 +152,60 @@ fn output_results(
 ) -> Result<()> {
     use crate::database::stats::OutputFormat;
 
-    let writer: Box<dyn std::io::Write> = match &config.output_path {
-        Some(path) => {
-            let file = std::fs::File::create(path)?;
-            Box::new(std::io::BufWriter::new(file))
-        }
-        None => Box::new(std::io::stdout()),
-    };
+    if config.split_output {
+        // Validate that freq_output_path is provided when split_output is true
+        let freq_path = config.freq_output_path.as_ref().ok_or_else(|| {
+            StatsError::InvalidFormat {
+                reason: "Frequency output path is required when using split output".to_string(),
+            }
+        })?;
 
-    match config.output_format {
-        OutputFormat::Text => output_text(writer, stats),
-        OutputFormat::Json => output_json(writer, stats),
-        OutputFormat::Csv => output_csv(writer, stats),
-        OutputFormat::Tsv => output_tsv(writer, stats),
+        // Output basic statistics
+        let writer: Box<dyn std::io::Write> = match &config.output_path {
+            Some(path) => {
+                let file = std::fs::File::create(path)?;
+                Box::new(std::io::BufWriter::new(file))
+            }
+            None => Box::new(std::io::stdout()),
+        };
+
+        // Create a modified stats object without frequency distribution for basic stats
+        let mut basic_stats = stats.clone();
+        basic_stats.frequency_distribution = None;
+
+        match config.output_format {
+            OutputFormat::Text => output_text(writer, &basic_stats),
+            OutputFormat::Json => output_json(writer, &basic_stats),
+            OutputFormat::Csv => output_csv(writer, &basic_stats),
+            OutputFormat::Tsv => output_tsv(writer, &basic_stats),
+        }?;
+
+        // Output frequency distribution separately
+        let freq_writer: Box<dyn std::io::Write> = {
+            let file = std::fs::File::create(freq_path)?;
+            Box::new(std::io::BufWriter::new(file))
+        };
+
+        output_frequency_distribution(freq_writer, stats, config)?;
+    } else {
+        // Original behavior: single file output
+        let writer: Box<dyn std::io::Write> = match &config.output_path {
+            Some(path) => {
+                let file = std::fs::File::create(path)?;
+                Box::new(std::io::BufWriter::new(file))
+            }
+            None => Box::new(std::io::stdout()),
+        };
+
+        match config.output_format {
+            OutputFormat::Text => output_text(writer, stats)?,
+            OutputFormat::Json => output_json(writer, stats)?,
+            OutputFormat::Csv => output_csv(writer, stats)?,
+            OutputFormat::Tsv => output_tsv(writer, stats)?,
+        }
     }
+
+    Ok(())
 }
 
 /// Output statistics in human-readable text format
@@ -210,7 +254,44 @@ fn output_csv<W: std::io::Write>(
     stats: &crate::database::stats::DatabaseStatistics,
 ) -> Result<()> {
     let mut wtr = csv::Writer::from_writer(&mut writer);
-    wtr.serialize(stats)?;
+
+    // Write header
+    wtr.write_record(&[
+        "database_file",
+        "kmer_size",
+        "canonical",
+        "sorted",
+        "total_kmers",
+        "unique_kmers",
+        "min_count",
+        "max_count",
+        "mean_count",
+        "median_count",
+        "processing_time_ms",
+        "memory_peak_bytes",
+        "frequency_distribution_available",
+    ])?;
+
+    // Write data record
+    wtr.write_record(&[
+        stats.database_file.to_string_lossy().as_ref(),
+        &stats.kmer_size.to_string(),
+        &stats.canonical.to_string(),
+        &stats.sorted.to_string(),
+        &stats.total_kmers.to_string(),
+        &stats.unique_kmers.to_string(),
+        &stats.min_count.to_string(),
+        &stats.max_count.to_string(),
+        &stats.mean_count.to_string(),
+        &stats.median_count.to_string(),
+        &stats.processing_time.as_millis().to_string(),
+        &stats.memory_peak_bytes.to_string(),
+        if stats.frequency_distribution.is_some() { "true" } else { "false" },
+    ])?;
+
+    // Note: Frequency distribution is too large for standard CSV format
+    // It's available in JSON format or through the text output
+
     wtr.flush()?;
     Ok(())
 }
@@ -223,7 +304,130 @@ fn output_tsv<W: std::io::Write>(
     let mut wtr = csv::WriterBuilder::new()
         .delimiter(b'\t')
         .from_writer(&mut writer);
-    wtr.serialize(stats)?;
+
+    // Write header
+    wtr.write_record(&[
+        "database_file",
+        "kmer_size",
+        "canonical",
+        "sorted",
+        "total_kmers",
+        "unique_kmers",
+        "min_count",
+        "max_count",
+        "mean_count",
+        "median_count",
+        "processing_time_ms",
+        "memory_peak_bytes",
+        "frequency_distribution_available",
+    ])?;
+
+    // Write data record
+    wtr.write_record(&[
+        stats.database_file.to_string_lossy().as_ref(),
+        &stats.kmer_size.to_string(),
+        &stats.canonical.to_string(),
+        &stats.sorted.to_string(),
+        &stats.total_kmers.to_string(),
+        &stats.unique_kmers.to_string(),
+        &stats.min_count.to_string(),
+        &stats.max_count.to_string(),
+        &stats.mean_count.to_string(),
+        &stats.median_count.to_string(),
+        &stats.processing_time.as_millis().to_string(),
+        &stats.memory_peak_bytes.to_string(),
+        if stats.frequency_distribution.is_some() { "true" } else { "false" },
+    ])?;
+
+    // Note: Frequency distribution is too large for standard TSV format
+    // It's available in JSON format or through the text output
+    if stats.frequency_distribution.is_some() {
+        wtr.write_record(&[
+            "frequency_distribution_available",
+            "true",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ])?;
+    }
+
     wtr.flush()?;
+    Ok(())
+}
+/// Output frequency distribution to a separate file
+fn output_frequency_distribution<W: std::io::Write>(
+    mut writer: W,
+    stats: &crate::database::stats::DatabaseStatistics,
+    config: &StatsConfiguration,
+) -> Result<()> {
+    use crate::database::stats::OutputFormat;
+
+    if let Some(ref dist) = stats.frequency_distribution {
+        match config.output_format {
+            OutputFormat::Text => {
+                writeln!(writer, "Frequency Distribution")?;
+                writeln!(writer, "====================")?;
+                writeln!(writer, "Database: {:?}", stats.database_file)?;
+                writeln!(writer, "K-mer size: {}", stats.kmer_size)?;
+                writeln!(writer, "Total k-mers: {}", stats.total_kmers)?;
+                writeln!(writer, "Unique k-mers: {}", stats.unique_kmers)?;
+                writeln!(writer, "")?;
+                writeln!(writer, "Count	Frequency")?;
+                for (count, freq) in dist {
+                    writeln!(writer, "{}	{}", count, freq)?;
+                }
+            }
+            OutputFormat::Json => {
+                // Create a JSON object with just the frequency distribution
+                let freq_json = serde_json::json!({
+                    "database_file": stats.database_file,
+                    "kmer_size": stats.kmer_size,
+                    "frequency_distribution": dist
+                });
+                serde_json::to_writer(&mut writer, &freq_json)?;
+            }
+            OutputFormat::Csv => {
+                let mut wtr = csv::Writer::from_writer(&mut writer);
+
+                // Write header
+                wtr.write_record(&["Count", "Frequency"])?;
+
+                // Write data
+                for (count, freq) in dist {
+                    wtr.write_record(&[&count.to_string(), &freq.to_string()])?;
+                }
+
+                wtr.flush()?;
+            }
+            OutputFormat::Tsv => {
+                let mut wtr = csv::WriterBuilder::new()
+                    .delimiter(b'\t')
+                    .from_writer(&mut writer);
+
+                // Write header
+                wtr.write_record(&["Count", "Frequency"])?;
+
+                // Write data
+                for (count, freq) in dist {
+                    wtr.write_record(&[&count.to_string(), &freq.to_string()])?;
+                }
+
+                wtr.flush()?;
+            }
+        }
+    } else {
+        return Err(StatsError::InvalidFormat {
+            reason: "No frequency distribution data available".to_string(),
+        });
+    }
+
     Ok(())
 }

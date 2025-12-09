@@ -11,7 +11,7 @@ description: "Task list for implementing stats command with k-mer count frequenc
 ## Format: `[ID] [P?] [Story?] Description with file path`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
-- **[Story]**: Which user story this task belongs to (US1, US2, US3 from spec.md)
+- **[Story]**: Which user story this task belongs to (US1, US2, US3, US4 from spec.md)
 
 ## Phase 1: Setup Tasks
 
@@ -105,7 +105,31 @@ description: "Task list for implementing stats command with k-mer count frequenc
 
 ---
 
-## Phase 6: Polish & Cross-Cutting Concerns
+## Phase 6: User Story 4 - Split Output Files (P2)
+
+**Goal**: Allow users to save basic statistics and frequency distribution to separate files for better workflow integration
+
+**Independent Test**: Can be tested by running stats with split output options and verifying both files are created with correct content
+
+### Implementation Tasks
+
+- [x] T054 [P] Add --split-output flag to CLI arguments in src/cli/args.rs
+- [x] T055 [P] Add --freq-output argument for specifying frequency distribution file path in src/cli/args.rs
+- [x] T056 [P] Update StatsConfiguration struct to support split output in src/database/stats.rs
+- [x] T057 [P] Modify output_results function to handle split files in src/cli/commands/stats.rs
+- [x] T058 [P] Implement separate frequency distribution formatters for CSV/TSV in src/cli/commands/stats.rs
+- [x] T059 [P] Add frequency distribution header to text output when split is enabled in src/cli/commands/stats.rs
+- [x] T060 [P] Update file output validation to handle multiple output paths in src/cli/commands/stats.rs
+
+### Tests for User Story 4
+
+- [ ] T061 [P] Create unit test for split output file creation in tests/unit/stats_tests.rs
+- [ ] T062 [P] Create integration test for split output with different formats in tests/integration/stats_integration.rs
+- [ ] T063 [P] Create test for error handling when only one output path is provided in tests/unit/stats_tests.rs
+
+---
+
+## Phase 7: Polish & Cross-Cutting Concerns
 
 **Purpose**: Complete implementation with additional output formats and optimizations
 
@@ -115,6 +139,7 @@ description: "Task list for implementing stats command with k-mer count frequenc
 - [x] T038 [P] Implement CSV output formatter for spreadsheet analysis
 - [x] T039 [P] Implement TSV output formatter for tab-separated values
 - [x] T040 Add --format argument validation to CLI
+- [ ] T064 [P] Update CSV/TSV formatters to support frequency distribution-only mode
 
 ### Performance & UX Features
 
@@ -123,6 +148,7 @@ description: "Task list for implementing stats command with k-mer count frequenc
 - [x] T043 [P] Add --approximate flag for faster median calculation
 - [ ] T044 [P] Implement parallel processing with rayon for CPU-bound operations
 - [x] T045 [P] Add processing time and memory usage tracking
+- [ ] T065 [P] Optimize frequency distribution writing for large datasets
 
 ### Documentation & Integration
 
@@ -130,6 +156,7 @@ description: "Task list for implementing stats command with k-mer count frequenc
 - [ ] T047 [P] Add stats command examples to README.md
 - [x] T048 Update src/database/mod.rs to export stats module
 - [x] T049 Update src/cli/commands/mod.rs to export stats command
+- [ ] T066 [P] Update CLI help to include new split output options with examples
 
 ### Final Tests
 
@@ -137,6 +164,7 @@ description: "Task list for implementing stats command with k-mer count frequenc
 - [x] T051 [P] Create end-to-end test with real genomic database
 - [x] T052 Run clippy with zero warnings policy
 - [ ] T053 Verify test coverage meets 90%+ requirement for critical paths
+- [ ] T067 Create performance test for large frequency distribution output in tests/bench/stats_bench.rs
 
 ---
 
@@ -149,7 +177,8 @@ description: "Task list for implementing stats command with k-mer count frequenc
 - **User Story 1 (Phase 3)**: Core statistics - prerequisite for other stories
 - **User Story 2 (Phase 4)**: Depends on User Story 1 completion
 - **User Story 3 (Phase 5)**: Can be developed in parallel with User Story 2
-- **Polish (Phase 6)**: Depends on all User Stories completion
+- **User Story 4 (Phase 6)**: Depends on User Story 2 completion
+- **Polish (Phase 7)**: Depends on all User Stories completion
 
 ### Parallel Opportunities
 
@@ -157,6 +186,7 @@ description: "Task list for implementing stats command with k-mer count frequenc
 - Unit tests [P] can run in parallel with implementation
 - Different output formatters [P] can be implemented in parallel
 - Error handling tasks [P] can be developed alongside main features
+- Split output tasks [P] can be developed in parallel with performance optimizations
 
 ### Critical Success Factors
 
@@ -165,6 +195,7 @@ description: "Task list for implementing stats command with k-mer count frequenc
 3. **Accuracy**: All statistics must be 100% accurate for test datasets
 4. **User Experience**: Clear error messages and helpful output formats
 5. **Code Quality**: Zero clippy warnings, comprehensive test coverage
+6. **File Management**: Clean separation of different output types when requested
 
 ### Implementation Strategy
 
@@ -178,7 +209,8 @@ description: "Task list for implementing stats command with k-mer count frequenc
 1. Release MVP with basic statistics
 2. Add frequency distribution (User Story 2)
 3. Add comprehensive error handling (User Story 3)
-4. Add multiple output formats and performance optimizations
+4. Add split output functionality (User Story 4)
+5. Add multiple output formats and performance optimizations
 
 ### Risk Mitigation
 
@@ -186,6 +218,7 @@ description: "Task list for implementing stats command with k-mer count frequenc
 - **Memory Limits**: Enforce configurable limits with clear error messages
 - **Performance Regression**: Include benchmarks in CI pipeline
 - **File Compatibility**: Validate database format before processing
+- **File Handling**: Ensure atomic file writes and proper cleanup on errors
 
 ### Expected Outcomes
 
@@ -193,3 +226,4 @@ description: "Task list for implementing stats command with k-mer count frequenc
 2. **Performance**: <5 seconds for 100M k-mers, <200MB memory usage
 3. **Quality**: 90%+ test coverage, zero warnings
 4. **Documentation**: Comprehensive examples and API docs
+5. **Workflow Integration**: Users can easily pipe basic stats to one process and frequency distribution to another

@@ -93,6 +93,12 @@ pub struct StatsConfiguration {
 
     /// Output file path (None for stdout)
     pub output_path: Option<PathBuf>,
+
+    /// Split output into separate files
+    pub split_output: bool,
+
+    /// Output file path for frequency distribution (when split_output is true)
+    pub freq_output_path: Option<PathBuf>,
 }
 
 /// Output format options

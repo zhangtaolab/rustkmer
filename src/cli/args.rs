@@ -297,6 +297,14 @@ pub enum Commands {
         /// Enable progress reporting for large databases
         #[arg(short, long)]
         progress: bool,
+
+        /// Split output to separate files (basic stats and frequency distribution)
+        #[arg(long)]
+        split_output: bool,
+
+        /// Output file for frequency distribution (required when --split-output is used)
+        #[arg(long, required_if_eq("split_output", "true"))]
+        freq_output: Option<String>,
     }
 }
 
