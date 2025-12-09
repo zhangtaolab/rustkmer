@@ -49,8 +49,28 @@ pub struct DatabaseStatistics {
     pub frequency_distribution: Option<Vec<(u32, u64)>>,
 
     /// Processing metadata
+    #[serde(serialize_with = "serialize_duration")]
+    #[serde(deserialize_with = "deserialize_duration")]
     pub processing_time: Duration,
     pub memory_peak_bytes: u64,
+}
+
+/// Serialize Duration as milliseconds for CSV compatibility
+fn serialize_duration<S>(duration: &Duration, serializer: S) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let millis = duration.as_millis() as u64;
+    serializer.serialize_u64(millis)
+}
+
+/// Deserialize Duration from milliseconds
+fn deserialize_duration<'de, D>(deserializer: D) -> std::result::Result<Duration, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let millis = u64::deserialize(deserializer)?;
+    Ok(Duration::from_millis(millis))
 }
 
 /// Configuration for statistics calculation

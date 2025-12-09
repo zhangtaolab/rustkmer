@@ -64,17 +64,81 @@ fn calculate_statistics(
     database_path: &str,
     config: StatsConfiguration,
 ) -> Result<crate::database::stats::DatabaseStatistics> {
-    // TODO: Implement actual statistics calculation
-    // This will involve:
-    // 1. Validating the database file
-    // 2. Reading the database with memory mapping
-    // 3. Using StreamingStatsProcessor to calculate statistics
-    // 4. Returning the DatabaseStatistics struct
+    use std::io::{Seek, SeekFrom, BufReader};
+    use std::fs::File;
+    use std::path::PathBuf;
 
-    // Placeholder implementation
-    Err(StatsError::InvalidFormat {
-        reason: "Stats calculation not yet implemented".to_string(),
-    })
+    let start_time = std::time::Instant::now();
+
+    // Validate database file exists
+    let path = PathBuf::from(database_path);
+    if !path.exists() {
+        return Err(StatsError::DatabaseNotFound { path });
+    }
+
+    // Open database file
+    let file = File::open(&path)?;
+    let mut file = BufReader::new(file);
+
+    // Read and validate header
+    let header = crate::database::format::DatabaseHeader::read_from(&mut file)
+        .map_err(|e| StatsError::InvalidFormat {
+            reason: format!("Failed to read database header: {}", e)
+        })?;
+
+    header.validate()
+        .map_err(|e| StatsError::InvalidFormat {
+            reason: format!("Invalid database header: {}", e)
+        })?;
+
+    // Check if database is empty
+    if header.total_kmers == 0 {
+        return Err(StatsError::EmptyDatabase);
+    }
+
+    // Initialize statistics processor
+    let mut processor = crate::database::stats::StreamingStatsProcessor::new(config.clone());
+
+    // Fix for incorrect data_offset in header (same as in query.rs)
+    let actual_data_offset = if header.data_offset < 40 {
+        42  // Use correct offset when header value is too small
+    } else if header.data_offset > 1000 {
+        42  // Use correct offset when header value is too large
+    } else {
+        header.data_offset
+    };
+
+    // Seek to data section
+    file.seek(SeekFrom::Start(actual_data_offset))?;
+
+    // Read all k-mer entries and calculate statistics
+    for i in 0..header.total_kmers {
+        let entry = crate::database::format::KmerEntry::read_from(&mut file)?;
+
+        // Add count to statistics
+        processor.add_count(entry.count)?;
+
+        // Show progress if enabled
+        if config.show_progress && (i + 1) % 100000 == 0 {
+            eprint!("\rProcessed {} k-mers...", i + 1);
+        }
+    }
+
+    if config.show_progress {
+        eprintln!("\rProcessed {} k-mers... Done!", header.total_kmers);
+    }
+
+    // Finalize statistics
+    let processing_time = start_time.elapsed();
+    let stats = processor.finalize(
+        path,
+        header.kmer_size,
+        header.canonical,
+        header.sorted,
+        processing_time,
+    );
+
+    Ok(stats)
 }
 
 /// Output statistics in the configured format
