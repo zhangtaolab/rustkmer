@@ -108,6 +108,9 @@ IMPLEMENTATION_STATUS.md
 tests/python/fixtures/large_scale/sequence_xlarge.fa
 tests/python/fixtures/large_scale/rnaseq_reads.fq.gz
 
+# Benchmarks directory (removed due to non-compliant code)
+benches/
+
 # IDE files
 .vscode/
 .idea/
