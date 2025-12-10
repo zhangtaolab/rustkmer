@@ -1,298 +1,296 @@
-# Quickstart Guide: CLI-Python API Compatibility Testing
+# RustKmer Python API Quick Start
 
-**Purpose**: Get started with comprehensive compatibility testing between RustKmer CLI and Python API
-
-## Prerequisites
-
-- RustKmer CLI built and available at `./target/release/rustkmer` or in PATH
-- Python 3.10+ with RustKmer Python bindings installed
-- Test data available at `/Users/forrest/Temp/demodata/`
-- pytest framework installed (`pip install pytest`)
-
-## Quick Test Example
-
-### 1. Run Basic Compatibility Test
+## Installation
 
 ```bash
-# Navigate to project root
-cd /Users/forrest/GitHub/rustkmer
+# Install from source (requires Rust)
+git clone https://github.com/rust-lang/rustkmer.git
+cd rustkmer
+pip install .
 
-# Run a single compatibility test
-python3 -c "
-from rustkmer import KmerCounter
-from tests.python.compatibility.cli_comparator import CLICompatibilityTester
-
-# Create counter
-counter = KmerCounter(k=31)
-
-# Count k-mers from real data
-counter.count_file('/Users/forrest/Temp/demodata/fasta/osa1_r7.asm.fa')
-python_count = counter.get_total_count()
-
-# Run equivalent CLI command
-tester = CLICompatibilityTester()
-ret_code, cli_output, _ = tester.run_cli_command([
-    'count',
-    '-k', '31',
-    '/Users/forrest/Temp/demodata/fasta/osa1_r7.asm.fa'
-])
-
-print(f'Python API count: {python_count}')
-print(f'CLI output: {cli_output.strip()}')
-print(f'Results match: {python_count == int(cli_output.split()[0])}')
-"
+# Install from PyPI (when available)
+pip install rustkmer
 ```
 
-### 2. Test with FASTQ Data
+## Basic Usage
+
+### 1. Counting K-mers
 
 ```python
 from rustkmer import KmerCounter
-import os
 
-# Test with FASTQ file
-test_file = '/Users/forrest/Temp/demodata/fastq/mrna_miR5794_rep1_pair1.fq.gz'
-if os.path.exists(test_file):
-    counter = KmerCounter(k=21)
-    counter.count_file(test_file)
-    print(f"Total k-mers (k=21): {counter.get_total_count()}")
-    print(f"Unique k-mers: {counter.get_unique_count()}")
+# Create a counter
+counter = KmerCounter(k=21, canonical=True)
+
+# Count from a FASTA file
+counter.count_file("sequences.fasta")
+
+# Get statistics
+print(f"Total k-mers: {counter.get_total_count()}")
+print(f"Unique k-mers: {counter.get_unique_count()}")
+
+# Get count for specific k-mer
+count = counter.get_kmer_count("ATCGATCGATCGATCGATCG")
+print(f"Count: {count}")
+
+# Get top k-mers
+top_kmers = counter.get_top_kmers(n=10)
+for kmer, count in top_kmers:
+    print(f"{kmer}: {count}")
 ```
 
-### 3. Test Database Operations
+### 2. Database Operations
+
+```python
+from rustkmer import KmerCounter, Database
+
+# Create and populate database
+counter = KmerCounter(k=31)
+counter.count_file("large_dataset.fastq")
+
+# Save to database
+database = counter.save_to_database("mydata.rkdb")
+
+# Load existing database
+db = Database()
+db.load("mydata.rkdb")
+
+# Query k-mers
+result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCG")
+if result.found:
+    print(f"Count: {result.count}")
+else:
+    print("K-mer not found")
+
+# Batch queries
+kmers = ["ATCGATCGATCGATCGATCG", "GCTAGCTAGCTAGCTAGCTA"]
+results = db.query_batch(kmers)
+for result in results:
+    print(f"{result.kmer}: {result.count if result.found else 'not found'}")
+
+# Check existence
+if db.exists("ATCGATCGATCGATCGATCG"):
+    print("K-mer exists in database")
+```
+
+### 3. Fuzzy Queries
+
+```python
+from rustkmer import FuzzyQuery
+
+# Create fuzzy query
+fq = FuzzyQuery()
+fq.load_database("mydata.rkdb")
+fq.set_max_distance(2)
+
+# Query with wildcards
+results = fq.query("ATCGATCGATNGATCGATCG")  # N is wildcard
+for result in results:
+    print(f"{result.kmer}: {result.count} (distance: {result.distance})")
+
+# Batch fuzzy queries
+patterns = ["ATCGATCGATNGATCGATCG", "GCTAGCTANNNNNNNNN"]
+batch_results = fq.query_batch(patterns)
+```
+
+### 4. Database Statistics
 
 ```python
 from rustkmer import Database
-import os
 
-# Test with existing RKDB file
-rkdb_file = '/Users/forrest/Temp/demodata/fastq/split/mrna_miR5794_rep1_pair1.part_001.rkdb'
-if os.path.exists(rkdb_file):
-    # Load database
-    db = Database.load(rkdb_file)
+db = Database()
+db.load("mydata.rkdb")
 
-    # Query specific k-mer
-    count = db.query('ATCGATCGATCGATCGATCGATC')
-    print(f"K-mer count: {count}")
+stats = db.get_stats()
+print(f"K-mer size: {stats.kmer_size}")
+print(f"Total k-mers: {stats.total_kmers}")
+print(f"Unique k-mers: {stats.unique_kmers}")
+print(f"Coverage: {stats.coverage:.2f}%")
 
-    # Get database stats
-    stats = db.get_stats()
-    print(f"Database stats: {stats}")
+# Histogram data
+for count, frequency in stats.histogram[:10]:
+    print(f"Count {count}: {frequency} k-mers")
+
+# Percentiles
+print(f"P50: {stats.percentiles['P50']}")
+print(f"P95: {stats.percentiles['P95']}")
 ```
 
-## Running Full Compatibility Test Suite
-
-### Using the Test Runner
-
-```bash
-# Run all compatibility tests
-python3 tests/python/compatibility/runner.py \
-    --test-data-path /Users/forrest/Temp/demodata \
-    --output-path /Users/forrest/Temp/demodata/test_reports \
-    --verbose
-
-# Run specific test categories
-python3 tests/python/compatibility/runner.py \
-    --categories count,query \
-    --test-data-path /Users/forrest/Temp/demodata
-
-# Run performance benchmarks
-python3 tests/python/compatibility/runner.py \
-    --benchmark \
-    --data-sizes small,medium,large
-```
-
-### Using pytest
-
-```bash
-# Run all compatibility tests
-pytest tests/python/compatibility/ -v
-
-# Run with specific test data
-pytest tests/python/compatibility/ -v \
-    --test-data-path=/Users/forrest/Temp/demodata
-
-# Generate HTML report
-pytest tests/python/compatibility/ \
-    --html=/Users/forrest/Temp/demodata/test_reports/compatibility_report.html
-```
-
-## Test Data Organization
-
-### Available Test Data
-
-```
-/Users/forrest/Temp/demodata/
-├── fasta/
-│   ├── osa1_r7.asm.fa          # Assembly file
-│   └── osa1_r7.asm.fa.gz      # Compressed version
-├── fastq/
-│   ├── mrna_miR5794_rep1_pair1.fq.gz
-│   ├── mrna_miR5794_rep1_pair2.fq.gz
-│   ├── mrna_miR5794_rep2_pair1.fq.gz
-│   ├── mrna_miR5794_rep2_pair2.fq.gz
-│   ├── mrna_miR5794_rep3_pair1.fq.gz
-│   ├── mrna_miR5794_rep3_pair2.fq.gz
-│   └── split/                   # Split files
-│       ├── *.part_*.fq.gz
-│       ├── *.part_*.rkdb
-│       └── merged.rkdb
-├── intermediate/               # Created during tests
-│   ├── test_outputs/
-│   ├── temp_databases/
-│   └── comparison_results/
-└── test_reports/              # Test reports
-    ├── html_reports/
-    └── json_reports/
-```
-
-### Test Data Categories
-
-1. **Small Tests**:
-   - First 1000 lines of `osa1_r7.asm.fa`
-   - Single part file from split directory
-
-2. **Medium Tests**:
-   - Complete `osa1_r7.asm.fa`
-   - One replicate pair of FASTQ files
-
-3. **Large Tests**:
-   - All FASTQ replicates combined
-   - Merge operations with split files
-
-## Common Test Patterns
-
-### KmerCounter vs CLI Count
+### 5. Database Merge
 
 ```python
-def test_count_compatibility():
-    """Test KmerCounter.count_file() vs rustkmer count"""
-    import tempfile
-    from rustkmer import KmerCounter
-    from tests.python.compatibility.cli_comparator import CLICompatibilityTester
+from rustkmer import Database
 
-    # Test parameters
-    k = 31
-    input_file = '/Users/forrest/Temp/demodata/fasta/osa1_r7.asm.fa'
+# Load multiple databases
+db1 = Database()
+db1.load("sample1.rkdb")
 
-    # Python API
-    counter = KmerCounter(k=k)
-    counter.count_file(input_file)
-    python_total = counter.get_total_count()
+db2 = Database()
+db2.load("sample2.rkdb")
 
-    # CLI command
-    tester = CLICompatibilityTester()
-    ret_code, cli_output, _ = tester.run_cli_command([
-        'count', '-k', str(k), input_file
-    ])
+# Merge databases
+merged = db1.merge(db2, "merged.rkdb")
 
-    cli_total = int(cli_output.split()[0])
-
-    assert python_total == cli_total, f"Python: {python_total}, CLI: {cli_total}"
+# Verify merge
+merged_stats = merged.get_stats()
+print(f"Merged database has {merged_stats.total_kmers} k-mers")
 ```
 
-### Database vs CLI Query
+### 6. Export Data
 
 ```python
-def test_query_compatibility():
-    """Test Database.query() vs rustkmer query"""
-    from rustkmer import Database
-    from tests.python.compatibility.cli_comparator import CLICompatibilityTester
+from rustkmer import Database
 
-    # Test parameters
-    db_path = '/Users/forrest/Temp/demodata/fastq/split/mrna_miR5794_rep1_pair1.part_001.rkdb'
-    query_seq = 'ATCGATCGATCGATCGATCGATC'
+db = Database()
+db.load("mydata.rkdb")
 
-    # Python API
-    db = Database.load(db_path)
-    python_count = db.query(query_seq)
+# Export as text
+db.dump("export.txt", format="text", threshold=5)
 
-    # CLI command
-    tester = CLICompatibilityTester()
-    ret_code, cli_output, _ = tester.run_cli_command([
-        'query', db_path, query_seq
-    ])
+# Export as CSV
+db.dump("export.csv", format="csv")
 
-    cli_count = int(cli_output.strip())
-
-    assert python_count == cli_count, f"Python: {python_count}, CLI: {cli_count}"
+# Export as JSON
+db.dump("export.json", format="json")
 ```
 
-## Performance Testing
+## Advanced Usage
 
-### Benchmarking Individual Operations
+### Thread Safety
 
 ```python
-import time
-import subprocess
+from rustkmer import Database
+import threading
+
+db = Database()
+db.load("mydata.rkdb")
+
+def worker(kmers):
+    for kmer in kmers:
+        result = db.query(kmer)
+        # Process result...
+
+# Multiple threads can safely access the same database
+threads = []
+for i in range(4):
+    t = threading.Thread(target=worker, args=[kmers[i::4]])
+    threads.append(t)
+    t.start()
+
+for t in threads:
+    t.join()
+```
+
+### Error Handling
+
+```python
+from rustkmer import KmerCounter, RustKmerError, SequenceError
+
+try:
+    counter = KmerCounter(k=65)  # k too large for u128
+except ValueError as e:
+    print(f"Invalid parameter: {e}")
+
+try:
+    counter = KmerCounter()
+    counter.count_string("AXCG")  # Invalid sequence
+except SequenceError as e:
+    print(f"Sequence error: {e}")
+
+# Generic error handling
+try:
+    db = Database()
+    db.load("nonexistent.rkdb")
+except RustKmerError as e:
+    print(f"RustKmer error: {e}")
+```
+
+### Performance Tips
+
+1. **Use batch operations** when possible:
+   ```python
+   # Good - batch query
+   results = db.query_batch(kmers)
+
+   # Avoid - individual queries
+   for kmer in kmers:
+       result = db.query(kmer)
+   ```
+
+2. **Choose appropriate k-mer size**:
+   - Small k (15-21): More unique k-mers, faster queries
+   - Large k (31-63): More specific, less memory
+
+3. **Use canonical k-mers** for counting if strand doesn't matter:
+   ```python
+   counter = KmerCounter(k=21, canonical=True)  # Merges reverse complements
+   ```
+
+4. **Enable compression** for large databases:
+   ```python
+   counter.save_to_database("large.rkdb", compress=True)
+   ```
+
+## Integration with BioPython
+
+```python
 from rustkmer import KmerCounter
+from Bio import SeqIO
 
-def benchmark_count_operation():
-    """Benchmark counting operation"""
-    test_file = '/Users/forrest/Temp/demodata/fasta/osa1_r7.asm.fa'
+# Process BioPython sequences
+counter = KmerCounter(k=21)
 
-    # Python API benchmark
-    start = time.time()
-    counter = KmerCounter(k=31)
-    counter.count_file(test_file)
-    python_time = time.time() - start
+for record in SeqIO.parse("sequences.fasta", "fasta"):
+    # Convert to string
+    sequence = str(record.seq).upper()
+    counter.count_string(sequence)
 
-    # CLI benchmark
-    start = time.time()
-    result = subprocess.run([
-        './target/release/rustkmer', 'count', '-k', '31', test_file
-    ], capture_output=True, text=True)
-    cli_time = time.time() - start
+print(f"Processed {counter.get_total_count()} k-mers")
+```
 
-    ratio = python_time / cli_time
-    print(f"Python time: {python_time:.3f}s")
-    print(f"CLI time: {cli_time:.3f}s")
-    print(f"Ratio (Python/CLI): {ratio:.2f}")
+## Integration with Pandas
 
-    # Check performance threshold (Python should be <= 110% of CLI)
-    assert ratio <= 1.10, f"Performance regression: ratio={ratio:.2f}"
+```python
+from rustkmer import Database
+import pandas as pd
+
+db = Database()
+db.load("mydata.rkdb")
+
+# Get top k-mers and convert to DataFrame
+top_kmers = counter.get_top_kmers(n=100)
+df = pd.DataFrame(top_kmers, columns=['kmer', 'count'])
+
+# Sort by count
+df = df.sort_values('count', ascending=False)
+print(df.head())
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **File not found errors**:
-   ```python
-   import os
-   if not os.path.exists('/Users/forrest/Temp/demodata/fasta/osa1_r7.asm.fa'):
-       print("Test data not found. Check /Users/forrest/Temp/demodata/ directory")
-   ```
-
-2. **CLI not in PATH**:
+1. **Installation fails**:
    ```bash
-   export PATH=$PATH:/Users/forrest/GitHub/rustkmer/target/release
+   # Ensure Rust is installed
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   source ~/.cargo/env
    ```
 
-3. **Permission errors**:
-   ```bash
-   chmod -R 755 /Users/forrest/Temp/demodata
-   ```
+2. **Database loading is slow**:
+   - Large files may take time to memory map
+   - Use SSD storage for better performance
 
-### Debug Mode
+3. **Out of memory errors**:
+   - Reduce k-mer size
+   - Use streaming instead of loading entire files
 
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
+4. **Thread safety warnings**:
+   - Database objects are thread-safe
+   - KmerCounter objects should not be shared between threads
 
-# Enable debug output in compatibility tests
-tester = CLICompatibilityTester(debug=True)
-```
+### Getting Help
 
-## Next Steps
-
-1. Run basic compatibility tests to verify setup
-2. Execute full test suite for comprehensive coverage
-3. Review performance benchmarks
-4. Generate HTML reports for detailed analysis
-5. Investigate any failed tests and fix issues
-
-## Additional Resources
-
-- [RustKmer Documentation](https://github.com/yourorg/rustkmer/docs)
-- [Python API Reference](python/rustkmer/README.md)
-- [CLI Manual](rustkmer --help)
+- Check the [documentation](https://rustkmer.readthedocs.io/)
+- Open an issue on [GitHub](https://github.com/rust-lang/rustkmer/issues)
+- Review the [examples](https://github.com/rust-lang/rustkmer/tree/main/examples)

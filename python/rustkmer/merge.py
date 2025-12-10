@@ -7,26 +7,22 @@ reporting.
 """
 
 import os
-import subprocess
 import tempfile
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any, Union, Callable
 from pathlib import Path
 import time
+import logging
 
-# Import from Rust extension if available
+# Import from Rust extension and Python wrapper
 try:
-    from ._rustkmer import Database
-
-    # Check if we have Rust merge implementation
-    try:
-        from ._rustkmer import merge_databases
-        HAS_RUST_MERGE = True
-    except ImportError:
-        HAS_RUST_MERGE = False
-
+    from .database import Database
+    HAS_DATABASE = True
 except ImportError:
-    HAS_RUST_MERGE = False
+    HAS_DATABASE = False
     Database = None
+
+# Setup module logger
+logger = logging.getLogger(__name__)
 
 
 class MergeConfig:
@@ -275,8 +271,10 @@ def _check_compatibility_cli(database_paths: List[str]) -> Dict[str, Any]:
 
 
 def merge_databases(
-    database_paths: List[str],
-    output_path: str,
+    database_paths: List[Union[str, Path]],
+    output_path: Union[str, Path],
+    strategy: str = "sum",
+    progress_callback: Optional[Callable[[float], None]] = None,
     config: Optional[MergeConfig] = None
 ) -> MergeStats:
     """
@@ -285,7 +283,9 @@ def merge_databases(
     Args:
         database_paths: List of input database file paths
         output_path: Path for the output merged database
-        config: Merge configuration options
+        strategy: Merge strategy - 'sum', 'max', or 'min'
+        progress_callback: Optional callback for progress updates (0-100)
+        config: Merge configuration options (currently ignored, kept for compatibility)
 
     Returns:
         MergeStats object with operation statistics
@@ -293,133 +293,99 @@ def merge_databases(
     Raises:
         CompatibilityError: If databases are not compatible
         MergeError: If merge operation fails
+
+    Example:
+        >>> from rustkmer.merge import merge_databases
+        >>> stats = merge_databases(
+        ...     ["db1.rkdb", "db2.rkdb"],
+        ...     "merged.rkdb",
+        ...     strategy="sum"
+        ... )
+        >>> print(f"Merged {stats.total_input_kmers} k-mers")
     """
+    if not HAS_DATABASE:
+        raise MergeError("Database module not available. Please check installation.")
+
     if config is None:
         config = MergeConfig()
+
+    # Convert paths to strings
+    database_paths = [str(p) for p in database_paths]
+    output_path = str(output_path)
 
     stats = MergeStats()
     stats.input_databases = database_paths.copy()
     stats.output_path = output_path
     stats.start_time = time.time()
+    stats.strategy_used = strategy
 
     try:
-        # Check compatibility first
+        # Validate inputs
+        if len(database_paths) < 2:
+            raise ValueError("At least 2 databases are required for merging")
+
+        # Check compatibility
         check_compatibility(database_paths)
 
-        if HAS_RUST_MERGE and hasattr(Database, 'merge_files'):
-            # Use Rust implementation if available
-            _merge_rust(database_paths, output_path, config, stats)
-        else:
-            # Fallback to CLI implementation
-            _merge_cli(database_paths, output_path, config, stats)
+        # Load databases
+        logger.info(f"Loading {len(database_paths)} databases for merging")
+        databases = []
+        for path in database_paths:
+            if not os.path.exists(path):
+                raise FileNotFoundError(f"Database file not found: {path}")
+            db = Database(path)
+            databases.append(db)
 
-        # Verify output was created
-        if not os.path.exists(output_path):
-            raise MergeError("Merge completed but output file not found")
+        # Perform merge
+        logger.info(f"Starting merge with strategy: {strategy}")
+
+        # Use first database as base and merge others
+        base_db = databases[0]
+        if len(databases) > 2:
+            # Multiple database merge
+            other_dbs = databases[1:]
+            merged_db = base_db.merge_multiple(
+                other_dbs,
+                output_path,
+                strategy,
+                progress_callback
+            )
+        else:
+            # Single database merge
+            merged_db = base_db.merge(
+                databases[1],
+                output_path,
+                strategy,
+                progress_callback
+            )
+
+        # Collect statistics
+        output_stats = merged_db.get_stats()
+        stats.unique_output_kmers = output_stats.unique_kmers
+        stats.total_input_kmers = sum(
+            Database(db_path).get_stats().total_kmers
+            for db_path in database_paths
+        )
+        stats.duplicate_kmers = max(0, stats.total_input_kmers - stats.unique_output_kmers)
 
         stats.end_time = time.time()
-
-        # Get output database statistics
-        if HAS_RUST_MERGE:
-            try:
-                output_db = Database()
-                output_db.load(output_path)
-                output_stats = output_db.get_stats()
-                stats.unique_output_kmers = output_stats.unique_kmers
-                stats.total_input_kmers = sum(
-                    _get_db_kmer_count(path) for path in database_paths
-                )
-                stats.duplicate_kmers = max(0, stats.total_input_kmers - stats.unique_output_kmers)
-            except Exception:
-                pass  # Stats collection is optional
+        logger.info(f"Merge complete: {output_path}")
 
         return stats
 
     except Exception as e:
         stats.end_time = time.time()
-        if isinstance(e, (CompatibilityError, MergeError)):
+        if isinstance(e, (CompatibilityError, MergeError, ValueError, FileNotFoundError)):
             raise
         raise MergeError(f"Merge failed: {e}") from e
 
 
-def _get_db_kmer_count(db_path: str) -> int:
-    """Get total k-mer count from a database."""
-    try:
-        db = Database()
-        db.load(db_path)
-        stats = db.get_stats()
-        return stats.total_kmers
-    except Exception:
-        return 0
-
-
-def _merge_rust(
-    database_paths: List[str],
-    output_path: str,
-    config: MergeConfig,
-    stats: MergeStats
-):
-    """Merge using Rust implementation."""
-    # This would use the Rust merge_databases function
-    # For now, fall back to CLI
-    _merge_cli(database_paths, output_path, config, stats)
-
-
-def _merge_cli(
-    database_paths: List[str],
-    output_path: str,
-    config: MergeConfig,
-    stats: MergeStats
-):
-    """Merge using CLI implementation."""
-    # Get rustkmer binary path
-    script_dir = Path(__file__).parent.parent.parent
-    binary_path = script_dir / "target" / "release" / "rustkmer"
-
-    if not binary_path.exists():
-        raise MergeError(
-            "RustKmer binary not found. Please run 'cargo build --release' first."
-        )
-
-    # Build command
-    cmd = [str(binary_path), "merge"]
-
-    # Add input files
-    cmd.extend(["-i"] + database_paths)
-
-    # Add output file
-    cmd.extend(["-o", output_path])
-
-    # Add options
-    if config.verbose:
-        cmd.append("--verbose")
-    if config.threads:
-        cmd.extend(["--threads", str(config.threads)])
-    # Note: CLI doesn't expose all config options
-
-    if config.verbose:
-        print(f"Running merge command: {' '.join(cmd)}")
-
-    # Run merge
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        error_msg = f"Merge command failed with exit code {result.returncode}"
-        if result.stderr:
-            error_msg += f":\n{result.stderr}"
-        raise MergeError(error_msg)
-
-    stats.strategy_used = "cli"
-
-    if config.verbose and result.stdout:
-        print("Merge output:")
-        print(result.stdout)
-
-
 # Convenience functions
 def merge_files(
-    input_files: List[str],
-    output_file: str,
+    input_files: List[Union[str, Path]],
+    output_file: Union[str, Path],
+    strategy: str = "sum",
+    progress_callback: Optional[Callable[[float], None]] = None,
     verbose: bool = False
 ) -> MergeStats:
     """
@@ -428,16 +394,20 @@ def merge_files(
     Args:
         input_files: List of input database files
         output_file: Output database file
+        strategy: Merge strategy - 'sum', 'max', or 'min'
+        progress_callback: Optional callback for progress updates
         verbose: Enable verbose output
 
     Returns:
         MergeStats object
     """
-    config = MergeConfig(verbose=verbose)
-    return merge_databases(input_files, output_file, config)
+    if verbose:
+        logging.basicConfig(level=logging.INFO)
+
+    return merge_databases(input_files, output_file, strategy, progress_callback)
 
 
-def quick_merge(input_files: List[str], output_file: str) -> MergeStats:
+def quick_merge(input_files: List[Union[str, Path]], output_file: Union[str, Path]) -> MergeStats:
     """
     Quick merge with default settings.
 
@@ -448,4 +418,37 @@ def quick_merge(input_files: List[str], output_file: str) -> MergeStats:
     Returns:
         MergeStats object
     """
-    return merge_files(input_files, output_file, verbose=False)
+    return merge_files(input_files, output_file, strategy="sum", verbose=False)
+
+
+# Progress tracking utilities
+class ProgressTracker:
+    """Simple progress tracker for merge operations."""
+
+    def __init__(self, description: str = "Merging databases"):
+        """Initialize progress tracker.
+
+        Args:
+            description: Description of the operation
+        """
+        self.description = description
+        self.start_time = None
+
+    def __call__(self, progress: float) -> None:
+        """Progress callback function.
+
+        Args:
+            progress: Progress percentage (0-100)
+        """
+        if self.start_time is None:
+            self.start_time = time.time()
+            logger.info(f"{self.description}: Started")
+
+        if progress >= 100.0:
+            duration = time.time() - self.start_time
+            logger.info(f"{self.description}: Complete in {duration:.1f}s")
+        elif progress % 10 == 0:  # Log every 10%
+            elapsed = time.time() - self.start_time
+            if progress > 0:
+                eta = (elapsed / progress) * (100.0 - progress)
+                logger.info(f"{self.description}: {progress:.0f}% (ETA: {eta:.0f}s)")

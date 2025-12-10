@@ -1,329 +1,231 @@
-# Data Model: CLI-Python API Compatibility Testing
-
-**Date**: 2025-12-09
-**Purpose**: Data entities and relationships for comprehensive compatibility testing
+# Data Model: RustKmer Python Bindings
 
 ## Core Entities
 
-### 1. CompatibilityTestSuite
+### 1. KmerCounter
 
-Container for organizing and managing all compatibility tests.
+**Description**: Main class for counting k-mers in sequence data
+
+**Fields**:
+```python
+class KmerCounter:
+    k: int              # k-mer size (default: 21)
+    canonical: bool     # whether to use canonical k-mers
+    threads: int        # number of threads for parallel processing
+    _counter: object    # internal Rust KmerCounter instance
+```
+
+**Methods**:
+- `count_file(file_path: str) -> None`: Count k-mers from FASTA/FASTQ file
+- `count_string(sequence: str) -> None`: Count k-mers from string
+- `get_total_count() -> int`: Get total k-mer count
+- `get_unique_count() -> int`: Get unique k-mer count
+- `get_kmer_count(kmer: str) -> int`: Get count for specific k-mer
+- `get_top_kmers(n: int) -> List[Tuple[str, int]]`: Get top n k-mers
+- `save_to_database(path: str, compress: bool = True, sort: bool = True) -> Database`: Save counts to database
+
+**Validation Rules**:
+- k must be between 1 and 64 (due to u128 encoding)
+- sequence must only contain A, C, G, T characters
+- file_path must exist and be readable
+
+### 2. Database
+
+**Description**: Wrapper for RKDB database files providing query operations
+
+**Fields**:
+```python
+class Database:
+    filename: str       # Path to database file
+    header: DatabaseHeader  # Database metadata
+    _database: object    # Internal Rust DatabaseQuery instance
+    loaded: bool        # Whether database is loaded
+```
+
+**Methods**:
+- `load(path: str) -> None`: Load database from file
+- `query(kmer: str) -> QueryResult`: Query single k-mer
+- `query_batch(kmers: List[str]) -> List[QueryResult]`: Query multiple k-mers
+- `exists(kmer: str) -> bool`: Check if k-mer exists
+- `get_stats() -> DatabaseStats`: Get database statistics
+- `fuzzy_query(pattern: str, max_distance: int, max_results: int = 100) -> List[FuzzyQueryResult]`: Fuzzy query
+- `merge(other: Database, output_path: str) -> Database`: Merge with another database
+- `dump(output_path: str, format: str = "text", threshold: int = 1) -> None`: Export database
+
+**Validation Rules**:
+- kmer must match database k-mer size
+- pattern for fuzzy query can contain N wildcards
+- max_distance must be between 0 and k-mer size
+
+### 3. DatabaseHeader
+
+**Description**: Metadata about database file
+
+**Fields**:
+```python
+class DatabaseHeader:
+    version: int        # Database format version
+    kmer_size: int      # k-mer size used
+    total_kmers: int    # Total k-mer count
+    unique_kmers: int   # Unique k-mer count
+    canonical: bool     # Whether k-mers are canonical
+    created_at: str     # Creation timestamp
+    file_size: int      # File size in bytes
+```
+
+### 4. QueryResult
+
+**Description**: Result of a k-mer query
+
+**Fields**:
+```python
+class QueryResult:
+    kmer: str           # The k-mer that was queried
+    count: int          # Count of the k-mer
+    found: bool         # Whether k-mer was found
+```
+
+### 5. FuzzyQuery
+
+**Description**: Class for performing fuzzy queries with wildcards
+
+**Fields**:
+```python
+class FuzzyQuery:
+    database: Database  # Database to query
+    max_distance: int   # Maximum Hamming distance
+```
+
+**Methods**:
+- `load_database(path: str) -> None`: Load database
+- `query(pattern: str, max_distance: Optional[int] = None) -> List[FuzzyQueryResult]`: Perform fuzzy query
+- `set_max_distance(distance: int) -> None`: Set maximum distance
+- `query_batch(patterns: List[str]) -> List[List[FuzzyQueryResult]]`: Batch fuzzy query
+
+### 6. DatabaseStats
+
+**Description**: Statistics about a database
+
+**Fields**:
+```python
+class DatabaseStats:
+    kmer_size: int      # k-mer size
+    total_kmers: int    # Total k-mers counted
+    unique_kmers: int   # Unique k-mer sequences
+    coverage: float     # Estimated coverage
+    histogram: List[Tuple[int, int]]  # Count frequency histogram
+    percentiles: Dict[str, int]  # P25, P50, P75, P95, P99
+```
+
+## Data Relationships
+
+```
+KmerCounter
+    │
+    ├─ count_string() ──┐
+    │                   │
+    └─ save_to_database() ──► Database
+                           │
+                           ├─ query() ──► QueryResult
+                           │
+                           ├─ fuzzy_query() ──► FuzzyQueryResult
+                           │
+                           └─ get_stats() ──► DatabaseStats
+```
+
+## Error Hierarchy
 
 ```python
-@dataclass
-class CompatibilityTestSuite:
-    """Container for compatibility test results"""
-    suite_id: str
-    test_date: datetime
-    python_version: str
-    cli_version: str
-    total_tests: int
-    passed_tests: int
-    failed_tests: List[FailedTest]
-    performance_summary: PerformanceSummary
+class RustKmerError(Exception):
+    """Base exception for all RustKmer errors"""
+    pass
+
+class SequenceError(RustKmerError):
+    """Invalid DNA sequence"""
+    pass
+
+class DatabaseError(RustKmerError):
+    """Database-related errors"""
+    pass
+
+class FileNotFoundError(DatabaseError):
+    """Database file not found"""
+    pass
+
+class MemoryError(RustKmerError):
+    """Memory allocation errors"""
+    pass
+
+class ValueError(RustKmerError):
+    """Invalid parameter values"""
+    pass
 ```
 
-**Relationships**:
-- Has many: CompatibilityTestCase
-- Has one: PerformanceSummary
-- Has many: FailedTest
+## Performance Considerations
 
-### 2. CompatibilityTestCase
+### Memory Layout
 
-Individual test case for comparing a specific Python API method with CLI.
+1. **KmerCounter**: Uses Rust's HashMap<u128, u64> internally
+2. **Database**: Memory-mapped file access for large databases
+3. **Query Results**: Batched operations to minimize Rust-Python transitions
 
-```python
-@dataclass
-class CompatibilityTestCase:
-    """Individual compatibility test case"""
-    test_id: str
-    python_class: str  # e.g., "KmerCounter", "Database", "FuzzyQuery"
-    python_method: str  # e.g., "count_string", "query", "fuzzy_search"
-    cli_command: str  # e.g., "rustkmer count", "rustkmer query"
-    test_parameters: Dict[str, Any]
-    test_data_path: Optional[str]
-    expected_result: Optional[ExpectedResult]
-```
+### Threading Model
 
-**Relationships**:
-- Generates: TestExecution
-- Uses: TestData
+- Thread-safe database access using Arc<RwLock<>>
+- Parallel processing using Rayon
+- GIL released for CPU-intensive operations
 
-### 3. TestExecution
+## Serialization Formats
 
-Single execution of a compatibility test with results.
-
-```python
-@dataclass
-class TestExecution:
-    """Result of a single compatibility test execution"""
-    execution_id: str
-    test_case: CompatibilityTestCase
-    python_output: TestOutput
-    cli_output: TestOutput
-    is_identical: bool
-    difference_details: Optional[DifferenceDetails]
-    performance_metrics: PerformanceMetrics
-    error_comparison: ErrorComparison
-    timestamp: datetime
-```
-
-**Relationships**:
-- Belongs to: CompatibilityTestCase
-- Has one: PerformanceMetrics
-- Has one: ErrorComparison
-
-### 4. TestData
-
-Test data for compatibility testing.
-
-```python
-@dataclass
-class TestData:
-    """Test data for compatibility tests"""
-    data_id: str
-    data_type: TestDataCategory  # SMALL, MEDIUM, LARGE
-    data_format: DataFormat  # FASTA, FASTQ, RKDB
-    file_path: str
-    metadata: TestDataMetadata
-```
-
-**TestDataCategory**:
-- SMALL: <1MB, 100-1000 k-mers
-- MEDIUM: 1-100MB, 1K-100K k-mers
-- LARGE: >100MB, >100K k-mers
-
-**Relationships**:
-- Used by: CompatibilityTestCase
-
-### 5. PerformanceMetrics
-
-Performance comparison between Python API and CLI.
-
-```python
-@dataclass
-class PerformanceMetrics:
-    """Performance comparison metrics"""
-    python_time_ms: float
-    cli_time_ms: float
-    python_memory_mb: float
-    cli_memory_mb: float
-    performance_ratio: float  # python_time / cli_time
-    memory_ratio: float  # python_memory / cli_memory
-    is_within_threshold: bool
-    runs_count: int
-    std_deviation: float
-```
-
-**Performance Thresholds**:
-- Time ratio ≤ 1.10 (Python ≤ 110% of CLI)
-- Memory ratio ≤ 1.05 (Python ≤ 105% of CLI)
-
-### 6. ErrorComparison
-
-Comparison of error handling between Python API and CLI.
-
-```python
-@dataclass
-class ErrorComparison:
-    """Comparison of error handling"""
-    python_error: Optional[PythonError]
-    cli_error: Optional[CLIError]
-    error_types_match: bool
-    error_messages_similar: bool  # Using similarity score
-    exit_code_match: bool
-```
-
-### 7. ExpectedResult
-
-Expected result for validation.
-
-```python
-@dataclass
-class ExpectedResult:
-    """Expected test result for validation"""
-    result_type: ResultType  # EXACT_COUNT, DATABASE_PROPERTIES, ERROR_CODE
-    expected_value: Any
-    tolerance: Optional[float]  # For numerical comparisons
-    validation_rules: List[ValidationRule]
-```
-
-## Value Objects
-
-### TestOutput
-```python
-@dataclass
-class TestOutput:
-    """Output from either Python API or CLI"""
-    output_type: OutputType  # INTEGER, DATABASE_FILE, TEXT, JSON, ERROR
-    value: Any
-    file_path: Optional[str]
-    execution_time_ms: float
-    memory_usage_mb: float
-```
-
-### DifferenceDetails
-```python
-@dataclass
-class DifferenceDetails:
-    """Details of differences between outputs"""
-    difference_type: DifferenceType
-    python_value: Any
-    cli_value: Any
-    difference_magnitude: Optional[float]
-    is_acceptable: bool
-```
-
-## Enums
-
-```python
-from enum import Enum
-
-class OutputType(Enum):
-    INTEGER = "integer"
-    DATABASE_FILE = "database_file"
-    TEXT = "text"
-    JSON = "json"
-    ERROR = "error"
-
-class TestDataCategory(Enum):
-    SMALL = "small"
-    MEDIUM = "medium"
-    LARGE = "large"
-
-class DataFormat(Enum):
-    FASTA = "fasta"
-    FASTQ = "fastq"
-    RKDB = "rkdb"
-
-class ResultType(Enum):
-    EXACT_COUNT = "exact_count"
-    DATABASE_PROPERTIES = "database_properties"
-    ERROR_CODE = "error_code"
-
-class DifferenceType(Enum):
-    EXACT_MATCH = "exact_match"
-    NUMERICAL_DIFFERENCE = "numerical_difference"
-    TYPE_MISMATCH = "type_mismatch"
-    MISSING_OUTPUT = "missing_output"
-    EXTRA_OUTPUT = "extra_output"
-```
-
-## Aggregates and Roots
-
-### CompatibilityTestManager (Aggregate Root)
-
-```python
-class CompatibilityTestManager:
-    """Manages the complete compatibility testing process"""
-
-    def __init__(self):
-        self.test_suites: List[CompatibilityTestSuite] = []
-        self.test_data_repository = TestDataRepository()
-        self.result_analyzer = ResultAnalyzer()
-
-    def run_compatibility_tests(self) -> CompatibilityTestSuite
-    def generate_report(self, suite: CompatibilityTestSuite) -> TestReport
-    def validate_test_data(self) -> ValidationResult
-```
-
-## Repository Interfaces
-
-```python
-class TestDataRepository:
-    """Repository for test data management"""
-
-    def find_by_category(self, category: TestDataCategory) -> List[TestData]
-    def find_by_format(self, format: DataFormat) -> List[TestData]
-    def generate_synthetic_data(self, spec: SyntheticDataSpec) -> TestData
-```
-
-class TestExecutionRepository:
-    """Repository for test execution results"""
-
-    def save(self, execution: TestExecution) -> None
-    def find_by_test_case(self, test_case: CompatibilityTestCase) -> List[TestExecution]
-    def find_performance_history(self, method: str) -> List[PerformanceMetrics]
-```
-
-## Domain Services
-
-### ResultAnalyzer
-```python
-class ResultAnalyzer:
-    """Analyzes compatibility test results"""
-
-    def compare_outputs(self, python: TestOutput, cli: TestOutput) -> ComparisonResult
-    def validate_performance(self, metrics: PerformanceMetrics) -> ValidationResult
-    def calculate_similarity_score(self, str1: str, str2: str) -> float
-```
-
-### PerformanceBenchmark
-```python
-class PerformanceBenchmark:
-    """Handles performance benchmarking"""
-
-    def measure_python_api(self, method: str, params: Dict) -> PerformanceData
-    def measure_cli_command(self, command: List[str]) -> PerformanceData
-    def calculate_ratios(self, python: PerformanceData, cli: PerformanceData) -> PerformanceMetrics
-```
-
-## Validation Rules
-
-```python
-@dataclass
-class ValidationRule:
-    """Rule for validating test results"""
-    rule_type: ValidationType
-    parameter: str
-    condition: str
-    expected_value: Any
-
-class ValidationType(Enum):
-    EXACT_EQUALITY = "exact_equality"
-    WITHIN_TOLERANCE = "within_tolerance"
-    PATTERN_MATCH = "pattern_match"
-    FILE_EXISTS = "file_exists"
-```
-
-## Integration Events
-
-```python
-@dataclass
-class TestCompleted:
-    """Event fired when a test completes"""
-    test_id: str
-    result: TestExecution
-    timestamp: datetime
-
-@dataclass
-class TestSuiteCompleted:
-    """Event fired when a test suite completes"""
-    suite_id: str
-    summary: TestSuiteSummary
-    timestamp: datetime
-```
-
-## State Transitions
-
-### Test Execution State Machine
+### Database Format (.rkdb)
 
 ```
-[STARTED] -> (executing) -> [COMPLETED]
-    |
-    v
-[FAILED] -> (retry) -> [STARTED]
-    |
-    v
-[SKIPPED]
+Header (fixed size):
+- Magic: 8 bytes ("RKDBv2\0")
+- Version: 4 bytes (u32)
+- K-mer size: 4 bytes (u32)
+- Flags: 4 bytes (canonical, compressed)
+- Reserved: 16 bytes
+
+Index Section (sorted k-mers):
+- Each entry: 16 bytes (u128 k-mer) + 8 bytes (u64 count)
+
+Optional Compression:
+- LZ4 compression for count data
+- Delta encoding for k-mer sequences
 ```
 
-## Data Model Relationships Summary
+### Export Formats
 
-```
-CompatibilityTestSuite (1) -> (*) CompatibilityTestCase
-CompatibilityTestCase (1) -> (*) TestExecution
-TestExecution (1) -> (1) PerformanceMetrics
-TestExecution (1) -> (1) ErrorComparison
-CompatibilityTestCase (*) -> (*) TestData
-```
+1. **Text**: `kmer<TAB>count` per line
+2. **CSV**: `kmer,count,canonical` with header
+3. **JSON**: Structured with metadata
+4. **Binary**: Rust serialization format
+
+## Integration Points
+
+### Python Ecosystem
+
+- **NumPy**: Buffer protocol for k-mer arrays
+- **Pandas**: DataFrame conversion for query results
+- **BioPython**: Sequence object compatibility
+- **Dask**: Distributed k-mer processing
+
+### Rust Core
+
+- Direct bridge to existing Rust implementations
+- Zero-copy operations where possible
+- Memory-safe sharing via Arc/Mutex patterns
+
+## Versioning Strategy
+
+- Database format includes version number
+- Backward compatibility for reading older formats
+- Migration path for format upgrades
+
+## Security Considerations
+
+- Memory safety guaranteed by Rust
+- No unsafe code blocks in Python bindings
+- Input validation at Rust-Python boundary
+- Safe handling of user-provided file paths

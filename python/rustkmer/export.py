@@ -8,10 +8,21 @@ to various formats including text, CSV, JSON, and TSV with filtering options.
 import os
 import csv
 import json
+import gzip
+import bz2
+import zipfile
 from typing import Dict, List, Optional, Any, Union, TextIO, BinaryIO, Iterable
 from enum import Enum
 from pathlib import Path
 import sys
+
+# Import error handling utilities
+from .error_handling import (
+    handle_errors, ErrorContext, safe_execute, validate_inputs,
+    validate_file_path, validate_one_of, validate_non_negative_int,
+    validate_range
+)
+from .exceptions import ExportError, ValidationError
 
 # Import from Rust extension if available
 try:
@@ -33,6 +44,15 @@ class OutputFormat(Enum):
     TEXT = "text"      # Human-readable text format
 
 
+class CompressionFormat(Enum):
+    """Supported compression formats for export output."""
+
+    NONE = "none"      # No compression
+    GZIP = "gzip"      # gzip compression (.gz)
+    BZIP2 = "bzip2"    # bzip2 compression (.bz2)
+    ZIP = "zip"        # zip compression (.zip)
+
+
 class ExportConfig:
     """Configuration for database export operations."""
 
@@ -49,7 +69,9 @@ class ExportConfig:
         quoting: Optional[int] = None,  # CSV quoting mode
         encoding: str = 'utf-8',
         batch_size: int = 100000,  # For streaming large databases
-    ):
+        compression: CompressionFormat = CompressionFormat.NONE,
+        compression_level: Optional[int] = None,  # Compression level (1-9)
+    ) -> None:
         """
         Initialize export configuration.
 
@@ -65,6 +87,8 @@ class ExportConfig:
             quoting: CSV quoting mode
             encoding: Text encoding for output
             batch_size: Number of k-mers to process at once
+            compression: Compression format for output
+            compression_level: Compression level (1-9, None for default)
         """
         self.format = format
         self.min_count = min_count
@@ -77,6 +101,17 @@ class ExportConfig:
         self.quoting = quoting
         self.encoding = encoding
         self.batch_size = batch_size
+        self.compression = compression
+        self.compression_level = compression_level
+
+        # Set default compression levels
+        if self.compression_level is None:
+            if self.compression == CompressionFormat.GZIP:
+                self.compression_level = 6
+            elif self.compression == CompressionFormat.BZIP2:
+                self.compression_level = 9
+            elif self.compression == CompressionFormat.ZIP:
+                self.compression_level = 6
 
         # Set default delimiters
         if self.format == OutputFormat.TSV and self.delimiter is None:
@@ -94,7 +129,7 @@ class ExportConfig:
 class ExportStats:
     """Statistics for export operations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize export statistics."""
         self.total_kmers = 0
         self.exported_kmers = 0
@@ -103,6 +138,7 @@ class ExportStats:
         self.end_time = None
         self.output_file = ""
         self.output_format = ""
+        self.compression = ""
         self.bytes_written = 0
 
     def to_dict(self) -> Dict[str, Any]:
@@ -115,6 +151,7 @@ class ExportStats:
             "end_time": self.end_time,
             "output_file": self.output_file,
             "output_format": self.output_format,
+            "compression": self.compression,
             "bytes_written": self.bytes_written,
             "filter_efficiency": self.filtered_out / self.total_kmers if self.total_kmers > 0 else 0
         }
@@ -123,7 +160,7 @@ class ExportStats:
 class DatabaseExporter:
     """Export k-mer data from RKDB databases to various formats."""
 
-    def __init__(self, database, config: Optional[ExportConfig] = None):
+    def __init__(self, database, config: Optional[ExportConfig] = None) -> None:
         """
         Initialize database exporter.
 
@@ -135,6 +172,7 @@ class DatabaseExporter:
         self.config = config or ExportConfig()
         self.stats = ExportStats()
 
+    @handle_errors("database_export")
     def export(self, output: Union[str, TextIO, BinaryIO]) -> ExportStats:
         """
         Export database to specified output.
@@ -144,12 +182,40 @@ class DatabaseExporter:
 
         Returns:
             Export statistics
+
+        Raises:
+            ExportError: If export operation fails
+            ValidationError: If output path is invalid
         """
         import time
         self.stats.start_time = time.time()
 
+        # Create error context
+        context = ErrorContext(
+            operation="database_export",
+            component="DatabaseExporter.export",
+            file_path=str(output) if isinstance(output, (str, Path)) else None,
+            additional_info={
+                "output_format": self.config.format.value,
+                "compression": self.config.compression.value,
+                "min_count": self.config.min_count,
+                "max_count": self.config.max_count
+            }
+        )
+
         try:
+            self.stats.output_format = self.config.format.value
+            self.stats.compression = self.config.compression.value
+
             if isinstance(output, (str, Path)):
+                # Validate file path
+                if not validate_file_path(str(output)):
+                    raise ValidationError(
+                        f"Invalid output path: {output}",
+                        error_code="INVALID_OUTPUT_PATH",
+                        parameter="output"
+                    )
+
                 # File path provided
                 self.stats.output_file = str(output)
                 with self._open_output_file(output, self.config.encoding) as f:
@@ -158,6 +224,22 @@ class DatabaseExporter:
                 # File-like object provided
                 self._export_to_file(output)
 
+        except (ValidationError, ExportError):
+            # Re-raise our custom exceptions
+            raise
+        except (IOError, OSError) as e:
+            raise ExportError(
+                f"Failed to write export: {str(e)}",
+                error_code="EXPORT_WRITE_FAILED",
+                file_path=str(output) if isinstance(output, (str, Path)) else None,
+                context=context.to_dict()
+            ) from e
+        except Exception as e:
+            raise ExportError(
+                f"Export operation failed: {str(e)}",
+                error_code="EXPORT_FAILED",
+                context=context.to_dict()
+            ) from e
         finally:
             import time
             self.stats.end_time = time.time()
@@ -187,16 +269,75 @@ class DatabaseExporter:
 
         return filtered_data
 
-    def _open_output_file(self, path: Union[str, Path], encoding: str):
-        """Open output file with appropriate mode based on format."""
+    def _open_output_file(self, path: Union[str, Path], encoding: str) -> Any:
+        """Open output file with appropriate mode based on format and compression."""
         path = Path(path)
 
+        # Add appropriate file extension based on compression
+        if self.config.compression != CompressionFormat.NONE:
+            if self.config.compression == CompressionFormat.GZIP:
+                if not str(path).endswith('.gz'):
+                    path = path.with_suffix(str(path).suffix + '.gz')
+                return gzip.open(path, 'wt', encoding=encoding, newline='',
+                                 compresslevel=self.config.compression_level)
+            elif self.config.compression == CompressionFormat.BZIP2:
+                if not str(path).endswith('.bz2'):
+                    path = path.with_suffix(str(path).suffix + '.bz2')
+                return bz2.open(path, 'wt', encoding=encoding, newline='',
+                                compresslevel=self.config.compression_level)
+            elif self.config.compression == CompressionFormat.ZIP:
+                if not str(path).endswith('.zip'):
+                    path = path.with_suffix(str(path).suffix + '.zip')
+                return self._open_zip_file(path, encoding)
+
+        # No compression - use regular file open
         if self.config.format in [OutputFormat.JSON, OutputFormat.TEXT]:
             return open(path, 'w', encoding=encoding, newline='')
         else:
             return open(path, 'w', encoding=encoding, newline='')
 
-    def _export_to_file(self, file_obj):
+    def _open_zip_file(self, path: Path, encoding: str) -> 'DatabaseExporter.ZipFileWrapper':
+        """Open file for ZIP compression."""
+        # Create zip file with a single entry
+        zip_file = zipfile.ZipFile(
+            path,
+            'w',
+            compression=zipfile.ZIP_DEFLATED,
+            compresslevel=self.config.compression_level
+        )
+
+        # Return a wrapper that writes to the zip file
+        class ZipFileWrapper:
+            def __init__(self, zip_file, filename) -> None:
+                self.zip_file = zip_file
+                self.buffer = []
+                self.filename = filename
+
+            def write(self, data: str) -> None:
+                self.buffer.append(data)
+
+            def flush(self) -> None:
+                pass
+
+            def close(self) -> None:
+                content = ''.join(self.buffer)
+                self.zip_file.writestr(self.filename, content.encode(encoding))
+                self.zip_file.close()
+
+        # Use a simple filename based on format
+        filename = 'export'
+        if self.config.format == OutputFormat.JSON:
+            filename += '.json'
+        elif self.config.format == OutputFormat.CSV:
+            filename += '.csv'
+        elif self.config.format == OutputFormat.TSV:
+            filename += '.tsv'
+        else:
+            filename += '.txt'
+
+        return ZipFileWrapper(zip_file, filename)
+
+    def _export_to_file(self, file_obj: Any) -> None:
         """Export database to file object."""
         if self.config.format == OutputFormat.DICT:
             data = self.export_to_dict()
@@ -214,7 +355,7 @@ class DatabaseExporter:
         else:
             raise ValueError(f"Unsupported export format: {self.config.format}")
 
-    def _export_json(self, file_obj):
+    def _export_json(self, file_obj: Any) -> None:
         """Export database to JSON format."""
         data = self.export_to_dict()
 
@@ -225,7 +366,7 @@ class DatabaseExporter:
         if hasattr(file_obj, 'tell'):
             self.stats.bytes_written = file_obj.tell()
 
-    def _export_csv(self, file_obj):
+    def _export_csv(self, file_obj: Any) -> None:
         """Export database to CSV/TSV format."""
         data = self.export_to_dict()
 
@@ -253,7 +394,7 @@ class DatabaseExporter:
         if hasattr(file_obj, 'tell'):
             self.stats.bytes_written = file_obj.tell()
 
-    def _export_text(self, file_obj):
+    def _export_text(self, file_obj: Any) -> None:
         """Export database to human-readable text format."""
         data = self.export_to_dict()
 
@@ -363,6 +504,10 @@ def dump_database(
     return exporter.export(output)
 
 
+@handle_errors("export_to_json")
+@validate_inputs({
+    'file_path': validate_file_path
+})
 def export_to_json(database, file_path: str, **kwargs) -> ExportStats:
     """
     Export database to JSON format.
@@ -374,10 +519,18 @@ def export_to_json(database, file_path: str, **kwargs) -> ExportStats:
 
     Returns:
         Export statistics
+
+    Raises:
+        ExportError: If export fails
+        ValidationError: If file path is invalid
     """
     return dump_database(database, file_path, format="json", **kwargs)
 
 
+@handle_errors("export_to_csv")
+@validate_inputs({
+    'file_path': validate_file_path
+})
 def export_to_csv(
     database,
     file_path: str,
@@ -395,10 +548,18 @@ def export_to_csv(
 
     Returns:
         Export statistics
+
+    Raises:
+        ExportError: If export fails
+        ValidationError: If file path is invalid
     """
     return dump_database(database, file_path, format="csv", delimiter=delimiter, **kwargs)
 
 
+@handle_errors("export_to_tsv")
+@validate_inputs({
+    'file_path': validate_file_path
+})
 def export_to_tsv(database, file_path: str, **kwargs) -> ExportStats:
     """
     Export database to TSV format.
@@ -410,6 +571,10 @@ def export_to_tsv(database, file_path: str, **kwargs) -> ExportStats:
 
     Returns:
         Export statistics
+
+    Raises:
+        ExportError: If export fails
+        ValidationError: If file path is invalid
     """
     # TSV typically doesn't use quoting
     kwargs.setdefault('quotechar', '\x00')  # Use null char as placeholder (won't be used)

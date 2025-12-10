@@ -44,7 +44,7 @@ class ErrorContext:
                  operation: str,
                  component: Optional[str] = None,
                  file_path: Optional[Union[str, Path]] = None,
-                 additional_info: Optional[Dict[str, Any]] = None):
+                 additional_info: Optional[Dict[str, Any]] = None) -> None:
         """
         Initialize error context.
 
@@ -116,7 +116,7 @@ class RetryStrategy(ErrorRecoveryStrategy):
                  max_retries: int = 3,
                  delay_seconds: float = 1.0,
                  backoff_factor: float = 2.0,
-                 retry_on: Optional[List[Type[Exception]]] = None):
+                 retry_on: Optional[List[Type[Exception]]] = None) -> None:
         """
         Initialize retry strategy.
 
@@ -160,7 +160,7 @@ class FallbackStrategy(ErrorRecoveryStrategy):
 
     def __init__(self,
                  fallback_func: Callable,
-                 fallback_args: Optional[Dict[str, Any]] = None):
+                 fallback_args: Optional[Dict[str, Any]] = None) -> None:
         """
         Initialize fallback strategy.
 
@@ -190,7 +190,7 @@ class FallbackStrategy(ErrorRecoveryStrategy):
 class ErrorManager:
     """Manages error handling, logging, and recovery."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize error manager."""
         self.logger = get_logger()
         self.error_handler = get_error_handler()
@@ -272,7 +272,7 @@ class ErrorManager:
 class ErrorReporter:
     """Generates detailed error reports."""
 
-    def __init__(self, output_dir: Optional[Union[str, Path]] = None):
+    def __init__(self, output_dir: Optional[Union[str, Path]] = None) -> None:
         """
         Initialize error reporter.
 
@@ -336,7 +336,7 @@ class ErrorReporter:
 # Decorators for error handling
 def handle_errors(context_operation: str,
                  strategies: Optional[List[ErrorRecoveryStrategy]] = None,
-                 reraise: bool = True):
+                 reraise: bool = True) -> Callable:
     """
     Decorator for automatic error handling.
 
@@ -418,7 +418,7 @@ def safe_execute(func: Callable,
 @contextmanager
 def error_context(operation: str,
                  component: Optional[str] = None,
-                 strategies: Optional[List[ErrorRecoveryStrategy]] = None):
+                 strategies: Optional[List[ErrorRecoveryStrategy]] = None) -> None:
     """
     Context manager for error handling.
 
@@ -452,7 +452,7 @@ def retry_on_io_error(max_retries: int = 3, delay_seconds: float = 1.0) -> Retry
 
 def fallback_to_memory() -> FallbackStrategy:
     """Create fallback strategy for memory-based operations."""
-    def memory_fallback(file_path: str, **kwargs):
+    def memory_fallback(file_path: str, **kwargs) -> str:
         """Read file into memory instead of streaming."""
         with open(file_path, 'r') as f:
             return f.read()

@@ -18,7 +18,7 @@ Python bioinformaticians need to count k-mers in sequence files (FASTA/FASTQ) di
 **Acceptance Scenarios**:
 
 1. **Given** a Python environment with rustkmer installed, **When** creating a KmerCounter with k=31 and input FASTA file, **Then** the system creates a valid RKDB database file
-2. **Given** a KmerCounter instance, **When** calling count() method on a FASTQ file, **Then** returns a Database object containing all counted k-mers
+2. **Given** a KmerCounter instance, **When** calling count_file() method on a FASTQ file, **Then** returns a Database object containing all counted k-mers
 3. **Given** invalid sequence input, **When** attempting to count k-mers, **Then** raises appropriate SequenceError with descriptive message
 
 ---
@@ -115,35 +115,93 @@ Users need to export k-mer data from RKDB databases to text formats from Python 
 
 ### Functional Requirements
 
-- **FR-001**: Python bindings MUST provide KmerCounter class for counting k-mers in FASTA/FASTQ files with configurable k-mer sizes
-- **FR-002**: Python bindings MUST provide Database class for loading and querying existing RKDB database files
-- **FR-003**: Python bindings MUST provide FuzzyQuery class for wildcard searches and mutation-tolerant queries
-- **FR-004**: Python bindings MUST support all CLI operations: count, query, dump, fuzzy-query, fuzzy-query-batch, merge, and stats
-- **FR-005**: Python bindings MUST be built on existing u128 encoding implementation without u64 support
+#### Technical Specification
+- **FR-001**: Python bindings MUST implement KmerCounter class for k-mer counting in FASTA/FASTQ files
+- **FR-002**: Python bindings MUST implement Database class for database query operations
+- **FR-003**: Python bindings MUST implement FuzzyQuery class for wildcard and mutation-tolerant searches
+- **FR-004**: Python bindings MUST provide complete CLI coverage (see CLI Mapping section below)
+- **FR-005**: Python bindings MUST be built on existing u128 encoding implementation only
 - **FR-006**: System MUST provide comprehensive error handling with Python-specific exception types
 - **FR-007**: Python bindings MUST support both single-threaded and multi-threaded operations
-- **FR-008**: System MUST provide memory-efficient database access using memory mapping for large files with automatic pagination for memory-constrained queries
-- **FR-009**: Python bindings MUST maintain API compatibility with existing CLI command behaviors and outputs
-- **FR-010**: System MUST provide progress reporting via Python callback functions for long-running operations (counting, merging, stats calculation)
-- **FR-011**: Python bindings MUST support batch operations with automatic concurrent processing for efficient handling of multiple queries
-- **FR-012**: System MUST provide configuration options for verbosity levels and debugging output
+- **FR-008**: System MUST provide memory-efficient database access with memory mapping and pagination
+- **FR-009**: Python bindings MUST maintain API compatibility with CLI behaviors and outputs
+- **FR-010**: System MUST provide progress reporting via Python callbacks for long-running operations
+- **FR-011**: Python bindings MUST support batch operations with automatic concurrent processing
+- **FR-012**: System MUST provide configuration options for verbosity and debugging
+- **FR-013**: Python API method names MUST exactly match Rust struct/method names
+
+### CLI Command Mapping
+
+| CLI Command | Python Class | Primary Methods | Parameters | Return Type |
+|------------|-------------|----------------|------------|-------------|
+| `rustkmer count` | KmerCounter | count_file(), count_string() | k, canonical, threads, input | Database (new instance) |
+| `rustkmer query` | Database | query(), query_batch() | database_path, kmer | QueryResult or List[QueryResult] |
+| `rustkmer fuzzy-query` | FuzzyQuery | query(), set_max_distance() | database, pattern, distance | FuzzyQueryResult |
+| `rustkmer fuzzy-query-batch` | FuzzyQuery | query_batch() | database, patterns | List[FuzzyQueryResult] |
+| `rustkmer stats` | Database | get_stats(), calculate_stats() | database_path | DatabaseStats |
+| `rustkmer merge` | Database | merge(), merge_multiple() | input_paths, output_path | Database (new merged instance) |
+| `rustkmer dump` | Database | dump() | database_path, format, threshold | None (writes to file) |
+
+#### Performance Requirements
+- All Python API operations MUST perform within 110% of CLI baseline
+- Memory usage MUST remain within 105% of CLI baseline for identical operations
+- Batch operations MUST scale linearly with number of inputs up to system limits
+
+### Technical Dependencies
+
+#### Core Rust Dependencies
+- **PyO3 0.27.2+**: Python bindings framework with Python 3.10+ support, essential for bridging Rust and Python
+- **serde 1.0+**: Serialization framework for database structures and cross-language data exchange
+- **thiserror 2.0+**: Error handling for creating structured, Python-compatible error types
+- **rayon 1.10+**: Parallel processing library for CPU-intensive operations
+- **memmap2 0.9+**: Memory-mapped file access for large database files
+- **byteorder 1.4+**: Binary encoding/decoding for cross-platform compatibility
+- **clap 4.5+**: CLI framework (required for testing compatibility)
+- **bio 2.0+**: Bioinformatics utilities for FASTA/FASTQ parsing
+- **criterion 0.5+**: Performance benchmarking for validation
+
+#### Python Dependencies
+- **pytest 8.4+**: Testing framework with comprehensive fixture support
+- **pytest-cov 4.0+**: Code coverage reporting for 95% coverage requirement
+- **pytest-xdist 3.0+**: Parallel test execution for performance
+- **pytest-timeout 2.0+**: Test timeout handling for long-running operations
+- **maturin 1.0+**: Build system for Rust-Python extensions with pip compatibility
+- **mkdocs 1.5+**: Documentation generation framework
+- **mkdocstrings[python] 0.24+**: Automatic API documentation from docstrings
+- **mkdocs-material 9.0+**: Modern documentation theme
+- **hypothesis**: Property-based testing for k-mer encoding validation
+
+#### Build and Platform Requirements
+- **Rust 1.80+ stable channel**: Minimum Rust version for required features
+- **Python 3.10+**: Minimum Python version for type annotations and performance
+- **pip 23.0+**: Package installer for Python distribution
+- **LLVM/Clang**: Required for PyO3 compilation on all platforms
+- **CMake 3.15+**: Build tool for compiled dependencies
+- **Git**: Version control for development workflow
+
+#### Platform-Specific Notes
+- **Linux**: GCC 9+ or Clang 10+ required
+- **macOS**: Xcode 12+ or standalone Clang 10+ required
+- **Windows**: Microsoft Visual Studio 2019+ with C++ build tools
 
 ### Key Entities
 
-- **KmerCounter**: Python class representing k-mer counting functionality with configurable parameters
-- **Database**: Python class providing access to RKDB database files with query and metadata operations
-- **FuzzyQuery**: Python class for performing wildcard and mutation-tolerant searches
-- **DatabaseStats**: Python class containing statistical information about k-mer databases
-- **QueryResult**: Python class containing results from k-mer query operations
-- **FuzzyQueryResult**: Python class containing results from fuzzy query operations with match details
-- **PerformanceTimer**: Python utility class for measuring operation execution times
-- **ResourceStats**: Python class providing memory and system resource usage information
+These Python classes must directly wrap the corresponding Rust core structures with simplified names for usability:
+
+- **KmerCounter**: Python wrapper for Rust KmerCounter struct - handles k-mer counting operations
+- **Database**: Python wrapper for Rust DatabaseQuery struct - provides database query functionality
+- **FuzzyQuery**: Python wrapper for Rust FuzzyQuery struct - performs wildcard and mutation-tolerant searches
+- **DatabaseStats**: Python wrapper for Rust DatabaseStats struct - contains database metadata and statistics
+- **KmerEntry**: Python wrapper for Rust KmerEntry struct - represents individual k-mer entries
+- **QueryResult**: Python wrapper for query results - directly exposes Rust query result fields
+- **FuzzyQueryResult**: Python wrapper for fuzzy query results with match details
+- **DatabaseHeader**: Python wrapper for Rust DatabaseHeader struct - provides database file header information
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: Python API performance within 10% of CLI performance for all operations (count, query, fuzzy-query, merge, stats)
+- **SC-001**: Python API performance within 110% of CLI performance for all operations (count, query, fuzzy-query, merge, stats)
 - **SC-002**: All 7 CLI commands have complete Python API coverage with 100% functional parity
 - **SC-003**: Python package can be installed via pip with automatic compilation of Rust extensions on major platforms (Linux, macOS, Windows) for Python >= 3.10
 - **SC-004**: Memory usage for database operations remains within 5% of CLI baseline when accessing identical databases
@@ -165,3 +223,15 @@ Users need to export k-mer data from RKDB databases to text formats from Python 
 ### Session 2025-12-09
 
 - Q: 是否有进行rustkmer cli和python api的对比测试？ → A: 是的，已有完整的兼容性测试框架，包括cli_comparator.py、test_count_compatibility.py等测试文件，验证Python API与CLI命令的功能一致性
+
+### Session 2025-12-10
+
+- Q: Python API方法名应该如何定义以确保与Rust核心对齐？ → A: Python方法名必须与Rust结构体/方法名完全匹配（例如DatabaseQuery::open变为Database.open）
+
+### Session 2025-12-10
+
+- Q: Plan.md应该包含什么内容？ → A: 专注于Python绑定的完整实现策略，包括Rust集成、API设计和构建流程
+- Q: 文档语言如何处理？ → A: 技术文档使用英文，与人交互使用中文
+- Q: 规范内容如何组织？ → A: 保留User Stories，将Functional Requirements简化为技术规格清单
+- Q: CLI命令映射需要什么信息？ → A: 包含命令名称到Python类/方法的完整映射、参数映射、返回值格式、使用示例和性能要求
+- Q: Python类名如何处理？ → A: 为Python易用性简化名称（DatabaseQuery → Database），不添加前缀

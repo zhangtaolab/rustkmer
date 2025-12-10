@@ -339,6 +339,300 @@ def plot_histogram(histogram: Dict[int, int],
         print(f"Error plotting histogram: {e}")
 
 
+class KmerAbundanceAnalyzer:
+    """
+    Analyzes k-mer abundance distributions and identifies patterns.
+
+    This class provides methods to analyze the distribution of k-mer
+    counts in a database, identify rare and abundant k-mers, and
+    calculate various abundance metrics.
+    """
+
+    def __init__(self, database: 'Database'):
+        """
+        Initialize the analyzer with a database.
+
+        Args:
+            database: Database object to analyze
+        """
+        self.database = database
+        self._stats_cache: Optional[DatabaseStats] = None
+
+    def get_stats(self) -> DatabaseStats:
+        """
+        Get cached database statistics or calculate if not cached.
+
+        Returns:
+            DatabaseStats object with comprehensive statistics
+        """
+        if self._stats_cache is None:
+            self._stats_cache = self.database.get_stats()
+        return self._stats_cache
+
+    def analyze_abundance_distribution(self) -> Dict[str, Any]:
+        """
+        Analyze the k-mer abundance distribution.
+
+        Returns:
+            Dictionary containing abundance analysis results
+        """
+        stats = self.get_stats()
+        histogram = stats.histogram
+
+        if not histogram:
+            return {
+                "total_unique_kmers": 0,
+                "abundance_categories": {},
+                "distribution_shape": "empty",
+                "gini_coefficient": 0.0,
+            }
+
+        # Categorize k-mers by abundance
+        abundance_categories = {
+            "singletons": 0,  # Count of 1
+            "low_abundance": 0,  # 2-10
+            "medium_abundance": 0,  # 11-100
+            "high_abundance": 0,  # 101-1000
+            "very_high_abundance": 0,  # >1000
+        }
+
+        for count, frequency in histogram.items():
+            if count == 1:
+                abundance_categories["singletons"] += frequency
+            elif count <= 10:
+                abundance_categories["low_abundance"] += frequency
+            elif count <= 100:
+                abundance_categories["medium_abundance"] += frequency
+            elif count <= 1000:
+                abundance_categories["high_abundance"] += frequency
+            else:
+                abundance_categories["very_high_abundance"] += frequency
+
+        # Calculate Gini coefficient (inequality measure)
+        gini = self._calculate_gini_coefficient(histogram)
+
+        # Determine distribution shape
+        distribution_shape = self._classify_distribution_shape(histogram)
+
+        return {
+            "total_unique_kmers": stats.unique_kmers,
+            "abundance_categories": abundance_categories,
+            "distribution_shape": distribution_shape,
+            "gini_coefficient": gini,
+            "histogram": dict(histogram),
+        }
+
+    def _calculate_gini_coefficient(self, histogram: Dict[int, int]) -> float:
+        """
+        Calculate the Gini coefficient for inequality measurement.
+
+        Args:
+            histogram: Dictionary of count -> frequency
+
+        Returns:
+            Gini coefficient (0 = perfect equality, 1 = maximal inequality)
+        """
+        if not histogram:
+            return 0.0
+
+        # Sort by count
+        sorted_counts = sorted(histogram.items())
+        total_kmers = sum(count * freq for count, freq in sorted_counts)
+        cumulative_sum = 0
+        gini_sum = 0
+
+        n = len(sorted_counts)
+        for i, (count, frequency) in enumerate(sorted_counts):
+            cumulative_sum += count * frequency
+            gini_sum += (2 * i + 1 - n) * count * frequency
+
+        if total_kmers == 0:
+            return 0.0
+
+        return gini_sum / (n * total_kmers)
+
+    def _classify_distribution_shape(self, histogram: Dict[int, int]) -> str:
+        """
+        Classify the shape of the k-mer abundance distribution.
+
+        Args:
+            histogram: Dictionary of count -> frequency
+
+        Returns:
+            String describing the distribution shape
+        """
+        if not histogram:
+            return "empty"
+
+        # Calculate basic statistics
+        counts = list(histogram.keys())
+        if len(counts) < 2:
+            return "uniform"
+
+        mean_count = sum(count * freq for count, freq in histogram.items()) / sum(histogram.values())
+        median_count = sorted(counts)[len(counts) // 2]
+
+        # Check for common patterns
+        if median_count == 1 and mean_count > 10:
+            return "long_tail"
+        elif mean_count / median_count < 2:
+            return "uniform"
+        elif mean_count / median_count > 10:
+            return "highly_skewed"
+        else:
+            return "moderately_skewed"
+
+    def find_rare_kmers(self, threshold: int = 5) -> List[str]:
+        """
+        Find k-mers that appear less than or equal to a threshold.
+
+        Args:
+            threshold: Maximum count for rare k-mers
+
+        Returns:
+            List of rare k-mer sequences (placeholder - would need actual k-mers)
+        """
+        # This would require access to actual k-mer sequences
+        # For now, return count of rare k-mers
+        stats = self.get_stats()
+        rare_count = sum(freq for count, freq in stats.histogram.items() if count <= threshold)
+
+        print(f"Found {rare_count} rare k-mers with count <= {threshold}")
+        # TODO: Implement actual k-mer retrieval
+        return []
+
+    def find_abundant_kmers(self, threshold: int = 100) -> List[str]:
+        """
+        Find k-mers that appear more than a threshold.
+
+        Args:
+            threshold: Minimum count for abundant k-mers
+
+        Returns:
+            List of abundant k-mer sequences (placeholder)
+        """
+        # This would require access to actual k-mer sequences
+        stats = self.get_stats()
+        abundant_count = sum(freq for count, freq in stats.histogram.items() if count > threshold)
+
+        print(f"Found {abundant_count} abundant k-mers with count > {threshold}")
+        # TODO: Implement actual k-mer retrieval
+        return []
+
+
+class DatabaseComparison:
+    """
+    Compare statistics between multiple databases.
+
+    This class provides utilities to compare k-mer databases,
+    identify shared and unique k-mers, and analyze differences.
+    """
+
+    def __init__(self, databases: List['Database']):
+        """
+        Initialize with a list of databases to compare.
+
+        Args:
+            databases: List of Database objects to compare
+        """
+        self.databases = databases
+        self._stats_cache: List[Optional[DatabaseStats]] = [None] * len(databases)
+
+    def get_all_stats(self) -> List[DatabaseStats]:
+        """
+        Get statistics for all databases.
+
+        Returns:
+            List of DatabaseStats objects
+        """
+        for i, db in enumerate(self.databases):
+            if self._stats_cache[i] is None:
+                self._stats_cache[i] = db.get_stats()
+        return self._stats_cache  # type: ignore
+
+    def compare_basic_stats(self) -> Dict[str, Any]:
+        """
+        Compare basic statistics across databases.
+
+        Returns:
+            Dictionary with comparison results
+        """
+        all_stats = self.get_all_stats()
+
+        comparison = {
+            "database_count": len(all_stats),
+            "kmer_sizes": [s.kmer_size for s in all_stats],
+            "unique_kmers": [s.unique_kmers for s in all_stats],
+            "total_kmers": [s.total_kmers for s in all_stats],
+            "overlaps": {},
+            "similarities": {},
+        }
+
+        # Check if all databases have the same k-mer size
+        kmer_sizes = [s.kmer_size for s in all_stats]
+        comparison["same_kmer_size"] = len(set(kmer_sizes)) == 1
+
+        # Calculate overlap estimates (simplified)
+        if len(all_stats) == 2:
+            min_unique = min(s.unique_kmers for s in all_stats)
+            max_unique = max(s.unique_kmers for s in all_stats)
+            estimated_overlap = min_unique - (max_unique - min_unique) * 0.5  # Heuristic
+            comparison["overlaps"]["estimated_shared_kmers"] = max(0, int(estimated_overlap))
+
+        return comparison
+
+    def generate_comparison_report(self, output_path: Optional[str] = None) -> str:
+        """
+        Generate a detailed comparison report.
+
+        Args:
+            output_path: Optional path to save the report
+
+        Returns:
+            Report text
+        """
+        comparison = self.compare_basic_stats()
+        all_stats = self.get_all_stats()
+
+        lines = []
+        lines.append("Database Comparison Report")
+        lines.append("=" * 50)
+        lines.append("")
+
+        # Basic information
+        lines.append(f"Number of databases: {comparison['database_count']}")
+        lines.append(f"Same k-mer size: {comparison['same_kmer_size']}")
+        lines.append("")
+
+        # Statistics for each database
+        for i, (db, stats) in enumerate(zip(self.databases, all_stats)):
+            lines.append(f"Database {i + 1}:")
+            lines.append(f"  File: {stats.filename}")
+            lines.append(f"  K-mer size: {stats.kmer_size}")
+            lines.append(f"  Unique k-mers: {stats.unique_kmers:,}")
+            lines.append(f"  Total k-mers: {stats.total_kmers:,}")
+            lines.append(f"  Min count: {stats.min_count}")
+            lines.append(f"  Max count: {stats.max_count}")
+            lines.append(f"  Mean count: {stats.mean_count:.2f}")
+            lines.append(f"  Coverage: {stats.coverage_estimate:.2%}")
+            lines.append("")
+
+        # Overlap information
+        if "estimated_shared_kmers" in comparison["overlaps"]:
+            lines.append("Overlap Analysis:")
+            lines.append(f"  Estimated shared k-mers: {comparison['overlaps']['estimated_shared_kmers']:,}")
+            lines.append("")
+
+        report = "\n".join(lines)
+
+        if output_path:
+            with open(output_path, 'w') as f:
+                f.write(report)
+            print(f"Comparison report saved to {output_path}")
+
+        return report
+
+
 # Performance utilities for large datasets
 class StreamingStatsCalculator:
     """Calculate statistics without loading all data into memory."""
