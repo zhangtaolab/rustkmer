@@ -448,7 +448,7 @@ mod tests {
     #[test]
     fn test_compression() {
         let dir = tempdir().unwrap();
-        let db_path = dir.path().join("compressed_db");
+        let _db_path = dir.path().join("compressed_db");
 
         let mut kmer_counts = HashMap::new();
         for i in 0..1000 {

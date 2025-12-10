@@ -6,16 +6,18 @@
 
 pub mod utils;
 pub mod generators;
-pub mod test_small_k;
-pub mod test_ambiguous;
-pub mod test_canonical;
-pub mod test_full_pipeline;
+// Note: The following modules were declared but the files don't exist:
+// - test_small_k
+// - test_ambiguous
+// - test_canonical
+// - test_full_pipeline
 
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 /// Statistics from processing
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[allow(dead_code)]
 pub struct ProcessingStats {
     pub total_sequences: u64,
     pub valid_kmers: u64,
@@ -27,12 +29,14 @@ pub struct ProcessingStats {
 
 /// Comparison result between u64 and u128 implementations
 #[derive(Debug, PartialEq)]
+#[allow(dead_code)]
 pub struct ComparisonResult {
     pub stats_match: bool,
     pub kmer_counts_match: bool,
     pub differences: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl ProcessingStats {
     /// Check if two stats are equal
     pub fn matches(&self, other: &Self) -> bool {
@@ -46,6 +50,7 @@ impl ProcessingStats {
 }
 
 /// Compare k-mer counts from two implementations
+#[allow(dead_code)]
 pub fn compare_kmer_counts(
     u64_counts: &HashMap<String, u32>,
     u128_counts: &HashMap<String, u32>,

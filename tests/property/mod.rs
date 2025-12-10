@@ -4,6 +4,7 @@
 //! Property-based testing generates random inputs to verify that
 //! certain properties always hold true for the implementation.
 
-pub mod test_proptest_simple;
-pub mod test_merge_associativity;
-pub mod test_merge_commutativity;
+// Note: The following modules were declared but the files don't exist:
+// pub mod test_proptest_simple;
+// pub mod test_merge_associativity;
+// pub mod test_merge_commutativity;

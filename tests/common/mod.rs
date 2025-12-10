@@ -4,12 +4,9 @@ pub mod memory;
 pub mod performance;
 pub mod temp_files;
 
-use thiserror::Error;
 use rustkmer::database::format::RKDatabase;
-use std::path::PathBuf;
-
 /// Result type for test operations
-pub type TestResult<T> = Result<T, Error>;
+pub type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 /// Create a test database with specified number of k-mers
 pub fn create_test_database(
@@ -21,7 +18,7 @@ pub fn create_test_database(
     let mut kmers = Vec::with_capacity(num_kmers);
 
     for i in 0..num_kmers {
-        let kmer = encode_test_kmer(i, kmer_size);
+        let kmer = encode_test_kmer(i as u64, kmer_size);
         kmers.push((kmer, (i % 1000 + 1) as u32));
     }
 
@@ -29,7 +26,7 @@ pub fn create_test_database(
         kmers.sort_by_key(|(kmer, _)| *kmer);
     }
 
-    RKDatabase::from_kmer_pairs(kmers, kmer_size, canonical, sorted).map_err(|e| Error::msg(e.to_string()))
+    RKDatabase::from_kmer_pairs(kmers, kmer_size, canonical, sorted).map_err(|e| e.into())
 }
 
 /// Create a test database with overlapping k-mers
@@ -45,13 +42,13 @@ pub fn create_overlapping_database(
 
     // Create overlapping k-mers (first N k-mers)
     for i in 0..overlapping_kmers {
-        let kmer = encode_test_kmer(i, kmer_size);
+        let kmer = encode_test_kmer(i as u64, kmer_size);
         kmers.push((kmer, (i % 100 + 1) as u32));
     }
 
     // Create unique k-mers (remaining)
     for i in overlapping_kmers..num_kmers {
-        let kmer = encode_test_kmer(i + 1000000, kmer_size); // Offset to avoid overlap
+        let kmer = encode_test_kmer((i + 1000000) as u64, kmer_size); // Offset to avoid overlap
         kmers.push((kmer, (i % 500 + 1) as u32));
     }
 
@@ -62,7 +59,7 @@ pub fn create_overlapping_database(
     }
 
     let db = RKDatabase::from_kmer_pairs(kmers, kmer_size, canonical, sorted)
-        .map_err(|e| Error::msg(e.to_string()))?;
+        .map_err(|e| format!("Failed to create database: {}", e))?;
 
     Ok((db, overlapping_snapshot))
 }
@@ -80,7 +77,7 @@ pub fn create_database_from_kmers(
     }
 
     RKDatabase::from_kmer_pairs(sorted_kmers, kmer_size, canonical, sorted)
-        .map_err(|e| Error::msg(e.to_string()))
+        .map_err(|e| e.into())
 }
 
 /// Generate a simple test k-mer encoding
@@ -105,8 +102,8 @@ pub fn generate_kmer_sequence(start: u64, count: usize, kmer_size: u8) -> Vec<u1
 
 /// Validate that two databases have the same k-mers (order-independent)
 pub fn databases_have_same_kmers(db1: &RKDatabase, db2: &RKDatabase) -> TestResult<bool> {
-    let kmers1 = db1.all_kmers().map_err(|e| Error::msg(e.to_string()))?;
-    let kmers2 = db2.all_kmers().map_err(|e| Error::msg(e.to_string()))?;
+    let kmers1: Vec<(u128, u32)> = db1.all_kmers().map_err(|e| format!("Database error: {}", e))?;
+    let kmers2: Vec<(u128, u32)> = db2.all_kmers().map_err(|e| format!("Database error: {}", e))?;
 
     if kmers1.len() != kmers2.len() {
         return Ok(false);
@@ -121,14 +118,14 @@ pub fn databases_have_same_kmers(db1: &RKDatabase, db2: &RKDatabase) -> TestResu
 /// Count total k-mer occurrences in a database
 pub fn count_total_kmers(db: &RKDatabase) -> TestResult<u64> {
     db.all_kmers()
-        .map_err(|e| Error::msg(e.to_string()))
+        .map_err(|e| e.into())
         .map(|kmers| kmers.iter().map(|(_, count)| *count as u64).sum())
 }
 
 /// Get unique k-mer count in a database
 pub fn count_unique_kmers(db: &RKDatabase) -> TestResult<usize> {
     db.all_kmers()
-        .map_err(|e| Error::msg(e.to_string()))
+        .map_err(|e| e.into())
         .map(|kmers| kmers.len())
 }
 

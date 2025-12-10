@@ -3,6 +3,7 @@ use std::fs;
 use std::io::Write;
 
 /// Generate test FASTA files for consistency testing
+#[allow(dead_code)]
 pub fn generate_test_fasta(filename: &str, sequences: Vec<&str>) {
     let mut file = fs::File::create(filename).unwrap();
 
@@ -13,6 +14,7 @@ pub fn generate_test_fasta(filename: &str, sequences: Vec<&str>) {
 }
 
 /// Generate expected k-mer counts for test sequences
+#[allow(dead_code)]
 pub fn generate_expected_counts(sequences: Vec<&str>, k: usize) -> HashMap<String, u32> {
     let mut counts = HashMap::new();
 
@@ -39,6 +41,7 @@ pub fn generate_expected_counts(sequences: Vec<&str>, k: usize) -> HashMap<Strin
 }
 
 /// Create mixed sequences with various patterns
+#[allow(dead_code)]
 pub fn create_mixed_sequences() -> Vec<String> {
     vec![
         // Simple repeats
@@ -61,8 +64,8 @@ pub fn create_mixed_sequences() -> Vec<String> {
         "ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGNN".to_string(),
 
         // Edge cases
-        "A",  // Single base
-        "AC",  // Two bases
-        "ACG",  // Three bases
+        "A".to_string(),  // Single base
+        "AC".to_string(),  // Two bases
+        "ACG".to_string(),  // Three bases
     ]
 }

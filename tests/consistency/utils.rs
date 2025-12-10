@@ -4,6 +4,7 @@ use std::process::Command;
 use super::ProcessingStats;
 
 /// Generate test sequences for consistency testing
+#[allow(dead_code)]
 pub fn generate_test_sequences() -> Vec<String> {
     vec![
         "A".repeat(64),  // Homopoly A
@@ -15,14 +16,15 @@ pub fn generate_test_sequences() -> Vec<String> {
         "N".repeat(64),   // All ambiguous
         "ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGACGT".to_string(),  // 64 with N
         // Edge cases
-        "A",  // k=1
-        "AC",  // k=2
-        "ACG",  // k=3
+        "A".to_string(),  // k=1
+        "AC".to_string(),  // k=2
+        "ACG".to_string(),  // k=3
         "ACGT".repeat(16),  // k=64 exact
     ]
 }
 
 /// Parse processing stats from command output
+#[allow(dead_code)]
 pub fn parse_stats_output(output: &str) -> ProcessingStats {
     let mut stats = ProcessingStats {
         total_sequences: 0,
@@ -65,6 +67,7 @@ pub fn parse_stats_output(output: &str) -> ProcessingStats {
 }
 
 /// Extract k-mer counts from dump output
+#[allow(dead_code)]
 pub fn parse_kmer_counts(output: &str) -> HashMap<String, u32> {
     let mut counts = HashMap::new();
 
@@ -80,6 +83,7 @@ pub fn parse_kmer_counts(output: &str) -> HashMap<String, u32> {
 }
 
 /// Run command and return output
+#[allow(dead_code)]
 pub fn run_command(cmd: &str, args: &[&str]) -> Result<String, std::io::Error> {
     let output = Command::new(cmd)
         .args(args)
