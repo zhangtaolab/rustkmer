@@ -102,14 +102,8 @@ panic = "abort"
 
 [lib]
 name = "rustkmer"
-crate-type = ["rlib", "cdylib"]
+crate-type = ["rlib"]
 path = "src/lib.rs"
-
-# Python bindings enabled with feature flag
-[dependencies.pyo3]
-version = "0.27.2"
-features = ["extension-module"]
-optional = true
 
 [[bin]]
 name = "rustkmer"
@@ -121,5 +115,4 @@ harness = false
 
 [features]
 default = []
-python = ["pyo3"]
 profiling = []

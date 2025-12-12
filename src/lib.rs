@@ -2,7 +2,7 @@
 //!
 //! High-performance k-mer counting library for genomic data analysis.
 //!
-//! This library provides the core functionality for counting k-mers in DNA sequences,
+//! This library provides core functionality for counting k-mers in DNA sequences,
 //! with support for multi-threading, memory-efficient storage, and multiple output formats.
 //!
 //! # Examples
@@ -33,9 +33,6 @@ pub mod kmer;
 pub mod memory;
 pub mod output;
 pub mod parallel;
-
-#[cfg(feature = "python")]
-pub mod python;
 
 
 // Re-export key types for convenience

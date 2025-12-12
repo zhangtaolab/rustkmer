@@ -38,14 +38,6 @@ theme:
 
 plugins:
   - search
-  - mkdocstrings:
-      handlers:
-        python:
-          paths: [python]
-          options:
-            docstring_options:
-              ignore_init_summary: false
-            merge_init_into_class: true
   - section-index
 
 nav:
@@ -53,7 +45,6 @@ nav:
   - Getting Started:
     - getting-started/index.md
     - Installation: getting-started/installation.md
-    - Virtual Environments: getting-started/virtual-environments.md
     - Quick Start: getting-started/first-steps.md
     - Troubleshooting: getting-started/troubleshooting.md
   - User Guide:
@@ -62,6 +53,9 @@ nav:
     - Querying Databases: user-guide/querying.md
     - Fuzzy Search: user-guide/fuzzy-search.md
     - Performance Tips: user-guide/performance-tips.md
+    - CLI: user-guide/cli.md
+    - Examples: user-guide/examples.md
+    - Tutorials: user-guide/tutorials/index.md
   - API Reference:
     - api-reference/index.md
     - Rust:
@@ -70,11 +64,6 @@ nav:
       - Database: api-reference/rust/database.md
       - Fuzzy Query: api-reference/rust/fuzzy.md
       - CLI: api-reference/rust/cli.md
-    - Python:
-      - api-reference/python/index.md
-      - KmerCounter: api-reference/python/kmercounter.md
-      - Database: api-reference/python/database.md
-      - Examples: api-reference/python/examples.md
   - Tutorials:
     - tutorials/index.md
     - Basic Workflow: tutorials/basic-workflow.md
@@ -118,8 +107,6 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/rustkmer/rustkmer
-    - icon: fontawesome/brands/python
-      link: https://pypi.org/project/rustkmer/
 
 extra_css:
   - stylesheets/extra.css
