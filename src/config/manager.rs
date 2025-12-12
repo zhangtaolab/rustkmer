@@ -492,13 +492,13 @@ impl ConfigManager {
 
     /// Set a temporary environment variable for the current process
     pub fn set_env_var(&self, key: &str, value: &str) -> Result<()> {
-        env::set_var(format!("{}_{}", ENV_PREFIX, key.to_uppercase()), value);
+        unsafe { env::set_var(format!("{}_{}", ENV_PREFIX, key.to_uppercase()), value) };
         Ok(())
     }
 
     /// Remove a temporary environment variable
     pub fn remove_env_var(&self, key: &str) -> Result<()> {
-        env::remove_var(format!("{}_{}", ENV_PREFIX, key.to_uppercase()));
+        unsafe { env::remove_var(format!("{}_{}", ENV_PREFIX, key.to_uppercase())) };
         Ok(())
     }
 
@@ -602,9 +602,11 @@ mod tests {
     #[test]
     fn test_env_overrides() {
         // Set temporary environment variables
-        env::set_var("RUSTKMER_DEFAULT_K", "21");
-        env::set_var("RUSTKMER_THREADS", "4");
-        env::set_var("RUSTKVER_VERBOSE", "true");
+        unsafe {
+            env::set_var("RUSTKMER_DEFAULT_K", "21");
+            env::set_var("RUSTKMER_THREADS", "4");
+            env::set_var("RUSTKVER_VERBOSE", "true");
+        }
 
         let manager = ConfigManager::new();
         manager.load().unwrap();
@@ -615,9 +617,9 @@ mod tests {
         assert_eq!(config.output.verbose, Some(true));
 
         // Clean up
-        env::remove_var("RUSTKMER_DEFAULT_K");
-        env::remove_var("RUSTKMER_THREADS");
-        env::remove_var("RUSTKMER_VERBOSE");
+        unsafe { env::remove_var("RUSTKMER_DEFAULT_K") };
+        unsafe { env::remove_var("RUSTKMER_THREADS") };
+        unsafe { env::remove_var("RUSTKMER_VERBOSE") };
     }
 
     #[test]
@@ -695,13 +697,13 @@ verbose = true
         config.kmer_counting.default_k = Some(0); // Invalid
         config.memory.page_size = Some(0); // Invalid
 
-        let errors = ConfigManager::validate_config(&config);
+        let errors = ConfigManager::validate_config(&config).unwrap();
         assert!(!errors.is_empty());
         assert!(errors.contains(&"Memory limit cannot be zero".to_string()));
 
         // Test valid configuration
         config = GlobalConfig::default();
-        let errors = ConfigManager::validate_config(&config);
+        let errors = ConfigManager::validate_config(&config).unwrap();
         assert!(errors.is_empty());
 
         Ok(())
