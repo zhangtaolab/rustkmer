@@ -4,5 +4,6 @@
 //! focusing on the core functionality needed for API compatibility.
 
 pub mod lib;
+pub mod kmer_counter;
 
 pub use lib::*;

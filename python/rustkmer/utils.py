@@ -214,35 +214,60 @@ def merge_databases(
     strategy: str = "sum",
     progress_callback: Optional[Callable[[float, str], None]] = None,
 ) -> None:
-    """Merge multiple RKDB database files.
+    """Merge multiple RKDB database files using rustkmer CLI.
 
     Args:
         input_files: List of input database files
         output_file: Output database file path
-        strategy: Merge strategy ('sum', 'max', 'min')
+        strategy: Merge strategy ('sum', 'max', 'min') - currently only 'sum' is supported
         progress_callback: Optional progress callback
 
     Raises:
-        ValueError: If strategy is invalid
-        FileNotFoundError: If input files don't exist
+        ValueError: If strategy is invalid or not supported
+        FileNotFoundError: If rustkmer CLI or input files don't exist
+        RuntimeError: If CLI command fails
     """
-    # Validate strategy
-    valid_strategies = {"sum", "max", "min"}
-    if strategy not in valid_strategies:
-        raise ValueError(f"Invalid merge strategy: {strategy}. Must be one of {valid_strategies}")
+    import shutil
+    import subprocess
+
+    # Validate strategy - only 'sum' is currently supported via CLI
+    if strategy != "sum":
+        raise ValueError(f"CLI-based merge only supports 'sum' strategy, got: {strategy}. "
+                        "Use direct Rust binding for other strategies.")
+
+    # Check rustkmer CLI is available
+    rustkmer_cmd = shutil.which("rustkmer")
+    if rustkmer_cmd is None:
+        raise FileNotFoundError("rustkmer CLI not found in PATH. Please ensure rustkmer is installed.")
 
     # Check input files exist
     for file in input_files:
         if not os.path.exists(file):
             raise FileNotFoundError(f"Input file not found: {file}")
 
-    # TODO: Implement actual merging in Rust
-    # For now, just provide the Python interface
-    with progress_reporter(progress_callback, "Merging databases") as update:
-        for i, file in enumerate(input_files):
-            update(i / len(input_files))
-            # TODO: Call Rust merge function here
-            update((i + 1) / len(input_files))
+    # Build CLI command
+    # Note: merge command may not be available in all versions
+    cmd = [rustkmer_cmd, "merge", "-o", output_file] + input_files
+
+    # Execute with progress reporting
+    with progress_reporter(progress_callback, "Merging databases via CLI") as update:
+        try:
+            # Run the command
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False  # Don't raise exception on non-zero exit
+            )
+
+            if result.returncode != 0:
+                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+                raise RuntimeError(f"Merge failed with exit code {result.returncode}: {error_msg}")
+
+            update(1.0, "Merge completed successfully")
+
+        except subprocess.SubprocessError as e:
+            raise RuntimeError(f"Failed to execute merge command: {e}") from e
 
 
 class PerformanceTimer:
@@ -282,20 +307,24 @@ class PerformanceTimer:
 
 
 # Re-export from Rust extension when available
-try:
-    from ._rustkmer import (
-        get_resource_stats as _rust_get_resource_stats,
-        cleanup_resources as _rust_cleanup_resources,
-        merge_databases as _rust_merge_databases,
-        PerformanceTimer as _rust_PerformanceTimer,
-    )
+# TODO: Uncomment when Rust implementations are ready
+# Currently using Python implementations only
+# try:
+#     from ._rustkmer import (
+#         get_resource_stats as _rust_get_resource_stats,
+#         cleanup_resources as _rust_cleanup_resources,
+#         merge_databases as _rust_merge_databases,
+#         PerformanceTimer as _rust_PerformanceTimer,
+#     )
+#
+#     # Override Python implementations with Rust versions
+#     get_resource_stats = _rust_get_resource_stats
+#     cleanup_resources = _rust_cleanup_resources
+#     merge_databases = _rust_merge_databases
+#     PerformanceTimer = _rust_PerformanceTimer
+#
+# except ImportError:
+#     # Use Python implementations when Rust extension not available
+#     pass
 
-    # Override Python implementations with Rust versions
-    get_resource_stats = _rust_get_resource_stats
-    cleanup_resources = _rust_cleanup_resources
-    merge_databases = _rust_merge_databases
-    PerformanceTimer = _rust_PerformanceTimer
-
-except ImportError:
-    # Use Python implementations when Rust extension not available
-    pass
+# Currently using Python implementations only

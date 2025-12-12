@@ -1,96 +1,83 @@
-# RustKmer Python API Quick Start
+# Quick Start Guide: RustKmer Python Bindings
 
-## Installation
+## Overview
 
-```bash
-# Install from source (requires Rust)
-git clone https://github.com/rust-lang/rustkmer.git
-cd rustkmer
-pip install .
+This guide helps you quickly get started with the RustKmer Python API for high-performance k-mer counting, database queries, and genomic data analysis.
 
-# Install from PyPI (when available)
-pip install rustkmer
-```
+## Prerequisites
 
-## Basic Usage
+1. **Python Environment**:
+   ```bash
+   # Ensure Python 3.10+ is installed
+   python --version  # Should be 3.10 or higher
+   ```
 
-### 1. Counting K-mers
+2. **Install RustKmer**:
+   ```bash
+   # Install from PyPI
+   pip install rustkmer
+
+   # Or install development version
+   pip install git+https://github.com/your-org/rustkmer.git
+   ```
+
+## Quick Examples
+
+### 1. K-mer Counting
 
 ```python
 from rustkmer import KmerCounter
 
-# Create a counter
-counter = KmerCounter(k=21, canonical=True)
+# Create a k-mer counter
+counter = KmerCounter(k=21, canonical=True, threads=4)
 
-# Count from a FASTA file
-counter.count_file("sequences.fasta")
+# Count k-mers in a FASTA file
+database = counter.count_file("sequences.fasta", "output.rkdb")
 
-# Get statistics
-print(f"Total k-mers: {counter.get_total_count()}")
-print(f"Unique k-mers: {counter.get_unique_count()}")
-
-# Get count for specific k-mer
-count = counter.get_kmer_count("ATCGATCGATCGATCGATCG")
-print(f"Count: {count}")
-
-# Get top k-mers
-top_kmers = counter.get_top_kmers(n=10)
-for kmer, count in top_kmers:
-    print(f"{kmer}: {count}")
+# Count k-mers in a FASTQ string
+counts = counter.count_string("ATCGATCGATCGATCGATCGATCGATCGATCG")
+print(f"Counts: {counts}")
 ```
 
-### 2. Database Operations
+### 2. Database Queries
 
 ```python
-from rustkmer import KmerCounter, Database
+from rustkmer import Database
 
-# Create and populate database
-counter = KmerCounter(k=31)
-counter.count_file("large_dataset.fastq")
+# Load an existing database
+db = Database("existing.rkdb")
 
-# Save to database
-database = counter.save_to_database("mydata.rkdb")
+# Query a single k-mer
+count = db.query("ATCGATCGATCGATCGATCGATCG")
+print(f"K-mer count: {count}")
 
-# Load existing database
-db = Database()
-db.load("mydata.rkdb")
+# Check if k-mer exists
+if db.exists("ATCGATCGATCGATCGATCGATCG"):
+    print("K-mer found in database")
 
-# Query k-mers
-result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCG")
-if result.found:
-    print(f"Count: {result.count}")
-else:
-    print("K-mer not found")
-
-# Batch queries
-kmers = ["ATCGATCGATCGATCGATCG", "GCTAGCTAGCTAGCTAGCTA"]
+# Batch query multiple k-mers
+kmers = ["ATCGATCG", "GCTAGCTA", "TATATATA"]
 results = db.query_batch(kmers)
-for result in results:
-    print(f"{result.kmer}: {result.count if result.found else 'not found'}")
-
-# Check existence
-if db.exists("ATCGATCGATCGATCGATCG"):
-    print("K-mer exists in database")
+print(f"Batch results: {results}")
 ```
 
-### 3. Fuzzy Queries
+### 3. Fuzzy Query
 
 ```python
-from rustkmer import FuzzyQuery
+from rustkmer import Database, FuzzyQuery
 
-# Create fuzzy query
-fq = FuzzyQuery()
-fq.load_database("mydata.rkdb")
-fq.set_max_distance(2)
+# Load database and create fuzzy query
+db = Database("existing.rkdb")
+fuzzy = FuzzyQuery(db, max_mutations=1)
 
-# Query with wildcards
-results = fq.query("ATCGATCGATNGATCGATCG")  # N is wildcard
-for result in results:
-    print(f"{result.kmer}: {result.count} (distance: {result.distance})")
+# Search with wildcard pattern
+result = fuzzy.query("A*TG*C")
+print(f"Found {len(result.matches)} matches")
 
-# Batch fuzzy queries
-patterns = ["ATCGATCGATNGATCGATCG", "GCTAGCTANNNNNNNNN"]
-batch_results = fq.query_batch(patterns)
+# Search with mutation tolerance
+result = fuzzy.query("AAAAA", max_distance=1)
+for match in result.matches:
+    print(f"{match.kmer}: {match.count} (distance: {match.distance})")
 ```
 
 ### 4. Database Statistics
@@ -98,199 +85,220 @@ batch_results = fq.query_batch(patterns)
 ```python
 from rustkmer import Database
 
-db = Database()
-db.load("mydata.rkdb")
+db = Database("existing.rkdb")
+stats = db.get_statistics()
 
-stats = db.get_stats()
 print(f"K-mer size: {stats.kmer_size}")
 print(f"Total k-mers: {stats.total_kmers}")
 print(f"Unique k-mers: {stats.unique_kmers}")
-print(f"Coverage: {stats.coverage:.2f}%")
+print(f"Coverage estimate: {stats.coverage_estimate}")
 
-# Histogram data
-for count, frequency in stats.histogram[:10]:
-    print(f"Count {count}: {frequency} k-mers")
-
-# Percentiles
-print(f"P50: {stats.percentiles['P50']}")
-print(f"P95: {stats.percentiles['P95']}")
+# Get histogram data
+histogram = stats.calculate_histogram(max_bins=100)
+print(f"Histogram: {histogram}")
 ```
 
-### 5. Database Merge
+### 5. Database Merging
 
 ```python
 from rustkmer import Database
 
 # Load multiple databases
-db1 = Database()
-db1.load("sample1.rkdb")
-
-db2 = Database()
-db2.load("sample2.rkdb")
+db1 = Database("sample1.rkdb")
+db2 = Database("sample2.rkdb")
+db3 = Database("sample3.rkdb")
 
 # Merge databases
-merged = db1.merge(db2, "merged.rkdb")
-
-# Verify merge
-merged_stats = merged.get_stats()
-print(f"Merged database has {merged_stats.total_kmers} k-mers")
+merged_db = db1.merge([db2, db3], "merged.rkdb")
+print(f"Merged database contains {merged_db.total_kmers} k-mers")
 ```
 
-### 6. Export Data
+### 6. Data Export
 
 ```python
 from rustkmer import Database
 
-db = Database()
-db.load("mydata.rkdb")
+db = Database("existing.rkdb")
 
-# Export as text
-db.dump("export.txt", format="text", threshold=5)
+# Export to text format
+db.dump("output.txt", format="text")
 
-# Export as CSV
-db.dump("export.csv", format="csv")
+# Export to CSV with threshold
+db.dump("filtered.csv", format="csv", threshold=10)
 
-# Export as JSON
-db.dump("export.json", format="json")
+# Export to JSON
+db.dump("data.json", format="json")
 ```
 
 ## Advanced Usage
 
-### Thread Safety
+### Progress Callbacks
 
 ```python
-from rustkmer import Database
-import threading
+from rustkmer import KmerCounter
 
-db = Database()
-db.load("mydata.rkdb")
+def progress_callback(progress: float, message: str):
+    print(f"Progress: {progress:.1%} - {message}")
 
-def worker(kmers):
-    for kmer in kmers:
-        result = db.query(kmer)
-        # Process result...
+counter = KmerCounter(k=31)
+database = counter.count_file(
+    "large_file.fasta",
+    "output.rkdb",
+    progress_callback=progress_callback
+)
+```
 
-# Multiple threads can safely access the same database
-threads = []
-for i in range(4):
-    t = threading.Thread(target=worker, args=[kmers[i::4]])
-    threads.append(t)
-    t.start()
+### Configuration Management
 
-for t in threads:
-    t.join()
+```python
+from rustkmer import KmerCounter
+import os
+
+# Configure via environment variables
+os.environ['RUSTKMER_THREADS'] = '8'
+os.environ['RUSTKMER_VERBOSE'] = 'true'
+
+counter = KmerCounter(k=21)
+# Will use 8 threads and verbose output
 ```
 
 ### Error Handling
 
 ```python
-from rustkmer import KmerCounter, RustKmerError, SequenceError
+from rustkmer import KmerCounter, SequenceError, DatabaseError
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 try:
-    counter = KmerCounter(k=65)  # k too large for u128
-except ValueError as e:
-    print(f"Invalid parameter: {e}")
-
-try:
-    counter = KmerCounter()
-    counter.count_string("AXCG")  # Invalid sequence
+    counter = KmerCounter(k=21)
+    database = counter.count_file("invalid.fasta")
 except SequenceError as e:
-    print(f"Sequence error: {e}")
-
-# Generic error handling
-try:
-    db = Database()
-    db.load("nonexistent.rkdb")
-except RustKmerError as e:
-    print(f"RustKmer error: {e}")
+    logging.error(f"Invalid sequence: {e}")
+except DatabaseError as e:
+    logging.error(f"Database error: {e}")
 ```
 
-### Performance Tips
+## Performance Tips
 
-1. **Use batch operations** when possible:
-   ```python
-   # Good - batch query
-   results = db.query_batch(kmers)
-
-   # Avoid - individual queries
-   for kmer in kmers:
-       result = db.query(kmer)
-   ```
-
-2. **Choose appropriate k-mer size**:
-   - Small k (15-21): More unique k-mers, faster queries
-   - Large k (31-63): More specific, less memory
-
-3. **Use canonical k-mers** for counting if strand doesn't matter:
-   ```python
-   counter = KmerCounter(k=21, canonical=True)  # Merges reverse complements
-   ```
-
-4. **Enable compression** for large databases:
-   ```python
-   counter.save_to_database("large.rkdb", compress=True)
-   ```
-
-## Integration with BioPython
+### 1. Use Memory Mapping for Large Databases
 
 ```python
-from rustkmer import KmerCounter
-from Bio import SeqIO
-
-# Process BioPython sequences
-counter = KmerCounter(k=21)
-
-for record in SeqIO.parse("sequences.fasta", "fasta"):
-    # Convert to string
-    sequence = str(record.seq).upper()
-    counter.count_string(sequence)
-
-print(f"Processed {counter.get_total_count()} k-mers")
+# Database automatically uses memory mapping
+db = Database("large_database.rkdb")  # Efficient for >1GB files
 ```
 
-## Integration with Pandas
+### 2. Batch Operations
+
+```python
+# Use batch queries for better performance
+kmers = ["ATCG" * 10 for _ in range(1000)]
+results = db.query_batch(kmers)  # Much faster than individual queries
+```
+
+### 3. Thread-Safe Usage
+
+```python
+from threading import Thread
+from rustkmer import Database
+
+def query_worker(db_path, kmer):
+    db = Database(db_path)
+    return db.query(kmer)
+
+# Database objects can be safely used across threads
+threads = [
+    Thread(target=query_worker, args=("db.rkdb", "ATCG")),
+    Thread(target=query_worker, args=("db.rkdb", "GCTA")),
+]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+```
+
+## Common Workflows
+
+### 1. Complete Counting and Analysis Pipeline
+
+```python
+from rustkmer import KmerCounter, Database
+
+# Step 1: Count k-mers
+counter = KmerCounter(k=31, threads=8)
+database = counter.count_file("reads.fastq", "sample.rkdb")
+
+# Step 2: Analyze database
+db = Database("sample.rkdb")
+stats = db.get_statistics()
+
+# Step 3: Export results
+db.dump("analysis_report.txt", format="text")
+stats.calculate_histogram().to_csv("histogram.csv")
+```
+
+### 2. Comparative Analysis
 
 ```python
 from rustkmer import Database
-import pandas as pd
 
-db = Database()
-db.load("mydata.rkdb")
+# Load multiple samples
+samples = {
+    "control": Database("control.rkdb"),
+    "treatment": Database("treatment.rkdb"),
+    "replica1": Database("replica1.rkdb"),
+}
 
-# Get top k-mers and convert to DataFrame
-top_kmers = counter.get_top_kmers(n=100)
-df = pd.DataFrame(top_kmers, columns=['kmer', 'count'])
+# Compare k-mer counts
+test_kmers = ["ATCGATCGATCGATCGATCGATCG", "GCTAGCTAGCTAGCTAGCTAGCT"]
+results = {}
+for name, db in samples.items():
+    results[name] = db.query_batch(test_kmers)
 
-# Sort by count
-df = df.sort_values('count', ascending=False)
-print(df.head())
+# Find k-mers with significant differences
+for kmer in test_kmers:
+    control_count = results["control"].get(kmer, 0)
+    treatment_count = results["treatment"].get(kmer, 0)
+    if abs(treatment_count - control_count) > 100:
+        print(f"Significant change in {kmer}: {control_count} → {treatment_count}")
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Installation fails**:
+1. **Import Error**: Ensure RustKmer is properly installed
    ```bash
-   # Ensure Rust is installed
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   source ~/.cargo/env
+   pip install --upgrade rustkmer
    ```
 
-2. **Database loading is slow**:
-   - Large files may take time to memory map
-   - Use SSD storage for better performance
+2. **Database Loading Error**: Check file format and permissions
+   ```python
+   import os
+   if not os.path.exists("database.rkdb"):
+       print("Database file not found")
+   ```
 
-3. **Out of memory errors**:
-   - Reduce k-mer size
-   - Use streaming instead of loading entire files
-
-4. **Thread safety warnings**:
-   - Database objects are thread-safe
-   - KmerCounter objects should not be shared between threads
+3. **Memory Issues**: Use smaller k-mer sizes or batch processing
+   ```python
+   # For very large files
+   counter = KmerCounter(k=21)  # Smaller k-mers use less memory
+   ```
 
 ### Getting Help
 
-- Check the [documentation](https://rustkmer.readthedocs.io/)
-- Open an issue on [GitHub](https://github.com/rust-lang/rustkmer/issues)
-- Review the [examples](https://github.com/rust-lang/rustkmer/tree/main/examples)
+- Check the RustKmer documentation: `help(rustkmer)`
+- Review CLI command help: `rustkmer --help`
+- Report issues on GitHub repository
+- Join the RustKmer community discussions
+
+## Next Steps
+
+1. **Explore the API**: Use `dir()` to explore available methods
+2. **Run Examples**: Try the examples with your own data
+3. **Read Documentation**: Check the full API documentation
+4. **Join Community**: Participate in discussions and contribute
+
+## Reference
+
+For detailed API documentation and advanced usage patterns, see the complete RustKmer Python documentation.

@@ -10,6 +10,10 @@ pub mod canonical;
 pub mod encoding;
 pub mod operations;
 
+/// u128 encoding validation module
+#[cfg(feature = "python")]
+pub mod validation;
+
 pub use encoding::{encode_kmer, decode_kmer, encode_kmer_u64, decode_kmer_u64, encode_kmer_u128, decode_kmer_u128};
 pub use canonical::canonical_kmer;
 

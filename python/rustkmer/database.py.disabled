@@ -11,7 +11,7 @@ import warnings
 import types
 
 # Import the Rust implementation
-from .rustkmer import SimpleDatabase, QueryResult, DatabaseStats
+from ._rustkmer import SimpleDatabase, QueryResult, DatabaseStats
 # Import error handling utilities
 from .error_handling import (
     handle_errors, ErrorContext, ErrorManager, retry_on_io_error,

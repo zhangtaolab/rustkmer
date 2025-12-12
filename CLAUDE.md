@@ -32,6 +32,7 @@ Auto-generated from all feature plans. Last updated: 2025-11-28
 - Rust 1.80+ stable, Python 3.10+ + PyO3 0.27.2 (Python bindings), pytest 8.4+ (testing), subprocess (CLI invocation) (012-python-bindings-complete)
 - Python 3.10+ + mkdocs, mkdocstrings[python], mkdocs-material theme (012-python-bindings-complete)
 - Documentation files in `docs/` directory (012-python-bindings-complete)
+- Python 3.10+ with PyO3 0.27.2 bindings to Rust 1.80+ + pytest 9.0+, pytest-benchmark, hypothesis, numpy, matplotlib (012-python-bindings-complete)
 
 - Rust 1.80+ stable channel (latest stable for performance optimizations) + clap v4.0+ (CLI with derive macros), serde (serialization), thiserror (error handling), anyhow (error handling), rayon (parallel processing), criterion (benchmarks), bio (FASTA/FASTQ parsing), memmap2 (memory-mapped files) (001-jellyfish-rust-port)
 
@@ -52,8 +53,8 @@ Rust 1.80+ stable channel (latest stable for performance optimizations): Follow 
 
 ## Recent Changes
 - 012-python-bindings-complete: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
-- 012-python-bindings-complete: Added Python 3.10+ + mkdocs, mkdocstrings[python], mkdocs-material theme
-- 012-python-bindings-complete: Added Rust 1.80+ stable, Python 3.10+ + PyO3 0.27.2 (Python bindings), pytest 8.4+ (testing), subprocess (CLI invocation)
+- 012-python-bindings-complete: Added Python 3.10+ with PyO3 0.27.2 bindings to Rust 1.80+ + pytest 9.0+, pytest-benchmark, hypothesis, numpy, matplotlib
+- 012-python-bindings-complete: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 
 
 <!-- MANUAL ADDITIONS START -->

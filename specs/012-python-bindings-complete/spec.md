@@ -5,6 +5,16 @@
 **Status**: Draft
 **Input**: User description: "现在需要完善rustkmer所有包的 python binding，需要以现有的 u128为基础，不需要支持u64, 需要全面覆盖CLI版本的命令。记住是python binding不是重新写python 支持。"
 
+## Clarifications
+
+### Session 2025-12-10
+
+- Q: Python方法命名规范 - FR-013要求完全匹配Rust名称但CLI映射显示简化名称 → A: 优先Python易用性，允许简化名称（DatabaseQuery→Database）
+- Q: u128编码支持范围 - FR-005要求基于现有u128实现但未明确k-mer长度支持 → A: u128编码支持所有1-64个碱基的k-mer
+- Q: 内存效率具体指标 - FR-008要求内存高效访问但缺乏可衡量标准 → A: 定义具体内存使用目标和限制（如<10%额外开销）
+- Q: 进度回调接口标准 - FR-010要求进度回调但未定义接口标准 → A: 定义标准化进度回调接口（进度百分比、消息、取消标志）
+- Q: 配置管理范围 - FR-012要求配置选项但未明确范围和持久化方式 → A: 支持文件配置和环境变量
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Python API for K-mer Counting (Priority: P1)
@@ -120,15 +130,15 @@ Users need to export k-mer data from RKDB databases to text formats from Python 
 - **FR-002**: Python bindings MUST implement Database class for database query operations
 - **FR-003**: Python bindings MUST implement FuzzyQuery class for wildcard and mutation-tolerant searches
 - **FR-004**: Python bindings MUST provide complete CLI coverage (see CLI Mapping section below)
-- **FR-005**: Python bindings MUST be built on existing u128 encoding implementation only
+- **FR-005**: Python bindings MUST be built on existing u128 encoding implementation only, supporting all k-mer lengths from 1 to 64 bases
 - **FR-006**: System MUST provide comprehensive error handling with Python-specific exception types
 - **FR-007**: Python bindings MUST support both single-threaded and multi-threaded operations
-- **FR-008**: System MUST provide memory-efficient database access with memory mapping and pagination
+- **FR-008**: System MUST provide memory-efficient database access with memory mapping and pagination, maintaining <10% memory overhead over CLI baseline
 - **FR-009**: Python bindings MUST maintain API compatibility with CLI behaviors and outputs
-- **FR-010**: System MUST provide progress reporting via Python callbacks for long-running operations
+- **FR-010**: System MUST provide progress reporting via standardized Python callbacks for long-running operations, supporting progress percentage, status messages, and cancellation flags
 - **FR-011**: Python bindings MUST support batch operations with automatic concurrent processing
-- **FR-012**: System MUST provide configuration options for verbosity and debugging
-- **FR-013**: Python API method names MUST exactly match Rust struct/method names
+- **FR-012**: System MUST provide configuration options for verbosity and debugging, supporting both file-based configuration and environment variables
+- **FR-013**: Python API should prioritize usability with simplified names (e.g., DatabaseQuery → Database) while maintaining clear mapping to Rust implementations
 
 ### CLI Command Mapping
 

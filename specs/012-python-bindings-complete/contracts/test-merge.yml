@@ -1,0 +1,153 @@
+# Test Contract: Database Merging
+
+## Command
+- **CLI**: `rustkmer merge`
+- **Python**: `rustkmer.DatabaseMerger` or `Database.merge()`
+
+## Parameters Mapping
+
+| CLI Option | Python Parameter | Required | Type | Default | Test Required |
+|-------------|------------------|----------|------|---------|--------------|
+| `-i, --input` | `merge()` or `input_databases` | Yes | List[str] | - | ✅ |
+| `-o, --output` | `output_file` | Yes | str | - | ✅ |
+| `--temp-dir` | `temp_dir` | No | str | "/tmp" | ⚠️ |
+| `-t, --threads` | `threads` | No | int | 0 | ⚠️ |
+| `-v, --verbose` | `verbose` | No | bool | False | ⚠️ |
+| `-q, --quiet` | `quiet` | No | bool | False | ⚠️ |
+| `--keep-intermediate` | `keep_intermediate` | No | bool | False | ⚠️ |
+| `--check-compatibility` | `check_compatibility()` | No | bool | False | ⚠️ |
+
+## Merge Methods
+
+| Method | Python Equivalent | Test Required |
+|--------|-------------------|--------------|
+| Multiple input files | `merge([db1, db2, db3])` | ✅ |
+| Database objects | `merge_databases([db1, db2])` | ⚠️ |
+| Compatibility check | `check_compatibility([db1, db2])` | ⚠️ |
+
+## Test Scenarios
+
+### 1. Basic Merge
+```python
+def test_merge_basic():
+    """Test basic database merging"""
+    # CLI: rustkmer merge -i db1.rkdb db2.rkdb -o merged.rkdb
+    # Python: DatabaseMerger(...).merge(["db1.rkdb", "db2.rkdb"])
+```
+
+### 2. Multiple Database Merge
+```python
+def test_merge_multiple():
+    """Test merging multiple databases"""
+    # CLI: rustkmer merge -i db1.rkdb db2.rkdb db3.rkdb -o merged.rkdb
+    # Python: merger.merge(["db1.rkdb", "db2.rkdb", "db3.rkdb"])
+```
+
+### 3. Threaded Merge
+```python
+def test_merge_threaded():
+    """Test threaded merge operation"""
+    # CLI: rustkmer merge -t 4 -i db1.rkdb db2.rkdb -o merged.rkdb
+    # Python: DatabaseMerger(threads=4)
+```
+
+### 4. Compatibility Check
+```python
+def test_merge_compatibility():
+    """Test compatibility checking"""
+    # CLI: rustkmer merge --check-compatibility -i db1.rkdb db2.rkdb
+    # Python: merger.check_compatibility(["db1.rkdb", "db2.rkdb"])
+```
+
+### 5. Temporary Directory
+```python
+def test_merge_temp_dir():
+    """Test custom temporary directory"""
+    # CLI: rustkmer merge --temp-dir /tmp/merge -i db1.rkdb db2.rkdb -o merged.rkdb
+    # Python: DatabaseMerger(temp_dir="/tmp/merge")
+```
+
+### 6. Keep Intermediate Files
+```python
+def test_merge_keep_intermediate():
+    """Test keeping intermediate files"""
+    # CLI: rustkmer merge --keep-intermediate -i db1.rkdb db2.rkdb -o merged.rkdb
+    # Python: DatabaseMerger(keep_intermediate=True)
+```
+
+## Pre-merge Validation
+
+| Check | Python Method | Test Required |
+|-------|-------------------|--------------|
+| Minimum databases | N/A (handled by CLI) | ❌ |
+| Same k-mer size | `check_compatibility()` | ⚠️ |
+| Compatible format | `check_compatibility()` | ⚠️ |
+| Database integrity | N/A (handled by CLI) | ❌ |
+
+## Result Validation
+
+| Check | Method | Test Required |
+|-------|--------|--------------|
+| Output database exists | File existence | ✅ |
+| Merged k-mer count | `merged.get_stats()` | ⚠️ |
+| Correct k-mer size | `merged.kmer_size` | ⚠️ |
+| Data integrity | Query known k-mers | ✅ |
+
+## Error Conditions
+
+| Condition | Expected Behavior |
+|-----------|-------------------|
+| Insufficient inputs | ValueError (min 2) |
+| Different k-mer sizes | MergeError |
+| Corrupted database | DatabaseCorruptionError |
+| Permission denied | PermissionError |
+| Insufficient disk space | OSError |
+
+## Test Data Requirements
+
+### Database Creation for Testing
+```python
+def create_test_databases(base_path, k=21):
+    """Create compatible test databases"""
+    # Database 1: K-mers starting with 'A'
+    db1_path = f"{base_path}_db1.rkdb"
+
+    # Database 2: K-mers starting with 'C'
+    db2_path = f"{base_path}_db2.rkdb"
+
+    # Database 3: K-mers with overlap
+    db3_path = f"{base_path}_db3.rkdb"
+
+    return [db1_path, db2_path, db3_path]
+```
+
+## Validation Rules
+
+1. **Input validation**:
+   - Minimum 2 databases required
+   - All must exist and be readable
+   - Same k-mer size required
+
+2. **Compatibility validation**:
+   - Database format versions
+   - K-mer size consistency
+   - Encoding compatibility
+
+3. **Merge validation**:
+   - Output database created successfully
+   - All input k-mers present
+   - Counts correctly summed
+   - No duplicate entries
+
+4. **Performance requirements**:
+   - Linear scaling with database size
+   - Parallel processing with threads
+   - Memory efficient intermediate storage
+
+## Success Criteria
+
+1. Merged database contains all input k-mers
+2. Counts are correctly summed for overlapping k-mers
+3. Performance scales with thread count
+4. Temporary files are properly cleaned up (unless specified)
+5. Error conditions are properly detected and reported

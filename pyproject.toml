@@ -5,38 +5,74 @@ build-backend = "maturin"
 [project]
 name = "rustkmer"
 version = "0.1.0"
-description = "High-performance k-mer counting, database queries, and fuzzy search for genomic data analysis"
+description = "High-performance k-mer counting and querying for Python"
 readme = "README.md"
-license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.10,<3.14"
+license = {text = "MIT"}
 authors = [
-    {name = "RustKmer Team", email = "rustkmer@example.com"}
+    {name = "Forrest Li", email = "forrest@example.com"},
 ]
+keywords = ["bioinformatics", "genomics", "kmer", "sequencing", "rust"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Rust",
+      "Programming Language :: Rust",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
-keywords = ["bioinformatics", "genomics", "k-mer", "sequence-analysis", "rust"]
 
 [project.urls]
-Homepage = "https://github.com/your-org/rustkmer"
+Homepage = "https://github.com/yourusername/rustkmer"
 Documentation = "https://rustkmer.readthedocs.io/"
-Repository = "https://github.com/your-org/rustkmer.git"
-"Bug Tracker" = "https://github.com/your-org/rustkmer/issues"
+Repository = "https://github.com/yourusername/rustkmer"
+"Bug Tracker" = "https://github.com/yourusername/rustkmer/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-benchmark>=4.0",
+    "hypothesis>=6.0",
+    "numpy>=1.21",
+    "matplotlib>=3.5",
+]
 
 [tool.maturin]
 python-source = "python"
 module-name = "rustkmer._rustkmer"
-features = ["python"]
+features = ["pyo3/extension-module"]
 
-[tool.cibuildwheel]
-build = "cp311-* cp312-* cp313-*"
-skip = "pp* *-win32 *-manylinux_i686"
-test-command = "python -c 'import rustkmer; print(rustkmer.__version__)'"
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--verbose",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "benchmark: marks tests as benchmark tests",
+]
+
+[tool.coverage.run]
+source = ["python/rustkmer", "tests/python"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]

@@ -1,0 +1,37 @@
+{
+  "homopolymers": {
+    "all_A": {
+      "k21": "AAAAAAAAAAAAAAAAAAAAAAA",
+      "k31": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    "all_T": {
+      "k21": "TTTTTTTTTTTTTTTTTTTTTTT",
+      "k31": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
+    },
+    "all_C": {
+      "k21": "CCCCCCCCCCCCCCCCCCCCCC",
+      "k31": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+    },
+    "all_G": {
+      "k21": "GGGGGGGGGGGGGGGGGGGGGG",
+      "k31": "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG"
+    }
+  },
+  "alternating": {
+    "AT_pattern": {
+      "k20": "ATATATATATATATATATAT",
+      "k30": "ATATATATATATATATATATATATATATATATAT"
+    },
+    "CG_pattern": {
+      "k20": "CGCGCGCGCGCGCGCGCGCG",
+      "k30": "CGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCG"
+    }
+  },
+  "palindromes": {
+    "k21": [
+      "ATCGATATCGATCGATCGATCG",
+      "GCTAGGCTAGGCTAGGCTAGGCT"
+    ]
+  },
+  "description": "Edge case k-mer sequences for testing boundary conditions"
+}

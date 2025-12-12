@@ -664,6 +664,109 @@ rustkmer/
 - 问题报告: https://github.com/your-username/rustkmer/issues
 - 文档: [USER_GUIDE.md](USER_GUIDE.md)
 
+## 🐍 Python API
+
+RustKmer 提供了完整的Python API，让您可以直接在Python脚本中进行高性能的k-mer分析。
+
+### 安装
+
+```bash
+pip install rustkmer
+```
+
+### 快速示例
+
+#### K-mer 计数
+
+```python
+from rustkmer import KmerCounter
+
+# 创建k-mer计数器
+counter = KmerCounter(k=21, canonical=True, threads=4)
+
+# 从FASTA文件计数
+database = counter.count_file("sequences.fasta", "output.rkdb")
+
+# 从字符串计数
+counts = counter.count_string("ATCGATCGATCGATCGATCGATCG")
+print(f"Counts: {counts}")
+```
+
+#### 数据库查询
+
+```python
+from rustkmer import Database
+
+# 加载数据库
+db = Database("genome.rkdb")
+
+# 单个查询
+count = db.query("ATCGATCGATCGATCGATCGATCG")
+print(f"K-mer count: {count}")
+
+# 批量查询
+kmers = ["ATCGATCG", "GCTAGCTA", "TATATATA"]
+results = db.query_batch(kmers)
+print(f"Batch results: {results}")
+
+# 检查k-mer是否存在
+if db.exists("ATCGATCGATCGATCGATCGATCG"):
+    print("K-mer found in database")
+```
+
+#### 数据库统计
+
+```python
+from rustkmer import Database
+
+db = Database("genome.rkdb")
+stats = db.get_statistics()
+
+print(f"K-mer size: {stats.kmer_size}")
+print(f"Total k-mers: {stats.total_kmers}")
+print(f"Unique k-mers: {stats.unique_kmers}")
+```
+
+#### 数据导出
+
+```python
+from rustkmer import Database
+
+db = Database("genome.rkdb")
+
+# 导出为文本格式
+db.dump("output.txt", format="text")
+
+# 导出为CSV（带阈值过滤）
+db.dump("filtered.csv", format="csv", min_count=10)
+
+# 导出为JSON
+db.dump("data.json", format="json")
+```
+
+#### 数据库合并
+
+```python
+from rustkmer import Database
+
+# 加载多个数据库
+db1 = Database("sample1.rkdb")
+db2 = Database("sample2.rkdb")
+
+# 合并数据库
+merged_db = db1.merge([db2], "merged.rkdb")
+print(f"Merged database contains {merged_db.total_kmers} k-mers")
+```
+
+### 性能优势
+
+- **高性能**: Rust核心实现，比纯Python实现快100倍以上
+- **内存效率**: 支持大型数据库的内存映射访问
+- **线程安全**: 可以在多线程环境中安全使用
+- **兼容性**: 与CLI命令行工具完全兼容
+
+更多详细信息请查看 [Python API文档](python/rustkmer/)。
+
 ## 🏆 项目状态
 
 ✅ **已完成功能**:

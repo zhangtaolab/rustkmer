@@ -1,0 +1,175 @@
+# Test Contract: Database Statistics
+
+## Command
+- **CLI**: `rustkmer stats`
+- **Python**: `rustkmer.Database.get_statistics()`
+
+## Parameters Mapping
+
+| CLI Option | Python Parameter | Required | Type | Default | Test Required |
+|-------------|------------------|----------|------|---------|--------------|
+| `<DATABASE>` | `database` | Yes | Database | - | ✅ |
+| `-f, --format` | `format` | No | str | "text" | ✅ |
+| `-o, --output` | N/A (CLI only) | No | str | - | ⚠️ |
+| `--detailed` | `detailed` | No | bool | False | ⚠️ |
+| `--max-bins` | `max_bins` | No | int | 1000 | ⚠️ |
+| `--approximate` | `approximate_median` | No | bool | False | ⚠️ |
+| `-p, --progress` | N/A (CLI only) | No | bool | - | ❌ |
+| `--split-output` | `split_output` | No | bool | False | ⚠️ |
+| `--freq-output` | `freq_output_file` | No | str | - | ⚠️ |
+
+## Output Formats
+
+| Format | Description | Python Method |
+|--------|------------|---------------|
+| text | Human readable sections | `get_statistics(format="text")` |
+| json | Structured JSON | `get_statistics(format="json")` |
+| csv | Tabular with headers | `get_statistics(format="csv")` |
+| tsv | Tab-separated values | `get_statistics(format="tsv")` |
+
+## Statistics Properties
+
+| Property | Description | Test Required |
+|----------|-------------|--------------|
+| kmer_size | K-mer size used | ✅ |
+| total_kmers | Total k-mer count | ✅ |
+| unique_kmers | Unique k-mer sequences | ✅ |
+| canonical | Whether canonical k-mers | ⚠️ |
+| coverage | Estimated coverage | ⚠️ |
+| histogram | Count frequency distribution | ⚠️ |
+| percentiles | P25, P50, P75, P95, P99 | ⚠️ |
+| min_count | Minimum k-mer count | ⚠️ |
+| max_count | Maximum k-mer count | ⚠️ |
+| median_count | Median k-mer count | ⚠️ |
+| mean_count | Mean k-mer count | ⚠️ |
+
+## Test Scenarios
+
+### 1. Basic Stats
+```python
+def test_stats_basic():
+    """Test basic statistics calculation"""
+    # CLI: rustkmer stats database.rkdb
+    # Python: db.get_statistics()
+```
+
+### 2. Text Format
+```python
+def test_stats_text_format():
+    """Test text format output"""
+    # CLI: rustkmer stats -f text database.rkdb
+    # Python: db.get_statistics(format="text")
+```
+
+### 3. JSON Format
+```python
+def test_stats_json_format():
+    """Test JSON format output"""
+    # CLI: rustkmer stats -f json database.rkdb
+    # Python: db.get_statistics(format="json")
+```
+
+### 4. CSV Format
+```python
+def test_stats_csv_format():
+    """Test CSV format output"""
+    # CLI: rustkmer stats -f csv database.rkdb
+    # Python: db.get_statistics(format="csv")
+```
+
+### 5. Detailed Statistics
+```python
+def test_stats_detailed():
+    """Test detailed statistics with histogram"""
+    # CLI: rustkmer stats --detailed database.rkdb
+    # Python: db.get_statistics(detailed=True)
+```
+
+### 6. Frequency Distribution
+```python
+def test_stats_frequency():
+    """Test frequency distribution"""
+    # CLI: rustkmer stats --max-bins 500 database.rkdb
+    # Python: db.get_statistics(max_bins=500)
+```
+
+### 7. Approximate Median
+```python
+def test_stats_approximate():
+    """Test approximate median calculation"""
+    # CLI: rustkmer stats --approximate database.rkdb
+    # Python: db.get_statistics(approximate_median=True)
+```
+
+### 8. Output to File
+```python
+def test_stats_output_file():
+    """Test statistics output to file"""
+    # CLI: rustkmer stats -o stats.txt database.rkdb
+    # Python: stats = db.get_statistics(); save to file
+```
+
+## Additional Methods
+
+| Method | Description | Test Required |
+|--------|-------------|--------------|
+| `calculate_histogram()` | Generate histogram | ⚠️ |
+| `get_frequency_distribution()` | Get frequency data | ⚠️ |
+| `get_percentiles()` | Calculate percentiles | ⚠️ |
+
+## Error Conditions
+
+| Condition | Expected Behavior |
+|-----------|-------------------|
+| Non-existent database | FileNotFoundError |
+| Corrupted database | DatabaseCorruptionError |
+| Invalid format | ValueError |
+| Permission denied | PermissionError |
+
+## Validation Rules
+
+### 1. Basic Statistics
+- Total k-mers = sum of all counts
+- Unique k-mers = number of distinct k-mers
+- Coverage estimate based on genome size
+
+### 2. Histogram Validation
+- Bins cover count range appropriately
+- Total frequency matches total k-mers
+- Bins are sorted by count
+
+### 3. Percentile Validation
+- P50 ≤ median ≤ P75
+- Values are within count range
+- Correct interpolation for percentiles
+
+### 4. Format Validation
+- Text: Human readable sections
+- JSON: Valid JSON structure
+- CSV: Proper headers and rows
+- TSV: Tab-separated values
+
+## Test Data Requirements
+
+### Database with Known Properties
+```python
+def create_test_database_with_known_stats(k=21, num_kmers=1000):
+    """Create database with predictable statistics"""
+    counter = KmerCounter(k=k)
+
+    # Create predictable distribution
+    for i in range(num_kmers):
+        count = i + 1  # Linear distribution
+        seq = generate_kmer_sequence(i, k)
+        counter.count_string(seq * count)
+
+    return counter
+```
+
+## Success Criteria
+
+1. All format outputs match CLI exactly
+2. Statistics calculations are mathematically correct
+3. Histogram and percentiles are accurate
+4. Performance scales with database size
+5. Memory usage is reasonable for large databases

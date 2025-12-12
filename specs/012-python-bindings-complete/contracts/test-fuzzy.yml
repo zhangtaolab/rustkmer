@@ -1,0 +1,138 @@
+# Test Contract: Fuzzy Query
+
+## Command
+- **CLI**: `rustkmer fuzzy-query`
+- **Python**: `rustkmer.FuzzyQuery` or `rustkmer.FuzzyQueryEngine`
+
+## Parameters Mapping
+
+| CLI Option | Python Parameter | Required | Type | Default | Test Required |
+|-------------|------------------|----------|------|---------|--------------|
+| `<DATABASE>` | `database` | Yes | Database | - | ✅ |
+| `<QUERY>` | `query()` argument | Yes | str | - | ✅ |
+| `-m, --mutations` | `max_mutations` | No | int | 0 | ✅ |
+| `-M, --max-variants` | `max_variants` | No | int | 10000 | ⚠️ |
+| `-p, --parallel` | `parallel` | No | bool | True | ⚠️ |
+| `-b, --batch-size` | `batch_size` | No | int | 1000 | ⚠️ |
+| `-f, --format` | `set_format()` | No | str | "table" | ⚠️ |
+| `-o, --output` | `set_output()` | No | str | - | ⚠️ |
+| `-v, --verbose` | N/A | No | bool | - | ❌ |
+| `-q, --quiet` | N/A | No | bool | - | ❌ |
+| `--profile` | `enable_profiling()` | No | - | False | ⚠️ |
+
+## Output Formats
+
+| Format | Description | Python Method |
+|--------|------------|---------------|
+| table | Tabular format | Default return |
+| json | JSON array | `set_format("json")` |
+| tsv | Tab-separated | `set_format("tsv")` |
+| csv | Comma-separated | `set_format("csv")` |
+
+## Fuzzy Query Methods
+
+| Method | Python Equivalent | Test Required |
+|--------|-------------------|--------------|
+| Single query | `query(pattern)` | ✅ |
+| Search | `search(pattern)` | ⚠️ |
+| Similar k-mers | `find_similar(kmer)` | ⚠️ |
+
+## Batch Query (fuzzy-query-batch)
+
+| Command | Python Method | Test Required |
+|--------|----------------|--------------|
+| `rustkmer fuzzy-query-batch` | N/A (needs implementation) | ❌ |
+
+## Test Scenarios
+
+### 1. Basic Fuzzy Query
+```python
+def test_fuzzy_query_basic():
+    """Test basic fuzzy query with wildcards"""
+    # CLI: rustkmer fuzzy-query db.rkdb ATCGATCGATNGATCG
+    # Python: FuzzyQuery(db).query("ATCGATCGATNGATCG")
+```
+
+### 2. Hamming Distance
+```python
+def test_fuzzy_distance():
+    """Test fuzzy query with mutations"""
+    # CLI: rustkmer fuzzy-query -m 2 db.rkdb ATCGATCGATCGATCG
+    # Python: FuzzyQuery(db, max_mutations=2).query("ATCGATCGATCGATCG")
+```
+
+### 3. Max Variants Limit
+```python
+def test_fuzzy_max_variants():
+    """Test maximum variant limit"""
+    # CLI: rustkmer fuzzy-query -M 1000 db.rkdb ATCGATCGATCGATCG
+    # Python: FuzzyQuery(db, max_variants=1000).query("ATCGATCGATCGATCG")
+```
+
+### 4. Wildcard Patterns
+```python
+def test_fuzzy_wildcards():
+    """Test wildcard patterns"""
+    # N acts as wildcard for any nucleotide
+    patterns = [
+        "ATCGATCGATNGATCG",  # Single wildcard
+        "ATCGATCNNNNNNNGATCG",  # Multiple wildcards
+        "NNNNNNNNNNNNNNNNNNNN",  # All wildcards
+    ]
+```
+
+### 5. Output Formats
+```python
+def test_fuzzy_output_formats():
+    """Test different output formats"""
+    # Table (default)
+    # JSON array
+    # TSV format
+    # CSV format
+```
+
+### 6. Performance Profiling
+```python
+def test_fuzzy_profiling():
+    """Test performance profiling"""
+    # CLI: rustkmer fuzzy-query --profile db.rkdb pattern
+    # Python: FuzzyQuery(db).enable_profiling()
+```
+
+## Error Conditions
+
+| Condition | Expected Behavior |
+|-----------|-------------------|
+| Invalid pattern | ValueError |
+| Mutation > k | ValueError |
+| Database not loaded | DatabaseError |
+| Invalid format | ValueError |
+
+## Validation Rules
+
+1. **Pattern validation**:
+   - Length must match k-mer size
+   - Only A, C, G, T, N allowed
+   - N is wildcard for any nucleotide
+
+2. **Distance constraints**:
+   - 0 ≤ mutations ≤ k-mer size
+   - Distance is Hamming distance
+
+3. **Result validation**:
+   - Each result includes kmer, count, distance
+   - Results sorted by distance then count
+   - Variant count respected
+
+4. **Performance requirements**:
+   - O(4^m) complexity where m = mutations
+   - Parallel processing for multiple variants
+   - Early termination with max_variants
+
+## Success Criteria
+
+1. All wildcard patterns work correctly
+2. Hamming distance calculation accurate
+3. Output formats match CLI exactly
+4. Performance scales as expected
+5. Thread-safe for concurrent queries

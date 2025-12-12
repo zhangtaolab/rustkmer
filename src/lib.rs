@@ -20,7 +20,9 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+
 pub mod cli;
+pub mod config;
 pub mod core;
 pub mod database;
 pub mod error;
@@ -28,11 +30,16 @@ pub mod fuzzy;
 pub mod hash;
 pub mod io;
 pub mod kmer;
+pub mod memory;
 pub mod output;
 pub mod parallel;
 
 #[cfg(feature = "python")]
-pub mod python;
+pub mod python_minimal;
+
+#[cfg(feature = "python")]
+pub use python_minimal as python;
+
 
 // Re-export key types for convenience
 pub use error::{KmerError, ProcessingError, ProcessingResult};

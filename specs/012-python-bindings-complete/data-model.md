@@ -1,231 +1,345 @@
-# Data Model: RustKmer Python Bindings
+# Data Model: Complete Python Bindings for RustKmer
 
-## Core Entities
+## Core Python Classes
 
 ### 1. KmerCounter
 
-**Description**: Main class for counting k-mers in sequence data
+**Description**: Primary class for k-mer counting operations in FASTA/FASTQ files
 
-**Fields**:
+**Attributes**:
 ```python
 class KmerCounter:
-    k: int              # k-mer size (default: 21)
-    canonical: bool     # whether to use canonical k-mers
-    threads: int        # number of threads for parallel processing
-    _counter: object    # internal Rust KmerCounter instance
+    k: int                          # K-mer size (1-64)
+    canonical: bool                 # Use canonical k-mers
+    threads: int                    # Thread count (0 = auto)
+    hash_size: int                  # Hash table size
+    sort_output: bool               # Sort output by k-mer
+    min_count: int                  # Minimum count filter
+    max_count: Optional[int]        # Maximum count filter
+    memory_limit: Optional[int]     # Memory limit in bytes
+    verbose: bool                   # Verbose output
+    quiet: bool                     # Quiet mode
 ```
 
 **Methods**:
-- `count_file(file_path: str) -> None`: Count k-mers from FASTA/FASTQ file
-- `count_string(sequence: str) -> None`: Count k-mers from string
-- `get_total_count() -> int`: Get total k-mer count
-- `get_unique_count() -> int`: Get unique k-mer count
-- `get_kmer_count(kmer: str) -> int`: Get count for specific k-mer
-- `get_top_kmers(n: int) -> List[Tuple[str, int]]`: Get top n k-mers
-- `save_to_database(path: str, compress: bool = True, sort: bool = True) -> Database`: Save counts to database
+```python
+def count_file(self, input_path: str, output_path: Optional[str] = None) -> Database
+def count_files(self, input_paths: List[str], output_path: str) -> Database
+def count_string(self, sequence: str) -> Dict[str, int]
+def count_directory(self, path: str, recursive: bool = True) -> Database
+def save_to_database(self, output_path: str, format: str = "binary") -> None
+def get_database_stats(self) -> DatabaseStats
+```
 
 **Validation Rules**:
-- k must be between 1 and 64 (due to u128 encoding)
-- sequence must only contain A, C, G, T characters
-- file_path must exist and be readable
+- k: must be between 1 and 64
+- threads: must be non-negative integer
+- min_count: must be positive if specified
+- max_count: must be greater than min_count if both specified
 
 ### 2. Database
 
-**Description**: Wrapper for RKDB database files providing query operations
+**Description**: Wrapper for RKDB database file operations and queries
 
-**Fields**:
+**Attributes**:
 ```python
 class Database:
-    filename: str       # Path to database file
-    header: DatabaseHeader  # Database metadata
-    _database: object    # Internal Rust DatabaseQuery instance
-    loaded: bool        # Whether database is loaded
+    path: str                       # Database file path
+    kmer_size: int                   # K-mer size from database
+    total_kmers: int                 # Total k-mer count
+    unique_kmers: int                # Unique k-mer count
+    metadata: DatabaseMetadata       # Database header information
+    _database_ptr: Optional[object]  # Internal Rust database pointer
 ```
 
 **Methods**:
-- `load(path: str) -> None`: Load database from file
-- `query(kmer: str) -> QueryResult`: Query single k-mer
-- `query_batch(kmers: List[str]) -> List[QueryResult]`: Query multiple k-mers
-- `exists(kmer: str) -> bool`: Check if k-mer exists
-- `get_stats() -> DatabaseStats`: Get database statistics
-- `fuzzy_query(pattern: str, max_distance: int, max_results: int = 100) -> List[FuzzyQueryResult]`: Fuzzy query
-- `merge(other: Database, output_path: str) -> Database`: Merge with another database
-- `dump(output_path: str, format: str = "text", threshold: int = 1) -> None`: Export database
+```python
+def load(self, path: str, preload: bool = True) -> None
+def query(self, kmer: str) -> int
+def query_batch(self, kmers: List[str]) -> Dict[str, int]
+def exists(self, kmer: str) -> bool
+def get_kmers(self) -> Iterator[str]
+def get_counts(self) -> Iterator[int]
+def iter_kmers(self) -> Iterator[Tuple[str, int]]
+def get_statistics(self, config: Optional[DatabaseStatsConfig] = None) -> DatabaseStats
+def dump(self, output_path: str, format: str = "text", threshold: int = 0) -> None
+def merge(self, other_databases: List[Database], output_path: str) -> Database
+```
 
 **Validation Rules**:
-- kmer must match database k-mer size
-- pattern for fuzzy query can contain N wildcards
-- max_distance must be between 0 and k-mer size
+- kmer: must be valid DNA sequence (A, C, G, T only)
+- length: must match database kmer_size
+- format: must be one of ["text", "csv", "tsv", "json"]
 
-### 3. DatabaseHeader
+### 3. FuzzyQuery
 
-**Description**: Metadata about database file
+**Description**: Performs wildcard and mutation-tolerant k-mer searches
 
-**Fields**:
-```python
-class DatabaseHeader:
-    version: int        # Database format version
-    kmer_size: int      # k-mer size used
-    total_kmers: int    # Total k-mer count
-    unique_kmers: int   # Unique k-mer count
-    canonical: bool     # Whether k-mers are canonical
-    created_at: str     # Creation timestamp
-    file_size: int      # File size in bytes
-```
-
-### 4. QueryResult
-
-**Description**: Result of a k-mer query
-
-**Fields**:
-```python
-class QueryResult:
-    kmer: str           # The k-mer that was queried
-    count: int          # Count of the k-mer
-    found: bool         # Whether k-mer was found
-```
-
-### 5. FuzzyQuery
-
-**Description**: Class for performing fuzzy queries with wildcards
-
-**Fields**:
+**Attributes**:
 ```python
 class FuzzyQuery:
-    database: Database  # Database to query
-    max_distance: int   # Maximum Hamming distance
+    database: Database              # Database to query
+    max_mutations: int              # Maximum Hamming distance
+    max_variants: int               # Maximum result variants
+    parallel: bool                  # Enable parallel processing
+    batch_size: int                 # Batch size for processing
+    format: str                     # Output format
 ```
 
 **Methods**:
-- `load_database(path: str) -> None`: Load database
-- `query(pattern: str, max_distance: Optional[int] = None) -> List[FuzzyQueryResult]`: Perform fuzzy query
-- `set_max_distance(distance: int) -> None`: Set maximum distance
-- `query_batch(patterns: List[str]) -> List[List[FuzzyQueryResult]]`: Batch fuzzy query
+```python
+def query(self, pattern: str, max_results: Optional[int] = None) -> FuzzyQueryResult
+def query_batch(self, patterns: List[str]) -> List[FuzzyQueryResult]
+def set_max_distance(self, distance: int) -> None
+def set_format(self, format: str) -> None
+def enable_profiling(self) -> None
+```
 
-### 6. DatabaseStats
+**Validation Rules**:
+- pattern: must be valid DNA sequence with wildcards
+- max_mutations: must be non-negative
+- max_variants: must be positive
+- format: must be one of ["table", "json", "tsv", "csv"]
 
-**Description**: Statistics about a database
+### 4. DatabaseStats
 
-**Fields**:
+**Description**: Contains database statistics and metadata
+
+**Attributes**:
 ```python
 class DatabaseStats:
-    kmer_size: int      # k-mer size
-    total_kmers: int    # Total k-mers counted
-    unique_kmers: int   # Unique k-mer sequences
-    coverage: float     # Estimated coverage
-    histogram: List[Tuple[int, int]]  # Count frequency histogram
-    percentiles: Dict[str, int]  # P25, P50, P75, P95, P99
+    kmer_size: int                   # K-mer size
+    total_kmers: int                 # Total k-mers counted
+    unique_kmers: int                # Unique k-mer sequences
+    coverage_estimate: float         # Genome coverage estimate
+    histogram: Dict[int, int]        # Count frequency distribution
+    percentiles: Dict[str, float]    # Statistical percentiles
+    approximate_median: float        # Median estimate
+    metadata: DatabaseMetadata       # Additional metadata
 ```
 
-## Data Relationships
-
-```
-KmerCounter
-    │
-    ├─ count_string() ──┐
-    │                   │
-    └─ save_to_database() ──► Database
-                           │
-                           ├─ query() ──► QueryResult
-                           │
-                           ├─ fuzzy_query() ──► FuzzyQueryResult
-                           │
-                           └─ get_stats() ──► DatabaseStats
+**Methods**:
+```python
+def calculate_histogram(self, max_bins: int = 1000) -> Dict[int, int]
+def get_percentiles(self) -> Dict[str, float]
+def get_coverage_estimate(self, genome_size: int) -> float
+def export_frequency_distribution(self, output_path: str) -> None
 ```
 
-## Error Hierarchy
+### 5. QueryResult
+
+**Description**: Single k-mer query result
+
+**Attributes**:
+```python
+class QueryResult:
+    kmer: str                       # K-mer sequence
+    count: int                      # K-mer count
+    exists: bool                    # Whether k-mer exists
+    timestamp: Optional[datetime]   # Query timestamp
+```
+
+### 6. FuzzyQueryResult
+
+**Description**: Fuzzy query result with match details
+
+**Attributes**:
+```python
+class FuzzyQueryResult:
+    query_pattern: str              # Original query pattern
+    matches: List[FuzzyMatch]        # Matching k-mers
+    total_matches: int              # Total number of matches
+    max_distance_used: int          # Maximum distance applied
+    query_time: float               # Query execution time
+```
+
+### 7. FuzzyMatch
+
+**Description**: Individual fuzzy query match
+
+**Attributes**:
+```python
+class FuzzyMatch:
+    kmer: str                       # Matching k-mer
+    count: int                      # K-mer count
+    distance: int                   # Hamming distance from query
+    mutations: List[Tuple[int, str]] # Mutation positions and types
+```
+
+### 8. DatabaseMetadata
+
+**Description**: Database file header and metadata
+
+**Attributes**:
+```python
+class DatabaseMetadata:
+    version: str                    # Database format version
+    created_at: datetime            # Creation timestamp
+    kmer_size: int                  # K-mer size
+    canonical: bool                 # Canonical encoding used
+    total_sequences: int            # Number of input sequences
+    total_bases: int                # Total bases processed
+    algorithm: str                  # Counting algorithm used
+    parameters: Dict[str, Any]      # Algorithm parameters
+```
+
+## Configuration Classes
+
+### 1. DatabaseStatsConfig
+
+**Description**: Configuration for statistics calculation
+
+**Attributes**:
+```python
+class DatabaseStatsConfig:
+    format: str = "text"            # Output format
+    detailed: bool = False           # Include frequency distribution
+    max_bins: int = 1000            # Maximum histogram bins
+    approximate_median: bool = False # Use approximate median
+    progress_bar: bool = False       # Show progress
+    split_output: bool = False       # Split output files
+    freq_output_file: Optional[str] = None # Frequency output file
+```
+
+### 2. MergeConfig
+
+**Description**: Configuration for database merge operations
+
+**Attributes**:
+```python
+class MergeConfig:
+    output_file: str                 # Output database path
+    threads: int = 0                # Thread count (0 = auto)
+    temp_dir: str = "/tmp"           # Temporary directory
+    keep_intermediate: bool = False # Keep temporary files
+    verbose: bool = False            # Verbose output
+    check_compatibility: bool = True  # Check compatibility first
+```
+
+### 3. ExportConfig
+
+**Description**: Configuration for data export operations
+
+**Attributes**:
+```python
+class ExportConfig:
+    format: OutputFormat            # Export format
+    compression: CompressionFormat = NONE # Compression type
+    min_count: Optional[int] = None  # Minimum count filter
+    max_count: Optional[int] = None  # Maximum count filter
+    include_metadata: bool = True    # Include database metadata
+    parallel: bool = True            # Enable parallel export
+```
+
+## Enums
+
+### 1. OutputFormat
 
 ```python
-class RustKmerError(Exception):
-    """Base exception for all RustKmer errors"""
-    pass
-
-class SequenceError(RustKmerError):
-    """Invalid DNA sequence"""
-    pass
-
-class DatabaseError(RustKmerError):
-    """Database-related errors"""
-    pass
-
-class FileNotFoundError(DatabaseError):
-    """Database file not found"""
-    pass
-
-class MemoryError(RustKmerError):
-    """Memory allocation errors"""
-    pass
-
-class ValueError(RustKmerError):
-    """Invalid parameter values"""
-    pass
+class OutputFormat(Enum):
+    TEXT = "text"
+    JSON = "json"
+    CSV = "csv"
+    TSV = "tsv"
 ```
 
-## Performance Considerations
+### 2. CompressionFormat
 
-### Memory Layout
-
-1. **KmerCounter**: Uses Rust's HashMap<u128, u64> internally
-2. **Database**: Memory-mapped file access for large databases
-3. **Query Results**: Batched operations to minimize Rust-Python transitions
-
-### Threading Model
-
-- Thread-safe database access using Arc<RwLock<>>
-- Parallel processing using Rayon
-- GIL released for CPU-intensive operations
-
-## Serialization Formats
-
-### Database Format (.rkdb)
-
-```
-Header (fixed size):
-- Magic: 8 bytes ("RKDBv2\0")
-- Version: 4 bytes (u32)
-- K-mer size: 4 bytes (u32)
-- Flags: 4 bytes (canonical, compressed)
-- Reserved: 16 bytes
-
-Index Section (sorted k-mers):
-- Each entry: 16 bytes (u128 k-mer) + 8 bytes (u64 count)
-
-Optional Compression:
-- LZ4 compression for count data
-- Delta encoding for k-mer sequences
+```python
+class CompressionFormat(Enum):
+    NONE = "none"
+    GZIP = "gzip"
+    BZIP2 = "bzip2"
 ```
 
-### Export Formats
+## State Transitions
 
-1. **Text**: `kmer<TAB>count` per line
-2. **CSV**: `kmer,count,canonical` with header
-3. **JSON**: Structured with metadata
-4. **Binary**: Rust serialization format
+### Database Lifecycle
 
-## Integration Points
+```
+[Unloaded] --load()--> [Loaded]
+[Loaded] --query()--> [Querying]
+[Querying] --result--> [Loaded]
+[Loaded] --close()--> [Closed]
+[Closed] --load()--> [Loaded]
+```
 
-### Python Ecosystem
+### KmerCounter Lifecycle
 
-- **NumPy**: Buffer protocol for k-mer arrays
-- **Pandas**: DataFrame conversion for query results
-- **BioPython**: Sequence object compatibility
-- **Dask**: Distributed k-mer processing
+```
+[Initialized] --count_file()--> [Counting]
+[Counting] --progress_callback--> [Counting]
+[Counting] --complete()--> [Completed]
+[Completed] --save_to_database()--> [Database Created]
+[Database Created] --new_count()--> [Initialized]
+```
 
-### Rust Core
+## Relationships
 
-- Direct bridge to existing Rust implementations
-- Zero-copy operations where possible
-- Memory-safe sharing via Arc/Mutex patterns
+### Composition Relationships
 
-## Versioning Strategy
+- `Database` contains `DatabaseMetadata`
+- `DatabaseStats` contains `DatabaseMetadata`
+- `FuzzyQuery` requires `Database`
+- `FuzzyQueryResult` contains multiple `FuzzyMatch` objects
+- `KmerCounter` creates `Database` objects
+- `Database` can be merged with other `Database` objects
 
-- Database format includes version number
-- Backward compatibility for reading older formats
-- Migration path for format upgrades
+### Dependency Relationships
 
-## Security Considerations
+- `FuzzyQuery` depends on `Database` being loaded
+- `DatabaseStats` depends on `Database` metadata
+- Query operations depend on valid k-mer sequences
+- Export operations depend on database file permissions
 
-- Memory safety guaranteed by Rust
-- No unsafe code blocks in Python bindings
-- Input validation at Rust-Python boundary
-- Safe handling of user-provided file paths
+## Data Volume Considerations
+
+### Memory Constraints
+
+- `Database` objects use memory mapping for large files
+- Query results are streamed for large datasets
+- Batch operations have configurable chunk sizes
+- Progress callbacks enable monitoring of long operations
+
+### Performance Considerations
+
+- K-mer lookup: O(1) average case
+- Fuzzy query: O(4^mutations) worst case
+- Batch queries: O(n) where n is number of k-mers
+- Merge operations: O(total_kmers) + O(intermediate_storage)
+
+## Validation Rules
+
+### K-mer Sequence Validation
+
+```python
+def validate_kmer_sequence(kmer: str, kmer_size: int) -> bool:
+    """Validate k-mer sequence format and length"""
+    if len(kmer) != kmer_size:
+        return False
+    if not all(base in 'ACGT' for base in kmer):
+        return False
+    return True
+```
+
+### Database Format Validation
+
+```python
+def validate_database_format(file_path: str) -> bool:
+    """Validate RKDB database file format"""
+    # Check file header
+    # Validate version compatibility
+    # Verify k-mer size consistency
+    return True
+```
+
+### Configuration Validation
+
+```python
+def validate_merge_config(config: MergeConfig, databases: List[Database]) -> bool:
+    """Validate merge configuration compatibility"""
+    # Check all databases have same k-mer size
+    # Verify compatible versions
+    # Validate output path permissions
+    return True
+```

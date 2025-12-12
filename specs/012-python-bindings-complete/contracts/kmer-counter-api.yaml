@@ -1,0 +1,243 @@
+openapi: 3.0.0
+info:
+  title: RustKmer KmerCounter Python API
+  description: Python API for k-mer counting in genomic sequences
+  version: 1.0.0
+
+paths:
+  /kmer-counter:
+    post:
+      summary: Create a new KmerCounter instance
+      requestBody:
+        required: true
+        content:
+          application/json:
+          schema:
+            $ref: '#/components/schemas/KmerCounterConfig'
+      responses:
+        '200':
+          description: KmerCounter created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KmerCounter'
+        '400':
+          description: Invalid configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kmer-counter/count-file:
+    post:
+      summary: Count k-mers in a file
+      requestBody:
+        required: true
+        content:
+          application/json:
+          schema:
+            type: object
+            required:
+              - input_path
+            properties:
+              input_path:
+                type: string
+                description: Path to input file (FASTA/FASTQ)
+              output_path:
+                type: string
+                description: Path to output database file
+              progress_callback:
+                type: boolean
+                description: Enable progress callbacks
+      responses:
+        '200':
+          description: Counting completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Database'
+        '404':
+          description: Input file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kmer-counter/count-string:
+    post:
+      summary: Count k-mers in a string
+      requestBody:
+        required: true
+        content:
+          application/json:
+          schema:
+            type: object
+            required:
+              - sequence
+            properties:
+              sequence:
+                type: string
+                description: DNA sequence to count
+      responses:
+        '200':
+          description: Counting completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  counts:
+                  type: object
+                  additionalProperties:
+                    type: integer
+        '400':
+          description: Invalid sequence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    KmerCounterConfig:
+      type: object
+      required:
+        - k
+      properties:
+        k:
+          type: integer
+          minimum: 1
+          maximum: 64
+          description: K-mer size
+        canonical:
+          type: boolean
+          default: true
+          description: Use canonical k-mers
+        threads:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Thread count (0 = auto)
+        hash_size:
+          type: integer
+          minimum: 1000
+          default: 1000000
+          description: Hash table size
+        sort_output:
+          type: boolean
+          default: true
+          description: Sort output by k-mer
+        min_count:
+          type: integer
+          minimum: 1
+          description: Minimum count filter
+        max_count:
+          type: integer
+          minimum: 1
+          description: Maximum count filter
+        memory_limit:
+          type: integer
+          minimum: 1024
+          description: Memory limit in bytes
+        verbose:
+          type: boolean
+          default: false
+          description: Verbose output
+        quiet:
+          type: boolean
+          default: false
+          description: Quiet mode
+
+    KmerCounter:
+      type: object
+      properties:
+        k:
+          type: integer
+          description: K-mer size
+        canonical:
+          type: boolean
+          description: Canonical k-mers enabled
+        threads:
+          type: integer
+          description: Thread count
+        hash_size:
+          type: integer
+          description: Hash table size
+        sort_output:
+          type: boolean
+          description: Sort output
+        min_count:
+          type: integer
+          description: Minimum count filter
+        max_count:
+          type: integer
+          description: Maximum count filter
+        memory_limit:
+          type: integer
+          description: Memory limit
+        verbose:
+          type: boolean
+          description: Verbose mode
+        quiet:
+          type: boolean
+          description: Quiet mode
+
+    Database:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Database file path
+        kmer_size:
+          type: integer
+          description: K-mer size
+        total_kmers:
+          type: integer
+          description: Total k-mers
+        unique_kmers:
+          type: integer
+          description: Unique k-mers
+        metadata:
+          $ref: '#/components/schemas/DatabaseMetadata'
+
+    DatabaseMetadata:
+      type: object
+      properties:
+        version:
+          type: string
+          description: Database format version
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        kmer_size:
+          type: integer
+          description: K-mer size
+        canonical:
+          type: boolean
+          description: Canonical encoding used
+        total_sequences:
+          type: integer
+          description: Number of input sequences
+        total_bases:
+          type: integer
+          description: Total bases processed
+        algorithm:
+          type: string
+          description: Counting algorithm
+        parameters:
+          type: object
+          description: Algorithm parameters
+
+    Error:
+      type: object
+      properties:
+        error_code:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Error message
+        details:
+          type: object
+          description: Additional error details
