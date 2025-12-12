@@ -34,7 +34,6 @@ pub mod memory;
 pub mod output;
 pub mod parallel;
 
-
 // Re-export key types for convenience
 pub use error::{KmerError, ProcessingError, ProcessingResult};
 pub use hash::KmerCounter;
