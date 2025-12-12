@@ -11,7 +11,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use anyhow::{Context, Result};
-use parking_lot::RwLock;
 
 /// Default configuration file name
 pub const DEFAULT_CONFIG_FILE: &str = ".rustkmerrc";

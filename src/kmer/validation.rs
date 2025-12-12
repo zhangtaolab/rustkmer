@@ -5,7 +5,7 @@
 
 use crate::kmer::encoding::{encode_kmer_u128, decode_kmer_u128, reverse_complement_u128};
 use crate::kmer::canonical::canonical_kmer_u128;
-use crate::error::{KmerError, ProcessingError};
+use crate::error::KmerError;
 
 /// Maximum k-mer size supported by u128 encoding
 pub const MAX_KMER_SIZE: usize = 64;
