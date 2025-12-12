@@ -44,7 +44,12 @@ dev = [
 [tool.maturin]
 python-source = "python"
 module-name = "rustkmer._rustkmer"
-features = ["pyo3/extension-module"]
+features = ["pyo3/extension-module", "python"]
+# Module name is correct for PyO3 - rustkmer._rustkmer means:
+# - Package name: rustkmer
+# - Module name: _rustkmer (C extension module)
+# - Function name: rustkmer (PyO3 generates PyInit_rustkmer)
+# - features: Enable pyo3 extension-module and our python feature
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]

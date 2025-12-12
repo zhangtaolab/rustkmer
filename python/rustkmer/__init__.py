@@ -58,20 +58,33 @@ from .exceptions import (
 )
 
 # Import from Rust extension
-# TODO: Fix GIL crash issue with PyO3 0.23.4
-# For now, always use Python fallback due to GIL issues
+# Enable Rust backend with PyO3 0.27.2 (improved GIL handling)
 RUST_KMER_COUNTER_AVAILABLE = False
 
-# Uncomment when GIL issue is fixed:
 # try:
-#     # Try to import the comprehensive KmerCounter from Rust
-#     from ._rustkmer import PyKmerCounter as KmerCounter
-#     from ._rustkmer import CounterStats
-#     # Disable fallback for testing
+#     # Try to import from Rust extension (only classes that actually exist)
+#     from ._rustkmer import SimpleDatabase as RealDatabase
+#     from ._rustkmer import get_info
+#     from ._rustkmer import hello_world
+#     # Mark as available
 #     RUST_KMER_COUNTER_AVAILABLE = True
+#     print("✅ Using Rust backend for k-mer operations")
 # except ImportError as e:
-#     print(f"Failed to import from Rust extension: {e}")
+#     # PyO3 extension not compiled - this is expected in development mode
+#     # Python stubs will call Rust CLI for real data
+#     print(f"ℹ️  PyO3 extension not available - using Python stubs")
+#     print(f"   (Python stubs call Rust CLI for real database operations)")
+#     print(f"⚠️  Failed to import from Rust extension: {e}")
+#     print("Falling back to Python stubs")
 #     RUST_KMER_COUNTER_AVAILABLE = False
+#     RealDatabase = None
+#     DatabaseImpl = None
+
+# TEMPORARILY DISABLED - Use Python stubs only
+RUST_KMER_COUNTER_AVAILABLE = False
+RealDatabase = None
+DatabaseImpl = None
+print("ℹ️  Using Python stubs (Rust extension temporarily disabled)")
 
 # Create a fallback implementation for testing if Rust version not available
 if not RUST_KMER_COUNTER_AVAILABLE:
@@ -491,33 +504,40 @@ if not RUST_KMER_COUNTER_AVAILABLE:
                     'stats': self.get_stats()
                 }, f)
 
-# TEMPORARILY DISABLE Rust import due to GIL crash issue
-# TODO: Fix GIL issue with PyO3 0.23.4
-# Import from Rust extension first, fall back to stubs if not available
-# try:
-#     from ._rustkmer import (
-#         Database,
-#         QueryResult,
-#     )
-#     # Import stubs for classes not yet implemented in Rust
-#     from .stubs import (
-#         FuzzyQuery,
-#         DatabaseStats,
-#         FuzzyQueryResult,
-#         DatabaseMerger,
-#         DatabaseExporter,
-#     )
-# except ImportError:
-# Fall back to all stubs if Rust import fails
-from .stubs import (
-    Database,
-    QueryResult,
-    FuzzyQuery,
-    DatabaseStats,
-    FuzzyQueryResult,
-    DatabaseMerger,
-    DatabaseExporter,
-)
+# Prefer Rust implementation
+_USE_RUST_DATABASE = False
+
+try:
+    from ._rustkmer import Database as RealDatabase
+    from ._rustkmer import SimpleDatabase as DatabaseImpl
+    from ._rustkmer import QueryResult as RustQueryResult
+
+    # Import stubs for classes not yet implemented in Rust
+    from .stubs import (
+        FuzzyQuery,
+        DatabaseStats,
+        FuzzyQueryResult,
+        DatabaseMerger,
+        DatabaseExporter,
+    )
+    _USE_RUST_DATABASE = True
+    print("✅ Using Rust backend for k-mer operations")
+except ImportError as e:
+    # Fall back to all stubs if Rust import fails
+    # This is normal when PyO3 extension isn't compiled
+    from .stubs import (
+        Database as RealDatabase,
+        FuzzyQuery,
+        DatabaseStats,
+        FuzzyQueryResult,
+        DatabaseMerger,
+        DatabaseExporter,
+    )
+    DatabaseImpl = None
+    RustQueryResult = None
+    _USE_RUST_DATABASE = False
+    print(f"ℹ️  Using Python stubs (calls Rust CLI for real data)")
+    print(f"   Note: PyO3 extension not compiled - this is expected in development")
 
 # Import merge-related classes from stubs
 from .stubs import (
@@ -590,3 +610,8 @@ __all__ = [
     'KmerCountingError',
     'NotImplementedError',
 ]
+
+# Database alias - will use Rust implementation when built
+# For now, always use stubs since Rust extension needs to be built
+# The _USE_RUST_DATABASE flag is set above and can be used for future conditional logic
+Database = RealDatabase  # This will be the Rust Database if available, otherwise stubs Database

@@ -46,9 +46,6 @@ plugins:
             docstring_options:
               ignore_init_summary: false
             merge_init_into_class: true
-  - gen-files:
-      scripts:
-        - scripts/generate_rust_docs.py
   - section-index
 
 nav:

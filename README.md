@@ -98,6 +98,141 @@ uv run python analysis.py
 - 📦 **现代**: 内置项目管理和依赖管理
 - 🔄 **可靠**: 更好的缓存和依赖解析
 
+### 📦 Conda环境安装 🐍
+
+使用Conda创建隔离的Python环境，非常适合生物信息学工作流：
+
+#### 方法一：使用conda-forge频道 (推荐)
+
+```bash
+# 1. 安装Miniconda (如果没有conda)
+# 下载: https://docs.conda.io/en/latest/miniconda.html
+
+# 2. 创建新环境并安装RustKmer
+conda create -n rustkmer-env python=3.11 -c conda-forge
+conda activate rustkmer-env
+
+# 3. 安装RustKmer及其依赖
+conda install -c conda-forge rustkmer numpy matplotlib pytest
+
+# 4. 验证安装
+python -c "from rustkmer import KmerCounter; print('✅ Conda安装成功!')"
+
+# 5. 安装额外的数据科学工具 (可选)
+conda install -c conda-forge pandas seaborn jupyter
+```
+
+#### 方法二：从PyPI安装到Conda环境
+
+```bash
+# 1. 创建环境
+conda create -n rustkmer-env python=3.11
+conda activate rustkmer-env
+
+# 2. 安装RustKmer及开发依赖
+pip install rustkmer
+pip install pytest numpy matplotlib pandas
+
+# 3. 验证安装
+python -c "import rustkmer; print(f'RustKmer {rustkmer.__version__} 已就绪!')"
+```
+
+#### 方法三：开发环境设置 (完整版)
+
+```bash
+# 1. 创建完整开发环境
+conda create -n rustkmer-dev python=3.11 -c conda-forge rust numpy matplotlib pytest pandas seaborn jupyterlab
+
+# 2. 激活环境
+conda activate rustkmer-dev
+
+# 3. 克隆源码并安装开发版本
+git clone https://github.com/your-username/rustkmer.git
+cd rustkmer
+
+# 4. 安装为可编辑包
+pip install -e .
+
+# 5. 安装开发工具
+pip install pytest-benchmark hypothesis
+
+# 6. 运行测试验证
+python -m pytest tests/python/ -v
+```
+
+#### 常用Conda命令参考
+
+```bash
+# 查看环境列表
+conda env list
+
+# 导出环境配置
+conda env export > rustkmer-environment.yml
+
+# 从配置文件创建环境
+conda env create -f rustkmer-environment.yml
+
+# 删除环境
+conda env remove -n rustkmer-env
+
+# 在环境中安装额外包
+conda activate rustkmer-env
+conda install -c conda-forge scipy scikit-learn
+
+# 查看已安装包
+conda list
+
+# 更新conda和所有包
+conda update conda
+conda update --all
+```
+
+#### 环境配置文件示例
+
+创建 `environment.yml` 文件以快速设置环境：
+
+```yaml
+name: rustkmer-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - numpy>=1.21
+  - matplotlib>=3.5
+  - pytest>=7.0
+  - pandas
+  - pip
+  - pip:
+    - rustkmer
+```
+
+使用方法：
+```bash
+conda env create -f environment.yml
+conda activate rustkmer-env
+```
+
+#### Conda + Jupyter集成
+
+```bash
+# 1. 安装ipykernel
+conda install -c conda-forge ipykernel
+
+# 2. 将环境添加到Jupyter
+python -m ipykernel install --user --name rustkmer-env --display-name "RustKmer Environment"
+
+# 3. 启动Jupyter并选择RustKmer环境
+jupyter lab
+```
+
+**选择Conda的优势:**
+- 🔬 **生物信息学标准**: 科研领域广泛使用的环境管理工具
+- 📦 **依赖管理**: 强大的包依赖解析和二进制分发
+- 🔄 **环境隔离**: 完全隔离的环境，避免包冲突
+- 🌍 **跨平台**: 统一的安装体验 (Windows/macOS/Linux)
+- 🧪 **实验重现**: 轻松分享和重现分析环境
+
 ### 系统级Python安装
 
 ```bash
@@ -668,11 +803,63 @@ rustkmer/
 
 RustKmer 提供了完整的Python API，让您可以直接在Python脚本中进行高性能的k-mer分析。
 
-### 安装
+### 安装方式
+
+RustKmer 提供**两种 Python 集成方式**：
+
+#### 方式一：纯 Python Stubs（推荐，最稳定）✅
+
+**适用于所有环境，包括 Python 3.13**：
+```bash
+# 1. 确保 RustKmer CLI 已安装（在 PATH 中）
+which rustkmer  # 应该输出路径
+
+# 2. 安装纯 Python 包
+pip install rustkmer
+
+# 3. 验证安装
+python -c "from rustkmer import Database; print('✅ RustKmer Python API 就绪!')"
+```
+
+**工作原理**:
+- Python 代码作为**存根**（stubs）
+- 实际 k-mer 操作通过调用 `rustkmer` CLI 完成
+- **100% 兼容**所有 Python 版本（包括 3.13）
+- **零编译**，安装即用
+
+#### 方式二：PyO3 Rust 扩展（高性能，但有兼容性问题）⚠️
+
+**仅推荐用于 Python 3.11/3.12 和开发环境**：
 
 ```bash
-pip install rustkmer
+# 1. 安装 Rust 工具链
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+
+# 2. 克隆并构建（仅 Python 3.11/3.12）
+git clone https://github.com/your-username/rustkmer.git
+cd rustkmer
+maturin develop --release
+
+# 3. 验证
+python -c "from rustkmer import Database; print('✅ PyO3 扩展就绪!')"
 ```
+
+**⚠️ 已知问题**:
+- **Python 3.13 兼容性**: PyO3 0.27.2 与 Python 3.13 存在 GIL 相关问题
+- **编译复杂**: 需要 Rust 工具链和编译环境
+- **平台差异**: 不同操作系统的编译配置可能不同
+
+**建议**:
+- 生产环境：使用**纯 Python Stubs**（方式一）
+- 开发环境：可尝试 PyO3 扩展（方式二）
+
+### 安装方式对比
+
+| 方式 | Python 兼容性 | 安装难度 | 性能 | 稳定性 | 推荐度 |
+|------|---------------|----------|------|--------|--------|
+| **纯 Python Stubs** | ✅ 3.8-3.13 | ⭐ 简单 | ⭐⭐⭐ CLI级 | ⭐⭐⭐⭐⭐ 极高 | **强烈推荐** |
+| **PyO3 扩展** | ⚠️ 3.11-3.12 | ⭐⭐⭐⭐ 复杂 | ⭐⭐⭐⭐⭐ 本地Rust | ⭐⭐⭐ 中等 | 开发测试 |
 
 ### 快速示例
 

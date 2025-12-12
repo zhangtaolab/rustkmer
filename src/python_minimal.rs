@@ -1209,7 +1209,7 @@ impl Database {
 
 /// Python module
 #[pymodule]
-fn _rustkmer(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn rustkmer(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<KmerCounter>()?;
     m.add_class::<QueryResult>()?;

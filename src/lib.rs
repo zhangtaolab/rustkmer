@@ -35,10 +35,7 @@ pub mod output;
 pub mod parallel;
 
 #[cfg(feature = "python")]
-pub mod python_minimal;
-
-#[cfg(feature = "python")]
-pub use python_minimal as python;
+pub mod python;
 
 
 // Re-export key types for convenience

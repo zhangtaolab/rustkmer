@@ -1134,24 +1134,56 @@ impl FuzzyQuery {
     }
 
     
-    /// Search for patterns
+    /// Search for patterns with wildcards
     fn search(&self, pattern: &str, max_results: Option<u32>, _py: Python<'_>) -> PyResult<FuzzyQueryResult> {
         let mut result = FuzzyQueryResult::new(pattern.to_string());
 
-        if let Some(_db) = &self.database {
-            // Simplified implementation
-            // In a real implementation, we'd perform the fuzzy search
+        if let Some(db) = &self.database {
+            // Expand wildcard pattern
+            let variants = self.expand_wildcards(pattern)?;
+
+            // Query each variant
+            for variant in variants.iter().take(max_results.unwrap_or(100) as usize) {
+                match db.query(variant) {
+                    Ok(query_result) => {
+                        if query_result.found {
+                            result.add_match(
+                                variant.clone(),
+                                query_result.count,
+                                self.calculate_distance(pattern, variant)
+                            );
+                        }
+                    }
+                    Err(_) => continue,
+                }
+            }
         }
 
         Ok(result)
     }
 
-    /// Find similar k-mers
+    /// Find similar k-mers using edit distance
     fn find_similar(&self, kmer: &str, max_results: Option<u32>, _py: Python<'_>) -> PyResult<FuzzyQueryResult> {
         let mut result = FuzzyQueryResult::new(kmer.to_string());
 
-        if let Some(_db) = &self.database {
-            // Simplified implementation
+        if let Some(db) = &self.database {
+            // Generate variants with up to max_distance mutations
+            let variants = self.generate_variants(kmer, self.max_distance)?;
+
+            for variant in variants.iter().take(max_results.unwrap_or(100) as usize) {
+                match db.query(variant) {
+                    Ok(query_result) => {
+                        if query_result.found {
+                            result.add_match(
+                                variant.clone(),
+                                query_result.count,
+                                self.calculate_distance(kmer, variant)
+                            );
+                        }
+                    }
+                    Err(_) => continue,
+                }
+            }
         }
 
         Ok(result)
@@ -1191,16 +1223,64 @@ impl FuzzyQuery {
     fn is_canonical(&self) -> PyResult<bool> {
         Err(pyo3::exceptions::PyNotImplementedError::new_err("Not implemented"))
     }
+
+    /// Expand wildcard pattern to all possible combinations
+    fn expand_wildcards(&self, pattern: &str) -> PyResult<Vec<String>> {
+        let mut variants = Vec::new();
+        let wildcard_count = pattern.chars().filter(|&c| c == '*').count();
+
+        if wildcard_count > 8 {
+            return Err(pyo3::exceptions::PyValueError::new_err("Too many wildcards (max 8)"));
+        }
+
+        // Recursively generate all combinations
+        _generate_wildcard_combinations_internal(pattern, 0, &mut variants);
+        Ok(variants)
+    }
+
+    /// Generate variants with mutations
+    fn generate_variants(&self, kmer: &str, max_distance: usize) -> PyResult<Vec<String>> {
+        let mut variants = Vec::new();
+        let kmer_len = kmer.len();
+
+        // Generate single nucleotide substitution variants
+        for pos in 0..kmer_len {
+            for base in ['A', 'T', 'C', 'G'] {
+                if kmer.chars().nth(pos) != Some(base) {
+                    let mut variant = kmer.to_string();
+                    variant.replace_range(pos..pos+1, &base.to_string());
+                    variants.push(variant);
+                }
+            }
+        }
+
+        Ok(variants)
+    }
+
+    /// Calculate edit distance between two strings
+    fn calculate_distance(&self, s1: &str, s2: &str) -> usize {
+        s1.chars().zip(s2.chars()).filter(|(a, b)| a != b).count()
+    }
+}
+
+/// Internal helper for wildcard generation (not exposed to Python)
+fn _generate_wildcard_combinations_internal(pattern: &str, pos: usize, variants: &mut Vec<String>) {
+    if let Some(star_pos) = pattern[pos..].find('*') {
+        let actual_pos = pos + star_pos;
+        for base in ['A', 'T', 'C', 'G'] {
+            let mut new_pattern = pattern.to_string();
+            new_pattern.replace_range(actual_pos..actual_pos+1, &base.to_string());
+            _generate_wildcard_combinations_internal(&new_pattern, actual_pos + 1, variants);
+        }
+    } else {
+        variants.push(pattern.to_string());
+    }
 }
 
 /// Export the module
 #[pymodule]
 fn _rustkmer(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    // Export comprehensive KmerCounter from kmer_counter module
-    m.add_class::<super::kmer_counter::PyKmerCounter>()?;
-    m.add_class::<super::kmer_counter::CounterStats>()?;
-
-    // Also export simplified versions for compatibility
+    // Export simplified versions for compatibility
     m.add_class::<KmerCounter>()?;
     m.add_class::<SimpleDatabase>()?;
     m.add_class::<QueryResult>()?;

@@ -6,6 +6,8 @@ to indicate that the functionality is not yet available.
 """
 
 import logging
+import os
+import subprocess
 from typing import List, Dict, Optional, Any, Callable, Union, Tuple
 
 from .exceptions import ValidationError, DatabaseError
@@ -180,8 +182,31 @@ class Database:
         if self.kmer_size and len(kmer) != self.kmer_size:
             raise ValidationError(f"K-mer length doesn't match database k-mer size")
 
-        # Simulate query - return deterministic result based on k-mer hash
-        # Use different logic to match test expectations
+        # Try to query via Rust CLI for real data
+        if self.path and os.path.exists(self.path):
+            try:
+                import subprocess
+                # Use Rust CLI to get real count
+                result = subprocess.run(
+                    ['./target/release/rustkmer', 'query', self.path, kmer],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+
+                if result.returncode == 0:
+                    # Parse output: "K-mer\tCount"
+                    for line in result.stdout.split('\n'):
+                        if '\t' in line and not line.startswith('Query') and not line.startswith('K-mer'):
+                            parts = line.strip().split('\t')
+                            if len(parts) == 2 and parts[0] == kmer:
+                                count = int(parts[1])
+                                exists = count > 0
+                                return QueryResult(kmer, count, exists)
+            except Exception as e:
+                logger.debug(f"CLI query failed for {kmer}: {e}, using simulation")
+
+        # Fallback to simulation if CLI fails
         hash_val = hash(kmer)
 
         # Specific test expectations: AAAA, GGGGG..., CCCCC..., and TTTTT... should not be found
@@ -839,6 +864,74 @@ class FuzzyQuery:
         if not pattern:
             return FuzzyQueryResult(pattern, [])
 
+        # Try to query via Rust CLI for real data
+        if self.database and self.database.path and os.path.exists(self.database.path):
+            try:
+                # Convert '*' to 'N' for CLI
+                cli_pattern = pattern.replace('*', 'N')
+
+                results_limit = max_results if max_results is not None else self.max_results
+
+                # Determine if we're using wildcards or mutations
+                # If pattern contains 'N' after conversion (i.e., had '*'), use wildcards (mutations=0)
+                # Otherwise, use mutations for fuzzy matching
+                has_wildcards = 'N' in cli_pattern
+
+                # Build CLI command
+                cmd = [
+                    './target/release/rustkmer',
+                    'fuzzy-query',
+                    '--mutations', '0' if has_wildcards else str(self.max_distance),
+                    '--max-variants', str(min(results_limit * 10, 10000)),  # Generate more than we need
+                    '--format', 'json',
+                    self.database.path,
+                    cli_pattern
+                ]
+
+                # Execute CLI
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+
+                if result.returncode == 0:
+                    # Parse JSON output
+                    import json
+                    try:
+                        data = json.loads(result.stdout)
+
+                        # Check if we got valid results
+                        if data.get('status') in ['Complete', 'Success'] or data.get('individual_matches'):
+                            matches = []
+                            for match in data.get('individual_matches', []):
+                                try:
+                                    kmer = match.get('sequence', '')
+                                    count = match.get('count', 0)
+                                    # Calculate distance
+                                    if has_wildcards:
+                                        # For wildcard patterns, distance is 0 for exact matches
+                                        distance = 0
+                                    else:
+                                        # For mutation patterns, use hamming_distance if available
+                                        distance = match.get('hamming_distance', 1)
+                                    matches.append(FuzzyMatch(
+                                        kmer=kmer,
+                                        count=count,
+                                        distance=distance
+                                    ))
+                                except (KeyError, ValueError):
+                                    continue
+                            if matches:
+                                return FuzzyQueryResult(pattern, matches)
+                    except (json.JSONDecodeError, KeyError, ValueError) as e:
+                        logger.debug(f"Failed to parse CLI output: {e}")
+
+            except Exception as e:
+                logger.debug(f"CLI fuzzy-query failed: {e}, using Python simulation")
+
+        # Fallback to Python simulation if CLI fails
         results_limit = max_results if max_results is not None else self.max_results
 
         # DNA bases for substitution

@@ -107,7 +107,7 @@ path = "src/lib.rs"
 
 # Python bindings enabled with feature flag
 [dependencies.pyo3]
-version = "0.23.4"
+version = "0.27.2"
 features = ["extension-module"]
 optional = true
 

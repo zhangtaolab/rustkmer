@@ -18,6 +18,26 @@ fn get_info() -> PyResult<String> {
                env!("CARGO_PKG_VERSION")))
 }
 
+/// Simple Database class for testing
+#[pyclass]
+struct SimpleDatabase {
+    data: String,
+}
+
+#[pymethods]
+impl SimpleDatabase {
+    #[new]
+    fn new() -> PyResult<Self> {
+        Ok(Self {
+            data: "test".to_string(),
+        })
+    }
+
+    fn get_data(&self) -> PyResult<String> {
+        Ok(self.data.clone())
+    }
+}
+
 /// Python module for RustKmer (minimal version)
 #[pymodule]
 fn _rustkmer(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -27,6 +47,9 @@ fn _rustkmer(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Functions
     m.add_function(wrap_pyfunction!(hello_world, m)?)?;
     m.add_function(wrap_pyfunction!(get_info, m)?)?;
+
+    // Classes
+    m.add_class::<SimpleDatabase>()?;
 
     Ok(())
 }

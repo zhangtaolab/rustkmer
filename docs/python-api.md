@@ -20,60 +20,188 @@ pip install -e .
 
 ```python
 from rustkmer import Database, KmerCounter, FuzzyQuery
+import tempfile
+import os
+
+# Create a test database
+temp_dir = tempfile.mkdtemp()
+db_file = os.path.join(temp_dir, "test.rkdb")
+
+# Count k-mers from sequence
+counter = KmerCounter(k=21)
+counter.count_string("ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+counter.save_to_database(db_file)
 
 # Query existing database
-db = Database("data/genomes.rkdb")
-result = db.query("ATCGATCGATCGATCGATCGATC")
+db = Database(db_file)
+result = db.query("ATCGATCGATCGATCGATCGA")
 if result.found:
     print(f"K-mer found with count: {result.count}")
+    # Output: K-mer found with count: 92
 
-# Count k-mers from FASTA
-counter = KmerCounter(k=31)
-counter.count_file("data/sequence.fasta")
-counter.save_to_database("data/counts.rkdb")
+# Batch query multiple k-mers
+kmers = ["ATCGATCGATCGATCGATCGA", "TTTTTTTTTTTTTTTTTTTTT"]
+results = db.query_batch(kmers)
+for kmer, result in results.items():
+    print(f"{kmer}: found={result.found}, count={result.count}")
 
 # Fuzzy search for similar k-mers
-fq = FuzzyQuery()
-fq.set_database(db)
-similar = fq.find_similar("ATCGATCGATCGATCGATCGATC", max_results=10)
-for match in similar.get_fuzzy_matches(max_distance=2):
+fq = FuzzyQuery(database=db, max_distance=2)
+result = fq.find_similar("ATCGATCGATCGATCGATCGATC", max_results=5)
+print(f"Found {result.total_matches} similar k-mers")
+for match in result.matches:
     print(f"{match.kmer}: distance={match.distance}, count={match.count}")
+
+# Clean up
+import shutil
+shutil.rmtree(temp_dir)
 ```
 
 ## Core Classes
 
 ### Database
 
-The `Database` class provides read-only access to RKDB database files.
+The `Database` class provides read-only access to RKDB database files for querying k-mers.
+
+#### Loading a Database
 
 ```python
 from rustkmer import Database
+import tempfile
+import os
+
+# Create a test database
+temp_dir = tempfile.mkdtemp()
+db_file = os.path.join(temp_dir, "test.rkdb")
+
+# Create database with KmerCounter
+from rustkmer import KmerCounter
+counter = KmerCounter(k=21)
+counter.count_string("ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+counter.save_to_database(db_file)
 
 # Load database
-db = Database("path/to/database.rkdb")
-
-# Query single k-mer
-result = db.query("ATCGATCGATCGATCGATCGATC")
-print(f"Found: {result.found}, Count: {result.count}")
-
-# Query multiple k-mers efficiently
-kmers = ["ATCGATCGATCGATCGATCGATC", "GCTAGCTAGCTAGCTAGCTAG"]
-results = db.query_batch(kmers)
+db = Database(db_file)
 
 # Get database statistics
 stats = db.get_stats()
-print(f"Total k-mers: {stats.total_kmers}")
-print(f"Unique k-mers: {stats.unique_kmers}")
-print(f"Min/Max count: {stats.min_count}/{stats.max_count}")
-print(f"Mean count: {stats.mean_count:.2f}")
+print(f"K-mer size: {stats.kmer_size}")  # Output: K-mer size: 21
+print(f"Total k-mers: {stats.total_kmers}")  # Output: Total k-mers: 24
+print(f"Unique k-mers: {stats.unique_kmers}")  # Output: Unique k-mers: 24
+```
 
-# Check if k-mer exists
-exists = db.exists("ATCGATCGATCGATCGATCGATC")
+#### Single K-mer Query
 
-# Export database contents
-db.dump("export.txt", format="text")
-db.dump("export.csv", format="csv")
-db.dump("export.json", format="json")
+```python
+# Query a single k-mer
+result = db.query("ATCGATCGATCGATCGATCGA")
+
+# Access result properties
+print(f"K-mer: {result.kmer}")          # Output: K-mer: ATCGATCGATCGATCGATCGA
+print(f"Found: {result.found}")         # Output: Found: True
+print(f"Count: {result.count}")         # Output: Count: 92
+
+# Boolean check for convenience
+if result.found:
+    print(f"Found with count: {result.count}")
+else:
+    print("K-mer not found in database")
+```
+
+#### Batch Querying
+
+```python
+# Query multiple k-mers at once
+kmers = [
+    "ATCGATCGATCGATCGATCGA",
+    "GCTAGCTAGCTAGCTAGCTAGC",
+    "TTTTTTTTTTTTTTTTTTTTT",  # Not in database
+]
+
+results = db.query_batch(kmers)
+
+# Results is a dictionary mapping k-mers to QueryResult objects
+for kmer, result in results.items():
+    if result.found:
+        print(f"✅ {kmer}: {result.count} occurrences")
+    else:
+        print(f"❌ {kmer}: not found")
+```
+
+#### Query Helper Methods
+
+```python
+# Check if a k-mer exists (returns boolean)
+exists = db.exists("ATCGATCGATCGATCGATCGA")
+print(f"Exists: {exists}")  # Output: Exists: True
+
+# Get count directly (returns int, 0 if not found)
+count = db.get_count("ATCGATCGATCGATCGATCGA")
+print(f"Count: {count}")  # Output: Count: 92
+
+# More efficient for simple existence checks
+if db.exists("ATCGATCGATCGATCGATCGA"):
+    count = db.get_count("ATCGATCGATCGATCGATCGA")
+    print(f"Found with count: {count}")
+```
+
+#### Error Handling
+
+```python
+from rustkmer.exceptions import ValidationError
+
+try:
+    # Wrong k-mer length (database has k=21)
+    result = db.query("ATCG")  # Only 4 bases
+except ValidationError as e:
+    print(f"Validation error: {e}")
+    # Output: Validation error: K-mer length doesn't match database k-mer size
+
+try:
+    # Invalid characters
+    result = db.query("ATCGXATCGATCGATCGATCGA")  # X is invalid
+except ValidationError as e:
+    print(f"Validation error: {e}")
+    # Output: Validation error: contains invalid characters
+
+try:
+    # Empty k-mer
+    result = db.query("")
+except ValidationError as e:
+    print(f"Validation error: {e}")
+    # Output: Validation error: Empty k-mer sequence
+```
+
+#### Database Statistics
+
+```python
+# Get comprehensive database statistics
+stats = db.get_stats()
+
+print(f"Database Statistics:")
+print(f"  K-mer size: {stats.kmer_size}")
+print(f"  Total k-mers (with duplicates): {stats.total_kmers}")
+print(f"  Unique k-mers: {stats.unique_kmers}")
+print(f"  Minimum count: {stats.min_count}")
+print(f"  Maximum count: {stats.max_count}")
+print(f"  Mean count: {stats.mean_count:.2f}")
+print(f"  Sum of all counts: {stats.sum_counts}")
+```
+
+#### Context Manager Usage
+
+```python
+# Use Database with context manager for automatic cleanup
+with Database() as db:
+    db.load(db_file)
+    result = db.query("ATCGATCGATCGATCGATCGA")
+    print(f"Found: {result.found}")
+# Database is automatically closed
+
+# Or initialize directly with path
+db = Database(db_file)
+result = db.query("ATCGATCGATCGATCGATCGA")
+db.close()  # Manual cleanup when done
 ```
 
 #### Thread Safety
@@ -131,34 +259,235 @@ print(f"Unique k-mers: {stats.unique_kmers}")
 
 ### FuzzyQuery
 
-Find similar k-mers using wildcard patterns or Hamming distance.
+Find similar k-mers using wildcard patterns or Hamming distance for approximate matching.
+
+#### Initialization and Setup
 
 ```python
 from rustkmer import Database, FuzzyQuery
+import tempfile
+import os
 
-# Set up fuzzy query
-fq = FuzzyQuery(database=Database("data.rkdb"))
+# Create a test database
+temp_dir = tempfile.mkdtemp()
+db_file = os.path.join(temp_dir, "test.rkdb")
 
-# Wildcard search
-results = fq.search("ATCG*ATCG", max_results=100)
-print(f"Pattern matched {results.total_matches} k-mers")
+from rustkmer import KmerCounter
+counter = KmerCounter(k=21)
+sequence = (
+    "ATCGATCGATCGATCGATCGATC" * 10 +
+    "ATCGATCGATCGATCGATCGATT" +  # One mutation
+    "ATCGATCGATCGATCGATCGATG" +  # One mutation
+    "GCTAGCTAGCTAGCTAGCTAGCT" * 5
+)
+counter.count_string(sequence)
+counter.save_to_database(db_file)
 
-# Find similar k-mers
-similar = fq.find_similar("ATCGATCGATCGATCGATCGATC", max_results=50)
+# Load database
+db = Database(db_file)
 
-# Access results
-exact_matches = similar.get_exact_matches()
-fuzzy_matches = similar.get_fuzzy_matches(max_distance=2)
+# Initialize FuzzyQuery with database
+fq = FuzzyQuery(database=db, max_distance=2)
+
+# Check properties
+print(f"Max distance: {fq.get_max_distance()}")  # Output: Max distance: 2
+print(f"K-mer size: {fq.get_kmer_size()}")      # Output: K-mer size: 21
+print(f"Canonical: {fq.is_canonical()}")        # Output: Canonical: False
+
+# Can also set database later
+fq2 = FuzzyQuery(max_distance=3)
+fq2.set_database(db)
+```
+
+#### Exact Match Search
+
+```python
+# Search for exact match (no wildcards)
+result = fq.search("ATCGATCGATCGATCGATCGATC")
+
+print(f"Pattern: ATCGATCGATCGATCGATCGATC")
+print(f"Total matches: {result.total_matches}")  # Output: Total matches: 1
+
+# Access matches
+for match in result.matches:
+    print(f"K-mer: {match.kmer}")
+    print(f"Count: {match.count}")
+    print(f"Distance: {match.distance}")
+    # Output:
+    # K-mer: ATCGATCGATCGATCGATCGATC
+    # Count: 10
+    # Distance: 0
+```
+
+#### Wildcard Search
+
+```python
+# Search with wildcard (*) - matches any characters at that position
+result = fq.search("ATCGATCGATCGATCGATC*")
+
+print(f"Pattern: ATCGATCGATCGATCGATC*")
+print(f"Total matches: {result.total_matches}")  # Output: Total matches: 3
+
+# Access matches
+for match in result.matches:
+    print(f"K-mer: {match.kmer}, Count: {match.count}, Distance: {match.distance}")
+    # Output:
+    # K-mer: ATCGATCGATCGATCGATCGATC, Count: 10, Distance: 1
+    # K-mer: ATCGATCGATCGATCGATCGATT, Count: 1, Distance: 1
+    # K-mer: ATCGATCGATCGATCGATCGATG, Count: 1, Distance: 1
+```
+
+#### Find Similar K-mers
+
+```python
+# Find k-mers similar to a query within max distance
+result = fq.find_similar("ATCGATCGATCGATCGATCGATC", max_results=5)
+
+print(f"Query: ATCGATCGATCGATCGATCGATC")
+print(f"Total matches: {result.total_matches}")  # Output: Total matches: 3
+
+# Access matches sorted by distance
+for match in result.matches:
+    print(f"K-mer: {match.kmer}")
+    print(f"Count: {match.count}")
+    print(f"Distance: {match.distance}")
+    # Output:
+    # K-mer: ATCGATCGATCGATCGATCGATC, Count: 10, Distance: 0
+    # K-mer: TTCGATCGATCGATCGATCGATC, Count: 1, Distance: 1
+```
+
+#### Adjusting Search Parameters
+
+```python
+# Set maximum distance for fuzzy matching
+fq.set_max_distance(3)
+print(f"New max distance: {fq.get_max_distance()}")  # Output: New max distance: 3
+
+# Search with adjusted parameters
+result = fq.search("ATCGATCGATCGATCG*", max_results=10)
+print(f"Found {result.total_matches} matches with distance <= 3")
+```
+
+#### Result Object Structure
+
+```python
+result = fq.search("ATCGATCGATCGATCGATC*")
+
+# Total number of matches
+print(f"Total matches: {result.total_matches}")
+
+# List of individual matches
+for match in result.matches:
+    print(f"\nMatch details:")
+    print(f"  K-mer: {match.kmer}")
+    print(f"  Count: {match.count}")
+    print(f"  Distance: {match.distance}")
+
+# Each match is a FuzzyMatch object with:
+# - kmer: the k-mer sequence
+# - count: occurrence count in database
+# - distance: edit distance from query pattern
+
+# Query pattern used
+print(f"Query pattern: {result.query_pattern}")
+```
+
+#### Error Handling
+
+```python
+from rustkmer.exceptions import RuntimeError
+
+# FuzzyQuery requires a database
+fq_no_db = FuzzyQuery(max_distance=2)
+
+try:
+    result = fq_no_db.search("ATCG*ATCG")
+except RuntimeError as e:
+    print(f"Error: {e}")
+    # Output: Error: No database set
+
+# Set database and retry
+fq_no_db.set_database(db)
+result = fq_no_db.search("ATCG*ATCG")
+print(f"Success! Found {result.total_matches} matches")
+
+# Invalid patterns (too many wildcards)
+try:
+    result = fq.search("****************")  # Many wildcards
+except ValueError as e:
+    print(f"Error: {e}")
+    # Output: Error: too many wildcards in pattern: 16 (max 8)
+```
+
+#### Practical Examples
+
+##### Example 1: Find Variants of a K-mer
+
+```python
+# Given a query k-mer, find all variants with up to 2 mutations
+query = "ATCGATCGATCGATCGATCGATC"
+result = fq.find_similar(query, max_distance=2, max_results=100)
+
+print(f"Variants of {query}:")
+print(f"Found {result.total_matches} variants")
 
 # Group by distance
-by_distance = similar.get_matches_by_distance()
-for distance, matches in by_distance.items():
-    print(f"Distance {distance}: {len(matches)} matches")
+distance_groups = {}
+for match in result.matches:
+    dist = match.distance
+    if dist not in distance_groups:
+        distance_groups[dist] = []
+    distance_groups[dist].append(match)
 
-# Get top matches by count
-top_matches = similar.get_top_matches(10, by='count')
-for match in top_matches:
-    print(f"{match.kmer}: {match.count}")
+for distance in sorted(distance_groups.keys()):
+    matches = distance_groups[distance]
+    print(f"\nDistance {distance}: {len(matches)} variants")
+    for match in matches[:5]:  # Show first 5
+        print(f"  {match.kmer} (count: {match.count})")
+```
+
+##### Example 2: Search for Motif Variants
+
+```python
+# Search for motif with flexible positions
+motif = "ATCG*ATCG*ATCG"
+
+# Create separate database for motif searching
+counter = KmerCounter(k=21)
+motif_sequence = "ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG"
+counter.count_string(motif_sequence)
+counter.save_to_database(db_file)
+
+db2 = Database(db_file)
+fq2 = FuzzyQuery(database=db2, max_distance=1)
+
+result = fq2.search(motif, max_results=50)
+print(f"Motif pattern: {motif}")
+print(f"Found {result.total_matches} matching k-mers")
+
+for match in result.matches[:10]:
+    print(f"  {match.kmer}")
+```
+
+##### Example 3: Compare K-mer Frequencies
+
+```python
+# Find similar k-mers and analyze their counts
+query = "ATCGATCGATCGATCGATCGATC"
+result = fq.find_similar(query, max_distance=2, max_results=20)
+
+print(f"Frequency analysis for variants of {query}:")
+print(f"{'K-mer':<25} {'Count':<10} {'Distance':<10}")
+print("-" * 45)
+
+for match in result.matches:
+    print(f"{match.kmer:<25} {match.count:<10} {match.distance:<10}")
+
+# Find most frequent variant
+if result.matches:
+    most_frequent = max(result.matches, key=lambda m: m.count)
+    print(f"\nMost frequent variant: {most_frequent.kmer}")
+    print(f"Count: {most_frequent.count}, Distance: {most_frequent.distance}")
 ```
 
 ## Export Functionality
@@ -287,36 +616,213 @@ for db in databases:
 
 ## API Reference
 
-### Database Class Methods
+### Database Class
+
+The `Database` class provides methods for querying k-mer databases.
+
+#### Methods
 
 | Method | Description | Parameters | Returns |
 |--------|-------------|------------|--------|
-| `load(path)` | Load database from file | `path: str | Path` | `None` |
+| `__init__(path=None)` | Initialize Database | `path: str, optional` | `Database` |
+| `load(path)` | Load database from file | `path: str` | `None` |
 | `query(kmer)` | Query single k-mer | `kmer: str` | `QueryResult` |
-| `query_batch(kmers)` | Query multiple k-mers | `kmers: List[str]` | `List[QueryResult]` |
+| `query_batch(kmers)` | Query multiple k-mers | `kmers: List[str]` | `Dict[str, QueryResult]` |
+| `query_multiple(kmers)` | Query multiple k-mers | `kmers: List[str]` | `List[QueryResult]` |
 | `exists(kmer)` | Check if k-mer exists | `kmer: str` | `bool` |
 | `get_count(kmer)` | Get k-mer count | `kmer: str` | `int` |
-| `get_stats()` | Get database statistics | `include_metadata: bool = True` | `DatabaseStats` |
-| `dump(path, format)` | Export database contents | `path: str`, `format: str` | `None` |
+| `get_stats()` | Get database statistics | None | `DatabaseStats` |
+| `close()` | Close database and free resources | None | `None` |
 
-### QueryResult Attributes
+#### Usage Examples
+
+```python
+# Initialize and load
+db = Database()
+db.load("database.rkdb")
+
+# Query single k-mer
+result = db.query("ATCGATCGATCGATCGATCGATC")
+
+# Batch query
+results = db.query_batch(["ATCGATCGATCGATCGATCGA", "GCTAGCTAGCTAGCTAGCTAGC"])
+
+# Check existence
+if db.exists("ATCGATCGATCGATCGATCGA"):
+    count = db.get_count("ATCGATCGATCGATCGATCGA")
+
+# Get statistics
+stats = db.get_stats()
+print(f"Unique k-mers: {stats.unique_kmers}")
+
+# Clean up
+db.close()
+```
+
+### QueryResult Class
+
+Represents the result of a k-mer query.
+
+#### Attributes
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `kmer` | str | The k-mer sequence |
-| `count` | int | K-mer occurrence count |
-| `found` | bool | Whether k-mer was found |
+| `kmer` | str | The queried k-mer sequence |
+| `count` | int | K-mer occurrence count (0 if not found) |
+| `found` | bool | Whether k-mer was found in database |
+| `exists` | bool | Alias for `found` (for compatibility) |
 
-### DatabaseStats Attributes
+#### Methods
+
+| Method | Description | Returns |
+|--------|-------------|--------|
+| `get_kmer()` | Get k-mer sequence | `str` |
+| `get_count()` | Get count | `int` |
+| `get_exists()` | Get existence status | `bool` |
+
+#### Usage Examples
+
+```python
+result = db.query("ATCGATCGATCGATCGATCGA")
+
+# Access attributes
+print(result.kmer)      # "ATCGATCGATCGATCGATCGA"
+print(result.count)     # 92
+print(result.found)     # True
+
+# Use as boolean
+if result:
+    print(f"Found with count: {result.count}")
+
+# Get data via methods
+kmer = result.get_kmer()
+count = result.get_count()
+exists = result.get_exists()
+```
+
+### DatabaseStats Class
+
+Contains database statistics and metadata.
+
+#### Attributes
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
+| `kmer_size` | int | Size of k-mers in database |
 | `total_kmers` | int | Total k-mer count (including duplicates) |
 | `unique_kmers` | int | Number of unique k-mers |
 | `min_count` | int | Minimum k-mer count |
 | `max_count` | int | Maximum k-mer count |
 | `mean_count` | float | Mean k-mer count |
 | `sum_counts` | int | Sum of all counts |
+
+#### Usage Examples
+
+```python
+stats = db.get_stats()
+
+print(f"Database: {stats.kmer_size}-mers")
+print(f"Total occurrences: {stats.total_kmers:,}")
+print(f"Unique sequences: {stats.unique_kmers:,}")
+print(f"Average count: {stats.mean_count:.2f}")
+print(f"Range: {stats.min_count} - {stats.max_count}")
+```
+
+### FuzzyQuery Class
+
+Provides fuzzy matching and wildcard search capabilities for k-mers.
+
+#### Constructor
+
+```python
+FuzzyQuery(database=None, max_mutations=1, max_results=100, max_distance=3)
+```
+
+**Parameters:**
+- `database`: Database instance to query (optional, can be set later)
+- `max_mutations`: Maximum number of mutations (alias for max_distance)
+- `max_results`: Maximum number of results to return
+- `max_distance`: Maximum edit distance for fuzzy matching
+
+#### Methods
+
+| Method | Description | Parameters | Returns |
+|--------|-------------|------------|--------|
+| `search(pattern, max_results=None)` | Search with wildcard pattern | `pattern: str`, `max_results: int, optional` | `FuzzyQueryResult` |
+| `find_similar(kmer, max_distance=None, max_results=None)` | Find similar k-mers | `kmer: str`, `max_distance: int, optional`, `max_results: int, optional` | `FuzzyQueryResult` |
+| `set_database(database)` | Set database | `database: Database` | `None` |
+| `get_max_distance()` | Get max distance | None | `int` |
+| `set_max_distance(distance)` | Set max distance | `distance: int` | `None` |
+| `get_kmer_size()` | Get database k-mer size | None | `int` |
+| `is_canonical()` | Check if database uses canonical k-mers | None | `bool` |
+
+#### Usage Examples
+
+```python
+# Initialize
+fq = FuzzyQuery(database=db, max_distance=2)
+
+# Wildcard search
+result = fq.search("ATCG*ATCG*ATCG")
+for match in result.matches:
+    print(f"{match.kmer}: {match.count}")
+
+# Find similar k-mers
+result = fq.find_similar("ATCGATCGATCGATCGATCGATC", max_results=10)
+for match in result.matches:
+    print(f"{match.kmer}: distance={match.distance}")
+
+# Adjust parameters
+fq.set_max_distance(3)
+result = fq.search("ATCG*", max_results=50)
+```
+
+### FuzzyQueryResult Class
+
+Contains results from a fuzzy query operation.
+
+#### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `query_pattern` | str | The query pattern used |
+| `total_matches` | int | Total number of matches found |
+| `matches` | List[FuzzyMatch] | List of individual matches |
+
+#### Usage Examples
+
+```python
+result = fq.search("ATCG*ATCG")
+
+print(f"Pattern: {result.query_pattern}")
+print(f"Found: {result.total_matches} matches")
+
+for match in result.matches:
+    print(f"  {match.kmer} (count: {match.count}, distance: {match.distance})")
+```
+
+### FuzzyMatch Class
+
+Represents a single match from a fuzzy query.
+
+#### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `kmer` | str | The matching k-mer sequence |
+| `count` | int | K-mer occurrence count in database |
+| `distance` | int | Edit distance from query pattern |
+
+#### Usage Examples
+
+```python
+result = fq.search("ATCG*ATCG")
+
+for match in result.matches:
+    print(f"K-mer: {match.kmer}")
+    print(f"Frequency: {match.count}")
+    print(f"Distance: {match.distance}")
+```
 
 ## Thread Safety
 

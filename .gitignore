@@ -242,3 +242,44 @@ specs/009-rustkmer-cli-test/demo_*_test.*
 *_dump.txt
 *_kmers.txt
 temp_*.txt
+
+# Additional safety: prevent large files from being committed
+# Files larger than 1MB should not be committed
+*.db
+*.sqlite
+*.sqlite3
+*.pkl
+*.pickle
+*.joblib
+*.h5
+*.hdf5
+*.nc
+*.cdf
+
+# Large data files (>1MB)
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.bam
+*.sam
+*.cram
+*.vcf
+*.vcf.gz
+*.bed
+*.bed.gz
+*.gtf
+*.gff
+*.gff3
+
+# Model files and large binaries
+*.model
+*.bin
+*.dat
+*.data
+
+# Tool-specific cache files (can be large)
+.serena/
+.venv/
+venv/
+.env/
