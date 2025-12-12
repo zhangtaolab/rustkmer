@@ -106,8 +106,12 @@ pub enum Commands {
         kmers: Vec<String>,
 
         /// Query k-mers from sequence file
-        #[arg(short = 's', long, conflicts_with_all = ["kmers"])]
+        #[arg(short = 's', long, conflicts_with_all = ["kmers", "batch"])]
         sequence: Option<String>,
+
+        /// Query k-mers from text file (one per line)
+        #[arg(short = 'b', long, conflicts_with_all = ["kmers", "sequence"])]
+        batch: Option<String>,
 
         /// Output file (stdout if not specified)
         #[arg(short, long)]

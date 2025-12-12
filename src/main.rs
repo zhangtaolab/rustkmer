@@ -27,7 +27,16 @@ fn main() -> anyhow::Result<()> {
         rustkmer::cli::args::Commands::Count { .. } => {
             rustkmer::cli::commands::count::execute_count(&args)?;
         }
-        rustkmer::cli::args::Commands::Query { .. } => {
+        rustkmer::cli::args::Commands::Query {
+            database: _,
+            kmers: _,
+            sequence: _,
+            batch: _,
+            output: _,
+            interactive: _,
+            load: _,
+            no_load: _,
+        } => {
             rustkmer::cli::commands::query::execute_query(&args)?;
         }
         rustkmer::cli::args::Commands::Stats { .. } => {

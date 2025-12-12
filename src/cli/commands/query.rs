@@ -18,20 +18,21 @@ pub fn execute_query(args: &Args) -> ProcessingResult<()> {
             database,
             kmers,
             sequence,
+            batch,
             output,
             interactive,
             load,
             no_load,
         } => {
             // Validate input parameters
-            if kmers.is_empty() && sequence.is_none() && !interactive {
+            if kmers.is_empty() && sequence.is_none() && batch.is_none() && !interactive {
                 return Err(KmerError::ProcessingError(
-                    "Must specify k-mers, sequence file, or interactive mode".to_string()
+                    "Must specify k-mers, sequence file, batch file, or interactive mode".to_string()
                 ).into());
             }
 
             // Determine preload strategy
-            let preload = *load || (!*no_load && (*interactive || sequence.is_some()));
+            let preload = *load || (!*no_load && (*interactive || sequence.is_some() || batch.is_some()));
 
             // Open database
             let mut db_query = DatabaseQuery::open(database, preload)
@@ -53,6 +54,9 @@ pub fn execute_query(args: &Args) -> ProcessingResult<()> {
             } else if let Some(sequence_file) = sequence {
                 let db_info = db_query.get_info().clone();
                 handle_sequence_query(&mut db_query, &mut writer, sequence_file, &db_info)?;
+            } else if let Some(batch_file) = batch {
+                let db_info = db_query.get_info().clone();
+                handle_batch_query(&mut db_query, &mut writer, batch_file, &db_info)?;
             } else if !kmers.is_empty() {
                 let db_info = db_query.get_info().clone();
                 handle_kmer_queries(&mut db_query, &mut writer, kmers, &db_info)?;
@@ -89,6 +93,86 @@ fn handle_kmer_queries(
     }
 
     eprintln!("Query completed successfully");
+    Ok(())
+}
+
+/// Handle batch query from file
+fn handle_batch_query(
+    db_query: &mut DatabaseQuery,
+    writer: &mut Box<dyn Write>,
+    batch_file: &str,
+    _db_info: &DatabaseHeader,
+) -> ProcessingResult<()> {
+    eprintln!("Querying k-mers from batch file: {}", batch_file);
+
+    // Validate batch file
+    let path = Path::new(batch_file);
+    if !path.exists() {
+        return Err(KmerError::FileNotFound(batch_file.to_string()).into());
+    }
+
+    // Read k-mers from file
+    let file = std::fs::File::open(path)
+        .map_err(|e| KmerError::FileFormatError {
+            file: batch_file.to_string(),
+            reason: format!("Failed to open batch file: {}", e)
+        })?;
+    let reader = std::io::BufReader::new(file);
+
+    let mut kmer_list = Vec::new();
+    let mut line_num = 0;
+
+    for line in reader.lines() {
+        line_num += 1;
+        let line = line.map_err(|e| KmerError::FileFormatError {
+            file: batch_file.to_string(),
+            reason: format!("Error reading line {}: {}", line_num, e)
+        })?;
+        let trimmed = line.trim();
+
+        // Skip empty lines and comments
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        // Validate k-mer format
+        if !trimmed.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G')) {
+            eprintln!("Warning: Invalid k-mer '{}' at line {}, skipping", trimmed, line_num);
+            continue;
+        }
+
+        kmer_list.push(trimmed.to_string());
+    }
+
+    if kmer_list.is_empty() {
+        eprintln!("Warning: No valid k-mers found in batch file");
+        return Ok(());
+    }
+
+    eprintln!("Loaded {} k-mers from batch file", kmer_list.len());
+
+    // Query k-mers in batches for better performance
+    let batch_size = 1000; // Process 1000 k-mers at a time
+    let mut total_queries = 0;
+    let mut found_kmers = 0;
+
+    for chunk in kmer_list.chunks(batch_size) {
+        let results = db_query.query_multiple(chunk)?;
+
+        for (kmer, count) in results {
+            total_queries += 1;
+            
+            // Always output the k-mer with its count (0 if not found)
+            writeln!(writer, "{}\t{}", kmer, count)
+                .map_err(|e| KmerError::FileWriteError(format!("Failed to write result: {}", e)))?;
+            
+            if count > 0 {
+                found_kmers += 1;
+            }
+        }
+    }
+
+    eprintln!("Processed {} k-mers, found {} with non-zero counts", total_queries, found_kmers);
     Ok(())
 }
 
@@ -256,6 +340,7 @@ mod tests {
                 interactive: false,
                 load: false,
                 no_load: false,
+                batch: None,
             },
         };
 
@@ -273,6 +358,7 @@ mod tests {
                 interactive: false,
                 load: false,
                 no_load: false,
+                batch: None,
             },
         };
 
@@ -290,6 +376,7 @@ mod tests {
                 interactive: false,
                 load: false,
                 no_load: false,
+                batch: None,
             },
         };
 
