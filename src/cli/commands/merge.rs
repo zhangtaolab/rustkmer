@@ -82,15 +82,6 @@ pub struct MergeArgs {
     )]
     pub temp_dir: Option<PathBuf>,
 
-    /// Number of threads for merging
-    #[arg(
-        short = 't',
-        long,
-        default_value = "0",
-        help = "Number of threads for merging (0 = auto-detect)"
-    )]
-    pub threads: usize,
-
     /// Enable verbose output
     #[arg(
         short = 'v',
@@ -211,9 +202,6 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
     if let Some(temp_dir) = &args.temp_dir {
         config.temp_dir = temp_dir.clone();
     }
-    if args.threads > 0 {
-        config.threads = args.threads;
-    }
     config.verbose = args.verbose;
 
     // Check compatibility only if requested
@@ -325,7 +313,6 @@ mod tests {
             input: vec![db1_path, db2_path],
             output: output_path.clone(),
             temp_dir: None,
-            threads: 0,
             verbose: false,
             quiet: true,
             keep_intermediate: false,
@@ -378,7 +365,6 @@ mod tests {
             chunk_size: 1000,
             temp_dir: temp_dir.path().to_path_buf(),
             use_streaming: false,
-            threads: 2,
             verbose: false,
         };
 

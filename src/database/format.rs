@@ -748,7 +748,6 @@ mod tests {
             chunk_size: 100,
             temp_dir: temp_dir.path().to_path_buf(),
             use_streaming: false,
-            threads: 1,
             verbose: false,
         };
 

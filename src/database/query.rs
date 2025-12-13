@@ -247,7 +247,7 @@ impl QueryResult {
     }
 }
 
-/// K-mer query interface for compatibility with parallel query
+/// K-mer query interface for sequential query operations
 #[derive(Debug)]
 pub struct KmerQuery<'a> {
     database: &'a RKDatabase,
@@ -262,7 +262,7 @@ impl<'a> KmerQuery<'a> {
     /// Query a single k-mer
     pub fn query(&mut self, kmer: &str) -> crate::error::ProcessingResult<QueryResult> {
         // Fixed: Use actual database query instead of mock implementation
-        // Reopens database file for each thread-safe query operation
+        // Reopens database file for each sequential query operation
 
         // Encode the k-mer to check validity
         let _encoded = encode_kmer_bytes_u128(kmer.as_bytes())

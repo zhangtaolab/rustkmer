@@ -14,8 +14,6 @@ pub struct MergeConfig {
     pub temp_dir: PathBuf,
     /// Force streaming mode
     pub use_streaming: bool,
-    /// Number of threads for parallel processing
-    pub threads: usize,
     /// Enable detailed logging
     pub verbose: bool,
 }
@@ -27,7 +25,6 @@ impl Default for MergeConfig {
             chunk_size: 1_000_000, // 1M k-mers
             temp_dir: std::env::temp_dir(),
             use_streaming: false,
-            threads: num_cpus::get(),
             verbose: false,
         }
     }
@@ -154,7 +151,6 @@ mod tests {
         assert!(config.max_memory_usage > 0);
         assert_eq!(config.chunk_size, 1_000_000);
         assert!(!config.use_streaming);
-        assert_eq!(config.threads, num_cpus::get());
         assert!(!config.verbose);
     }
 

@@ -18,9 +18,6 @@ clap = { version = "4.5.53", features = ["derive"] }
 thiserror = "2.0.17"
 anyhow = "1.0"
 
-# Parallel processing
-rayon = "1.10"
-
 # Bioinformatics
 bio = "2.0"
 
@@ -54,9 +51,6 @@ proptest = "1.5"
 
 # Synchronization primitives
 parking_lot = "0.12"
-
-# CPU count
-num_cpus = "1.16"
 
 # Progress reporting
 indicatif = "0.17"

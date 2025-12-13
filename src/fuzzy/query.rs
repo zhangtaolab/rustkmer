@@ -24,7 +24,7 @@ pub struct FuzzyQuery {
     /// Maximum number of variants to generate (combinatorial explosion protection)
     pub max_variants: Option<usize>,
 
-    /// Whether to enable parallel processing
+    /// Whether to enable parallel processing (deprecated - always uses sequential processing)
     pub enable_parallel: bool,
 
     /// Batch size for processing variants
@@ -39,7 +39,7 @@ impl FuzzyQuery {
             kmer_size,
             mutation_tolerance,
             max_variants: Some(constants::DEFAULT_MAX_VARIANTS),
-            enable_parallel: true,
+            enable_parallel: false, // Always sequential processing
             batch_size: constants::DEFAULT_BATCH_SIZE,
         }
     }
@@ -50,7 +50,7 @@ impl FuzzyQuery {
         kmer_size: usize,
         mutation_tolerance: usize,
         max_variants: Option<usize>,
-        enable_parallel: bool,
+        _enable_parallel: bool, // Ignored - always uses sequential processing
         batch_size: usize,
     ) -> Self {
         Self {
@@ -58,7 +58,7 @@ impl FuzzyQuery {
             kmer_size,
             mutation_tolerance,
             max_variants,
-            enable_parallel,
+            enable_parallel: false, // Always sequential processing
             batch_size,
         }
     }

@@ -18,9 +18,6 @@ pub struct PerformanceMetrics {
 
     /// Memory usage metrics
     pub memory_usage: MemoryUsageMetrics,
-
-    /// Parallel processing metrics
-    pub parallel_processing: ParallelProcessingMetrics,
 }
 
 /// Metrics for variant generation process
@@ -90,28 +87,6 @@ pub struct MemoryUsageMetrics {
 
     /// Memory growth rate
     pub memory_growth_rate_mb_per_sec: f64,
-}
-
-/// Parallel processing metrics
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ParallelProcessingMetrics {
-    /// Number of worker threads used
-    pub worker_threads: usize,
-
-    /// Parallel efficiency (speedup vs sequential)
-    pub parallel_efficiency: f64,
-
-    /// Load balancing score (0-1, higher is better)
-    pub load_balance_score: f64,
-
-    /// Thread contention metrics
-    pub thread_contention_ms: u64,
-
-    /// Sequential time estimate
-    pub sequential_time_estimate_ms: u64,
-
-    /// Actual parallel time
-    pub parallel_time_ms: u64,
 }
 
 /// Performance monitor for tracking operations
@@ -277,25 +252,10 @@ impl PerformanceMonitor {
             memory_growth_rate_mb_per_sec: memory_growth_rate,
         };
 
-        // Calculate parallel processing metrics
-        let thread_count = num_cpus::get();
-        let parallel_efficiency = 1.0; // TODO: Calculate actual efficiency
-        let load_balance_score = 0.9; // TODO: Calculate actual load balance
-
-        let parallel_processing = ParallelProcessingMetrics {
-            worker_threads: thread_count,
-            parallel_efficiency,
-            load_balance_score,
-            thread_contention_ms: 0, // TODO: Measure thread contention
-            sequential_time_estimate_ms: total_elapsed, // TODO: Calculate sequential estimate
-            parallel_time_ms: total_elapsed,
-        };
-
         PerformanceMetrics {
             variant_generation,
             database_queries,
             memory_usage,
-            parallel_processing,
         }
     }
 
@@ -357,7 +317,7 @@ pub struct PerformanceConfig {
 impl Default for PerformanceConfig {
     fn default() -> Self {
         Self {
-            enable_parallel: true,
+            enable_parallel: false, // Always sequential processing
             worker_threads: None,
             batch_size: constants::DEFAULT_BATCH_SIZE,
             memory_limit_mb: constants::DEFAULT_MEMORY_LIMIT_MB,
@@ -401,37 +361,10 @@ impl PerformanceOptimizer {
         }
     }
 
-    /// Determine if parallel processing should be used
-    pub fn should_use_parallel(&self, variant_count: usize) -> bool {
-        if !self.config.enable_parallel {
-            return false;
-        }
-
-        // Use parallel processing for larger variant sets
-        variant_count >= constants::PARALLEL_THRESHOLD
-    }
-
     /// Get optimal number of worker threads
-    pub fn optimal_thread_count(&self, variant_count: usize) -> usize {
-        if !self.config.enable_parallel {
-            return 1;
-        }
-
-        match self.config.worker_threads {
-            Some(threads) => threads,
-            None => {
-                // Auto-detect based on variant count and CPU cores
-                let cpu_cores = num_cpus::get();
-
-                if variant_count < 1000 {
-                    1 // Sequential is better for small sets
-                } else if variant_count < 10000 {
-                    cpu_cores.min(4)
-                } else {
-                    cpu_cores
-                }
-            }
-        }
+    pub fn optimal_thread_count(&self, _variant_count: usize) -> usize {
+        // Always use sequential processing (1 thread)
+        1
     }
 
     /// Check memory constraints
@@ -490,7 +423,7 @@ pub mod utils {
     pub fn estimate_query_time(
         database_size: u64,
         variant_count: usize,
-        use_parallel: bool,
+        _use_parallel: bool,
     ) -> Duration {
         let base_time_per_query_ms = if database_size < 1_000_000 {
             1.0 // Small database
@@ -502,14 +435,8 @@ pub mod utils {
 
         let total_time_ms = variant_count as f64 * base_time_per_query_ms;
 
-        // Apply parallel speedup
-        let adjusted_time_ms = if use_parallel {
-            total_time_ms / num_cpus::get() as f64 * 0.8 // 80% efficiency
-        } else {
-            total_time_ms
-        };
-
-        Duration::from_millis(adjusted_time_ms as u64)
+        // Sequential processing time (no parallel speedup)
+        Duration::from_millis(total_time_ms as u64)
     }
 
     /// Determine if query should be aborted based on performance
@@ -547,7 +474,7 @@ mod tests {
     #[test]
     fn test_performance_config_default() {
         let config = PerformanceConfig::default();
-        assert!(config.enable_parallel);
+        assert!(!config.enable_parallel); // Always sequential processing
         assert_eq!(config.batch_size, constants::DEFAULT_BATCH_SIZE);
         assert_eq!(config.memory_limit_mb, constants::DEFAULT_MEMORY_LIMIT_MB);
         assert!(config.enable_monitoring);
@@ -564,11 +491,7 @@ mod tests {
         assert_eq!(optimizer.optimal_batch_size(50), 50);
         assert!(optimizer.optimal_batch_size(5000) >= constants::DEFAULT_BATCH_SIZE);
 
-        // Test parallel processing decision
-        assert!(!optimizer.should_use_parallel(50));
-        assert!(optimizer.should_use_parallel(1000));
-
-        // Test thread count optimization
+        // Test thread count optimization (always 1 for sequential processing)
         assert_eq!(optimizer.optimal_thread_count(50), 1);
         assert!(optimizer.optimal_thread_count(10000) >= 1);
     }

@@ -41,15 +41,6 @@ pub struct FuzzyQueryArgs {
     )]
     pub max_variants: usize,
 
-    /// Enable parallel processing
-    #[arg(
-        short = 'p',
-        long = "parallel",
-        default_value = "true",
-        help = "Enable parallel processing"
-    )]
-    pub enable_parallel: bool,
-
     /// Batch size for processing variants
     #[arg(
         short = 'b',
@@ -176,7 +167,7 @@ pub fn execute_fuzzy_query(args: &FuzzyQueryArgs) -> Result<()> {
         kmer_size,
         args.mutations,
         Some(args.max_variants),
-        args.enable_parallel,
+        false, // Always sequential processing
         args.batch_size,
     );
 
@@ -577,7 +568,7 @@ fn output_batch_csv(results: &[(String, crate::fuzzy::FuzzyQueryResultData)], ar
 fn output_performance_profile(
     result: &crate::fuzzy::FuzzyQueryResultData,
     start_time: &Instant,
-    args: &FuzzyQueryArgs,
+    _args: &FuzzyQueryArgs,
 ) -> Result<()> {
     let total_time = start_time.elapsed().as_millis() as u64;
 
@@ -596,12 +587,7 @@ fn output_performance_profile(
         eprintln!("└─ Results: {:.1}MB", memory_usage * 0.2); // Estimate
     }
 
-    if args.enable_parallel {
-        eprintln!("\nParallel Processing:");
-        eprintln!("├─ Worker threads: {}", num_cpus::get());
-        eprintln!("├─ Parallel efficiency: N/A"); // TODO: Calculate efficiency
-        eprintln!("└─ Load balance score: N/A"); // TODO: Calculate load balance
-    }
+    eprintln!("\nProcessing Mode: Sequential");
 
     Ok(())
 }

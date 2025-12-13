@@ -53,10 +53,6 @@ pub enum Commands {
         #[arg(long, default_value = "1000000")]
         size: usize,
 
-        /// Number of threads
-        #[arg(short, long, default_value = "0")]
-        threads: usize,
-
         /// Output format (binary or text)
         #[arg(long, default_value = "binary")]
         format: String,
@@ -157,10 +153,6 @@ pub enum Commands {
         #[arg(short = 'M', long, default_value = "10000")]
         max_variants: usize,
 
-        /// Enable parallel processing
-        #[arg(short = 'p', long, default_value = "true")]
-        parallel: bool,
-
         /// Batch size for processing variants
         #[arg(short = 'b', long, default_value = "1000")]
         batch_size: usize,
@@ -250,10 +242,6 @@ pub enum Commands {
         /// Temporary directory for merge operations
         #[arg(long, help = "Temporary directory for merge operations (default: system temp)")]
         temp_dir: Option<std::path::PathBuf>,
-
-        /// Number of threads for merging
-        #[arg(short = 't', long, default_value = "0", help = "Number of threads for merging (0 = auto-detect)")]
-        threads: usize,
 
         /// Enable verbose output
         #[arg(short = 'v', long, help = "Enable verbose output")]

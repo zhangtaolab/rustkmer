@@ -29,7 +29,6 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             output,
             canonical,
             size,
-            threads,
             format,
             quiet,
             verbose,
@@ -49,17 +48,6 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 false
             } else {
                 *sort
-            };
-
-            // Validate thread count
-            let num_threads = if *threads == 0 {
-                std::thread::available_parallelism()
-                    .map_err(|e| KmerError::ProcessingError(format!(
-                        "Failed to get available parallelism: {}", e
-                    )))?
-                    .get()
-            } else {
-                *threads
             };
 
             // Validate filtering parameters
@@ -109,7 +97,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 eprintln!("rustkmer count starting...");
                 eprintln!("K-mer size: {}", k);
                 eprintln!("Canonical mode: {}", canonical);
-                eprintln!("Thread count: {}", num_threads);
+                eprintln!("Processing mode: sequential");
                 eprintln!("Hash table size: {}", size);
 
                 if directory.is_some() {
@@ -131,7 +119,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 *k,
                 *canonical,
                 *size,
-                *threads,
+                1, // num_threads: fixed to 1 for sequential processing
             )?);
 
             let start_time = Instant::now();

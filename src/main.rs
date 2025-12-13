@@ -45,13 +45,12 @@ fn main() -> anyhow::Result<()> {
         rustkmer::cli::args::Commands::Dump { .. } => {
             rustkmer::cli::commands::dump::execute_dump(&args)?;
         }
-        rustkmer::cli::args::Commands::FuzzyQuery { database, query, mutations, max_variants, parallel, batch_size, format, output, verbose, quiet, profile } => {
+        rustkmer::cli::args::Commands::FuzzyQuery { database, query, mutations, max_variants, batch_size, format, output, verbose, quiet, profile } => {
             let args = rustkmer::cli::commands::fuzzy::FuzzyQueryArgs {
                 database: database.into(),
                 query,
                 mutations,
                 max_variants,
-                enable_parallel: parallel,
                 batch_size,
                 format,
                 output: output.map(|o| o.into()),
@@ -78,12 +77,11 @@ fn main() -> anyhow::Result<()> {
             };
             rustkmer::cli::commands::fuzzy::execute_fuzzy_query_batch(&args)?;
         }
-        rustkmer::cli::args::Commands::Merge { input, output, temp_dir, threads, verbose, quiet, keep_intermediate, check_compatibility } => {
+        rustkmer::cli::args::Commands::Merge { input, output, temp_dir, verbose, quiet, keep_intermediate, check_compatibility } => {
             let args = rustkmer::cli::commands::merge::MergeArgs {
                 input,
                 output,
                 temp_dir,
-                threads,
                 verbose,
                 quiet,
                 keep_intermediate,

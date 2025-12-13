@@ -473,7 +473,8 @@ rustkmer count -k 21 /tmp/fast_drive/input.fa -o /tmp/fast_drive/output.rkdb
 **解决方案**:
 ```rust
 // 调整线程池大小
-let optimal_threads = (num_cpus::get() as f64 * 0.8) as usize;
+let optimal_threads = 8; // Fixed thread count (num_cpus::get() * 0.8)
+// Note: num_cpus dependency removed - using fixed value
 rayon::ThreadPoolBuilder::new()
     .num_threads(optimal_threads)
     .build_global()
