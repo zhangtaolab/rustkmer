@@ -1,102 +1,265 @@
 #!/usr/bin/env python3
-"""Basic usage example for rustkmer Python bindings.
+"""
+Example: Basic rustkmer Usage
 
-This example demonstrates the core functionality of the rustkmer package:
-- Opening a database
-- Querying single k-mers
-- Getting database statistics
-- Using the context manager
+This example demonstrates the fundamental operations of the rustkmer Python API:
+- Loading databases with context managers
+- Performing single k-mer queries
+- Retrieving database statistics
+- Basic error handling
+
+It uses all available test databases to showcase different database sizes and properties.
 """
 
 import sys
 from pathlib import Path
 
-# Add parent directory to path for development
+# Add rustkmer to path for development
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from rustkmer import Database, QueryResult
-from rustkmer.exceptions import (
-    DatabaseNotFoundError,
-    InvalidKmerError,
-    RustKmerError,
-)
+from rustkmer import Database, DatabaseError
+from rustkmer.exceptions import DatabaseNotFoundError
+
+
+def print_header(title):
+    """Print a formatted header."""
+    print(f"\n{'='*60}")
+    print(f" {title}")
+    print(f"{'='*60}")
+
+
+def print_section(title):
+    """Print a formatted section header."""
+    print(f"\n--- {title} ---")
+
+
+def demo_database_loading():
+    """Demonstrate database loading with different approaches."""
+    print_header("Database Loading Demo")
+
+    # Path to test data directory
+    test_data_dir = Path(__file__).parent.parent / "tests" / "test_data"
+
+    # Available test databases
+    databases = [
+        ("tiny_test.rkdb", "Tiny database (8KB, quick for testing)"),
+        ("small_test.rkdb", "Small database (86KB, good for examples)"),
+        ("small_test_k33_C.rkdb", "Special k=33 database (96KB)"),
+        ("medium_test.rkdb", "Medium database (160KB)"),
+        ("large_test.rkdb", "Large database (164KB)")
+    ]
+
+    for db_name, description in databases:
+        db_path = test_data_dir / db_name
+        print_section(f"Loading {db_name}")
+        print(f"Description: {description}")
+        print(f"Path: {db_path}")
+
+        if not db_path.exists():
+            print(f"❌ Database file not found!")
+            continue
+
+        try:
+            # Method 1: Direct loading (need to manually close)
+            print("\n1. Direct loading:")
+            db = Database(str(db_path))
+            print(f"   ✓ Database loaded successfully")
+            print(f"   ✓ k-mer size: {db.kmer_size}")
+            print(f"   ✓ Database is loaded: {db.is_loaded}")
+            db.close()
+            print(f"   ✓ Database closed")
+
+            # Method 2: Context manager (recommended)
+            print("\n2. Context manager (recommended):")
+            with Database(str(db_path)) as db:
+                print(f"   ✓ Database opened in context manager")
+                print(f"   ✓ k-mer size: {db.kmer_size}")
+                print(f"   ✓ Database is loaded: {db.is_loaded}")
+            print(f"   ✓ Database automatically closed when exiting context")
+
+        except DatabaseNotFoundError as e:
+            print(f"❌ Database not found: {e}")
+        except DatabaseError as e:
+            print(f"❌ Database error: {e}")
+        except Exception as e:
+            print(f"❌ Unexpected error: {e}")
+
+
+def demo_single_queries():
+    """Demonstrate single k-mer queries."""
+    print_header("Single K-mer Query Demo")
+
+    test_data_dir = Path(__file__).parent.parent / "tests" / "test_data"
+    db_path = test_data_dir / "tiny_test.rkdb"
+
+    if not db_path.exists():
+        print(f"❌ Test database not found: {db_path}")
+        return
+
+    print(f"Using database: {db_path.name}")
+
+    # Test k-mers to demonstrate different scenarios
+    test_kmers = [
+        ("AAAAAAA", "All A's (edge case)"),
+        ("TTTTTTT", "All T's (canonical of AAAAAAA)"),
+        ("ATCGATC", "Mixed sequence (7-mer)"),
+        ("GCCGCGG", "Another mixed sequence"),
+        ("NNNNNNN", "Invalid characters (should return 0)"),
+        ("ATCGX", "Invalid character + wrong length"),
+        ("ATCGATCG", "Wrong length (8-mer for k=7 database)"),
+    ]
+
+    with Database(str(db_path)) as db:
+        print(f"Database k-mer size: {db.kmer_size}")
+        print_section("Query Results")
+
+        for kmer, description in test_kmers:
+            print(f"\nQuery: {kmer} ({description})")
+
+            try:
+                # Query with strict validation (default)
+                result = db.query(kmer)
+                print(f"  Result (strict): count={result.count}, canonical={result.canonical}")
+            except Exception as e:
+                print(f"  Result (strict): ❌ Error = {e}")
+
+            # Query with lenient validation
+            try:
+                result = db.query(kmer, validate_strict=False)
+                print(f"  Result (lenient): count={result.count}, canonical={result.canonical}")
+            except Exception as e:
+                print(f"  Result (lenient): ❌ Error = {e}")
+
+
+def demo_database_stats():
+    """Demonstrate retrieving database statistics."""
+    print_header("Database Statistics Demo")
+
+    test_data_dir = Path(__file__).parent.parent / "tests" / "test_data"
+
+    # Compare statistics across different databases
+    databases = ["tiny_test.rkdb", "small_test.rkdb", "medium_test.rkdb", "large_test.rkdb"]
+
+    print_section("Database Comparison")
+    print(f"{'Database':<20} {'k-mer':<8} {'Unique':<10} {'Total':<10} {'Min':<5} {'Max':<5} {'Avg':<8}")
+    print("-" * 80)
+
+    for db_name in databases:
+        db_path = test_data_dir / db_name
+
+        if not db_path.exists():
+            continue
+
+        try:
+            with Database(str(db_path)) as db:
+                stats = db.stats()
+                avg_count = f"{stats.average_count:.2f}" if stats.average_count > 0 else "0.00"
+
+                print(f"{db_name:<20} {stats.kmer_size:<8} {stats.unique_kmers:<10} "
+                      f"{stats.total_counts:<10} {stats.min_count:<5} {stats.max_count:<5} "
+                      f"{avg_count:<8}")
+        except Exception as e:
+            print(f"{db_name:<20} {'Error':<8} {str(e):<40}")
+
+    # Detailed statistics for one database
+    print_section("Detailed Statistics (small_test.rkdb)")
+    db_path = test_data_dir / "small_test.rkdb"
+
+    if db_path.exists():
+        with Database(str(db_path)) as db:
+            stats = db.stats()
+            print(f"Database: {db_path.name}")
+            print(f"  k-mer size: {stats.kmer_size}")
+            print(f"  Unique k-mers: {stats.unique_kmers:,}")
+            print(f"  Total counts: {stats.total_counts:,}")
+            print(f"  Minimum count: {stats.min_count}")
+            print(f"  Maximum count: {stats.max_count}")
+            print(f"  Average count: {stats.average_count:.2f}")
+            print(f"  File size: {stats.file_size:,} bytes")
+            print(f"  Format version: {stats.format_version}")
+
+
+def demo_error_handling():
+    """Demonstrate error handling patterns."""
+    print_header("Error Handling Demo")
+
+    print_section("1. Database Not Found Error")
+    try:
+        db = Database("/nonexistent/path/database.rkdb")
+    except DatabaseNotFoundError as e:
+        print(f"✓ Caught DatabaseNotFoundError: {e}")
+    except Exception as e:
+        print(f"❌ Unexpected error type: {type(e).__name__}: {e}")
+
+    print_section("2. Invalid K-mer Handling")
+    test_data_dir = Path(__file__).parent.parent / "tests" / "test_data"
+    db_path = test_data_dir / "tiny_test.rkdb"
+
+    if db_path.exists():
+        with Database(str(db_path)) as db:
+            invalid_kmers = [
+                ("ATCGX", "Invalid character X"),
+                ("", "Empty string"),
+                (123, "Integer instead of string"),
+                (None, "None value"),
+                ("ATCGATCG", "Wrong length (8 for k=7)")
+            ]
+
+            for kmer, description in invalid_kmers:
+                print(f"\nTesting: {description}")
+
+                # Try with strict validation
+                try:
+                    result = db.query(kmer, validate_strict=True)
+                    print(f"  Strict: Unexpected success - count={result.count}")
+                except Exception as e:
+                    print(f"  Strict: ✓ Caught {type(e).__name__}: {e}")
+
+                # Try with lenient validation
+                try:
+                    result = db.query(kmer, validate_strict=False)
+                    print(f"  Lenient: ✓ Handled gracefully - count={result.count}")
+                except Exception as e:
+                    print(f"  Lenient: ❌ Still failed: {type(e).__name__}: {e}")
+
+    print_section("3. Operations on Closed Database")
+    if db_path.exists():
+        db = Database(str(db_path))
+        db.close()
+
+        try:
+            db.query("AAAAAAA")
+            print("❌ Query on closed database should have failed!")
+        except DatabaseError as e:
+            print(f"✓ Query blocked: {e}")
+
+        try:
+            db.stats()
+            print("❌ Stats on closed database should have failed!")
+        except DatabaseError as e:
+            print(f"✓ Stats blocked: {e}")
 
 
 def main():
-    """Demonstrate basic rustkmer usage."""
-    # Database file path - replace with your actual database
-    db_path = "/Users/forrest/Data/data/kmer/K19/R1_001.rkdb"
+    """Run all basic usage demonstrations."""
+    print("RustKmer Python API - Basic Usage Examples")
+    print("This example demonstrates fundamental operations of the rustkmer Python API.")
 
-    print("=== RustKmer Python Bindings - Basic Usage Example ===\n")
+    # Run all demonstrations
+    demo_database_loading()
+    demo_single_queries()
+    demo_database_stats()
+    demo_error_handling()
 
-    try:
-        # Example 1: Open database with context manager (recommended)
-        print("1. Opening database with context manager...")
-        with Database(db_path) as db:
-            print(f"   Database: {db.path}")
-            print(f"   Loaded: {db.is_loaded}")
-
-            # Example 2: Query a single k-mer
-            print("\n2. Querying single k-mers...")
-            test_kmers = ["ATCGATCGATCGATCGATCG", "CCCCCCCCCCCCCCCCCCCC", "GGGGGGGGGGGGGGGGGGGG"]
-
-            for kmer in test_kmers:
-                try:
-                    result = db.query(kmer)
-                    print(f"   {kmer}: count={result.count}, canonical={result.canonical}")
-                except InvalidKmerError as e:
-                    print(f"   {kmer}: Error - {e}")
-
-            # Example 3: Batch queries
-            print("\n3. Performing batch queries...")
-            batch_kmers = ["ATCGATCGATCGATCGATCG", "GCTAGCTAGCTAGCTAGCTA", "TATATATATATATATATATA"]
-
-            # Execute batch queries in parallel
-            results = db.query_batch(batch_kmers, max_workers=3)
-
-            print("   Batch results:")
-            for original_kmer, result in results.items():
-                status = "found" if result.is_present else "not found"
-                print(f"   {original_kmer}: {result.count} ({status})")
-
-            # Example 4: Get database statistics
-            print("\n4. Getting database statistics...")
-            stats = db.stats()
-            print(f"   K-mer size: {stats.kmer_size}")
-            print(f"   Unique k-mers: {stats.unique_kmers:,}")
-            print(f"   Total counts: {stats.total_counts:,}")
-            print(f"   Max count: {stats.max_count:,}")
-            print(f"   File size: {stats.file_size:,} bytes")
-            print(f"   Format version: {stats.format_version}")
-            print(f"   Average count: {stats.average_count:.2f}")
-
-            # Example 5: Dump k-mers (limited)
-            print("\n5. Dumping first 5 k-mers...")
-            count = 0
-            for result in db.dump(limit=5):
-                print(f"   {result.kmer}: {result.count}")
-                count += 1
-            print(f"   Total dumped: {count}")
-
-        print("\n✓ All examples completed successfully!")
-
-    except DatabaseNotFoundError:
-        print(f"✗ Error: Database not found at '{db_path}'")
-        print("  Please ensure the database file exists and is accessible.")
-        print("  You can also change the db_path variable in this script.")
-        sys.exit(1)
-
-    except InvalidKmerError as e:
-        print(f"✗ Error: Invalid k-mer sequence - {e}")
-        sys.exit(1)
-
-    except RustKmerError as e:
-        print(f"✗ RustKmer error occurred: {e}")
-        sys.exit(1)
-
-    except Exception as e:
-        print(f"✗ Unexpected error: {e}")
-        sys.exit(1)
+    print_header("Summary")
+    print("✓ Database loading with context managers (recommended approach)")
+    print("✓ Single k-mer queries with strict and lenient validation")
+    print("✓ Database statistics retrieval and comparison")
+    print("✓ Proper error handling for common scenarios")
+    print("\nNext steps:")
+    print("- Try the batch_processing.py example for efficient bulk querying")
+    print("- Explore advanced features in advanced_features.py")
+    print("- See real-world usage patterns in real_world_analysis.py")
 
 
 if __name__ == "__main__":

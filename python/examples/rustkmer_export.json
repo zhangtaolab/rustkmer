@@ -1,0 +1,520 @@
+{
+  "metadata": {
+    "database": "small_test.rkdb",
+    "export_timestamp": "2025-12-14 00:08:44",
+    "kmer_size": 7,
+    "total_unique_kmers": 4318,
+    "exported_kmers": 100
+  },
+  "kmer_data": [
+    {
+      "kmer": "AAAAAAA",
+      "count": 4,
+      "canonical": "AAAAAAA"
+    },
+    {
+      "kmer": "AAAAAAC",
+      "count": 2,
+      "canonical": "AAAAAAC"
+    },
+    {
+      "kmer": "AAAAAAG",
+      "count": 2,
+      "canonical": "AAAAAAG"
+    },
+    {
+      "kmer": "AAAAAAT",
+      "count": 3,
+      "canonical": "AAAAAAT"
+    },
+    {
+      "kmer": "AAAAACA",
+      "count": 2,
+      "canonical": "AAAAACA"
+    },
+    {
+      "kmer": "AAAAACG",
+      "count": 1,
+      "canonical": "AAAAACG"
+    },
+    {
+      "kmer": "AAAAACT",
+      "count": 1,
+      "canonical": "AAAAACT"
+    },
+    {
+      "kmer": "AAAAAGA",
+      "count": 1,
+      "canonical": "AAAAAGA"
+    },
+    {
+      "kmer": "AAAAAGC",
+      "count": 1,
+      "canonical": "AAAAAGC"
+    },
+    {
+      "kmer": "AAAAAGG",
+      "count": 2,
+      "canonical": "AAAAAGG"
+    },
+    {
+      "kmer": "AAAAAGT",
+      "count": 1,
+      "canonical": "AAAAAGT"
+    },
+    {
+      "kmer": "AAAAATA",
+      "count": 1,
+      "canonical": "AAAAATA"
+    },
+    {
+      "kmer": "AAAAATC",
+      "count": 3,
+      "canonical": "AAAAATC"
+    },
+    {
+      "kmer": "AAAAATT",
+      "count": 1,
+      "canonical": "AAAAATT"
+    },
+    {
+      "kmer": "AAAACAG",
+      "count": 1,
+      "canonical": "AAAACAG"
+    },
+    {
+      "kmer": "AAAACAT",
+      "count": 3,
+      "canonical": "AAAACAT"
+    },
+    {
+      "kmer": "AAAACGA",
+      "count": 1,
+      "canonical": "AAAACGA"
+    },
+    {
+      "kmer": "AAAACGC",
+      "count": 1,
+      "canonical": "AAAACGC"
+    },
+    {
+      "kmer": "AAAACGT",
+      "count": 2,
+      "canonical": "AAAACGT"
+    },
+    {
+      "kmer": "AAAACTC",
+      "count": 1,
+      "canonical": "AAAACTC"
+    },
+    {
+      "kmer": "AAAACTT",
+      "count": 1,
+      "canonical": "AAAACTT"
+    },
+    {
+      "kmer": "AAAAGAA",
+      "count": 1,
+      "canonical": "AAAAGAA"
+    },
+    {
+      "kmer": "AAAAGAG",
+      "count": 3,
+      "canonical": "AAAAGAG"
+    },
+    {
+      "kmer": "AAAAGCC",
+      "count": 1,
+      "canonical": "AAAAGCC"
+    },
+    {
+      "kmer": "AAAAGCG",
+      "count": 1,
+      "canonical": "AAAAGCG"
+    },
+    {
+      "kmer": "AAAAGCT",
+      "count": 1,
+      "canonical": "AAAAGCT"
+    },
+    {
+      "kmer": "AAAAGGC",
+      "count": 1,
+      "canonical": "AAAAGGC"
+    },
+    {
+      "kmer": "AAAAGGG",
+      "count": 1,
+      "canonical": "AAAAGGG"
+    },
+    {
+      "kmer": "AAAAGTC",
+      "count": 1,
+      "canonical": "AAAAGTC"
+    },
+    {
+      "kmer": "AAAAGTG",
+      "count": 2,
+      "canonical": "AAAAGTG"
+    },
+    {
+      "kmer": "AAAAGTT",
+      "count": 1,
+      "canonical": "AAAAGTT"
+    },
+    {
+      "kmer": "AAAATAG",
+      "count": 2,
+      "canonical": "AAAATAG"
+    },
+    {
+      "kmer": "AAAATAT",
+      "count": 1,
+      "canonical": "AAAATAT"
+    },
+    {
+      "kmer": "AAAATCC",
+      "count": 2,
+      "canonical": "AAAATCC"
+    },
+    {
+      "kmer": "AAAATCG",
+      "count": 4,
+      "canonical": "AAAATCG"
+    },
+    {
+      "kmer": "AAAATGA",
+      "count": 1,
+      "canonical": "AAAATGA"
+    },
+    {
+      "kmer": "AAAATGG",
+      "count": 2,
+      "canonical": "AAAATGG"
+    },
+    {
+      "kmer": "AAAATTA",
+      "count": 1,
+      "canonical": "AAAATTA"
+    },
+    {
+      "kmer": "AAAATTT",
+      "count": 1,
+      "canonical": "AAAATTT"
+    },
+    {
+      "kmer": "AAACAAC",
+      "count": 1,
+      "canonical": "AAACAAC"
+    },
+    {
+      "kmer": "AAACAAT",
+      "count": 1,
+      "canonical": "AAACAAT"
+    },
+    {
+      "kmer": "AAACACT",
+      "count": 2,
+      "canonical": "AAACACT"
+    },
+    {
+      "kmer": "AAACAGG",
+      "count": 2,
+      "canonical": "AAACAGG"
+    },
+    {
+      "kmer": "AAACATA",
+      "count": 1,
+      "canonical": "AAACATA"
+    },
+    {
+      "kmer": "AAACATC",
+      "count": 2,
+      "canonical": "AAACATC"
+    },
+    {
+      "kmer": "AAACATG",
+      "count": 2,
+      "canonical": "AAACATG"
+    },
+    {
+      "kmer": "AAACCAA",
+      "count": 1,
+      "canonical": "AAACCAA"
+    },
+    {
+      "kmer": "AAACCAC",
+      "count": 1,
+      "canonical": "AAACCAC"
+    },
+    {
+      "kmer": "AAACCAG",
+      "count": 1,
+      "canonical": "AAACCAG"
+    },
+    {
+      "kmer": "AAACCCT",
+      "count": 1,
+      "canonical": "AAACCCT"
+    },
+    {
+      "kmer": "AAACCGA",
+      "count": 1,
+      "canonical": "AAACCGA"
+    },
+    {
+      "kmer": "AAACCGG",
+      "count": 2,
+      "canonical": "AAACCGG"
+    },
+    {
+      "kmer": "AAACCGT",
+      "count": 1,
+      "canonical": "AAACCGT"
+    },
+    {
+      "kmer": "AAACCTC",
+      "count": 1,
+      "canonical": "AAACCTC"
+    },
+    {
+      "kmer": "AAACCTG",
+      "count": 2,
+      "canonical": "AAACCTG"
+    },
+    {
+      "kmer": "AAACCTT",
+      "count": 1,
+      "canonical": "AAACCTT"
+    },
+    {
+      "kmer": "AAACGAC",
+      "count": 2,
+      "canonical": "AAACGAC"
+    },
+    {
+      "kmer": "AAACGAG",
+      "count": 1,
+      "canonical": "AAACGAG"
+    },
+    {
+      "kmer": "AAACGCT",
+      "count": 1,
+      "canonical": "AAACGCT"
+    },
+    {
+      "kmer": "AAACGGC",
+      "count": 1,
+      "canonical": "AAACGGC"
+    },
+    {
+      "kmer": "AAACGGG",
+      "count": 1,
+      "canonical": "AAACGGG"
+    },
+    {
+      "kmer": "AAACGTC",
+      "count": 2,
+      "canonical": "AAACGTC"
+    },
+    {
+      "kmer": "AAACGTG",
+      "count": 3,
+      "canonical": "AAACGTG"
+    },
+    {
+      "kmer": "AAACGTT",
+      "count": 3,
+      "canonical": "AAACGTT"
+    },
+    {
+      "kmer": "AAACTAC",
+      "count": 2,
+      "canonical": "AAACTAC"
+    },
+    {
+      "kmer": "AAACTAT",
+      "count": 2,
+      "canonical": "AAACTAT"
+    },
+    {
+      "kmer": "AAACTCT",
+      "count": 1,
+      "canonical": "AAACTCT"
+    },
+    {
+      "kmer": "AAACTGC",
+      "count": 1,
+      "canonical": "AAACTGC"
+    },
+    {
+      "kmer": "AAACTTC",
+      "count": 2,
+      "canonical": "AAACTTC"
+    },
+    {
+      "kmer": "AAAGAAC",
+      "count": 1,
+      "canonical": "AAAGAAC"
+    },
+    {
+      "kmer": "AAAGAAG",
+      "count": 2,
+      "canonical": "AAAGAAG"
+    },
+    {
+      "kmer": "AAAGAAT",
+      "count": 2,
+      "canonical": "AAAGAAT"
+    },
+    {
+      "kmer": "AAAGACC",
+      "count": 3,
+      "canonical": "AAAGACC"
+    },
+    {
+      "kmer": "AAAGACG",
+      "count": 1,
+      "canonical": "AAAGACG"
+    },
+    {
+      "kmer": "AAAGAGA",
+      "count": 2,
+      "canonical": "AAAGAGA"
+    },
+    {
+      "kmer": "AAAGAGC",
+      "count": 2,
+      "canonical": "AAAGAGC"
+    },
+    {
+      "kmer": "AAAGAGT",
+      "count": 2,
+      "canonical": "AAAGAGT"
+    },
+    {
+      "kmer": "AAAGATG",
+      "count": 1,
+      "canonical": "AAAGATG"
+    },
+    {
+      "kmer": "AAAGCAA",
+      "count": 1,
+      "canonical": "AAAGCAA"
+    },
+    {
+      "kmer": "AAAGCAT",
+      "count": 1,
+      "canonical": "AAAGCAT"
+    },
+    {
+      "kmer": "AAAGCCG",
+      "count": 2,
+      "canonical": "AAAGCCG"
+    },
+    {
+      "kmer": "AAAGCGT",
+      "count": 2,
+      "canonical": "AAAGCGT"
+    },
+    {
+      "kmer": "AAAGCTG",
+      "count": 3,
+      "canonical": "AAAGCTG"
+    },
+    {
+      "kmer": "AAAGCTT",
+      "count": 1,
+      "canonical": "AAAGCTT"
+    },
+    {
+      "kmer": "AAAGGAA",
+      "count": 1,
+      "canonical": "AAAGGAA"
+    },
+    {
+      "kmer": "AAAGGAT",
+      "count": 1,
+      "canonical": "AAAGGAT"
+    },
+    {
+      "kmer": "AAAGGCA",
+      "count": 3,
+      "canonical": "AAAGGCA"
+    },
+    {
+      "kmer": "AAAGGCG",
+      "count": 2,
+      "canonical": "AAAGGCG"
+    },
+    {
+      "kmer": "AAAGGGA",
+      "count": 1,
+      "canonical": "AAAGGGA"
+    },
+    {
+      "kmer": "AAAGGGT",
+      "count": 1,
+      "canonical": "AAAGGGT"
+    },
+    {
+      "kmer": "AAAGGTG",
+      "count": 3,
+      "canonical": "AAAGGTG"
+    },
+    {
+      "kmer": "AAAGGTT",
+      "count": 2,
+      "canonical": "AAAGGTT"
+    },
+    {
+      "kmer": "AAAGTAC",
+      "count": 1,
+      "canonical": "AAAGTAC"
+    },
+    {
+      "kmer": "AAAGTAG",
+      "count": 1,
+      "canonical": "AAAGTAG"
+    },
+    {
+      "kmer": "AAAGTAT",
+      "count": 1,
+      "canonical": "AAAGTAT"
+    },
+    {
+      "kmer": "AAAGTCA",
+      "count": 1,
+      "canonical": "AAAGTCA"
+    },
+    {
+      "kmer": "AAAGTCC",
+      "count": 1,
+      "canonical": "AAAGTCC"
+    },
+    {
+      "kmer": "AAAGTCG",
+      "count": 1,
+      "canonical": "AAAGTCG"
+    },
+    {
+      "kmer": "AAAGTCT",
+      "count": 1,
+      "canonical": "AAAGTCT"
+    },
+    {
+      "kmer": "AAAGTGC",
+      "count": 2,
+      "canonical": "AAAGTGC"
+    }
+  ],
+  "statistics": {
+    "kmer_size": 7,
+    "unique_kmers": 4318,
+    "total_counts": 6080,
+    "min_count": 1,
+    "max_count": 5,
+    "file_size": 86402,
+    "format_version": "unknown"
+  }
+}
