@@ -71,7 +71,7 @@ pub fn generate_query_expansion(query: &crate::fuzzy::FuzzyQuery) -> FuzzyResult
 
     // Step 2: Apply wildcard expansion to each normalized query
     for normalized in normalized_query {
-        let wildcard_variants = wildcard::expand_wildcards(&normalized)?;
+        let wildcard_variants = wildcard::expand_wildcards(&normalized, query.max_variants)?;
         concrete_kmers.extend(wildcard_variants);
     }
 
@@ -80,7 +80,7 @@ pub fn generate_query_expansion(query: &crate::fuzzy::FuzzyQuery) -> FuzzyResult
         let mut mutation_variants = Vec::new();
 
         for concrete in &concrete_kmers {
-            let variants = mutation::generate_mutation_variants(concrete, query.mutation_tolerance)?;
+            let variants = mutation::generate_mutation_variants(concrete, query.mutation_tolerance, query.max_variants)?;
             mutation_variants.extend(variants);
         }
 

@@ -17,6 +17,7 @@ const NUCLEOTIDES: [char; 4] = ['A', 'T', 'C', 'G'];
 /// # Arguments
 /// * `sequence` - Original k-mer sequence
 /// * `mutation_distance` - Maximum Hamming distance (number of mutations)
+/// * `max_variants` - Maximum number of variants to generate (None for default)
 ///
 /// # Returns
 /// Vector of mutation variants (including original sequence)
@@ -25,11 +26,11 @@ const NUCLEOTIDES: [char; 4] = ['A', 'T', 'C', 'G'];
 /// ```
 /// use rustkmer::fuzzy::mutation::generate_mutation_variants;
 ///
-/// let variants = generate_mutation_variants("ATGCGATGCTAGCG", 1).unwrap();
+/// let variants = generate_mutation_variants("ATGCGATGCTAGCG", 1, None).unwrap();
 /// assert!(variants.len() > 13); // Original + single mutations
 /// assert!(variants.contains(&"ATGCGATGCTAGCG".to_string())); // Original
 /// ```
-pub fn generate_mutation_variants(sequence: &str, mutation_distance: usize) -> FuzzyResult<Vec<String>> {
+pub fn generate_mutation_variants(sequence: &str, mutation_distance: usize, max_variants: Option<usize>) -> FuzzyResult<Vec<String>> {
     if sequence.is_empty() {
         return Ok(vec![]);
     }
@@ -44,10 +45,11 @@ pub fn generate_mutation_variants(sequence: &str, mutation_distance: usize) -> F
 
     // Estimate total variants to check combinatorial explosion
     let estimated_variants = estimate_mutation_variants(sequence.len(), mutation_distance);
-    if estimated_variants > constants::DEFAULT_MAX_VARIANTS {
+    let limit = max_variants.unwrap_or(constants::DEFAULT_MAX_VARIANTS);
+    if estimated_variants > limit {
         return Err(FuzzyError::TooManyVariants {
             actual: estimated_variants,
-            limit: constants::DEFAULT_MAX_VARIANTS,
+            limit,
         });
     }
 
@@ -162,7 +164,15 @@ pub fn find_mutation_matches(
 ///
 /// This method generates variants iteratively to avoid deep recursion
 /// for sequences with high mutation tolerance.
-pub fn generate_mutation_variants_iterative(sequence: &str, mutation_distance: usize) -> FuzzyResult<Vec<String>> {
+///
+/// # Arguments
+/// * `sequence` - Original k-mer sequence
+/// * `mutation_distance` - Maximum Hamming distance (number of mutations)
+/// * `max_variants` - Maximum number of variants to generate (None for default)
+///
+/// # Returns
+/// Vector of mutation variants (including original sequence)
+pub fn generate_mutation_variants_iterative(sequence: &str, mutation_distance: usize, max_variants: Option<usize>) -> FuzzyResult<Vec<String>> {
     if sequence.is_empty() {
         return Ok(vec![]);
     }
@@ -176,6 +186,8 @@ pub fn generate_mutation_variants_iterative(sequence: &str, mutation_distance: u
 
     let mut variants = HashSet::new();
     variants.insert(sequence.to_string());
+
+    let limit = max_variants.unwrap_or(constants::DEFAULT_MAX_VARIANTS);
 
     // Generate variants iteratively for each mutation level
     for _current_distance in 1..=mutation_distance {
@@ -192,10 +204,10 @@ pub fn generate_mutation_variants_iterative(sequence: &str, mutation_distance: u
         }
 
         // Check combinatorial explosion
-        if variants.len() > constants::DEFAULT_MAX_VARIANTS {
+        if variants.len() > limit {
             return Err(FuzzyError::TooManyVariants {
                 actual: variants.len(),
-                limit: constants::DEFAULT_MAX_VARIANTS,
+                limit,
             });
         }
     }
@@ -295,15 +307,26 @@ pub fn validate_mutation_params(sequence: &str, mutation_distance: usize, max_va
 ///
 /// This method processes variants in batches to reduce memory usage
 /// for large mutation tolerances.
+///
+/// # Arguments
+/// * `sequence` - Original k-mer sequence
+/// * `mutation_distance` - Maximum Hamming distance (number of mutations)
+/// * `batch_size` - Size of each batch for processing
+/// * `max_variants` - Maximum number of variants to generate (None for default)
+/// * `processor` - Function to process each batch of variants
+///
+/// # Returns
+/// Result indicating success or failure
 pub fn generate_mutation_variants_batched(
     sequence: &str,
     mutation_distance: usize,
     batch_size: usize,
+    max_variants: Option<usize>,
     mut processor: impl FnMut(&[String]) -> FuzzyResult<()>,
 ) -> FuzzyResult<()> {
     validate_mutation_params(sequence, mutation_distance, None)?;
 
-    let all_variants = generate_mutation_variants(sequence, mutation_distance)?;
+    let all_variants = generate_mutation_variants(sequence, mutation_distance, max_variants)?;
 
     // Process in batches
     for chunk in all_variants.chunks(batch_size) {
@@ -335,14 +358,14 @@ mod tests {
 
     #[test]
     fn test_generate_mutation_variants_zero() {
-        let variants = generate_mutation_variants("ATGCGATGCTAGCG", 0).unwrap();
+        let variants = generate_mutation_variants("ATGCGATGCTAGCG", 0, None).unwrap();
         assert_eq!(variants.len(), 1);
         assert_eq!(variants[0], "ATGCGATGCTAGCG");
     }
 
     #[test]
     fn test_generate_mutation_variants_single() {
-        let variants = generate_mutation_variants("ATGCG", 1).unwrap();
+        let variants = generate_mutation_variants("ATGCG", 1, None).unwrap();
         assert!(variants.len() > 1);
         assert!(variants.contains(&"ATGCG".to_string())); // Original
 
@@ -359,8 +382,8 @@ mod tests {
 
     #[test]
     fn test_generate_mutation_variants_iterative() {
-        let variants_recursive = generate_mutation_variants("ATGCG", 1).unwrap();
-        let variants_iterative = generate_mutation_variants_iterative("ATGCG", 1).unwrap();
+        let variants_recursive = generate_mutation_variants("ATGCG", 1, None).unwrap();
+        let variants_iterative = generate_mutation_variants_iterative("ATGCG", 1, None).unwrap();
 
         // Should have the same number of variants
         assert_eq!(variants_recursive.len(), variants_iterative.len());
@@ -433,7 +456,7 @@ mod tests {
             Ok(())
         };
 
-        generate_mutation_variants_batched("ATGCG", 1, 10, &mut processor).unwrap();
+        generate_mutation_variants_batched("ATGCG", 1, 10, None, &mut processor).unwrap();
 
         // Should have processed all variants
         assert!(processed_variants.len() > 1);
