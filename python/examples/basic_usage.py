@@ -56,26 +56,26 @@ def demo_database_loading():
         print(f"Path: {db_path}")
 
         if not db_path.exists():
-            print(f"❌ Database file not found!")
+            print("❌ Database file not found!")
             continue
 
         try:
             # Method 1: Direct loading (need to manually close)
             print("\n1. Direct loading:")
             db = Database(str(db_path))
-            print(f"   ✓ Database loaded successfully")
-            print(f"   ✓ k-mer size: {db.kmer_size}")
-            print(f"   ✓ Database is loaded: {db.is_loaded}")
+            print("   ✓ Database loaded successfully")
+            print("   ✓ k-mer size: {db.kmer_size}")
+            print("   ✓ Database is loaded: {db.is_loaded}")
             db.close()
-            print(f"   ✓ Database closed")
+            print("   ✓ Database closed")
 
             # Method 2: Context manager (recommended)
             print("\n2. Context manager (recommended):")
             with Database(str(db_path)) as db:
-                print(f"   ✓ Database opened in context manager")
-                print(f"   ✓ k-mer size: {db.kmer_size}")
-                print(f"   ✓ Database is loaded: {db.is_loaded}")
-            print(f"   ✓ Database automatically closed when exiting context")
+                print("   ✓ Database opened in context manager")
+                print("   ✓ k-mer size: {db.kmer_size}")
+                print("   ✓ Database is loaded: {db.is_loaded}")
+            print("   ✓ Database automatically closed when exiting context")
 
         except DatabaseNotFoundError as e:
             print(f"❌ Database not found: {e}")
