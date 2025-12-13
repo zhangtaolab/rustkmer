@@ -97,7 +97,7 @@ pub fn is_canonical_u128(kmer_encoded: u128, k: usize) -> ProcessingResult<bool>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kmer::encoding::encode_kmer;
+    use crate::kmer::encoding::{encode_kmer, encode_kmer_u128};
 
     #[test]
     fn test_canonical_kmer() {
@@ -137,5 +137,21 @@ mod tests {
 
         assert_eq!(forward, "ATGC");
         assert_eq!(rev_comp, "GCAT");
+    }
+
+    #[test]
+    fn test_canonical_kmer_u128_reverse_complement() {
+        // Test that reverse complement k-mers have the same canonical form
+        let seq1 = "GAAAAAAAAAAAA";
+        let seq2 = "TTTTTTTTTTTTC"; // Reverse complement of seq1
+
+        let encoded1 = encode_kmer_u128(seq1).unwrap();
+        let encoded2 = encode_kmer_u128(seq2).unwrap();
+
+        let canonical1 = canonical_kmer_u128(encoded1, seq1.len()).unwrap();
+        let canonical2 = canonical_kmer_u128(encoded2, seq2.len()).unwrap();
+
+        // Both sequences should have the same canonical form
+        assert_eq!(canonical1, canonical2);
     }
 }
