@@ -3,54 +3,97 @@
 import os
 import tempfile
 from pathlib import Path
+from typing import Dict, Any
 
 import pytest
 
 
-@pytest.fixture
-def temp_db_file():
-    """Create a temporary file path for database testing."""
-    with tempfile.NamedTemporaryFile(suffix='.rkdb', delete=False) as f:
-        temp_path = f.name
-    yield temp_path
-    # Clean up
-    if os.path.exists(temp_path):
-        os.unlink(temp_path)
+@pytest.fixture(scope="session")
+def test_data_dir():
+    """Path to the test data directory."""
+    return Path(__file__).parent / "test_data"
 
 
-@pytest.fixture
-def test_database_path():
-    """Path to a real test database (if available)."""
-    # Check for the real test database mentioned in the spec
-    test_path = "/Users/forrest/Data/data/kmer/K19/R1_001.rkdb"
-    if os.path.exists(test_path):
-        yield test_path
-    else:
-        pytest.skip(f"Test database not found at {test_path}")
+@pytest.fixture(scope="session")
+def cli_binary():
+    """Path to rustkmer CLI executable."""
+    # Find rustkmer in the build directory
+    cli_path = Path(__file__).parent.parent.parent / "target" / "release" / "rustkmer"
+    if not cli_path.exists():
+        pytest.skip(f"rustkmer CLI not found at {cli_path}")
+    return str(cli_path)
 
 
-@pytest.fixture
-def mock_kmer_data():
-    """Mock k-mer data for testing without real database."""
+@pytest.fixture(scope="session")
+def test_databases():
+    """Return metadata for all available test databases."""
     return {
-        "ATCGATCGATCGATCGATCG": {"count": 42, "canonical": "ATCGATCGATCGATCGATCG"},
-        "GCTAGCTAGCTAGCTAGCTA": {"count": 15, "canonical": "ATCGATCGATCGATCGATCG"},
-        "CCCCCCCCCCCCCCCCCCCC": {"count": 100, "canonical": "GGGGGGGGGGGGGGGGGGGG"},
+        "tiny_test.rkdb": {
+            "size": "8KB",
+            "kmer_size": 7,
+            "description": "Tiny database for quick unit tests",
+            "file_size": 7962
+        },
+        "small_test.rkdb": {
+            "size": "86KB",
+            "kmer_size": 7,
+            "description": "Small database for integration tests",
+            "file_size": 86402
+        },
+        "small_test_k33_C.rkdb": {
+            "size": "96KB",
+            "kmer_size": 33,
+            "description": "Special k=33 database for edge cases",
+            "file_size": 95642
+        },
+        "medium_test.rkdb": {
+            "size": "160KB",
+            "kmer_size": 7,
+            "description": "Medium database for performance tests",
+            "file_size": 159762
+        },
+        "large_test.rkdb": {
+            "size": "164KB",
+            "kmer_size": 7,
+            "description": "Large database for stress tests",
+            "file_size": 163882
+        }
     }
 
 
+@pytest.fixture(scope="session")
+def cli_comparator(cli_binary):
+    """Create CLI comparator for the session."""
+    from .utils import CLIComparator
+    return CLIComparator(cli_binary)
+
+
 @pytest.fixture
-def sample_kmers():
-    """Sample k-mer sequences for testing."""
-    return [
-        "ATCGATCGATCGATCGATCG",
-        "GCTAGCTAGCTAGCTAGCTA",
-        "CCCCCCCCCCCCCCCCCCCC",
-        "GGGGGGGGGGGGGGGGGGGG",
-        "TATATATATATATATATATA",
-    ]
+def sample_database(test_data_dir):
+    """Get a sample database for testing (tiny_test.rkdb)."""
+    db_file = test_data_dir / "tiny_test.rkdb"
+    if not db_file.exists():
+        pytest.skip(f"Test database not found: {db_file}")
+    return str(db_file)
 
 
+@pytest.fixture
+def test_kmer_sets():
+    """Return sets of test k-mers for different scenarios."""
+    return {
+        "edge_cases": {
+            "all_A": "AAAAAAA",
+            "all_C": "CCCCCCC",
+            "all_G": "GGGGGGG",
+            "all_T": "TTTTTTT"
+        },
+        "palindromic": ["ATGCGCAT", "CGATATCG"],
+        "high_complexity": ["ATCGATCG", "GCTAGCTA"],
+        "invalid": ["ATCGX", "ATCG", "toolongkkkkkkkkkkkkkkk"]
+    }
+
+
+# Auto-use fixtures for all tests
 @pytest.fixture(autouse=True)
 def setup_test_environment(monkeypatch):
     """Setup environment for all tests."""
@@ -60,19 +103,7 @@ def setup_test_environment(monkeypatch):
     monkeypatch.delenv("RUSTKMER_PATH", raising=False)
 
 
-@pytest.fixture
-def mock_rustkmer_binary():
-    """Mock rustkmer binary path for testing."""
-    return os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "rustkmer",
-        "bin",
-        "rustkmer-test"
-    )
-
-
-# Skip integration tests if rustkmer is not installed
+# Configure pytest with custom markers
 def pytest_configure(config):
     """Configure pytest with custom markers."""
     config.addinivalue_line(
@@ -101,7 +132,10 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.benchmark)
             item.add_marker(pytest.mark.slow)
 
-        # Mark performance tests
-        if "performance" in str(item.fspath) or "test_performance" in item.name:
-            item.add_marker(pytest.mark.benchmark)
-            item.add_marker(pytest.mark.slow)
+        # Mark CLI-API consistency tests
+        if "cli_api_consistency" in str(item.fspath) or item.name:
+            item.add_marker(pytest.mark.integration)
+
+        # Mark database-specific tests
+        if "databases" in str(item.fspath) or item.name:
+            item.add_marker(pytest.mark.integration)

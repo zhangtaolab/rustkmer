@@ -15,6 +15,7 @@ class DatabaseStats:
         kmer_size: Length of k-mers in the database
         unique_kmers: Number of unique k-mer sequences
         total_counts: Sum of all k-mer counts
+        min_count: Minimum count for any single k-mer
         max_count: Maximum count for any single k-mer
         file_size: Size of database file in bytes
         format_version: Version of the database format
@@ -22,6 +23,7 @@ class DatabaseStats:
     kmer_size: int
     unique_kmers: int
     total_counts: int
+    min_count: int
     max_count: int
     file_size: int
     format_version: str
@@ -32,6 +34,7 @@ class DatabaseStats:
             'kmer_size': self.kmer_size,
             'unique_kmers': self.unique_kmers,
             'total_counts': self.total_counts,
+            'min_count': self.min_count,
             'max_count': self.max_count,
             'file_size': self.file_size,
             'format_version': self.format_version
@@ -49,6 +52,7 @@ class DatabaseStats:
             kmer_size=int(data.get('kmer_size', 0)),
             unique_kmers=int(data.get('unique_kmers', 0)),
             total_counts=int(data.get('total_counts', 0)),
+            min_count=int(data.get('min_count', 0)),
             max_count=int(data.get('max_count', 0)),
             file_size=int(data.get('file_size', 0)),
             format_version=str(data.get('format_version', 'unknown'))

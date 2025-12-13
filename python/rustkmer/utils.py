@@ -24,30 +24,51 @@ _rustkmer_path_cache: Optional[str] = None
 _path_cache_lock = threading.Lock()
 
 
-def validate_kmer(kmer: str, kmer_size: Optional[int] = None) -> str:
+def validate_kmer(kmer: str, kmer_size: Optional[int] = None, strict: bool = True) -> Optional[str]:
     """Validate a k-mer sequence.
 
     Args:
         kmer: The k-mer sequence to validate
         kmer_size: Expected k-mer size (optional)
+        strict: If True, raise exceptions for invalid k-mers. If False, return None for invalid k-mers.
 
     Returns:
-        The validated k-mer (uppercase)
+        The validated k-mer (uppercase) if valid, None if invalid and strict=False
 
     Raises:
-        InvalidKmerError: If k-mer contains invalid characters
-        KmerLengthError: If k-mer size doesn't match expected size
+        InvalidKmerError: If k-mer contains invalid characters and strict=True
+        KmerLengthError: If k-mer size doesn't match expected size and strict=True
     """
+    # Handle None or non-string inputs
+    if kmer is None:
+        if strict:
+            raise InvalidKmerError("None", "k-mer cannot be None")
+        else:
+            return None
+
+    # Handle non-string types
+    if not isinstance(kmer, str):
+        if strict:
+            raise InvalidKmerError(str(kmer), f"k-mer must be a string, got {type(kmer).__name__}")
+        else:
+            return None
+
     # Convert to uppercase
     kmer = kmer.upper()
 
     # Check for valid DNA characters
     if not re.match(r'^[ATCG]+$', kmer):
-        raise InvalidKmerError(kmer, "contains invalid characters (only A, T, C, G allowed)")
+        if strict:
+            raise InvalidKmerError(kmer, "contains invalid characters (only A, T, C, G allowed)")
+        else:
+            return None
 
     # Check length if specified
     if kmer_size is not None and len(kmer) != kmer_size:
-        raise KmerLengthError(kmer, kmer_size, len(kmer))
+        if strict:
+            raise KmerLengthError(kmer, kmer_size, len(kmer))
+        else:
+            return None
 
     return kmer
 
@@ -317,30 +338,48 @@ def parse_stats_output(output: str) -> Dict[str, Union[str, int]]:
     for line in output.strip().split('\n'):
         if ':' in line:
             key, value = line.split(':', 1)
-            key = key.strip().lower().replace(' ', '_')
+            key = key.strip().lower().replace(' ', '_').replace('-', '_')
             value = value.strip()
 
             # Try to parse as integer
             try:
                 stats[key] = int(value)
             except ValueError:
-                stats[key] = value
+                # Try to parse float (for mean, median)
+                try:
+                    stats[key] = float(value)
+                except ValueError:
+                    stats[key] = value
+
+    # Map field names to expected output names
+    field_mapping = {
+        'k_mer_size': 'kmer_size',
+        'unique_k_mers': 'unique_kmers',
+        'total_k_mers': 'total_counts'  # CLI uses total_k_mers, API expects total_counts
+    }
+
+    # Apply field mapping
+    mapped_stats = {}
+    for key, value in stats.items():
+        mapped_key = field_mapping.get(key, key)
+        mapped_stats[mapped_key] = value
 
     # Set defaults for missing fields
     defaults = {
         'kmer_size': 0,
         'unique_kmers': 0,
         'total_counts': 0,
+        'min_count': 0,
         'max_count': 0,
         'file_size': 0,
         'format_version': 'unknown'
     }
 
     for key, default in defaults.items():
-        if key not in stats:
-            stats[key] = default
+        if key not in mapped_stats:
+            mapped_stats[key] = default
 
-    return stats
+    return mapped_stats
 
 
 def canonical_kmer(kmer: str) -> str:

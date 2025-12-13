@@ -4,6 +4,7 @@ This module provides the main Database class for interacting with
 rustkmer k-mer databases through subprocess calls to the CLI.
 """
 
+import re
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Union
 
@@ -18,6 +19,7 @@ from .utils import (
 )
 from .exceptions import (
     DatabaseNotFoundError,
+    DatabaseError,
     InvalidDatabaseError,
     QueryError,
 )
@@ -58,6 +60,7 @@ class Database:
         self._path = Path(path)
         self._kmer_size: Optional[int] = None
         self._is_loaded = False
+        self._is_closed = False
         self._stats_cache: Optional[DatabaseStats] = None
 
         if validate:
@@ -112,22 +115,43 @@ class Database:
         except Exception as e:
             raise QueryError(f"Failed to load database metadata: {e}")
 
-    def query(self, kmer: str) -> QueryResult:
+    def query(self, kmer: str, validate_strict: bool = True) -> QueryResult:
         """
         Query a single k-mer in the database.
 
         Args:
             kmer: The k-mer sequence to query
+            validate_strict: If True, raise exceptions for invalid k-mers. If False, return count=0 for invalid k-mers.
 
         Returns:
             QueryResult object with the k-mer information
 
         Raises:
-            InvalidKmerError: If k-mer is invalid
+            InvalidKmerError: If k-mer is invalid and validate_strict=True
             QueryError: If query fails
+            DatabaseError: If database is closed
         """
+        # Check if database is closed
+        if self._is_closed:
+            raise DatabaseError("Cannot query: database is closed")
+
         # Validate k-mer
-        validated_kmer = validate_kmer(kmer, self.kmer_size)
+        validated_kmer = validate_kmer(kmer, self.kmer_size, strict=validate_strict)
+
+        # Handle invalid k-mer if not strict
+        if validated_kmer is None:
+            # Still try to compute canonical form if kmer has valid characters
+            if isinstance(kmer, str) and re.match(r'^[ATCG]+$', kmer.upper()):
+                canonical = canonical_kmer(kmer.upper())
+            else:
+                canonical = None
+
+            # Return result with count=0 for invalid k-mers
+            return QueryResult(
+                kmer=kmer,
+                count=0,
+                canonical=canonical
+            )
 
         # Get canonical form
         canonical = canonical_kmer(validated_kmer)
@@ -171,7 +195,12 @@ class Database:
 
         Raises:
             InvalidKmerError: If any k-mer is invalid
+            DatabaseError: If database is closed
         """
+        # Check if database is closed
+        if self._is_closed:
+            raise DatabaseError("Cannot query batch: database is closed")
+
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import math
 
@@ -180,9 +209,21 @@ class Database:
         kmer_size = self.kmer_size  # Get once to avoid repeated property access
 
         for kmer in kmers:
-            validated_kmers[kmer] = validate_kmer(kmer, kmer_size)
+            validated_kmers[kmer] = validate_kmer(kmer, kmer_size, strict=False)
 
         results = {}
+
+        # Handle invalid k-mers (those that got None from validation)
+        for original_kmer, validated_kmer in list(validated_kmers.items()):
+            if validated_kmer is None:
+                # Invalid k-mer, return count=0
+                results[original_kmer] = QueryResult(
+                    kmer=original_kmer,
+                    count=0,
+                    canonical=None
+                )
+                # Remove from validated list so we don't try to query it
+                del validated_kmers[original_kmer]
 
         # For small batches, process all at once
         if len(kmers) <= chunk_size:
@@ -268,10 +309,11 @@ class Database:
 
     def dump(
         self,
-        limit: Optional[int] = None
-    ) -> Iterator[QueryResult]:
+        limit: Optional[int] = None,
+        as_string: bool = True
+    ) -> Union[Iterator[QueryResult], str]:
         """
-        Iterate over k-mers in the database.
+        Iterate over k-mers in the database or return as formatted string.
 
         Since the rustkmer CLI dump command doesn't support streaming or limit/offset
         arguments, this method dumps the entire database and yields results with
@@ -279,15 +321,25 @@ class Database:
 
         Args:
             limit: Maximum number of k-mers to return (optional)
+            as_string: If True (default), return formatted string instead of iterator
 
         Yields:
-            QueryResult objects for each k-mer
+            QueryResult objects for each k-mer (if as_string=False)
+
+        Returns:
+            Formatted string with all k-mers (if as_string=True, default)
 
         Raises:
             QueryError: If dump operation fails
+            DatabaseError: If database is closed
         """
+        # Create a temporary file for output
         import tempfile
         import os
+
+        # Check if database is closed
+        if self._is_closed:
+            raise DatabaseError("Cannot dump: database is closed")
 
         # Create a temporary file for output
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tmp_file:
@@ -314,6 +366,9 @@ class Database:
 
             # Read and parse the output file
             yielded = 0
+            results = []
+            query_results = []
+
             with open(tmp_path, 'r') as f:
                 for line in f:
                     if not line.strip():
@@ -329,13 +384,24 @@ class Database:
                         count = int(parts[1])
                         canonical = canonical_kmer(kmer)
 
-                        yield QueryResult(
+                        result = QueryResult(
                             kmer=kmer,
                             count=count,
                             canonical=canonical
                         )
 
+                        # Store for both possible return types
+                        query_results.append(result)
+                        results.append(f"{kmer}\t{count}")
+
                         yielded += 1
+
+            # Return based on as_string parameter
+            if as_string:
+                return '\n'.join(results)
+            else:
+                # Return an iterator over the QueryResults
+                return iter(query_results)
 
         finally:
             # Clean up temporary file
@@ -351,7 +417,12 @@ class Database:
 
         Raises:
             QueryError: If stats operation fails
+            DatabaseError: If database is closed
         """
+        # Check if database is closed
+        if self._is_closed:
+            raise DatabaseError("Cannot get stats: database is closed")
+
         # Check cache first
         if self._stats_cache is not None:
             return self._stats_cache
@@ -369,6 +440,7 @@ class Database:
             kmer_size=data['kmer_size'],
             unique_kmers=data['unique_kmers'],
             total_counts=data['total_counts'],
+            min_count=data.get('min_count', 0),  # Add min_count field with default
             max_count=data['max_count'],
             file_size=self._path.stat().st_size,
             format_version=data['format_version']
@@ -383,10 +455,17 @@ class Database:
 
     def close(self):
         """Close database resources."""
-        # In this implementation, we don't have persistent resources
-        # But we clear the cache
+        # Clear the cache and mark as closed
         self._stats_cache = None
         self._is_loaded = False
+        self._is_closed = True
+
+    def reopen(self):
+        """Reopen database resources."""
+        if self._is_closed:
+            self._is_closed = False
+            # Reload metadata when needed
+            self._load_metadata()
 
     def __enter__(self):
         """Context manager entry."""
