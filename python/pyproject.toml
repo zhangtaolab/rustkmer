@@ -57,6 +57,10 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "performance: marks tests as performance benchmarks",
+]
 addopts = [
     "--cov=rustkmer",
     "--cov-report=term-missing",

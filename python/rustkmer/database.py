@@ -19,7 +19,6 @@ from .utils import (
 from .exceptions import (
     DatabaseNotFoundError,
     InvalidDatabaseError,
-    InvalidKmerError,
     QueryError,
 )
 
@@ -269,22 +268,17 @@ class Database:
 
     def dump(
         self,
-        limit: Optional[int] = None,
-        offset: int = 0,
-        chunk_size: int = 10000,
-        stream_large: bool = True
+        limit: Optional[int] = None
     ) -> Iterator[QueryResult]:
         """
-        Iterate over k-mers in the database with memory-efficient streaming.
+        Iterate over k-mers in the database.
 
-        For large databases (>1M k-mers), automatically uses chunked streaming
-        to avoid loading all results into memory at once.
+        Since the rustkmer CLI dump command doesn't support streaming or limit/offset
+        arguments, this method dumps the entire database and yields results with
+        optional limit enforcement.
 
         Args:
-            limit: Maximum number of k-mers to return
-            offset: Number of k-mers to skip
-            chunk_size: Number of k-mers to fetch in each chunk for streaming
-            stream_large: Force streaming mode for databases of any size
+            limit: Maximum number of k-mers to return (optional)
 
         Yields:
             QueryResult objects for each k-mer
@@ -292,87 +286,44 @@ class Database:
         Raises:
             QueryError: If dump operation fails
         """
-        # Get database stats to determine size (cached)
-        stats = self.stats()
+        import tempfile
+        import os
 
-        # Determine if we should use streaming
-        use_streaming = stream_large or stats.unique_kmers > 1000000  # > 1M k-mers
+        # Create a temporary file for output
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tmp_file:
+            tmp_path = tmp_file.name
 
-        if limit is not None and limit <= chunk_size and not use_streaming:
-            # Small request, fetch all at once
-            args = ['dump', str(self._path)]
+        try:
+            # Build dump command with output file
+            args = ['dump', '-o', tmp_path, str(self._path)]
 
-            if offset > 0:
-                args.extend(['--offset', str(offset)])
-
-            args.extend(['--limit', str(limit)])
+            # Run dump command with appropriate timeout
+            # For large databases, we need more time even for small limits
+            # since the CLI dumps everything
+            if limit is None:
+                timeout = 3600  # 1 hour for full dump
+            elif limit <= 1000:
+                timeout = 600  # 10 minutes for small limits (full dump still required)
+            else:
+                timeout = 1800  # 30 minutes for larger limits
 
             try:
-                output = run_rustkmer_command(args, timeout=60)
+                run_rustkmer_command(args, timeout=timeout)
             except Exception as e:
                 raise QueryError(f"Failed to dump database: {e}")
 
-            # Parse and yield results
-            lines = output.strip().split('\n')
-            for line in lines:
-                if not line.strip():
-                    continue
-
-                parts = line.split('\t')
-                if len(parts) >= 2:
-                    kmer = parts[0]
-                    count = int(parts[1])
-                    canonical = canonical_kmer(kmer)
-
-                    yield QueryResult(
-                        kmer=kmer,
-                        count=count,
-                        canonical=canonical
-                    )
-        else:
-            # Large request, use streaming with chunks
-            remaining = limit
-            current_offset = offset
+            # Read and parse the output file
             yielded = 0
-
-            while remaining is None or remaining > 0:
-                # Determine chunk size for this iteration
-                current_chunk = chunk_size
-                if remaining is not None:
-                    current_chunk = min(chunk_size, remaining)
-
-                # Build command for this chunk
-                args = ['dump', str(self._path)]
-
-                if current_offset > 0:
-                    args.extend(['--offset', str(current_offset)])
-
-                args.extend(['--limit', str(current_chunk)])
-
-                try:
-                    # Use longer timeout for large chunks
-                    timeout = max(60, current_chunk // 100)  # 1 second per 100 k-mers minimum
-                    output = run_rustkmer_command(args, timeout=timeout)
-                except Exception as e:
-                    if yielded > 0:
-                        # We've already yielded some results, just stop
-                        break
-                    else:
-                        raise QueryError(f"Failed to dump database: {e}")
-
-                # Check if we got any results
-                if not output.strip():
-                    break  # No more results
-
-                # Parse and yield results from this chunk
-                lines = output.strip().split('\n')
-                chunk_yielded = 0
-
-                for line in lines:
+            with open(tmp_path, 'r') as f:
+                for line in f:
                     if not line.strip():
                         continue
 
-                    parts = line.split('\t')
+                    # Apply limit if specified
+                    if limit is not None and yielded >= limit:
+                        break
+
+                    parts = line.strip().split('\t')
                     if len(parts) >= 2:
                         kmer = parts[0]
                         count = int(parts[1])
@@ -385,16 +336,11 @@ class Database:
                         )
 
                         yielded += 1
-                        chunk_yielded += 1
 
-                # Update counters for next iteration
-                current_offset += chunk_yielded
-                if remaining is not None:
-                    remaining -= chunk_yielded
-
-                # If we got fewer results than requested, we've reached the end
-                if chunk_yielded < current_chunk:
-                    break
+        finally:
+            # Clean up temporary file
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
     def stats(self) -> DatabaseStats:
         """

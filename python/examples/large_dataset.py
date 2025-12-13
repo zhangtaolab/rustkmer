@@ -13,7 +13,7 @@ from collections import Counter
 # Add parent directory to path for development
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from rustkmer import Database, QueryResult
+from rustkmer import Database
 from rustkmer.exceptions import RustKmerError
 
 

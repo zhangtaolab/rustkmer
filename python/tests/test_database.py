@@ -121,11 +121,15 @@ class TestDatabaseQuery:
         db_path.write_text("fake content")
 
         with patch('rustkmer.database.run_rustkmer_command') as mock_run:
-            mock_run.return_value = "42"  # CLI returns just the count
+            # Mock stats return to set kmer_size, then query
+            mock_run.side_effect = [
+                "kmer_size: 20\nunique_kmers: 1000",  # For stats (20 to match our test k-mer)
+                "42"  # For query
+            ]
 
             db = Database(str(db_path), validate=False)
-            # Mock kmer_size for validation
-            db._kmer_size = 19
+            # Access kmer_size to trigger loading
+            _ = db.kmer_size
 
             result = db.query("ATCGATCGATCGATCGATCG")
 
@@ -138,9 +142,11 @@ class TestDatabaseQuery:
         db_path = tmp_path / "test.rkdb"
         db_path.write_text("fake content")
 
-        with patch('rustkmer.database.run_rustkmer_command'):
+        with patch('rustkmer.database.run_rustkmer_command') as mock_run:
+            mock_run.return_value = "kmer_size: 20\nunique_kmers: 1000"
+
             db = Database(str(db_path), validate=False)
-            db._kmer_size = 19
+            _ = db.kmer_size
 
             with pytest.raises(InvalidKmerError):
                 db.query("ATCGX")  # Invalid character
@@ -150,9 +156,11 @@ class TestDatabaseQuery:
         db_path = tmp_path / "test.rkdb"
         db_path.write_text("fake content")
 
-        with patch('rustkmer.database.run_rustkmer_command'):
+        with patch('rustkmer.database.run_rustkmer_command') as mock_run:
+            mock_run.return_value = "kmer_size: 20\nunique_kmers: 1000"
+
             db = Database(str(db_path), validate=False)
-            db._kmer_size = 19
+            _ = db.kmer_size
 
             with pytest.raises(InvalidKmerError):
                 db.query("ATCG")  # Too short
@@ -163,10 +171,14 @@ class TestDatabaseQuery:
         db_path.write_text("fake content")
 
         with patch('rustkmer.database.run_rustkmer_command') as mock_run:
-            mock_run.return_value = "10"
+            # Mock stats return to set kmer_size, then query
+            mock_run.side_effect = [
+                "kmer_size: 4\nunique_kmers: 1000",  # For stats
+                "10"  # For query
+            ]
 
             db = Database(str(db_path), validate=False)
-            db._kmer_size = 4
+            _ = db.kmer_size
 
             # "AAAA" reverse complement is "TTTT", canonical is "AAAA"
             result = db.query("TTTT")
@@ -182,10 +194,13 @@ class TestDatabaseQuery:
 
         with patch('rustkmer.database.run_rustkmer_command') as mock_run:
             from rustkmer.exceptions import SubprocessError
-            mock_run.side_effect = SubprocessError("command", 1, "error")
+            mock_run.side_effect = [  # First call for stats, second for query
+                "kmer_size: 19\nunique_kmers: 1000",
+                SubprocessError("command", 1, "error")
+            ]
 
             db = Database(str(db_path), validate=False)
-            db._kmer_size = 19
+            _ = db.kmer_size
 
             with pytest.raises(QueryError):
                 db.query("ATCGATCGATCGATCGATCG")
@@ -200,10 +215,15 @@ class TestDatabaseQueryBatch:
         db_path.write_text("fake content")
 
         with patch('rustkmer.database.run_rustkmer_command') as mock_run:
-            mock_run.return_value = "5"
+            # Mock stats, then multiple queries
+            mock_run.side_effect = [
+                "kmer_size: 20\nunique_kmers: 1000",  # For stats
+                "5",  # For first query
+                "5"   # For second query
+            ]
 
             db = Database(str(db_path), validate=False)
-            db._kmer_size = 19
+            _ = db.kmer_size
 
             kmers = ["ATCGATCGATCGATCGATCG", "CCCCCCCCCCCCCCCCCCCC"]
             results = db.query_batch(kmers, max_workers=2)
@@ -218,10 +238,10 @@ class TestDatabaseQueryBatch:
         db_path.write_text("fake content")
 
         with patch('rustkmer.database.run_rustkmer_command') as mock_run:
-            mock_run.return_value = "1"
+            mock_run.return_value = "kmer_size: 20\nunique_kmers: 1000"
 
             db = Database(str(db_path), validate=False)
-            db._kmer_size = 19
+            _ = db.kmer_size
 
             kmers = ["ATCGATCGATCGATCGATCG", "INVALIDX"]
 
@@ -235,10 +255,14 @@ class TestDatabaseQueryBatch:
         db_path.write_text("fake content")
 
         with patch('rustkmer.database.run_rustkmer_command') as mock_run:
-            mock_run.return_value = "1"
+            # Create a side_effect that always returns "1"
+            mock_run.return_value = "kmer_size: 19\nunique_kmers: 1000"
 
             db = Database(str(db_path), validate=False)
-            db._kmer_size = 19
+            _ = db.kmer_size
+
+            # After stats are loaded, set return value for queries
+            mock_run.return_value = "1"
 
             # Create 250 k-mers to test chunking (default chunk_size=100)
             kmers = [f"{'ATCG' * 4}A" for _ in range(250)]
@@ -256,7 +280,8 @@ class TestDatabaseQueryBatch:
 
         def side_effect_func(*args):
             from rustkmer.exceptions import SubprocessError
-            if "CCCC" in args[1]:  # Fail for specific k-mer
+            # Check if args has k-mer
+            if len(args) > 1 and "CCCC" in args[1]:  # Fail for specific k-mer
                 raise SubprocessError("command", 1, "not found")
             return "5"
 
@@ -264,7 +289,7 @@ class TestDatabaseQueryBatch:
             mock_run.side_effect = side_effect_func
 
             db = Database(str(db_path), validate=False)
-            db._kmer_size = 19
+            _ = db.kmer_size
 
             kmers = ["ATCGATCGATCGATCGATCG", "CCCCCCCCCCCCCCCCCCCC"]
             results = db.query_batch(kmers)

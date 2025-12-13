@@ -56,6 +56,10 @@ yarn-error.log*
 *.txt
 *.rkdb
 
+# Except test data files that should be tracked
+!python/tests/test_data/*.rkdb
+!python/tests/test_data/*.rk
+
 # Examples output and data
 examples/output/
 examples/data/*.fa

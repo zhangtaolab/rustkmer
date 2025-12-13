@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 from .exceptions import (
-    DatabaseNotFoundError,
     InvalidKmerError,
     KmerLengthError,
     SubprocessError,
@@ -93,28 +92,28 @@ def run_rustkmer_command(args: List[str], timeout: Optional[float] = None) -> st
                 raise SubprocessError(
                     cmd_str,
                     e.returncode,
-                    f"Database file not found: '{db_path}'. "
-                    f"Please check the file path and ensure it exists."
+                    "Database file not found: '" + db_path + "'. "
+                    "Please check the file path and ensure it exists."
                 )
 
         if "permission denied" in stderr:
             raise SubprocessError(
                 cmd_str,
                 e.returncode,
-                f"Permission denied. Check file/directory permissions."
+                "Permission denied. Check file/directory permissions."
             )
 
         if "invalid" in stderr and "database" in stderr:
             raise SubprocessError(
                 cmd_str,
                 e.returncode,
-                f"Invalid database format. The file may be corrupted or not a valid .rkdb file."
+                "Invalid database format. The file may be corrupted or not a valid .rkdb file."
             )
 
         # Generic error with stderr output
-        error_msg = f"Command failed with exit code {e.returncode}"
+        error_msg = "Command failed with exit code " + str(e.returncode)
         if e.stderr:
-            error_msg += f": {e.stderr.strip()}"
+            error_msg += ": " + e.stderr.strip()
         else:
             error_msg += ". No error output available."
 
@@ -124,13 +123,13 @@ def run_rustkmer_command(args: List[str], timeout: Optional[float] = None) -> st
         raise SubprocessError(
             cmd_str,
             -1,
-            f"Command timed out after {timeout} seconds. "
-            f"Consider increasing timeout or using a smaller limit parameter."
+            "Command timed out after " + str(timeout) + " seconds. "
+            "Consider increasing timeout or using a smaller limit parameter."
         )
     except FileNotFoundError:
         raise ConfigurationError(
-            f"rustkmer executable not found at: {rustkmer_cmd}. "
-            f"Please ensure rustkmer is properly installed."
+            "rustkmer executable not found at: " + rustkmer_cmd + ". "
+            "Please ensure rustkmer is properly installed."
         )
 
 
@@ -172,13 +171,13 @@ def find_rustkmer_executable() -> str:
                 return str(path)
             else:
                 raise ConfigurationError(
-                    f"rustkmer found at {path} but is not executable. "
-                    f"Please check file permissions: chmod +x {path}"
+                    "rustkmer found at " + str(path) + " but is not executable. "
+                    "Please check file permissions: chmod +x " + str(path)
                 )
         else:
             raise ConfigurationError(
-                f"RUSTKMER_PATH is set to '{path}' but file does not exist. "
-                f"Please check the path or unset RUSTKMER_PATH to use system search."
+                "RUSTKMER_PATH is set to '" + str(path) + "' but file does not exist. "
+                "Please check the path or unset RUSTKMER_PATH to use system search."
             )
 
     # Check package bin directory
@@ -211,15 +210,15 @@ def find_rustkmer_executable() -> str:
         "rustkmer executable not found in any of the searched locations:",
         "",
         "1. RUSTKMER_PATH environment variable (not set)",
-        f"2. Package bin directory: {bin_dir} (not found)",
-        f"3. System PATH (rustkmer command not found)",
+        "2. Package bin directory: " + str(bin_dir) + " (not found)",
+        "3. System PATH (rustkmer command not found)",
         "",
         "To fix this issue:",
         "• Install rustkmer: https://github.com/rustkmer/rustkmer",
         "• Set RUSTKMER_PATH to the full path of your rustkmer executable",
-        f"• Add rustkmer to your system PATH",
+        "• Add rustkmer to your system PATH",
         "",
-        f"Current platform: {sys.platform}"
+        "Current platform: " + sys.platform
     ]
 
     # Add platform-specific installation hints
