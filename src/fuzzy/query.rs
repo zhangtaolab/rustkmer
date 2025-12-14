@@ -32,7 +32,7 @@ pub struct PositionMutationGroup {
 }
 
 impl PositionMutationConfig {
-    /// Parse from string format like "3,4,5:2;6,7:1"
+    /// Parse from string format like "3,4,5:2;6,7:1" or "4-7:1;10,12:2"
     pub fn parse(input: &str) -> FuzzyResult<Self> {
         let mut config = PositionMutationConfig::default();
 
@@ -54,12 +54,27 @@ impl PositionMutationConfig {
 
             let positions: Vec<usize> = positions_str
                 .split(',')
-                .filter_map(|s| {
+                .flat_map(|s| {
                     let trimmed = s.trim();
                     if trimmed.is_empty() {
-                        None
+                        return Vec::new();
+                    }
+
+                    // Check if it's a range like "4-7"
+                    if let Some((start_str, end_str)) = trimmed.split_once('-') {
+                        if let (Ok(start), Ok(end)) = (start_str.parse::<usize>(), end_str.parse::<usize>()) {
+                            if start <= end {
+                                return (start..=end).collect();
+                            }
+                        }
+                        // Invalid range format, fall through to single position parsing
+                    }
+
+                    // Single position parsing
+                    if let Ok(pos) = trimmed.parse::<usize>() {
+                        vec![pos]
                     } else {
-                        trimmed.parse().ok()
+                        Vec::new() // Invalid format, skip
                     }
                 })
                 .collect();
