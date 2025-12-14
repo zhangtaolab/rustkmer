@@ -26,7 +26,8 @@ def demo_single_fuzzy_query():
     print("=" * 60)
 
     # Use test database
-    test_db = os.path.join(os.path.dirname(__file__), '..', 'tests', 'test_data', 'tiny_test.rkdb')
+    test_data_dir = Path(__file__).parent.parent / "tests" / "test_data"
+    test_db = test_data_dir / "tiny_test.rkdb"
 
     if not os.path.exists(test_db):
         print(f"Test database not found: {test_db}")
@@ -81,7 +82,8 @@ def demo_batch_fuzzy_query():
     print("DEMO 2: Batch Fuzzy Query")
     print("=" * 60)
 
-    test_db = os.path.join(os.path.dirname(__file__), '..', 'tests', 'test_data', 'tiny_test.rkdb')
+    test_data_dir = Path(__file__).parent.parent / "tests" / "test_data"
+    test_db = test_data_dir / "tiny_test.rkdb"
 
     if not os.path.exists(test_db):
         print(f"Test database not found: {test_db}")
@@ -126,7 +128,8 @@ def demo_mutation_tolerance():
     print("DEMO 3: Mutation Tolerance Comparison")
     print("=" * 60)
 
-    test_db = os.path.join(os.path.dirname(__file__), '..', 'tests', 'test_data', 'tiny_test.rkdb')
+    test_data_dir = Path(__file__).parent.parent / "tests" / "test_data"
+    test_db = test_data_dir / "tiny_test.rkdb"
 
     if not os.path.exists(test_db):
         print(f"Test database not found: {test_db}")
@@ -163,7 +166,8 @@ def demo_error_handling():
     print("DEMO 4: Error Handling")
     print("=" * 60)
 
-    test_db = os.path.join(os.path.dirname(__file__), '..', 'tests', 'test_data', 'tiny_test.rkdb')
+    test_data_dir = Path(__file__).parent.parent / "tests" / "test_data"
+    test_db = test_data_dir / "tiny_test.rkdb"
 
     if not os.path.exists(test_db):
         print(f"Test database not found: {test_db}")

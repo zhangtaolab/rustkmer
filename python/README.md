@@ -24,11 +24,10 @@ pip install -e ./python
 - rustkmer CLI tool installed and accessible in PATH
   - Installation methods:
     ```bash
-    # Via cargo (requires Rust)
-    cargo install rustkmer
-
-    # Or download pre-built binaries from GitHub releases
-    # https://github.com/rustkmer/rustkmer/releases
+    # Clone from GitHub
+    git clone https://github.com/zhangtaolab/rustkmer
+    cd rustkmer
+    cargo install --path .
     ```
 
 ## Quick Start

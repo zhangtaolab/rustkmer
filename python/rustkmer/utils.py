@@ -498,7 +498,13 @@ def parse_fuzzy_query_output(output: str, output_format: str = 'auto') -> Dict[s
                 'total_matches': len(matches),
                 'mutation_tolerance': data.get('mutation_tolerance', 0)
             }
-        except (json.JSONDecodeError, ValueError, KeyError):
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            # For explicit 'json' format with invalid JSON, raise a specific exception
+            # This allows batch processing to detect and handle parsing errors
+            if output_format == 'json':
+                # Use a custom exception that batch parsing can handle
+                raise ValueError(f"Invalid JSON format: {e}")
+            # For 'auto' format, continue to try other parsing methods
             pass
 
     # Parse tab-separated format (TSV/TSV-like)
@@ -520,15 +526,18 @@ def parse_fuzzy_query_output(output: str, output_format: str = 'auto') -> Dict[s
                 parts = line.split(':', 1)
                 if len(parts) > 1:
                     query_kmer = parts[1].strip()
-            # Extract mutation tolerance if present
-            if 'mutations:' in line.lower() or 'tolerance:' in line.lower():
-                parts = line.split(':', 1)
-                if len(parts) > 1:
-                    try:
-                        mutation_tolerance = int(re.search(r'\d+', parts[1]).group())
-                    except:
-                        pass
             continue
+
+        # Extract mutation tolerance from separate header line
+        if 'mutations:' in line.lower() or 'tolerance:' in line.lower():
+            parts = line.split(':', 1)
+            if len(parts) > 1:
+                try:
+                    mutation_tolerance = int(re.search(r'\d+', parts[1]).group())
+                except:
+                    pass
+            continue
+
         data_lines.append(line)
 
     # Parse data lines (handle both TSV and formatted table)
@@ -576,11 +585,12 @@ def parse_fuzzy_query_output(output: str, output_format: str = 'auto') -> Dict[s
             parts = line.split('\t')
 
             # Expected format: kmer, count, distance, mutations
-            if len(parts) >= 3:
+            # Handle both 2-column (kmer, count) and 3+ column formats
+            if len(parts) >= 2:
                 match = {
                     'kmer': parts[0],
                     'count': int(parts[1]) if parts[1].isdigit() else 0,
-                    'distance': int(parts[2]) if parts[2].isdigit() else 0,
+                    'distance': int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else 0,
                     'mutations': parts[3].split(',') if len(parts) > 3 and parts[3] else []
                 }
                 matches.append(match)
