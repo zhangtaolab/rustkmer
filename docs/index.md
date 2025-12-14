@@ -67,13 +67,16 @@ rustkmer fuzzy-query -d genome_k21.rkdb -q "AATN" -m 1
 - **[Installation](installation.md)** - Installation guide for Python API
 - **[User Guide](user-guide/)** - Comprehensive Python API guide
   - [Quick Start](user-guide/quickstart.md) - Get started in 5 minutes
+  - [Fuzzy Search](user-guide/fuzzy-search.md) - Wildcard and mutation-tolerant queries
   - [Examples](user-guide/examples.md) - Practical code examples
   - [Tutorials](user-guide/tutorials/) - Step-by-step tutorials
 - **[API Reference](api-reference/)** - Complete Python API documentation
   - [KmerCounter](api-reference/kmercounter.md) - k-mer counting
   - [Database](api-reference/database.md) - Database operations
-  - [FuzzyQuery](api-reference/fuzzyquery.md) - Fuzzy searching
+  - [FuzzyQuery](api-reference/fuzzyquery.md) - Fuzzy searching API
 - **[Examples](examples/)** - Real-world code examples
+  - [Fuzzy Search Examples](examples/fuzzy-search.md) - Practical fuzzy query examples
+  - [Batch Processing](examples/batch-processing.md) - Large-scale processing
 - **[Developer Guide](dev-guide/)** - Contributing and architecture
 
 ## 🏆 Performance
@@ -118,7 +121,15 @@ from rustkmer import Database
 
 db = Database()
 db.load("genome.rkdb")
+
+# Wildcard search
 results = db.fuzzy_query("AATN")  # Matches AATA, AATC, AATG, AATT
+
+# Mutation tolerance search
+results = db.fuzzy_query("ATCGATCGATCGATCGATCGA", max_distance=2)
+
+# Complex pattern with multiple wildcards
+results = db.fuzzy_query("ATNNGTANN")
 ```
 
 ### Batch Processing

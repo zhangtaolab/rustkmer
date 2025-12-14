@@ -10,7 +10,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from .exceptions import (
     InvalidKmerError,
@@ -60,6 +60,55 @@ def validate_kmer(kmer: str, kmer_size: Optional[int] = None, strict: bool = Tru
     if not re.match(r'^[ATCG]+$', kmer):
         if strict:
             raise InvalidKmerError(kmer, "contains invalid characters (only A, T, C, G allowed)")
+        else:
+            return None
+
+    # Check length if specified
+    if kmer_size is not None and len(kmer) != kmer_size:
+        if strict:
+            raise KmerLengthError(kmer, kmer_size, len(kmer))
+        else:
+            return None
+
+    return kmer
+
+
+def validate_fuzzy_kmer(kmer: str, kmer_size: Optional[int] = None, strict: bool = True) -> Optional[str]:
+    """Validate a k-mer sequence for fuzzy query (supports N wildcards).
+
+    Args:
+        kmer: The k-mer sequence to validate (may contain N as wildcard)
+        kmer_size: Expected k-mer size (optional)
+        strict: If True, raise exceptions for invalid k-mers. If False, return None for invalid k-mers.
+
+    Returns:
+        The validated k-mer (uppercase) if valid, None if invalid and strict=False
+
+    Raises:
+        InvalidKmerError: If k-mer contains invalid characters and strict=True
+        KmerLengthError: If k-mer size doesn't match expected size and strict=True
+    """
+    # Handle None or non-string inputs
+    if kmer is None:
+        if strict:
+            raise InvalidKmerError("None", "k-mer cannot be None")
+        else:
+            return None
+
+    # Handle non-string types
+    if not isinstance(kmer, str):
+        if strict:
+            raise InvalidKmerError(str(kmer), f"k-mer must be a string, got {type(kmer).__name__}")
+        else:
+            return None
+
+    # Convert to uppercase
+    kmer = kmer.upper()
+
+    # Check for valid DNA characters (including N as wildcard)
+    if not re.match(r'^[ATCGN]+$', kmer):
+        if strict:
+            raise InvalidKmerError(kmer, "contains invalid characters (only A, T, C, G, N allowed)")
         else:
             return None
 
@@ -401,3 +450,212 @@ def canonical_kmer(kmer: str) -> str:
 
     # Return lexicographically smaller
     return min(kmer, rc)
+
+
+def parse_fuzzy_query_output(output: str, output_format: str = 'auto') -> Dict[str, Any]:
+    """Parse fuzzy query output from CLI command.
+
+    Args:
+        output: Raw output string from fuzzy-query CLI
+        output_format: Format of the output ('auto', 'json', 'table', 'tsv')
+
+    Returns:
+        Dictionary containing parsed results with structure:
+        {
+            'query_kmer': str,
+            'exact_match': dict or None,
+            'matches': list of match dictionaries,
+            'total_matches': int,
+            'mutation_tolerance': int
+        }
+    """
+    # Try JSON format first
+    if output_format in ('auto', 'json') and output.strip().startswith('{'):
+        try:
+            data = json.loads(output)
+
+            # Extract matches and convert to standardized format
+            matches = []
+            exact_match = None
+
+            for match_data in data.get('matches', []):
+                match = {
+                    'kmer': match_data.get('kmer', ''),
+                    'count': match_data.get('count', 0),
+                    'distance': match_data.get('distance', 0),
+                    'mutations': match_data.get('mutations', [])
+                }
+                matches.append(match)
+
+                # Track exact match
+                if match['distance'] == 0:
+                    exact_match = match
+
+            return {
+                'query_kmer': data.get('query_kmer', ''),
+                'exact_match': exact_match,
+                'matches': matches,
+                'total_matches': len(matches),
+                'mutation_tolerance': data.get('mutation_tolerance', 0)
+            }
+        except (json.JSONDecodeError, ValueError, KeyError):
+            pass
+
+    # Parse tab-separated format (TSV/TSV-like)
+    lines = [line.strip() for line in output.strip().split('\n') if line.strip()]
+
+    # Look for header line to determine format
+    matches = []
+    exact_match = None
+    query_kmer = ''
+    mutation_tolerance = 0
+
+    # Skip header lines and parse data
+    data_lines = []
+    for line in lines:
+        # Skip comment lines or headers
+        if line.startswith('#') or line.lower().startswith('query') or line.lower().startswith('kmer'):
+            # Extract query k-mer from header if present
+            if 'query:' in line.lower():
+                parts = line.split(':', 1)
+                if len(parts) > 1:
+                    query_kmer = parts[1].strip()
+            # Extract mutation tolerance if present
+            if 'mutations:' in line.lower() or 'tolerance:' in line.lower():
+                parts = line.split(':', 1)
+                if len(parts) > 1:
+                    try:
+                        mutation_tolerance = int(re.search(r'\d+', parts[1]).group())
+                    except:
+                        pass
+            continue
+        data_lines.append(line)
+
+    # Parse data lines (handle both TSV and formatted table)
+    for line in data_lines:
+        # Skip table separator lines (containing ─ ┬ ┼ ┴ ├ ┤)
+        if '─' in line or '┬' in line or '┼' in line or '┴' in line or '├' in line or '┤' in line:
+            continue
+
+        # Handle formatted table with │ separators
+        if '│' in line:
+            # Remove leading/trailing │ and split by │
+            parts = [p.strip() for p in line.split('│') if p.strip()]
+
+            # Expected format after cleaning: [Sequence, Count, Type] or [kmer, count, distance/type]
+            if len(parts) >= 2:
+                # Skip header row if it contains column names
+                if parts[0].lower() in ['sequence', 'kmer'] or parts[1].lower() in ['count']:
+                    continue
+
+                match = {
+                    'kmer': parts[0],
+                    'count': int(parts[1]) if parts[1].replace('.', '').isdigit() else 0,
+                    'distance': 0,  # Default to 0 for table format
+                    'mutations': []
+                }
+
+                # If there's a third column and it's not "Type", try to parse as distance
+                if len(parts) >= 3 and parts[2].lower() not in ['type', 'exact']:
+                    try:
+                        match['distance'] = int(parts[2])
+                    except ValueError:
+                        pass
+                elif len(parts) >= 3 and parts[2].lower() == 'exact':
+                    match['distance'] = 0
+                elif len(parts) >= 3 and parts[2].lower() in ['mutation', 'fuzzy']:
+                    match['distance'] = 1
+
+                matches.append(match)
+
+                # Track exact match
+                if match['distance'] == 0:
+                    exact_match = match
+        else:
+            # Handle simple TSV format
+            parts = line.split('\t')
+
+            # Expected format: kmer, count, distance, mutations
+            if len(parts) >= 3:
+                match = {
+                    'kmer': parts[0],
+                    'count': int(parts[1]) if parts[1].isdigit() else 0,
+                    'distance': int(parts[2]) if parts[2].isdigit() else 0,
+                    'mutations': parts[3].split(',') if len(parts) > 3 and parts[3] else []
+                }
+                matches.append(match)
+
+                # Track exact match
+                if match['distance'] == 0:
+                    exact_match = match
+
+    # If no query k-mer found, try to extract from first match
+    if not query_kmer and matches:
+        query_kmer = matches[0]['kmer']
+
+    return {
+        'query_kmer': query_kmer,
+        'exact_match': exact_match,
+        'matches': matches,
+        'total_matches': len(matches),
+        'mutation_tolerance': mutation_tolerance
+    }
+
+
+def parse_fuzzy_batch_output(outputs: List[str], errors: List[int],
+                            kmers: List[str], output_format: str = 'auto') -> Dict[str, Any]:
+    """
+    Parse outputs from batch fuzzy query processing.
+
+    Args:
+        outputs: List of output strings from CLI commands
+        errors: List of error codes (0 for success, non-zero for failure)
+        kmers: Original list of query k-mers
+        output_format: Format of the outputs
+
+    Returns:
+        Dictionary containing batch results structure
+    """
+    batch_results = []
+    total_matches = 0
+
+    for i, (output, error_code, original_kmer) in enumerate(zip(outputs, errors, kmers)):
+        if error_code == 0 and output:
+            # Parse successful output
+            try:
+                result = parse_fuzzy_query_output(output, output_format)
+                # Ensure the result matches the original kmer
+                result['query_kmer'] = original_kmer
+                batch_results.append(result)
+                total_matches += result.get('total_matches', 0)
+            except Exception as e:
+                # Create error result for parsing failure
+                error_result = {
+                    'query_kmer': original_kmer,
+                    'exact_match': None,
+                    'matches': [],
+                    'total_matches': 0,
+                    'mutation_tolerance': 0,
+                    'database_path': '',
+                    'error': str(e)
+                }
+                batch_results.append(error_result)
+        else:
+            # Create error result for failed command
+            error_result = {
+                'query_kmer': original_kmer,
+                'exact_match': None,
+                'matches': [],
+                'total_matches': 0,
+                'mutation_tolerance': 0,
+                'database_path': '',
+                'error': f'Command failed with exit code {error_code}'
+            }
+            batch_results.append(error_result)
+
+    return {
+        'query_results': batch_results,
+        'total_queries': len(kmers),
+        'total_matches': total_matches,
+        'database_path': ''
+    }

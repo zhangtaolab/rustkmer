@@ -17,6 +17,7 @@
 ### 🛠️ 核心功能
 - **高性能计数**: 顺序k-mer计数
 - **批量查询**: 高效的批量k-mer查询处理
+- **🔥 模糊查询**: 通配符和突变容忍搜索，支持复杂模式匹配
 - **排序数据库**: 二分搜索优化，无需预加载
 - **Jellyfish兼容**: 命令行接口与jellyfish高度兼容
 - **Python集成**: 完整的Python API和示例代码
@@ -276,6 +277,10 @@ rustkmer query genome.rkdb ATGCGATGCTAGCGCTAGCTA
 # 批量查询（高性能）
 rustkmer query genome.rkdb --sequence queries.fa -o results.txt
 
+# 🔥 模糊查询 - 通配符和突变容忍
+rustkmer fuzzy-query -d genome.rkdb -q "ATNNGTA"                    # 通配符查询 (N=任意碱基)
+rustkmer fuzzy-query -d genome.rkdb -q "ATCGATCGATCGATCGATCGA" -m 2  # 突变容忍搜索
+
 # 数据库信息
 rustkmer info genome.rkdb
 
@@ -365,6 +370,52 @@ print(f"Query result: {result.count}, found: {result.found}")
 # 获取数据库统计
 stats = db.get_stats()
 print(f"Database stats: k={stats.kmer_size}, total={stats.total_kmers}")
+```
+
+### 🔥 模糊查询功能 (Wildcard & Mutation Tolerance)
+
+RustKmer提供强大的模糊查询功能，支持通配符搜索和突变容忍匹配：
+
+```python
+from rustkmer import Database
+
+# 加载数据库
+db = Database()
+db.load("genome.rkdb")
+
+# 通配符查询 (N = 任意碱基: A,T,C,G)
+wildcard_results = db.fuzzy_query("ATNNGTA")  # 4^2 = 16种组合
+print(f"通配符查询找到 {len(wildcard_results)} 个匹配")
+
+# 突变容忍搜索 (汉明距离)
+mutation_results = db.fuzzy_query("ATCGATCGATCGATCGATCGA", max_distance=2)
+print(f"突变容忍搜索找到 {len(mutation_results)} 个变体")
+
+# 复杂模式组合
+complex_results = db.fuzzy_query("ATNNGTANN", max_distance=1)
+print(f"复杂模式找到 {len(complex_results)} 个匹配")
+
+# 批量模糊查询
+patterns = ["ATNNGTA", "ANNNNNNGT", "GTCGATCNN"]
+batch_results = db.fuzzy_query_batch(patterns, max_distance=1)
+for pattern, matches in batch_results.items():
+    print(f"模式 '{pattern}': {len(matches)} 个匹配")
+
+# 结果处理和导出
+for result in wildcard_results[:5]:  # 显示前5个结果
+    print(f"  {result.kmer}: {result.count} (distance: {result.distance}, type: {result.match_type})")
+```
+
+**命令行模糊查询:**
+```bash
+# 通配符搜索
+rustkmer fuzzy-query -d genome.rkdb -q "ATNNGTA"
+
+# 突变容忍搜索
+rustkmer fuzzy-query -d genome.rkdb -q "ATCGATCGATCGATCGATCGA" -m 2
+
+# 批量查询并导出
+rustkmer fuzzy-query -d genome.rkdb -f patterns.txt -o results.csv --format csv
 ```
 
 ### Jellyfish兼容示例

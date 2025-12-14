@@ -83,6 +83,26 @@ class KmerLengthError(InvalidKmerError):
         self.actual_length = actual
 
 
+class FuzzyQueryError(QueryError):
+    """Base exception for fuzzy query operations."""
+    pass
+
+
+class InvalidMutationToleranceError(FuzzyQueryError):
+    """Raised when mutation tolerance is out of valid range."""
+    pass
+
+
+class CombinatorialExplosionError(FuzzyQueryError):
+    """Raised when fuzzy query would generate too many variants."""
+    pass
+
+
+class BatchQueryError(FuzzyQueryError):
+    """Raised when batch fuzzy query encounters issues."""
+    pass
+
+
 class SubprocessError(RustKmerError):
     """Raised when subprocess calls to rustkmer CLI fail."""
 

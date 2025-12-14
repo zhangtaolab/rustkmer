@@ -10,11 +10,14 @@ from typing import Dict, Iterator, List, Optional, Union
 
 from .query import QueryResult
 from .stats import DatabaseStats
+from .fuzzy_query import FuzzyQueryResult, FuzzyMatchResult, FuzzyBatchResult
 from .utils import (
     run_rustkmer_command,
     parse_query_output,
     parse_stats_output,
+    parse_fuzzy_query_output,
     validate_kmer,
+    validate_fuzzy_kmer,
     canonical_kmer,
 )
 from .exceptions import (
@@ -22,6 +25,8 @@ from .exceptions import (
     DatabaseError,
     InvalidDatabaseError,
     QueryError,
+    InvalidKmerError,
+    InvalidMutationToleranceError,
 )
 
 
@@ -176,6 +181,304 @@ class Database:
             canonical=canonical
         )
 
+    def fuzzy_query(
+        self,
+        kmer: str,
+        mutations: int = 1,
+        max_variants: Optional[int] = None,
+        output_format: str = 'auto'
+    ) -> FuzzyQueryResult:
+        """
+        Perform a fuzzy k-mer query with mutation tolerance.
+
+        This method searches for k-mers in the database that are within a specified
+        Hamming distance from the query k-mer. Unlike exact queries, fuzzy queries
+        can find similar sequences that differ by a small number of mutations,
+        which is useful for handling sequencing errors, natural variations,
+        or finding related sequences.
+
+        The search generates all possible variants of the query k-mer within the
+        specified mutation tolerance and checks each against the database. The
+        results are returned as a FuzzyQueryResult containing all matches found.
+
+        Args:
+            kmer (str): The k-mer sequence to query. Must contain only A, T, C, G
+                       characters and have the correct length for the database
+            mutations (int): Maximum number of mutations allowed (0-5). A value
+                           of 0 performs an exact match query, while higher values
+                           allow increasingly divergent matches
+            max_variants (Optional[int]): Maximum number of variants to generate
+                                        and check. This limits the combinatorial
+                                        explosion for high mutation tolerances.
+                                        If None, checks all possible variants
+            output_format (str): Output format for the CLI command. Options:
+                               - 'auto' (default): Automatically choose best format
+                               - 'json': Machine-readable JSON format
+                               - 'table': Human-readable table format
+                               - 'tsv': Tab-separated values format
+
+        Returns:
+            FuzzyQueryResult: Object containing all matches found within the
+                mutation tolerance, including:
+                - Exact matches (if any)
+                - Fuzzy matches with their distances and mutations
+                - Summary statistics
+
+        Raises:
+            InvalidKmerError: If k-mer contains invalid characters or has
+                            incorrect length for the database
+            InvalidMutationToleranceError: If mutations is not in the range 0-5
+            DatabaseError: If the database has been closed
+            QueryError: If the CLI command fails or returns unexpected output
+            ValueError: If max_variants is not a positive integer when specified
+
+        Example:
+            >>> db = Database("example.rkdb")
+            >>> # Find exact matches only
+            >>> result = db.fuzzy_query("ATCG", mutations=0)
+            >>>
+            >>> # Allow up to 2 mutations
+            >>> result = db.fuzzy_query("ATCG", mutations=2)
+            >>> print(f"Found {result.total_matches} matches")
+            >>>
+            >>> # Get top 5 most abundant matches
+            >>> top_matches = result.get_top_matches(5)
+            >>> for match in top_matches:
+            ...     print(f"{match.kmer}: {match.count} (distance={match.distance})")
+
+        Note:
+            The number of possible variants grows combinatorially with mutation
+            tolerance. For a k-mer of length k, the number of variants at distance
+            d is k^d * 3^d (each position can be one of 3 alternative bases).
+            Use max_variants to limit computational cost for high tolerances.
+        """
+        # Check if database is closed
+        if self._is_closed:
+            raise DatabaseError("Cannot perform fuzzy query: database is closed")
+
+        # Validate mutations parameter
+        if not isinstance(mutations, int) or mutations < 0 or mutations > 5:
+            raise InvalidMutationToleranceError(
+                f"Invalid mutation tolerance: {mutations}. Must be an integer between 0 and 5."
+            )
+
+        # Validate output format
+        supported_formats = {'auto', 'json', 'table', 'tsv'}
+        if output_format not in supported_formats:
+            raise ValueError(
+                f"Invalid output format: '{output_format}'. "
+                f"Supported formats are: {', '.join(sorted(supported_formats))}"
+            )
+
+        # Validate k-mer (allow N wildcards for fuzzy query)
+        validated_kmer = validate_fuzzy_kmer(kmer, self.kmer_size, strict=True)
+
+        # Build CLI command arguments
+        args = ['fuzzy-query', str(self._path), validated_kmer, '--mutations', str(mutations)]
+
+        # Add optional arguments
+        if max_variants is not None:
+            if not isinstance(max_variants, int) or max_variants < 1:
+                raise ValueError(f"max_variants must be a positive integer, got {max_variants}")
+            args.extend(['--max-variants', str(max_variants)])
+
+        # Add output format if not auto
+        if output_format != 'auto':
+            args.extend(['--format', output_format])
+
+        # Execute fuzzy query command
+        try:
+            output = run_rustkmer_command(args)
+        except Exception as e:
+            raise QueryError(f"Failed to perform fuzzy query for k-mer '{validated_kmer}': {e}")
+
+        # Parse output
+        data = parse_fuzzy_query_output(output, output_format)
+
+        # Create FuzzyMatchResult objects from parsed data
+        matches = []
+        exact_match = None
+
+        for match_data in data.get('matches', []):
+            match = FuzzyMatchResult(
+                kmer=match_data.get('kmer', ''),
+                count=match_data.get('count', 0),
+                distance=match_data.get('distance', 0),
+                mutations=match_data.get('mutations', [])
+            )
+            matches.append(match)
+
+            # Track exact match (distance == 0)
+            if match.distance == 0:
+                exact_match = match
+
+        # Create and return FuzzyQueryResult
+        return FuzzyQueryResult(
+            query_kmer=validated_kmer,
+            exact_match=exact_match,
+            matches=matches,
+            total_matches=data.get('total_matches', 0),
+            mutation_tolerance=mutations,
+            database_path=str(self._path)
+        )
+
+    def fuzzy_query_batch(
+        self,
+        kmers: List[str],
+        mutations: int = 1,
+        max_variants: Optional[int] = None,
+        max_workers: int = 4,
+        output_format: str = 'auto'
+    ) -> FuzzyBatchResult:
+        """
+        Perform batch fuzzy k-mer queries with parallel processing.
+
+        This method processes multiple k-mers in parallel, each with the same
+        fuzzy query parameters. It's significantly more efficient than calling
+        fuzzy_query() multiple times for large batches, as it leverages multiple
+        CPU cores to run queries concurrently.
+
+        Each k-mer in the batch is processed independently with the same
+        mutation tolerance and other parameters. Invalid k-mers are silently
+        skipped (they appear in the results with 0 matches). The method returns
+        a FuzzyBatchResult that aggregates all individual query results and
+        provides summary statistics.
+
+        Args:
+            kmers (List[str]): List of k-mer sequences to query. Each must contain
+                              only A, T, C, G characters and have the correct
+                              length for the database
+            mutations (int): Maximum number of mutations allowed per query (0-5).
+                           Applied equally to all k-mers in the batch
+            max_variants (Optional[int]): Maximum number of variants to generate
+                                        and check per query. If None, checks all
+                                        possible variants for each k-mer
+            max_workers (int): Number of parallel subprocess workers to use.
+                             More workers can process more k-mers simultaneously
+                             but use more system resources (default: 4)
+            output_format (str): Output format for CLI commands. See fuzzy_query()
+                               for available options (default: 'auto')
+
+        Returns:
+            FuzzyBatchResult: Aggregated results containing:
+                - Individual query results for each valid k-mer
+                - Summary statistics (total queries, matches, success rates)
+                - Per-query success indicators
+
+        Raises:
+            DatabaseError: If the database has been closed
+            InvalidMutationToleranceError: If mutations is not in the range 0-5
+            ValueError: If max_workers is not a positive integer
+
+        Example:
+            >>> db = Database("example.rkdb")
+            >>> kmers = ["ATCG", "GCTA", "TTAA", "CCGG"]
+            >>> # Batch query with 1 mutation tolerance
+            >>> batch = db.fuzzy_query_batch(kmers, mutations=1, max_workers=2)
+            >>>
+            >>> # Check overall statistics
+            >>> print(f"Processed {batch.total_queries} queries")
+            >>> print(f"{batch.queries_with_matches} found matches")
+            >>>
+            >>> # Get summary table
+            >>> print(batch.get_summary_table())
+            >>>
+            >>> # Access individual results
+            >>> for result in batch.query_results:
+            ...     if result.total_matches > 0:
+            ...         print(f"{result.query_kmer}: {result.total_matches} matches")
+
+        Note:
+            - The method returns a FuzzyBatchResult even for empty input lists
+            - Invalid k-mers in the input list are skipped and don't raise errors
+            - All queries in the batch use the same parameters (mutations, etc.)
+            - Results are ordered based on completion, not input order
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import itertools
+
+        # Check if database is closed
+        if self._is_closed:
+            raise DatabaseError("Cannot perform batch fuzzy query: database is closed")
+
+        # Validate parameters
+        if not isinstance(mutations, int) or mutations < 0 or mutations > 5:
+            raise InvalidMutationToleranceError(
+                f"Invalid mutation tolerance: {mutations}. Must be an integer between 0 and 5."
+            )
+
+        if not isinstance(max_workers, int) or max_workers < 1:
+            raise ValueError(f"max_workers must be a positive integer, got {max_workers}")
+
+        # Validate output format
+        supported_formats = {'auto', 'json', 'table', 'tsv'}
+        if output_format not in supported_formats:
+            raise ValueError(
+                f"Invalid output format: '{output_format}'. "
+                f"Supported formats are: {', '.join(sorted(supported_formats))}"
+            )
+
+        # Early return for empty list
+        if not kmers:
+            return FuzzyBatchResult([], 0, 0, str(self._path))
+
+        # Validate each k-mer
+        validated_kmers = []
+        for kmer in kmers:
+            try:
+                validated_kmer = validate_fuzzy_kmer(kmer, self.kmer_size, strict=True)
+                validated_kmers.append(validated_kmer)
+            except Exception as e:
+                # For now, skip invalid k-mers but could include error results
+                continue
+
+        # If no valid k-mers, return empty result
+        if not validated_kmers:
+            return FuzzyBatchResult([], len(kmers), 0, str(self._path))
+
+        # Process queries in parallel
+        query_results = []
+        total_matches = 0
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all queries
+            future_to_kmer = {
+                executor.submit(
+                    self._single_fuzzy_query,
+                    kmer,
+                    mutations,
+                    max_variants,
+                    output_format
+                ): kmer
+                for kmer in validated_kmers
+            }
+
+            # Collect results
+            for future in as_completed(future_to_kmer):
+                kmer = future_to_kmer[future]
+                try:
+                    result = future.result()
+                    query_results.append(result)
+                    total_matches += result.total_matches
+                except Exception as e:
+                    # Create error result
+                    error_result = FuzzyQueryResult(
+                        query_kmer=kmer,
+                        exact_match=None,
+                        matches=[],
+                        total_matches=0,
+                        mutation_tolerance=mutations,
+                        database_path=str(self._path)
+                    )
+                    query_results.append(error_result)
+
+        return FuzzyBatchResult(
+            query_results=query_results,
+            total_queries=len(kmers),
+            total_matches=total_matches,
+            database_path=str(self._path)
+        )
+
     def query_batch(
         self,
         kmers: List[str],
@@ -209,7 +512,7 @@ class Database:
         kmer_size = self.kmer_size  # Get once to avoid repeated property access
 
         for kmer in kmers:
-            validated_kmers[kmer] = validate_kmer(kmer, kmer_size, strict=False)
+            validated_kmers[kmer] = validate_fuzzy_kmer(kmer, kmer_size, strict=False)
 
         results = {}
 
@@ -305,6 +608,93 @@ class Database:
             kmer=kmer,
             count=data.get('count', 0),
             canonical=canonical
+        )
+
+    def _single_fuzzy_query(
+        self,
+        kmer: str,
+        mutations: int,
+        max_variants: Optional[int] = None,
+        output_format: str = 'auto'
+    ) -> FuzzyQueryResult:
+        """
+        Internal method to perform a single fuzzy query without validation.
+
+        This is a helper method used by fuzzy_query_batch() to perform individual
+        queries in parallel. It assumes all input parameters have already been
+        validated by the caller and skips validation for better performance.
+
+        Args:
+            kmer (str): The validated k-mer sequence to query
+            mutations (int): Maximum number of mutations allowed (validated)
+            max_variants (Optional[int]): Maximum number of variants to check
+            output_format (str): Output format for CLI command ('auto', 'json', 'table', 'tsv')
+
+        Returns:
+            FuzzyQueryResult: Query result containing all matches within tolerance
+
+        Raises:
+            QueryError: If CLI command fails or returns unexpected output
+            ValueError: If output_format is not supported
+
+        Note:
+            This method does not check if the database is closed, validate the k-mer,
+            or validate the mutations parameter. These checks must be performed by
+            the caller for consistent behavior.
+        """
+        # Validate output format
+        supported_formats = {'auto', 'json', 'table', 'tsv'}
+        if output_format not in supported_formats:
+            raise ValueError(
+                f"Invalid output format: '{output_format}'. "
+                f"Supported formats are: {', '.join(sorted(supported_formats))}"
+            )
+
+        # Build CLI command arguments
+        args = ['fuzzy-query', str(self._path), kmer, '--mutations', str(mutations)]
+
+        # Add optional arguments
+        if max_variants is not None:
+            args.extend(['--max-variants', str(max_variants)])
+
+        # Add output format if not auto
+        if output_format != 'auto':
+            args.extend(['--format', output_format])
+
+        # Execute fuzzy query command
+        try:
+            output = run_rustkmer_command(args)
+        except Exception as e:
+            raise QueryError(f"Failed to perform fuzzy query for k-mer '{kmer}': {e}")
+
+        # Parse output
+        data = parse_fuzzy_query_output(output, output_format)
+
+        # Create FuzzyMatchResult objects from parsed data
+        matches = []
+        exact_match = None
+
+        for match_data in data.get('matches', []):
+            match = FuzzyMatchResult(
+                kmer=match_data.get('kmer', ''),
+                count=match_data.get('count', 0),
+                distance=match_data.get('distance', 0),
+                mutations=match_data.get('mutations', [])
+            )
+            matches.append(match)
+
+            # Track exact match (distance == 0)
+            if match.distance == 0:
+                exact_match = match
+
+        # Create and return FuzzyQueryResult
+        return FuzzyQueryResult(
+            query_kmer=kmer,
+            exact_match=exact_match,
+            matches=matches,
+            total_matches=data.get('total_matches', 0),
+            mutation_tolerance=mutations,
+            database_path=str(self._path)
         )
 
     def dump(

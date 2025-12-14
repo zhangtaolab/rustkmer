@@ -26,7 +26,14 @@ from .exceptions import (
     KmerLengthError,
     SubprocessError,
     ConfigurationError,
+    FuzzyQueryError,
+    InvalidMutationToleranceError,
+    CombinatorialExplosionError,
+    BatchQueryError,
 )
+
+# Fuzzy query classes
+from .fuzzy_query import FuzzyMatchResult, FuzzyQueryResult, FuzzyBatchResult
 
 # Public API
 __all__ = [
@@ -46,4 +53,13 @@ __all__ = [
     "KmerLengthError",
     "SubprocessError",
     "ConfigurationError",
+    "FuzzyQueryError",
+    "InvalidMutationToleranceError",
+    "CombinatorialExplosionError",
+    "BatchQueryError",
+
+    # Fuzzy query classes
+    "FuzzyMatchResult",
+    "FuzzyQueryResult",
+    "FuzzyBatchResult",
 ]
