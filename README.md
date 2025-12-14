@@ -878,9 +878,52 @@ python -c "from rustkmer import Database; print('✅ RustKmer Python API 就绪!
 - **100% 兼容**所有 Python 版本（包括 3.13）
 - **零编译**，安装即用
 
-#### 方式二：PyO3 Rust 扩展（高性能，但有兼容性问题）⚠️
+#### 方式二：可编辑开发安装（开发/修改代码）⚠️
 
-**仅推荐用于 Python 3.11/3.12 和开发环境**：
+**适用于开发者或需要修改 RustKmer 代码的情况**：
+
+```bash
+# 1. 克隆源码
+git clone https://github.com/your-username/rustkmer.git
+cd rustkmer
+
+# 2. 构建 Rust CLI 工具
+cargo build --release
+
+# 3. 设置环境变量（重要！）
+echo 'export PATH="/Users/forrest/GitHub/rustkmer/target/release:$PATH"' >> ~/.zshrc
+source ~/.zshrc  # 重新加载 shell 配置
+
+# 4. 安装 Python 包（可编辑模式）
+cd python  # 进入 Python 子目录
+pip install -e .
+
+# 5. 验证安装
+python -c "from rustkmer import Database; print('✅ 可编辑安装就绪!')"
+
+# 6. 测试从不同目录导入
+cd /tmp
+python -c "from rustkmer import Database; print('✅ 任意目录导入成功!')"
+```
+
+**🔧 重要配置步骤**：
+1. **PATH 设置**: 确保 `rustkmer` 命令在系统 PATH 中
+2. **可编辑安装**: 使用 `pip install -e .` 而不是普通安装
+3. **目录无关性**: 修改后的代码支持从任何目录导入
+
+**✅ 已解决的问题**:
+- **路径依赖**: 修复了只能在特定目录下工作的问题
+- **PATH 查找**: 优化了 Rust 二进制文件的查找逻辑
+- **跨目录导入**: 支持从任何工作目录导入 Database 类
+
+**⚠️ 注意事项**:
+- **开发环境**: 适合需要修改 RustKmer 源码的场景
+- **维护成本**: 需要同时维护 Rust 和 Python 代码
+- **兼容性**: 仅在 Python 3.10+ 环境下测试过
+
+#### 方式三：PyO3 Rust 扩展（性能最高，但兼容性复杂）⚠️
+
+**仅推荐用于 Python 3.11/3.12 和特殊性能需求**：
 
 ```bash
 # 1. 安装 Rust 工具链
@@ -903,14 +946,16 @@ python -c "from rustkmer import Database; print('✅ PyO3 扩展就绪!')"
 
 **建议**:
 - 生产环境：使用**纯 Python Stubs**（方式一）
-- 开发环境：可尝试 PyO3 扩展（方式二）
+- 开发/修改代码：使用**可编辑开发安装**（方式二）
+- 特殊性能需求：可尝试 PyO3 扩展（方式三）
 
 ### 安装方式对比
 
 | 方式 | Python 兼容性 | 安装难度 | 性能 | 稳定性 | 推荐度 |
 |------|---------------|----------|------|--------|--------|
 | **纯 Python Stubs** | ✅ 3.8-3.13 | ⭐ 简单 | ⭐⭐⭐ CLI级 | ⭐⭐⭐⭐⭐ 极高 | **强烈推荐** |
-| **PyO3 扩展** | ⚠️ 3.11-3.12 | ⭐⭐⭐⭐ 复杂 | ⭐⭐⭐⭐⭐ 本地Rust | ⭐⭐⭐ 中等 | 开发测试 |
+| **可编辑开发安装** | ✅ 3.10+ | ⭐⭐⭐ 中等 | ⭐⭐⭐ CLI级 | ⭐⭐⭐⭐ 高 | 开发修改代码 |
+| **PyO3 扩展** | ⚠️ 3.11-3.12 | ⭐⭐⭐⭐ 复杂 | ⭐⭐⭐⭐⭐ 本地Rust | ⭐⭐⭐ 中等 | 特殊性能需求 |
 
 ### 快速示例
 
@@ -1004,6 +1049,125 @@ print(f"Merged database contains {merged_db.total_kmers} k-mers")
 - **兼容性**: 与CLI命令行工具完全兼容
 
 更多详细信息请查看 [Python API文档](python/rustkmer/)。
+
+### 🛠️ 故障排除
+
+#### 常见导入问题
+
+**问题1: ImportError: cannot import name 'Database'**
+```bash
+# 检查 rustkmer 是否在 PATH 中
+which rustkmer
+
+# 如果没有输出，添加到 PATH
+echo 'export PATH="/path/to/rustkmer/target/release:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**问题2: 只能在特定目录下导入**
+```bash
+# 确保使用了可编辑安装
+pip uninstall rustkmer
+pip install -e ./python
+
+# 测试从不同目录导入
+cd /tmp
+python -c "from rustkmer import Database; print('✅ 导入成功')"
+```
+
+**问题3: ImportError: No module named 'rustkmer'**
+```bash
+# 检查包是否正确安装
+pip list | grep rustkmer
+
+# 如果没有安装，重新安装
+pip install rustkmer
+
+# 如果是可编辑安装
+cd /path/to/rustkmer
+pip install -e ./python
+```
+
+**问题4: PATH 设置后仍无法找到 rustkmer**
+```bash
+# 检查 PATH 环境变量
+echo $PATH | grep rustkmer
+
+# 重新加载 shell 配置
+source ~/.zshrc  # 或 ~/.bashrc
+
+# 检查二进制文件是否存在
+ls -la /path/to/rustkmer/target/release/rustkmer
+```
+
+#### 验证安装完整性
+
+```python
+# 完整的安装验证脚本
+def verify_rustkmer_installation():
+    try:
+        # 1. 导入主要模块
+        from rustkmer import Database, QueryResult, DatabaseStats
+        print("✅ 主模块导入成功")
+
+        # 2. 导入异常类
+        from rustkmer import RustKmerError, DatabaseError, QueryError
+        print("✅ 异常类导入成功")
+
+        # 3. 导入模糊查询类
+        from rustkmer import FuzzyQueryResult, FuzzyMatchResult
+        print("✅ 模糊查询类导入成功")
+
+        # 4. 检查版本
+        import rustkmer
+        print(f"✅ RustKmer 版本: {getattr(rustkmer, '__version__', '未知')}")
+
+        # 5. 测试基本功能
+        db = Database()
+        print("✅ Database 类实例化成功")
+
+        print("\n🎉 RustKmer 安装验证完成！")
+        return True
+
+    except ImportError as e:
+        print(f"❌ 导入失败: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ 其他错误: {e}")
+        return False
+
+# 运行验证
+verify_rustkmer_installation()
+```
+
+#### 开发环境建议
+
+如果您需要修改 RustKmer 的源代码，建议使用以下工作流：
+
+```bash
+# 1. 设置开发环境
+git clone https://github.com/your-username/rustkmer.git
+cd rustkmer
+
+# 2. 创建开发分支
+git checkout -b feature/your-modification
+
+# 3. 进行修改
+# ... 修改 Rust 和/或 Python 代码 ...
+
+# 4. 构建和测试
+cargo build --release
+cd python && pip install -e .
+python -m pytest tests/
+
+# 5. 验证功能
+python -c "from rustkmer import Database; print('✅ 开发版本正常工作')"
+
+# 6. 提交更改
+git add .
+git commit -m "Your modification description"
+git push origin feature/your-modification
+```
 
 ## 🏆 项目状态
 

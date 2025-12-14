@@ -250,9 +250,15 @@ def find_rustkmer_executable() -> str:
                 "Please check the path or unset RUSTKMER_PATH to use system search."
             )
 
-    # Check package bin directory
+    # Check package bin directory (for editable installs)
     package_dir = Path(__file__).parent
+    # For editable installs, look for bin directory in both package and parent directories
     bin_dir = package_dir / 'bin'
+
+    # Also check the rustkmer root directory's bin folder for editable installs
+    rustkmer_root_bin = package_dir.parent / 'bin'
+    if not bin_dir.exists() and rustkmer_root_bin.exists():
+        bin_dir = rustkmer_root_bin
 
     # Platform-specific binary name
     if sys.platform == 'win32':
