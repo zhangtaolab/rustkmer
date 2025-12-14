@@ -140,25 +140,25 @@ class Database:
         if self._is_closed:
             raise DatabaseError("Cannot query: database is closed")
 
-        # Validate k-mer
-        validated_kmer = validate_kmer(kmer, self.kmer_size, strict=validate_strict)
-
-        # Handle invalid k-mer if not strict
-        if validated_kmer is None:
-            # Still try to compute canonical form if kmer has valid characters
+        # Validate k-mer format without requiring kmer_size to avoid stats() call
+        if validate_strict:
+            # Only validate basic format (ATCG only) without length check
+            if not isinstance(kmer, str) or not re.match(r'^[ATCG]+$', kmer.upper()):
+                raise InvalidKmerError(kmer, None, "K-mer contains invalid characters")
+            validated_kmer = kmer.upper()
+        else:
+            # Non-strict validation: check if it has valid characters
             if isinstance(kmer, str) and re.match(r'^[ATCG]+$', kmer.upper()):
-                canonical = canonical_kmer(kmer.upper())
+                validated_kmer = kmer.upper()
             else:
-                canonical = None
+                # Return result with count=0 for invalid k-mers
+                return QueryResult(
+                    kmer=kmer,
+                    count=0,
+                    canonical=None
+                )
 
-            # Return result with count=0 for invalid k-mers
-            return QueryResult(
-                kmer=kmer,
-                count=0,
-                canonical=canonical
-            )
-
-        # Get canonical form
+        # Get canonical form (CLI will handle length validation)
         canonical = canonical_kmer(validated_kmer)
 
         # Execute query
@@ -270,8 +270,11 @@ class Database:
                 f"Supported formats are: {', '.join(sorted(supported_formats))}"
             )
 
-        # Validate k-mer (allow N wildcards for fuzzy query)
-        validated_kmer = validate_fuzzy_kmer(kmer, self.kmer_size, strict=True)
+        # Validate k-mer format without requiring kmer_size to avoid stats() call
+        # Allow N wildcards for fuzzy query
+        if not isinstance(kmer, str) or not re.match(r'^[ATCGN]+$', kmer.upper()):
+            raise InvalidKmerError(kmer, None, "K-mer contains invalid characters. Only A, T, C, G, N are allowed")
+        validated_kmer = kmer.upper()
 
         # Build CLI command arguments
         args = ['fuzzy-query', str(self._path), validated_kmer, '--mutations', str(mutations)]
