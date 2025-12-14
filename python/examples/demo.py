@@ -12,7 +12,7 @@ if not db_path.exists():
     print("Please ensure the test data exists.")
     sys.exit(1)
 
-db = Database(str(db_path))
+db = Database(str(db_path), validate=False)
 db_stats = db.stats()
 print("Database stats:")
 print(db_stats)
@@ -24,6 +24,14 @@ print(query_result1)
 
 query_result2 = db.query("TACCCCA")
 print(query_result2)
+
+print("--------------------------------")
+
+print("Batch query result:")
+batch_query_result = db.query_batch(["ACTAGTG","TACACAA","TACCCCA","TGAGCCA"])
+print("Batch query results:")
+for kmer, result in batch_query_result.items():
+    print(f"  {kmer}: count={result.count}, canonical={result.canonical}, present={result.is_present}")
 
 print("--------------------------------")
 
@@ -42,8 +50,8 @@ else:
 
 print("--------------------------------")
 
-fuzzy_query_result2 = db.fuzzy_query("ACTANTG")
-print("Fuzzy query result for 'ACTANTG'")
+fuzzy_query_result2 = db.fuzzy_query("NNNNNTG")
+print("Fuzzy query result for 'NNNNNTG'")
 print(f"  Total matches found: {fuzzy_query_result2.total_matches}")
 print(f"  Has exact match: {fuzzy_query_result2.has_exact_match}")
 if fuzzy_query_result2.matches:
@@ -54,3 +62,7 @@ if fuzzy_query_result2.matches:
         print(f"    ... and {len(fuzzy_query_result2.matches) - 10} more matches")
 else:
     print("  No matches found")
+
+# Close the database
+db.close()
+print("Demo completed successfully!")

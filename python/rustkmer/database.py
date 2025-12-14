@@ -56,11 +56,12 @@ class Database:
 
         Args:
             path: Path to the .rkdb database file
-            validate: Whether to validate database on initialization
+            validate: Whether to fully validate database on initialization.
+                     When False, only checks if file exists and is readable.
 
         Raises:
             DatabaseNotFoundError: If database file doesn't exist
-            InvalidDatabaseError: If file is not a valid database
+            InvalidDatabaseError: If file is not a valid database (when validate=True)
         """
         self._path = Path(path)
         self._kmer_size: Optional[int] = None
@@ -68,8 +69,12 @@ class Database:
         self._is_closed = False
         self._stats_cache: Optional[DatabaseStats] = None
 
+        # Always perform basic validation to ensure database exists and is readable
+        self._validate_database_basic()
+
         if validate:
-            self._validate_database()
+            # Perform full validation including stats check
+            self._validate_database_full()
 
     @property
     def path(self) -> Path:
@@ -88,8 +93,8 @@ class Database:
         """Whether database metadata has been loaded."""
         return self._is_loaded
 
-    def _validate_database(self) -> None:
-        """Validate that the database file exists and is readable."""
+    def _validate_database_basic(self) -> None:
+        """Basic validation: check that the database file exists and is readable."""
         if not self._path.exists():
             raise DatabaseNotFoundError(str(self._path))
 
@@ -99,13 +104,29 @@ class Database:
                 "Path exists but is not a file"
             )
 
+        # Check if file is readable by attempting to read file size
+        try:
+            file_size = self._path.stat().st_size
+            if file_size == 0:
+                raise InvalidDatabaseError(
+                    str(self._path),
+                    "Database file is empty"
+                )
+        except (OSError, PermissionError) as e:
+            raise InvalidDatabaseError(
+                str(self._path),
+                f"Cannot read database file: {e}"
+            )
+
+    def _validate_database_full(self) -> None:
+        """Full validation: check that the database is a valid .rkdb file."""
         # Try to get stats to validate it's a real database
         try:
             self.stats()
         except Exception as e:
             raise InvalidDatabaseError(
                 str(self._path),
-                f"Failed to read database: {e}"
+                f"Failed to read database stats: {e}"
             )
 
     def _load_metadata(self) -> None:
@@ -425,12 +446,15 @@ class Database:
         if not kmers:
             return FuzzyBatchResult([], 0, 0, str(self._path))
 
-        # Validate each k-mer
+        # Validate each k-mer without requiring kmer_size to avoid stats() call
         validated_kmers = []
         for kmer in kmers:
             try:
-                validated_kmer = validate_fuzzy_kmer(kmer, self.kmer_size, strict=True)
-                validated_kmers.append(validated_kmer)
+                # Simple validation allowing N wildcards for fuzzy query
+                if isinstance(kmer, str) and re.match(r'^[ATCGN]+$', kmer.upper()):
+                    validated_kmers.append(kmer.upper())
+                else:
+                    continue
             except Exception as e:
                 # For now, skip invalid k-mers but could include error results
                 continue
@@ -512,10 +536,13 @@ class Database:
 
         # Validate all kmers first (batch validation for performance)
         validated_kmers = {}
-        kmer_size = self.kmer_size  # Get once to avoid repeated property access
 
         for kmer in kmers:
-            validated_kmers[kmer] = validate_fuzzy_kmer(kmer, kmer_size, strict=False)
+            # Simple validation without requiring kmer_size to avoid stats() call
+            if isinstance(kmer, str) and re.match(r'^[ATCG]+$', kmer.upper()):
+                validated_kmers[kmer] = kmer.upper()
+            else:
+                validated_kmers[kmer] = None
 
         results = {}
 
