@@ -45,7 +45,7 @@ fn main() -> anyhow::Result<()> {
         rustkmer::cli::args::Commands::Dump { .. } => {
             rustkmer::cli::commands::dump::execute_dump(&args)?;
         }
-        rustkmer::cli::args::Commands::FuzzyQuery { database, query, mutations, max_variants, batch_size, format, output, verbose, quiet, profile } => {
+        rustkmer::cli::args::Commands::FuzzyQuery { database, query, mutations, max_variants, batch_size, format, output, verbose, quiet, profile, position_mutations } => {
             let args = rustkmer::cli::commands::fuzzy::FuzzyQueryArgs {
                 database: database.into(),
                 query,
@@ -57,6 +57,7 @@ fn main() -> anyhow::Result<()> {
                 verbose,
                 quiet,
                 profile,
+                position_mutations,
             };
             rustkmer::cli::commands::fuzzy::execute_fuzzy_query(&args)?;
         }

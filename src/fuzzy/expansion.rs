@@ -80,14 +80,18 @@ pub fn generate_query_expansion(query: &crate::fuzzy::FuzzyQuery) -> FuzzyResult
         let mut mutation_variants = Vec::new();
 
         for concrete in &concrete_kmers {
-            let variants = mutation::generate_mutation_variants(concrete, query.mutation_tolerance, query.max_variants)?;
+            let variants = mutation::generate_hybrid_mutation_variants(
+                concrete,
+                query.mutation_tolerance,
+                query.position_mutations.as_ref(),
+                query.max_variants
+            )?;
             mutation_variants.extend(variants);
         }
 
         concrete_kmers = mutation_variants;
 
         // Update expansion method to combined
-        
 
         if let ExpansionMethod::WildcardOnly { wildcard_count } = expansion_method {
             ExpansionMethod::Combined {

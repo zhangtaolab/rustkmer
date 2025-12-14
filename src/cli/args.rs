@@ -176,6 +176,10 @@ pub enum Commands {
         /// Show performance profiling
         #[arg(long)]
         profile: bool,
+
+        /// Position-specific mutations (e.g., "3,4,5:2" or "3,4,5:2;6,7:1")
+        #[arg(long = "position-mutations")]
+        position_mutations: Option<String>,
     },
 
     /// Batch fuzzy queries from file

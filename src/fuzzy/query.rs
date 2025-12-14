@@ -7,7 +7,115 @@ use crate::database::format::RKDatabase;
 use crate::fuzzy::{constants, expansion, PerformanceMetrics, FuzzyError, FuzzyResult};
 pub type FuzzyQueryResult<T> = Result<T, crate::fuzzy::FuzzyError>;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::time::Instant;
+
+/// Configuration for position-specific mutation limits
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PositionMutationConfig {
+    /// Multiple position groups with independent limits
+    pub groups: Vec<PositionMutationGroup>,
+    /// Global mutation limit across all groups (optional)
+    pub global_max_mutations: Option<usize>,
+}
+
+/// A single group of positions with shared mutation limits
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PositionMutationGroup {
+    /// Positions where mutations are allowed (0-based, sorted, unique)
+    pub positions: Vec<usize>,
+    /// Maximum number of mutations allowed in this group
+    pub max_mutations: usize,
+    /// Optional group name for debugging/logging
+    #[serde(skip)]
+    pub group_name: Option<String>,
+}
+
+impl PositionMutationConfig {
+    /// Parse from string format like "3,4,5:2;6,7:1"
+    pub fn parse(input: &str) -> FuzzyResult<Self> {
+        let mut config = PositionMutationConfig::default();
+
+        if input.trim().is_empty() {
+            return Ok(config);
+        }
+
+        for (group_idx, group_str) in input.split(';').enumerate() {
+            let group_str = group_str.trim();
+            if group_str.is_empty() {
+                continue;
+            }
+
+            let (positions_str, limit_str) = group_str
+                .split_once(':')
+                .ok_or_else(|| FuzzyError::InvalidParameters(
+                    format!("Invalid group format '{}', expected 'positions:limit'", group_str)
+                ))?;
+
+            let positions: Vec<usize> = positions_str
+                .split(',')
+                .filter_map(|s| {
+                    let trimmed = s.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        trimmed.parse().ok()
+                    }
+                })
+                .collect();
+
+            let max_mutations: usize = limit_str.trim()
+                .parse()
+                .map_err(|_| FuzzyError::InvalidParameters(
+                    format!("Invalid mutation limit '{}'", limit_str.trim())
+                ))?;
+
+            config.groups.push(PositionMutationGroup {
+                positions,
+                max_mutations,
+                group_name: Some(format!("group_{}", group_idx)),
+            });
+        }
+
+        Ok(config)
+    }
+
+    /// Validate all groups
+    pub fn validate(&self, sequence_length: usize) -> FuzzyResult<()> {
+        let mut all_positions = HashSet::new();
+
+        for (idx, group) in self.groups.iter().enumerate() {
+            // Validate positions are within bounds
+            for &pos in &group.positions {
+                if pos >= sequence_length {
+                    return Err(FuzzyError::InvalidParameters(
+                        format!("Group {}: Position {} exceeds sequence length {} (valid: 0-{})",
+                               idx, pos, sequence_length, sequence_length - 1)
+                    ));
+                }
+            }
+
+            // Check for overlap with previous groups
+            for &pos in &group.positions {
+                if !all_positions.insert(pos) {
+                    return Err(FuzzyError::InvalidParameters(
+                        format!("Group {}: Position {} already used in another group", idx, pos)
+                    ));
+                }
+            }
+
+            // Validate mutation limit
+            if group.max_mutations > group.positions.len() {
+                return Err(FuzzyError::InvalidParameters(
+                    format!("Group {}: Max mutations ({}) cannot exceed number of positions ({})",
+                           idx, group.max_mutations, group.positions.len())
+                ));
+            }
+        }
+
+        Ok(())
+    }
+}
 
 /// Main fuzzy query configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +137,9 @@ pub struct FuzzyQuery {
 
     /// Batch size for processing variants
     pub batch_size: usize,
+
+    /// Position-specific mutation constraints (optional)
+    pub position_mutations: Option<PositionMutationConfig>,
 }
 
 impl FuzzyQuery {
@@ -41,6 +152,7 @@ impl FuzzyQuery {
             max_variants: Some(constants::DEFAULT_MAX_VARIANTS),
             enable_parallel: false, // Always sequential processing
             batch_size: constants::DEFAULT_BATCH_SIZE,
+            position_mutations: None,
         }
     }
 
@@ -60,6 +172,28 @@ impl FuzzyQuery {
             max_variants,
             enable_parallel: false, // Always sequential processing
             batch_size,
+            position_mutations: None,
+        }
+    }
+
+    /// Create a fuzzy query with position mutation constraints
+    pub fn with_position_mutations(
+        query_string: &str,
+        kmer_size: usize,
+        mutation_tolerance: usize,
+        max_variants: Option<usize>,
+        _enable_parallel: bool, // Ignored - always uses sequential processing
+        batch_size: usize,
+        position_mutations: Option<PositionMutationConfig>,
+    ) -> Self {
+        Self {
+            query_string: query_string.to_string(),
+            kmer_size,
+            mutation_tolerance,
+            max_variants,
+            enable_parallel: false, // Always sequential processing
+            batch_size,
+            position_mutations,
         }
     }
 
@@ -88,8 +222,9 @@ impl FuzzyQuery {
             return Err(FuzzyError::InvalidParameters("k-mer size must be > 0".to_string()));
         }
 
-        // Validate mutation tolerance
-        if self.mutation_tolerance > (self.kmer_size as f64 * constants::MAX_MUTATION_RATIO) as usize {
+        // Validate mutation tolerance (only if not using position mutations)
+        if self.position_mutations.is_none() &&
+           self.mutation_tolerance > (self.kmer_size as f64 * constants::MAX_MUTATION_RATIO) as usize {
             return Err(FuzzyError::InvalidParameters(
                 "Mutation tolerance too high (max k/2)".to_string(),
             ));
@@ -98,6 +233,11 @@ impl FuzzyQuery {
         // Validate batch size
         if self.batch_size == 0 {
             return Err(FuzzyError::InvalidParameters("Batch size must be > 0".to_string()));
+        }
+
+        // Validate position mutations if specified
+        if let Some(ref position_config) = self.position_mutations {
+            position_config.validate(self.query_string.len())?;
         }
 
         Ok(())

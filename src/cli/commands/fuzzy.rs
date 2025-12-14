@@ -4,7 +4,7 @@
 //! supporting wildcard expansion, length normalization, and mutation tolerance.
 
 use crate::database::format::RKDatabase;
-use crate::fuzzy::{FuzzyQuery, FuzzyQueryEngine};
+use crate::fuzzy::{FuzzyQuery, FuzzyQueryEngine, query::PositionMutationConfig};
 use anyhow::Result;
 use clap::Args;
 use serde_json;
@@ -75,6 +75,13 @@ pub struct FuzzyQueryArgs {
     /// Show performance profiling
     #[arg(long = "profile", help = "Show performance profiling")]
     pub profile: bool,
+
+    /// Position-specific mutations (e.g., "3,4,5:2" or "3,4,5:2;6,7:1")
+    #[arg(
+        long = "position-mutations",
+        help = "Position-specific mutations (e.g., \"3,4,5:2\" or \"3,4,5:2;6,7:1\")"
+    )]
+    pub position_mutations: Option<String>,
 }
 
 /// Arguments for batch fuzzy query command
@@ -161,14 +168,30 @@ pub fn execute_fuzzy_query(args: &FuzzyQueryArgs) -> Result<()> {
     // Get k-mer size before moving database
     let kmer_size = database.kmer_size();
 
-    // Create fuzzy query
-    let query = FuzzyQuery::with_params(
+    // Parse position mutations if specified
+    let position_mutations = if let Some(ref pos_str) = args.position_mutations {
+        Some(PositionMutationConfig::parse(pos_str)?)
+    } else {
+        None
+    };
+
+    // Create fuzzy query with position mutations
+    // When position mutations are specified, ignore the global mutations parameter
+    let effective_mutations = if position_mutations.is_some() {
+        // Use kmer_size as a safe upper bound (position mutations will control actual limits)
+        kmer_size
+    } else {
+        args.mutations
+    };
+
+    let query = FuzzyQuery::with_position_mutations(
         &args.query,
         kmer_size,
-        args.mutations,
+        effective_mutations,
         Some(args.max_variants),
         false, // Always sequential processing
         args.batch_size,
+        position_mutations,
     );
 
     // Create query engine
