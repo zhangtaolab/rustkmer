@@ -125,16 +125,46 @@ def validate_fuzzy_kmer(kmer: str, kmer_size: Optional[int] = None, strict: bool
 def run_rustkmer_command(args: List[str], timeout: Optional[float] = None) -> str:
     """Execute a rustkmer CLI command and return stdout.
 
+    This function is the main interface between the Python API and the
+    rustkmer CLI executable. It handles subprocess execution, error parsing,
+    and provides helpful error messages for common failure scenarios.
+
     Args:
-        args: Command line arguments for rustkmer
-        timeout: Optional timeout in seconds
+        args: Command line arguments for rustkmer (without executable name).
+              Examples:
+              - ['query', 'database.rkdb', 'ATCG']
+              - ['stats', 'database.rkdb']
+              - ['dump', 'database.rkdb', 'ATCG']
+        timeout: Optional timeout in seconds. If None, no timeout is applied.
+                Recommended: 300 seconds for most operations,
+                600+ seconds for large dumps.
 
     Returns:
-        The command's stdout output
+        The command's stdout output, stripped of leading/trailing whitespace.
 
     Raises:
-        SubprocessError: If the command fails
-        ConfigurationError: If rustkmer is not found
+        SubprocessError: If the command fails, times out, or returns non-zero exit code.
+                       The error message includes helpful context about the failure.
+        ConfigurationError: If rustkmer executable cannot be found.
+
+    Example:
+        >>> # Basic query
+        >>> output = run_rustkmer_command(['query', 'database.rkdb', 'ATCG'])
+        >>> print(f"Count: {output}")
+
+        >>> # With timeout
+        >>> try:
+        ...     output = run_rustkmer_command(['dump', 'large_db.rkdb'], timeout=600)
+        ... except SubprocessError as e:
+        ...     print(f"Command failed: {e}")
+
+    Note:
+        This function automatically finds the rustkmer executable using
+        the find_rustkmer_executable() strategy, which checks common paths
+        and environment variables.
+
+    See Also:
+        find_rustkmer_executable: Function that locates the rustkmer executable
     """
     # Find rustkmer executable
     rustkmer_cmd = find_rustkmer_executable()
@@ -206,17 +236,37 @@ def run_rustkmer_command(args: List[str], timeout: Optional[float] = None) -> st
 def find_rustkmer_executable() -> str:
     """Find the rustkmer executable (with caching).
 
-    Searches in the following order:
+    This function searches for the rustkmer CLI executable using a prioritized
+    search strategy and caches successful results to avoid repeated filesystem
+    lookups.
+
+    The search order is:
     1. Cache (previous successful lookup)
     2. RUSTKMER_PATH environment variable
-    3. Package bin directory
+    3. Package bin directory (if installed as package)
     4. System PATH
 
     Returns:
-        Path to the rustkmer executable
+        Path to the rustkmer executable as a string.
 
     Raises:
-        ConfigurationError: If rustkmer cannot be found
+        ConfigurationError: If rustkmer executable cannot be found in any location.
+
+    Example:
+        >>> try:
+        ...     exe_path = find_rustkmer_executable()
+        ...     print(f"Found rustkmer at: {exe_path}")
+        ... except ConfigurationError as e:
+        ...     print(f"rustkmer not found: {e}")
+        ...     print("Install rustkmer or set RUSTKMER_PATH environment variable")
+
+    Note:
+        - Results are cached after the first successful lookup for performance
+        - Set RUSTKMER_PATH environment variable to specify custom location
+        - The function is thread-safe and can be called from multiple threads
+
+    See Also:
+        run_rustkmer_command: Uses this function to execute rustkmer commands
     """
     global _rustkmer_path_cache
 
@@ -440,14 +490,33 @@ def parse_stats_output(output: str) -> Dict[str, Union[str, int]]:
 def canonical_kmer(kmer: str) -> str:
     """Return the canonical representation of a k-mer.
 
-    The canonical k-mer is the lexicographically smaller of the k-mer
-    and its reverse complement.
+    In genomics, k-mers and their reverse complements represent the same
+    biological information due to DNA double-strandedness. The canonical
+    k-mer is defined as the lexicographically smaller of the k-mer and its
+    reverse complement, providing a unique representation for each
+    k-mer pair.
 
     Args:
-        kmer: The k-mer sequence
+        kmer: The k-mer sequence (DNA alphabet: A, T, C, G).
 
     Returns:
-        The canonical k-mer
+        The canonical k-mer (lexicographically smaller of kmer and reverse complement).
+
+    Example:
+        >>> canonical_kmer("ATCG")
+        'ATCG'  # ATCG < CGAT lexicographically
+
+        >>> canonical_kmer("GCTA")
+        'ATCG'  # Reverse complement is ATCG, which is smaller
+
+    Note:
+        - This function is essential for k-mer counting and database operations
+        - Allows treating forward and reverse complement strands as equivalent
+        - Ensures consistent k-mer representation across operations
+        - Only works with valid DNA characters (A, T, C, G)
+
+    See Also:
+        validate_kmer: For k-mer validation before canonicalization
     """
     complement = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}
 

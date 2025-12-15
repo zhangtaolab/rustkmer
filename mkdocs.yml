@@ -58,6 +58,13 @@ nav:
     - Tutorials: user-guide/tutorials/index.md
   - API Reference:
     - api-reference/index.md
+    - Python:
+      - api-reference/overview.md
+      - Database: api-reference/database.md
+      - Query Results: api-reference/query.md
+      - Database Stats: api-reference/stats.md
+      - Fuzzy Queries: api-reference/fuzzyquery.md
+      - Exceptions: api-reference/exceptions.md
     - Rust:
       - api-reference/rust/index.md
       - KmerCounter: api-reference/rust/counter.md

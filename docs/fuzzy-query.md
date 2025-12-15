@@ -242,6 +242,15 @@ Then run:
 rustkmer fuzzy-query -d genome.rkdb --query-file queries.txt -o batch_results.json
 ```
 
+## Important Note: N's in Queries
+
+When using N characters in queries, be aware of the different default behavior between CLI and Python API:
+
+- **CLI**: Default `mutations=0` (exact match only)
+- **Python API**: Default `mutations=1` (allows 1 mutation by default)
+
+This means the same query will return different results depending on which interface you use. See [Fuzzy Query with N's: Behavior and Best Practices](fuzzy_query_n_behavior.md) for detailed information.
+
 ## Batch Processing
 
 ### Processing Multiple Queries
