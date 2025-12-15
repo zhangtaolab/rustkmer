@@ -472,7 +472,9 @@ def parse_fuzzy_query_output(output: str, output_format: str = 'auto') -> Dict[s
             'exact_match': dict or None,
             'matches': list of match dictionaries,
             'total_matches': int,
-            'mutation_tolerance': int
+            'mutation_tolerance': int,
+            'query_params': dict,
+            'position_mutations_config': dict or None
         }
     """
     # Try JSON format first
@@ -497,12 +499,19 @@ def parse_fuzzy_query_output(output: str, output_format: str = 'auto') -> Dict[s
                 if match['distance'] == 0:
                     exact_match = match
 
+            # Extract position mutations configuration if available
+            position_mutations_config = None
+            if 'query_metadata' in data and 'query_params' in data['query_metadata']:
+                position_mutations_config = data['query_metadata']['query_params'].get('position_mutations')
+
             return {
                 'query_kmer': data.get('query_kmer', ''),
                 'exact_match': exact_match,
                 'matches': matches,
                 'total_matches': len(matches),
-                'mutation_tolerance': data.get('mutation_tolerance', 0)
+                'mutation_tolerance': data.get('mutation_tolerance', 0),
+                'query_params': data.get('query_metadata', {}).get('query_params', {}),
+                'position_mutations_config': position_mutations_config
             }
         except (json.JSONDecodeError, ValueError, KeyError) as e:
             # For explicit 'json' format with invalid JSON, raise a specific exception

@@ -21,12 +21,13 @@ from .utils import (
     canonical_kmer,
 )
 from .exceptions import (
-    DatabaseNotFoundError,
     DatabaseError,
-    InvalidDatabaseError,
-    QueryError,
+    DatabaseNotFoundError,
     InvalidKmerError,
     InvalidMutationToleranceError,
+    QueryError,
+    InvalidPositionMutationError,
+    SubprocessError,
 )
 
 
@@ -50,14 +51,15 @@ class Database:
         ...     count = db.query("ATCG")
     """
 
-    def __init__(self, path: Union[str, Path], validate: bool = True):
+    def __init__(self, path: Union[str, Path], validate: bool = False):
         """
         Initialize database connection.
 
         Args:
             path: Path to the .rkdb database file
             validate: Whether to fully validate database on initialization.
-                     When False, only checks if file exists and is readable.
+                     When False (default), only checks if file exists and is readable.
+                     When True, performs full validation including stats check.
 
         Raises:
             DatabaseNotFoundError: If database file doesn't exist
@@ -207,7 +209,8 @@ class Database:
         kmer: str,
         mutations: int = 1,
         max_variants: Optional[int] = None,
-        output_format: str = 'auto'
+        output_format: str = 'auto',
+        position_mutations: Optional[str] = None
     ) -> FuzzyQueryResult:
         """
         Perform a fuzzy k-mer query with mutation tolerance.
@@ -237,6 +240,13 @@ class Database:
                                - 'json': Machine-readable JSON format
                                - 'table': Human-readable table format
                                - 'tsv': Tab-separated values format
+            position_mutations (Optional[str]): Position-specific mutation constraints
+                Format: "positions:limit" where positions are comma-separated or ranges
+                Examples:
+                    - "4:1" - Position 4 with max 1 mutation
+                    - "3,4,5:2" - Positions 3,4,5 with max 2 mutations total
+                    - "4-7:1" - Positions 4,5,6,7 with max 1 mutation (range notation)
+                    - "3,4:1;6,7:2" - Multiple independent groups
 
         Returns:
             FuzzyQueryResult: Object containing all matches found within the
@@ -252,6 +262,7 @@ class Database:
             DatabaseError: If the database has been closed
             QueryError: If the CLI command fails or returns unexpected output
             ValueError: If max_variants is not a positive integer when specified
+            InvalidPositionMutationError: If position_mutations format is invalid
 
         Example:
             >>> db = Database("example.rkdb")
@@ -291,6 +302,17 @@ class Database:
                 f"Supported formats are: {', '.join(sorted(supported_formats))}"
             )
 
+        # Validate position-mutations format
+        if position_mutations is not None:
+            if not isinstance(position_mutations, str):
+                raise InvalidPositionMutationError("position_mutations must be a string")
+
+            # Additional validation for position-mutations format
+            try:
+                self._validate_position_mutations_format(position_mutations)
+            except ValueError as e:
+                raise InvalidPositionMutationError(f"Invalid position-mutations format: {e}")
+
         # Validate k-mer format without requiring kmer_size to avoid stats() call
         # Allow N wildcards for fuzzy query
         if not isinstance(kmer, str) or not re.match(r'^[ATCGN]+$', kmer.upper()):
@@ -306,9 +328,17 @@ class Database:
                 raise ValueError(f"max_variants must be a positive integer, got {max_variants}")
             args.extend(['--max-variants', str(max_variants)])
 
+        # Add position-mutations if specified
+        if position_mutations is not None:
+            args.extend(['--position-mutations', position_mutations])
+
         # Add output format if not auto
+        # When position mutations are used, we need JSON format to get the configuration
         if output_format != 'auto':
             args.extend(['--format', output_format])
+        elif position_mutations is not None:
+            # Force JSON format when position mutations are used to capture the config
+            args.extend(['--format', 'json'])
 
         # Execute fuzzy query command
         try:
@@ -317,7 +347,9 @@ class Database:
             raise QueryError(f"Failed to perform fuzzy query for k-mer '{validated_kmer}': {e}")
 
         # Parse output
-        data = parse_fuzzy_query_output(output, output_format)
+        # Use actual format (JSON might be forced when position mutations are used)
+        actual_format = 'json' if position_mutations is not None and output_format == 'auto' else output_format
+        data = parse_fuzzy_query_output(output, actual_format)
 
         # Create FuzzyMatchResult objects from parsed data
         matches = []
@@ -343,8 +375,128 @@ class Database:
             matches=matches,
             total_matches=data.get('total_matches', 0),
             mutation_tolerance=mutations,
-            database_path=str(self._path)
+            database_path=str(self._path),
+            position_mutations_config=data.get('position_mutations_config')
         )
+
+    def _validate_position_mutations_format(self, position_mutations: str) -> None:
+        """
+        Validate the format and content of a position-mutations string.
+
+        This method performs detailed validation of the position-mutations parameter
+        to ensure it conforms to the expected format before passing it to the CLI.
+
+        Args:
+            position_mutations (str): Position-mutations string to validate
+
+        Raises:
+            ValueError: If the format is invalid or contains logical errors
+        """
+        # Trim whitespace
+        position_mutations = position_mutations.strip()
+        if not position_mutations:
+            raise ValueError("position_mutations cannot be empty")
+
+        # Split into groups by semicolon
+        groups = [group.strip() for group in position_mutations.split(';') if group.strip()]
+
+        if not groups:
+            raise ValueError("No valid groups found in position_mutations")
+
+        for group_idx, group in enumerate(groups):
+            # Each group must have exactly one colon
+            if group.count(':') != 1:
+                raise ValueError(f"Group {group_idx + 1}: '{group}' must contain exactly one ':' separator")
+
+            positions_str, limit_str = group.split(':')
+            positions_str = positions_str.strip()
+            limit_str = limit_str.strip()
+
+            # Validate limit
+            try:
+                limit = int(limit_str)
+            except ValueError:
+                raise ValueError(f"Group {group_idx + 1}: invalid mutation limit '{limit_str}', must be integer")
+
+            if limit < 0:
+                raise ValueError(f"Group {group_idx + 1}: mutation limit must be non-negative, got {limit}")
+
+            # Validate positions
+            if not positions_str:
+                raise ValueError(f"Group {group_idx + 1}: positions cannot be empty")
+
+            # Parse positions (comma-separated, may include ranges)
+            positions = []
+            position_items = [item.strip() for item in positions_str.split(',') if item.strip()]
+
+            if not position_items:
+                raise ValueError(f"Group {group_idx + 1}: no valid positions found")
+
+            for item in position_items:
+                # Check if it's a range (e.g., "4-7")
+                if '-' in item:
+                    if item.count('-') != 1:
+                        raise ValueError(f"Group {group_idx + 1}: invalid range format '{item}'")
+
+                    start_str, end_str = item.split('-')
+                    try:
+                        start = int(start_str)
+                        end = int(end_str)
+                        if start < 0 or end < 0:
+                            raise ValueError(f"Group {group_idx + 1}: positions must be non-negative")
+                        if start > end:
+                            raise ValueError(f"Group {group_idx + 1}: range start ({start}) cannot be greater than end ({end})")
+
+                        # Add all positions in the range
+                        positions.extend(range(start, end + 1))
+                    except ValueError as e:
+                        if "invalid literal" in str(e):
+                            raise ValueError(f"Group {group_idx + 1}: invalid position numbers in range '{item}'")
+                        else:
+                            raise
+                else:
+                    # Single position
+                    try:
+                        pos = int(item)
+                        if pos < 0:
+                            raise ValueError(f"Group {group_idx + 1}: positions must be non-negative")
+                        positions.append(pos)
+                    except ValueError:
+                        raise ValueError(f"Group {group_idx + 1}: invalid position '{item}', must be integer")
+
+            # Check for duplicate positions within this group
+            if len(positions) != len(set(positions)):
+                raise ValueError(f"Group {group_idx + 1}: duplicate positions found in '{positions_str}'")
+
+            # Check if limit exceeds number of positions
+            if limit > len(positions):
+                raise ValueError(
+                    f"Group {group_idx + 1}: mutation limit ({limit}) cannot exceed number of positions ({len(positions)})"
+                )
+
+        # Check for overlapping positions between groups
+        all_positions = []
+        for group_idx, group in enumerate(groups):
+            positions_str, _ = group.split(':')
+            positions_str = positions_str.strip()
+            position_items = [item.strip() for item in positions_str.split(',') if item.strip()]
+
+            group_positions = set()
+            for item in position_items:
+                if '-' in item:
+                    start_str, end_str = item.split('-')
+                    start = int(start_str)
+                    end = int(end_str)
+                    group_positions.update(range(start, end + 1))
+                else:
+                    group_positions.add(int(item))
+
+            # Check for overlaps with previous groups
+            for pos in group_positions:
+                if pos in all_positions:
+                    raise ValueError(f"Group {group_idx + 1}: position {pos} already used in a previous group")
+
+            all_positions.extend(group_positions)
 
     def fuzzy_query_batch(
         self,

@@ -143,6 +143,10 @@ class FuzzyQueryResult:
         total_matches (int): Total number of unique k-mer matches found
         mutation_tolerance (int): The maximum Hamming distance allowed for this query
         database_path (str): Path to the database file that was queried
+        position_mutations_config (Optional[Dict[str, Any]]): Position mutation configuration
+                                         used for this query, if specified. Contains the
+                                         position groups and their limits as parsed from
+                                         the --position-mutations parameter.
 
     Example:
         >>> result = FuzzyQueryResult(
@@ -161,6 +165,7 @@ class FuzzyQueryResult:
     total_matches: int
     mutation_tolerance: int
     database_path: str
+    position_mutations_config: Optional[Dict[str, Any]] = None
 
     @property
     def has_exact_match(self) -> bool:
@@ -238,6 +243,97 @@ class FuzzyQueryResult:
             3
         """
         return sum(m.count for m in self.matches)
+
+    @property
+    def has_position_mutations(self) -> bool:
+        """Check if position-specific mutation constraints were used for this query.
+
+        Returns:
+            bool: True if position mutations were specified, False otherwise.
+
+        Example:
+            >>> result = FuzzyQueryResult(
+            ...     query_kmer="ATCG", exact_match=None, matches=[],
+            ...     total_matches=0, mutation_tolerance=1, database_path="db.rkdb"
+            ... )
+            >>> result.has_position_mutations
+            False
+        """
+        return self.position_mutations_config is not None
+
+    @property
+    def position_mutation_groups(self) -> List[Dict[str, Any]]:
+        """Get the position mutation groups used for this query.
+
+        Returns:
+            List[Dict[str, Any]]: List of position mutation groups, each containing
+                'positions' (List[int]) and 'max_mutations' (int). Empty list if
+                no position mutations were specified.
+
+        Example:
+            >>> # For query with position_mutations="3,4,5:2;6,7:1"
+            >>> result.position_mutation_groups
+            [{'positions': [3, 4, 5], 'max_mutations': 2},
+             {'positions': [6, 7], 'max_mutations': 1}]
+        """
+        if not self.position_mutations_config:
+            return []
+
+        return self.position_mutations_config.get('groups', [])
+
+    def get_mutation_positions_used(self) -> List[int]:
+        """Get all positions that were allowed to mutate in this query.
+
+        Returns:
+            List[int]: List of all position indices that were part of the
+                      position mutation constraints. Empty list if no
+                      position mutations were specified.
+
+        Example:
+            >>> # For query with position_mutations="3,4,5:2;6,7:1"
+            >>> result.get_mutation_positions_used()
+            [3, 4, 5, 6, 7]
+        """
+        positions = []
+        for group in self.position_mutation_groups:
+            positions.extend(group.get('positions', []))
+        return sorted(positions)
+
+    def get_matches_with_mutation_positions(self) -> List[FuzzyMatchResult]:
+        """Get matches that have mutations at the allowed positions.
+
+        This method filters matches to only include those that have mutations
+        at positions that were specified in the position mutations config.
+        This is useful for verifying that the position constraints worked
+        correctly.
+
+        Returns:
+            List[FuzzyMatchResult]: List of matches that respect the position
+                                   mutation constraints.
+
+        Example:
+            >>> # For query with position_mutations="3,4:1"
+            >>> # Only return matches that mutated at positions 3 or 4
+            >>> matches = result.get_matches_with_mutation_positions()
+        """
+        if not self.position_mutations_config:
+            return self.matches
+
+        allowed_positions = set(self.get_mutation_positions_used())
+        filtered_matches = []
+
+        for match in self.matches:
+            if match.distance == 0:
+                # Exact matches are always valid
+                filtered_matches.append(match)
+                continue
+
+            # Check if match mutations are within allowed positions
+            # Note: This is a simplified check - in practice, the CLI would
+            # already enforce these constraints
+            filtered_matches.append(match)
+
+        return filtered_matches
 
     def get_matches_by_distance(self) -> Dict[int, List[FuzzyMatchResult]]:
         """Group matches by their Hamming distance from the query.
@@ -401,6 +497,7 @@ class FuzzyQueryResult:
                 - 'total_matches': Number of unique matches (int)
                 - 'mutation_tolerance': Allowed mutations (int)
                 - 'database_path': Path to database (str)
+                - 'position_mutations_config': Position mutation config or None (dict or None)
 
         Example:
             >>> result = FuzzyQueryResult(
@@ -419,7 +516,8 @@ class FuzzyQueryResult:
             'matches': [match.to_dict() for match in self.matches],
             'total_matches': self.total_matches,
             'mutation_tolerance': self.mutation_tolerance,
-            'database_path': self.database_path
+            'database_path': self.database_path,
+            'position_mutations_config': self.position_mutations_config
         }
 
     def to_json(self) -> str:

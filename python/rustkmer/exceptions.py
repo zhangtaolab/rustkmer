@@ -93,6 +93,14 @@ class InvalidMutationToleranceError(FuzzyQueryError):
     pass
 
 
+class InvalidPositionMutationError(FuzzyQueryError):
+    """Raised when position-mutations parameter has invalid format or values."""
+
+    def __init__(self, message: str, position_config: Optional[str] = None):
+        super().__init__(message)
+        self.position_config = position_config
+
+
 class CombinatorialExplosionError(FuzzyQueryError):
     """Raised when fuzzy query would generate too many variants."""
     pass
