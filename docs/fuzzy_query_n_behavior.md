@@ -172,3 +172,4 @@ The number of variants generated is calculated as:
 ## Conclusion
 
 Understanding the difference between CLI and Python API default behavior is crucial for obtaining expected results when working with k-mers containing N's. Always explicitly specify the `mutations` parameter to match your intended use case.
+
