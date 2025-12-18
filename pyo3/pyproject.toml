@@ -1,0 +1,171 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rustkmer-pyo3"
+version = "0.1.0"
+description = "High-performance PyO3 Python bindings for rustkmer k-mer library"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "RustKmer Team", email = "team@rustkmer.org"}
+]
+maintainers = [
+    {name = "RustKmer Team", email = "team@rustkmer.org"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12", 
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Hardware :: Memory Management",
+]
+keywords = ["bioinformatics", "genomics", "kmer", "pypy3", "native-extension", "high-performance"]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.21",
+]
+
+[project.optional-dependencies]
+# Development dependencies
+dev = [
+    "maturin>=1.0",
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-benchmark>=4.0",
+    "black>=23.0",
+    "flake8>=6.0",
+    "mypy>=1.0",
+    "pyo3-build-config>=0.22",
+]
+
+# Performance testing
+performance = [
+    "memory-profiler>=0.60",
+    "psutil>=5.9",
+]
+
+# Documentation
+docs = [
+    "sphinx>=5.0",
+    "sphinx-rtd-theme>=1.2",
+    "sphinx-autoapi>=2.0",
+]
+
+# Jupyter integration
+jupyter = [
+    "jupyter>=1.0",
+    "ipywidgets>=8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/rustkmer/rustkmer"
+Documentation = "https://rustkmer.readthedocs.io/"
+Repository = "https://github.com/rustkmer/rustkmer.git"
+"Bug Tracker" = "https://github.com/rustkmer/rustkmer/issues"
+
+[tool.maturin]
+# Maturin build configuration
+features = ["pyo3/extension-module"]
+python-source = "."
+module-name = "rustkmer_pyo3"
+manifest-path = "Cargo.toml"
+
+[tool.maturin.build]
+# Build settings
+features = ["pyo3/extension-module"]
+args = ["--release"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "performance: marks tests as performance benchmarks",
+    "integration: marks tests as integration tests",
+]
+addopts = [
+    "--cov=rustkmer_pyo3",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-fail-under=80",
+    "-v",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+  | target
+)/
+'''
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[tool.coverage.run]
+source = ["rustkmer_pyo3"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "setup.py",
+    "build.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rustkmer_pyo3*"]
+
+[tool.setuptools.package-data]
+rustkmer_pyo3 = ["py.typed"]
+

@@ -94,6 +94,8 @@ criterion/
 # Test coverage
 tarpaulin-report.html
 coverage/
+coverage.xml
+*.xml
 
 # Added by cargo
 
@@ -204,3 +206,8 @@ tmp/
 .serena/
 .venv/
 
+.venv*/
+
+# Hypothesis testing cache (property-based testing)
+.hypothesis/
+.pytest_cache/

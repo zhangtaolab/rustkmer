@@ -106,9 +106,9 @@ path = "src/lib.rs"
 name = "rustkmer"
 path = "src/main.rs"
 
-[[bench]]
-name = "python_cli_comparison"
-harness = false
+# [[bench]]
+# name = "python_cli_comparison"
+# harness = false
 
 [features]
 default = []

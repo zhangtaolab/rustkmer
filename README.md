@@ -891,7 +891,8 @@ cd rustkmer
 cargo build --release
 
 # 3. 设置环境变量（重要！）
-echo 'export PATH="/Users/forrest/GitHub/rustkmer/target/release:$PATH"' >> ~/.zshrc
+# 注意：将 /path/to/rustkmer 替换为实际的 rustkmer 项目路径
+echo 'export PATH="/path/to/rustkmer/target/release:$PATH"' >> ~/.zshrc
 source ~/.zshrc  # 重新加载 shell 配置
 
 # 4. 安装 Python 包（可编辑模式）
