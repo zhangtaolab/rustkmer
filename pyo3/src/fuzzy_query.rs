@@ -148,6 +148,7 @@ impl PyFuzzyQuery {
             load_mode: LoadMode::Lazy,
             kmer_cache: None,
             mmapped_file: None,
+            mmap_data: None,
             file_buffer: None,
             entries: None,
             cached_entries: None,
