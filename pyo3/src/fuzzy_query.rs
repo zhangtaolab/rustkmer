@@ -4,7 +4,8 @@
 //! capabilities for pattern matching with wildcards and mutations.
 
 use pyo3::prelude::*;
-use crate::database::PyDatabase;
+use crate::database::{PyDatabase, LoadMode};
+use rustkmer::database::format::DatabaseHeader;
 use crate::utils::py_string_to_string;
 
 /// Individual fuzzy match result
@@ -111,8 +112,10 @@ impl PyFuzzyResult {
 /// High-performance fuzzy k-mer query for Python
 #[pyclass]
 pub struct PyFuzzyQuery {
-    /// Database reference
-    database: PyDatabase,
+    /// Database path
+    database_path: String,
+    /// Placeholder database for compatibility
+    placeholder: PyDatabase,
 }
 
 #[pymethods]
@@ -120,18 +123,49 @@ impl PyFuzzyQuery {
     /// Create a new fuzzy query engine
     #[new]
     fn new(database: &PyDatabase) -> PyResult<Self> {
+        // For now, just store the database path
+        // In a real implementation, you would properly handle database sharing
+        let database_path = database.path.clone();
+        
+        // Create a dummy placeholder database
+        let dummy_header = DatabaseHeader {
+            kmer_size: 19,
+            total_kmers: 0,
+            unique_kmers: 0,
+            file_size: 0,
+            data_offset: 0,
+            index_offset: 0,
+            magic: [0; 4],
+            version: 1,
+            sorted: true,
+            canonical: false,
+        };
+        
+        // Create a minimal placeholder database
+        let placeholder = PyDatabase {
+            path: database_path.clone(),
+            header: dummy_header,
+            load_mode: LoadMode::Lazy,
+            kmer_cache: None,
+            mmapped_file: None,
+            file_buffer: None,
+            entries: None,
+            cached_entries: None,
+            is_loaded: false,
+        };
+        
         Ok(Self {
-            database: PyDatabase {
-                path: database.path.clone(),
-            }
+            database_path,
+            placeholder,
         })
     }
     
     /// Perform fuzzy query with wildcard and mutation support
-    fn fuzzy_query(&self, pattern: &Bound<'_, PyStringMethods>, _max_mutations: u32, _max_results: usize) -> PyResult<PyFuzzyResult> {
-        let pattern_str = py_string_to_string(pattern)?;
+    fn fuzzy_query(&self, pattern: &Bound<'_, pyo3::types::PyString>, _max_mutations: u32, _max_results: usize) -> PyResult<PyFuzzyResult> {
+        let pattern_str = pattern.to_string_lossy().to_string();
         
-        // Simplified implementation
+        // For now, return a simplified result
+        // TODO: Implement actual fuzzy query logic using the database
         Ok(PyFuzzyResult {
             query_kmer: pattern_str,
             exact_match: None,

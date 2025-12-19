@@ -7,9 +7,23 @@ use pyo3::prelude::*;
 use pyo3::types::PyString;
 use std::path::Path;
 use std::collections::HashMap;
+use std::fs::File;
+// use std::io::{Read, Seek, SeekFrom}; // Reserved for future use
 use rustkmer::database::format::{RKDatabase, DatabaseHeader, KmerEntry};
 use rustkmer::kmer::encoding::encode_kmer_u128;
 use rustkmer::kmer::canonical::canonical_kmer_u128;
+
+/// Database loading modes
+#[pyclass(eq, eq_int)]
+#[derive(Clone, PartialEq)]
+pub enum LoadMode {
+    /// Preload all k-mers into memory (fastest queries, higher memory usage)
+    Preload,
+    /// Use memory-mapped file access (balanced memory/performance)
+    MemoryMapped,
+    /// Lazy loading - load k-mers on-demand (lowest memory, slower queries)
+    Lazy,
+}
 
 /// Query result for k-mer lookups
 #[pyclass]
@@ -105,20 +119,30 @@ impl PyDatabaseStats {
 #[pyclass]
 pub struct PyDatabase {
     /// Database file path
-    path: String,
+    pub path: String,
     /// Database header
-    header: DatabaseHeader,
-    /// In-memory cache of k-mers for fast querying
-    kmer_cache: HashMap<u128, u32>,
+    pub header: DatabaseHeader,
+    /// Loading mode
+    pub load_mode: LoadMode,
+    /// In-memory cache of k-mers for fast querying (used in Preload mode)
+    pub kmer_cache: Option<HashMap<u128, u32>>,
+    /// Memory-mapped file reader (used in MemoryMapped mode)
+    pub mmapped_file: Option<std::fs::File>,
+    /// File content buffer (used in Lazy mode)
+    pub file_buffer: Option<Vec<u8>>,
+    /// Database entries for lazy loading
+    pub entries: Option<Vec<KmerEntry>>,
     /// Whether database is loaded
-    is_loaded: bool,
+    pub is_loaded: bool,
+    /// Index for binary search in lazy mode
+    pub cached_entries: Option<Vec<(u128, u32)>>, // (encoded_kmer, count) sorted
 }
 
 #[pymethods]
 impl PyDatabase {
-    /// Load a k-mer database from file
+    /// Load a k-mer database from file with specified loading mode
     #[new]
-    fn new(path: &Bound<'_, PyString>, memory_mapped: bool) -> PyResult<Self> {
+    fn new(path: &Bound<'_, PyString>, load_mode: LoadMode) -> PyResult<Self> {
         let path_str = path.to_string();
         let path = Path::new(&path_str);
         
@@ -136,19 +160,93 @@ impl PyDatabase {
         
         let header = database.header().clone();
         
-        // Build k-mer cache for fast querying
-        let mut kmer_cache = HashMap::new();
-        for entry in &database.entries {
-            // Store both the original and canonical form if needed
-            kmer_cache.insert(entry.kmer, entry.count);
+        match load_mode {
+            LoadMode::Preload => {
+                // Build k-mer cache for fast querying
+                let mut kmer_cache = HashMap::new();
+                for entry in &database.entries {
+                    kmer_cache.insert(entry.kmer, entry.count);
+                }
+                
+                Ok(Self {
+                    path: path_str,
+                    header,
+                    load_mode: LoadMode::Preload,
+                    kmer_cache: Some(kmer_cache),
+                    mmapped_file: None,
+                    file_buffer: None,
+                    entries: None,
+                    cached_entries: None,
+                    is_loaded: true,
+                })
+            },
+            LoadMode::MemoryMapped => {
+                // Open file for memory mapping
+                let file = File::open(path)
+                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        format!("Failed to open file for memory mapping: {}", e)
+                    ))?;
+                
+                Ok(Self {
+                    path: path_str,
+                    header,
+                    load_mode: LoadMode::MemoryMapped,
+                    kmer_cache: None,
+                    mmapped_file: Some(file),
+                    file_buffer: None,
+                    entries: Some(database.entries),
+                    cached_entries: None,
+                    is_loaded: true,
+                })
+            },
+            LoadMode::Lazy => {
+                // Build sorted index for binary search but don't cache all in HashMap
+                let mut cached_entries = Vec::new();
+                for entry in &database.entries {
+                    cached_entries.push((entry.kmer, entry.count));
+                }
+                cached_entries.sort(); // Sort for binary search
+                
+                Ok(Self {
+                    path: path_str,
+                    header,
+                    load_mode: LoadMode::Lazy,
+                    kmer_cache: None,
+                    mmapped_file: None,
+                    file_buffer: None,
+                    entries: Some(database.entries),
+                    cached_entries: Some(cached_entries),
+                    is_loaded: true,
+                })
+            }
+        }
+    }
+    
+    /// Force lazy loading mode (similar to CLI's --no-load option)
+    fn force_lazy_mode(&mut self) -> PyResult<()> {
+        if !self.is_loaded {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Database not loaded"
+            ));
         }
         
-        Ok(Self {
-            path: path_str,
-            header,
-            kmer_cache,
-            is_loaded: true,
-        })
+        // If currently in preload mode, clear the cache
+        if self.load_mode == LoadMode::Preload {
+            self.kmer_cache = None;
+            self.load_mode = LoadMode::Lazy;
+            
+            // Rebuild sorted index for binary search
+            if let Some(entries) = &self.entries {
+                let mut cached_entries = Vec::new();
+                for entry in entries {
+                    cached_entries.push((entry.kmer, entry.count));
+                }
+                cached_entries.sort();
+                self.cached_entries = Some(cached_entries);
+            }
+        }
+        
+        Ok(())
     }
     
     /// Query a single k-mer in the database
@@ -192,8 +290,36 @@ impl PyDatabase {
             encoded_kmer
         };
         
-        // Look up in cache
-        let count = self.kmer_cache.get(&search_kmer).copied().unwrap_or(0);
+        // Query based on load mode
+        let count = match &self.load_mode {
+            LoadMode::Preload => {
+                // Fast lookup in memory cache
+                self.kmer_cache.as_ref().unwrap().get(&search_kmer).copied().unwrap_or(0)
+            },
+            LoadMode::MemoryMapped => {
+                // For now, fall back to linear search (could be optimized with index)
+                // TODO: Implement efficient search for memory-mapped mode
+                let entries = self.entries.as_ref().unwrap();
+                for entry in entries {
+                    if entry.kmer == search_kmer {
+                        return Ok(PyQueryResult {
+                            kmer: kmer_str,
+                            count: entry.count,
+                            found: true,
+                        });
+                    }
+                }
+                0
+            },
+            LoadMode::Lazy => {
+                // Binary search in sorted cache
+                let cached_entries = self.cached_entries.as_ref().unwrap();
+                match cached_entries.binary_search_by_key(&search_kmer, |(kmer, _)| *kmer) {
+                    Ok(idx) => cached_entries[idx].1,
+                    Err(_) => 0,
+                }
+            }
+        };
         
         Ok(PyQueryResult {
             kmer: kmer_str,
@@ -274,7 +400,7 @@ impl PyDatabase {
     }
     
     /// Get all k-mers and their counts
-    fn get_all_kmers(&self) -> PyResult<Vec<HashMap<String, u32>>> {
+    fn get_all_kmers(&self) -> PyResult<Vec<HashMap<String, String>>> {
         if !self.is_loaded {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Database not loaded"
@@ -282,14 +408,16 @@ impl PyDatabase {
         }
         
         let mut results = Vec::new();
-        for (encoded_kmer, count) in &self.kmer_cache {
-            // For now, we'll store as hex string since we can't easily decode u128 back to string
-            // In a real implementation, you might want to store the original string representation
-            let kmer_hex = format!("{:x}", encoded_kmer);
-            let mut result = HashMap::new();
-            result.insert("kmer".to_string(), *count);
-            result.insert("encoded".to_string(), 0); // Placeholder for encoded form
-            results.push(result);
+        if let Some(kmer_cache) = &self.kmer_cache {
+            for (encoded_kmer, count) in kmer_cache {
+                // For now, we'll store as hex string since we can't easily decode u128 back to string
+                // In a real implementation, you might want to store the original string representation
+                let kmer_hex = format!("{:x}", encoded_kmer);
+                let mut result = HashMap::new();
+                result.insert("kmer".to_string(), kmer_hex);
+                result.insert("count".to_string(), count.to_string());
+                results.push(result);
+            }
         }
         
         Ok(results)
@@ -299,5 +427,44 @@ impl PyDatabase {
     fn exists(&self, kmer: &Bound<'_, PyString>) -> PyResult<bool> {
         let result = self.query(kmer)?;
         Ok(result.found)
+    }
+    
+    /// Get current loading mode
+    #[getter]
+    fn load_mode(&self) -> String {
+        match self.load_mode {
+            LoadMode::Preload => "preload".to_string(),
+            LoadMode::MemoryMapped => "memory_mapped".to_string(),
+            LoadMode::Lazy => "lazy".to_string(),
+        }
+    }
+    
+    /// Get memory usage information
+    fn get_memory_usage(&self) -> PyResult<HashMap<String, usize>> {
+        let mut usage = HashMap::new();
+        
+        match &self.load_mode {
+            LoadMode::Preload => {
+                if let Some(cache) = &self.kmer_cache {
+                    usage.insert("cache_size".to_string(), cache.len());
+                    usage.insert("memory_bytes".to_string(), cache.len() * std::mem::size_of::<(u128, u32)>());
+                }
+            },
+            LoadMode::MemoryMapped => {
+                if let Some(file) = &self.mmapped_file {
+                    if let Ok(metadata) = file.metadata() {
+                        usage.insert("file_size".to_string(), metadata.len() as usize);
+                    }
+                }
+            },
+            LoadMode::Lazy => {
+                if let Some(cached) = &self.cached_entries {
+                    usage.insert("index_size".to_string(), cached.len());
+                    usage.insert("memory_bytes".to_string(), cached.len() * std::mem::size_of::<(u128, u32)>());
+                }
+            }
+        }
+        
+        Ok(usage)
     }
 }

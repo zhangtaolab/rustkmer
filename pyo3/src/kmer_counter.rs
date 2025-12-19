@@ -84,7 +84,7 @@ impl PyKmerCounter {
     }
     
     /// Add a single k-mer to the counter
-    fn add_kmer(&mut self, kmer: &Bound<'_, PyStringMethods>) -> PyResult<()> {
+    fn add_kmer(&mut self, kmer: &Bound<'_, pyo3::types::PyString>) -> PyResult<()> {
         // Simplified implementation - just validate
         Ok(())
     }

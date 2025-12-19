@@ -16,19 +16,20 @@ pub fn validate_kmer(kmer: &str, _k_size: Option<usize>) -> PyResult<String> {
 }
 
 /// Convert Python string to Rust String
-pub fn py_string_to_string(py_str: &Bound<'_, PyStringMethods>) -> PyResult<String> {
+pub fn py_string_to_string(py_str: &Bound<'_, pyo3::types::PyString>) -> PyResult<String> {
     Ok(py_str.to_string_lossy().to_string())
 }
 
 /// Convert Rust Vec to Python list
 pub fn string_vec_to_py_list(strings: Vec<String>) -> PyResult<PyObject> {
-    let py = Python::assume_gil_acquired();
-    
-    let py_list = PyList::new_bound(py, &[]);
-    
-    for s in strings {
-        py_list.append(PyString::new_bound(py, &s))?;
-    }
-    
-    Ok(py_list.into())
+    Python::with_gil(|py| {
+        let py_list = pyo3::types::PyList::new_bound(py, &[] as &[&str]);
+        
+        for s in strings {
+            let py_string = pyo3::types::PyString::new_bound(py, &s);
+            py_list.append(&py_string)?;
+        }
+        
+        Ok(py_list.into())
+    })
 }
