@@ -52,32 +52,46 @@ impl PositionMutationConfig {
                     format!("Invalid group format '{}', expected 'positions:limit'", group_str)
                 ))?;
 
-            let positions: Vec<usize> = positions_str
-                .split(',')
-                .flat_map(|s| {
-                    let trimmed = s.trim();
-                    if trimmed.is_empty() {
-                        return Vec::new();
-                    }
+            let mut positions = Vec::new();
+            
+            for s in positions_str.split(',') {
+                let trimmed = s.trim();
+                if trimmed.is_empty() {
+                    return Err(FuzzyError::InvalidParameters(
+                        format!("Group '{}': empty position specified", group_str)
+                    ));
+                }
 
-                    // Check if it's a range like "4-7"
-                    if let Some((start_str, end_str)) = trimmed.split_once('-') {
-                        if let (Ok(start), Ok(end)) = (start_str.parse::<usize>(), end_str.parse::<usize>()) {
-                            if start <= end {
-                                return (start..=end).collect();
-                            }
+                // Check if it's a range like "4-7"
+                if let Some((start_str, end_str)) = trimmed.split_once('-') {
+                    if let (Ok(start), Ok(end)) = (start_str.parse::<usize>(), end_str.parse::<usize>()) {
+                        if start <= end {
+                            positions.extend(start..=end);
+                            continue;
                         }
-                        // Invalid range format, fall through to single position parsing
                     }
+                    // Invalid range format
+                    return Err(FuzzyError::InvalidParameters(
+                        format!("Group '{}': invalid range format '{}'", group_str, trimmed)
+                    ));
+                }
 
-                    // Single position parsing
-                    if let Ok(pos) = trimmed.parse::<usize>() {
-                        vec![pos]
-                    } else {
-                        Vec::new() // Invalid format, skip
-                    }
-                })
-                .collect();
+                // Single position parsing
+                if let Ok(pos) = trimmed.parse::<usize>() {
+                    positions.push(pos);
+                } else {
+                    return Err(FuzzyError::InvalidParameters(
+                        format!("Group '{}': invalid position '{}'", group_str, trimmed)
+                    ));
+                }
+            }
+
+            // Validate that we have at least one position
+            if positions.is_empty() {
+                return Err(FuzzyError::InvalidParameters(
+                    format!("Group '{}': no valid positions specified", group_str)
+                ));
+            }
 
             let max_mutations: usize = limit_str.trim()
                 .parse()

@@ -65,8 +65,8 @@ inquire = "0.7"
 walkdir = "2.4"
 
 # Compression support
-niffler = "2.5"
-flate2 = "1.0"
+# niffler = "2.5"  # Commented out to avoid zstd issues
+flate2 = { version = "1.0", default-features = false, features = ["zlib"] }
 bzip2 = "0.4"
 xz2 = "0.1"
 
@@ -113,3 +113,5 @@ path = "src/main.rs"
 [features]
 default = []
 profiling = []
+# Disable zstd to avoid compilation issues
+disable-zstd = []

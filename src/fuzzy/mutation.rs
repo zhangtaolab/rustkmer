@@ -529,7 +529,10 @@ mod tests {
         assert_eq!(hamming_distance("ATGCG", "ATGCG"), 0);
         assert_eq!(hamming_distance("ATGCG", "TTGCG"), 1);
         assert_eq!(hamming_distance("ATGCG", "TTGCC"), 2);
-        assert_eq!(hamming_distance("ATGCG", "TTGCA"), 3);
+        assert_eq!(hamming_distance("ATGCG", "TTGCA"), 2);  // Fixed: should be 2, not 3
+        assert_eq!(hamming_distance("ATGCG", "ATAGC"), 3);  // New test case with distance 3
+        // Additional test case to verify correct behavior
+        assert_eq!(hamming_distance("AAAAA", "TTTTT"), 5);
     }
 
     #[test]
@@ -555,13 +558,17 @@ mod tests {
 
         // Should contain all single mutations
         let expected_single_mutations = [
-            "TTGCG", "CTGCG", "GTGCG", "AAGCG", "ACGCG", "AGGCG", "ATTGCG", "ATCCG", "ATGGCG", "ATGAG",
-            "ATGCC", "ATGCA",
+            "AAGCG", "ACGCG", "AGGCG", "ATACG", "ATCCG", "ATGAG",
+            "ATGCA", "ATGCC", "ATGCT", "ATGGG", "ATGTG", "ATTCG", 
+            "CTGCG", "GTGCG", "TTGCG"
         ];
 
         for expected in &expected_single_mutations {
-            assert!(variants.contains(&expected.to_string()));
+            assert!(variants.contains(&expected.to_string()), "Expected variant {} not found", expected);
         }
+        
+        // Verify we have the right number of variants (1 original + 15 single mutations)
+        assert_eq!(variants.len(), 16);
     }
 
     #[test]
@@ -755,5 +762,75 @@ mod tests {
             .enumerate()
             .filter_map(|(i, (a, b))| if a != b { Some(i) } else { None })
             .collect()
+    }
+
+    #[test]
+    fn test_position_mutations_with_ranges() {
+        // Test range format "2-4:1"
+        let config = PositionMutationConfig::parse("2-4:1").unwrap();
+        assert_eq!(config.groups.len(), 1);
+        assert_eq!(config.groups[0].positions, vec![2, 3, 4]);
+        assert_eq!(config.groups[0].max_mutations, 1);
+        
+        // Test mixed range and individual positions "1,3-5,7:2"
+        let config = PositionMutationConfig::parse("1,3-5,7:2").unwrap();
+        assert_eq!(config.groups.len(), 1);
+        assert_eq!(config.groups[0].positions, vec![1, 3, 4, 5, 7]);
+        assert_eq!(config.groups[0].max_mutations, 2);
+    }
+
+    #[test]
+    fn test_position_mutations_complex_scenario() {
+        // Test complex scenario with multiple groups and ranges
+        let config = PositionMutationConfig::parse("1,3-5:2;6:1;8-10:3").unwrap();
+        assert_eq!(config.groups.len(), 3);
+        
+        assert_eq!(config.groups[0].positions, vec![1, 3, 4, 5]);
+        assert_eq!(config.groups[0].max_mutations, 2);
+        
+        assert_eq!(config.groups[1].positions, vec![6]);
+        assert_eq!(config.groups[1].max_mutations, 1);
+        
+        assert_eq!(config.groups[2].positions, vec![8, 9, 10]);
+        assert_eq!(config.groups[2].max_mutations, 3);
+    }
+
+    #[test]
+    fn test_position_mutations_boundary_conditions() {
+        // Test position 0 (first position)
+        let config = PositionMutationConfig::parse("0:1").unwrap();
+        assert_eq!(config.groups[0].positions, vec![0]);
+        assert!(config.validate(5).is_ok());
+        
+        // Test last valid position
+        let config = PositionMutationConfig::parse("4:1").unwrap();
+        assert_eq!(config.groups[0].positions, vec![4]);
+        assert!(config.validate(5).is_ok());
+        
+        // Test out of bounds position
+        let config = PositionMutationConfig::parse("5:1").unwrap();
+        assert!(config.validate(5).is_err());
+        
+        // Test zero mutations allowed
+        let config = PositionMutationConfig::parse("1,2:0").unwrap();
+        assert_eq!(config.groups[0].max_mutations, 0);
+        assert!(config.validate(5).is_ok());
+    }
+
+    #[test]
+    fn test_position_mutations_error_cases() {
+        // Test overlapping positions
+        let config = PositionMutationConfig::parse("1,2,3:1;2,4:1").unwrap();
+        // This should fail validation due to position 2 being used in both groups
+        assert!(config.validate(10).is_err());
+        
+        // Test invalid format
+        assert!(PositionMutationConfig::parse("1,2:").is_err());
+        assert!(PositionMutationConfig::parse("1,2").is_err());
+        assert!(PositionMutationConfig::parse(":1").is_err());
+        
+        // Test invalid number formats
+        assert!(PositionMutationConfig::parse("1,2:abc").is_err());
+        assert!(PositionMutationConfig::parse("1,2x:1").is_err());
     }
 }
