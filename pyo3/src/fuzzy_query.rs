@@ -77,6 +77,8 @@ pub struct PyFuzzyResult {
     pub mutation_tolerance: u32,
     /// Query execution time in milliseconds
     pub query_time_ms: u64,
+    /// Whether position-specific mutations were used
+    pub has_position_mutations: bool,
 }
 
 #[pymethods]
@@ -111,6 +113,11 @@ impl PyFuzzyResult {
         self.query_time_ms
     }
     
+    #[getter]
+    fn has_position_mutations(&self) -> bool {
+        self.has_position_mutations
+    }
+    
     /// Get matches filtered by specific Hamming distance
     fn get_matches_by_distance(&self, distance: u32) -> Vec<PyFuzzyMatch> {
         self.matches
@@ -142,8 +149,6 @@ pub struct PyFuzzyQuery {
     database_path: String,
     /// K-mer size from database
     kmer_size: usize,
-    /// Position mutation configuration (optional)
-    position_mutations: Option<PositionMutationConfig>,
 }
 
 #[pymethods]
@@ -169,28 +174,8 @@ impl PyFuzzyQuery {
         Ok(Self {
             database_path,
             kmer_size,
-            position_mutations: None,
         })
     }
-    
-    /// Configure position-specific mutations
-    #[pyo3(signature = (position_config=None))]
-    fn set_position_mutations(&mut self, position_config: Option<&str>) -> PyResult<()> {
-        self.position_mutations = if let Some(config_str) = position_config {
-            match PositionMutationConfig::parse(config_str) {
-                Ok(config) => Some(config),
-                Err(e) => {
-                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                        format!("Invalid position mutation configuration: {}", e)
-                    ));
-                }
-            }
-        } else {
-            None
-        };
-        Ok(())
-    }
-    
     /// Perform fuzzy query with wildcard and mutation support
     #[pyo3(signature = (pattern, max_mutations, max_results=None))]
     fn fuzzy_query(
@@ -199,6 +184,30 @@ impl PyFuzzyQuery {
         max_mutations: u32,
         max_results: Option<usize>
     ) -> PyResult<PyFuzzyResult> {
+        // For now, just call with empty position mutations
+        self.fuzzy_query_with_position_mutations(pattern, max_mutations, "", max_results)
+    }
+    
+    /// Perform fuzzy query with position-specific mutations
+    #[pyo3(signature = (pattern, max_mutations, position_mutations, max_results=None))]
+    fn fuzzy_query_with_position_mutations(
+        &self,
+        pattern: &Bound<'_, pyo3::types::PyString>,
+        max_mutations: u32,
+        position_mutations: &str,
+        max_results: Option<usize>
+    ) -> PyResult<PyFuzzyResult> {
+        // Parse position mutations configuration if provided
+        let parsed_config = if !position_mutations.is_empty() {
+            Some(PositionMutationConfig::parse(position_mutations).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    format!("Invalid position mutation configuration: {}", e)
+                )
+            })?)
+        } else {
+            None
+        };
+
         let pattern_str = pattern.to_string_lossy().to_string();
         
         // Validate pattern length
@@ -217,7 +226,7 @@ impl PyFuzzyQuery {
         }
         
         // Create fuzzy query configuration
-        let query = if let Some(ref position_config) = self.position_mutations {
+        let query = if let Some(ref config) = parsed_config {
             FuzzyQuery::with_position_mutations(
                 &pattern_str,
                 self.kmer_size,
@@ -225,7 +234,7 @@ impl PyFuzzyQuery {
                 max_results,
                 false, // Sequential processing
                 1000, // Default batch size
-                Some(position_config.clone()),
+                Some(config.clone()),
             )
         } else {
             FuzzyQuery::with_params(
@@ -237,9 +246,36 @@ impl PyFuzzyQuery {
                 1000, // Default batch size
             )
         };
+        let pattern_str = pattern.to_string_lossy().to_string();
         
+        // Validate pattern length
+        if pattern_str.len() != self.kmer_size {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("Pattern length {} does not match database k-mer size {}", 
+                        pattern_str.len(), self.kmer_size)
+            ));
+        }
+        
+        // Validate pattern characters
+        if !pattern_str.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G' | 'N')) {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Pattern contains invalid characters (only A,T,C,G,N allowed)".to_string()
+            ));
+        }
+        
+        // Parse position mutations configuration if provided
+        let position_config = if !position_mutations.is_empty() {
+            Some(PositionMutationConfig::parse(position_mutations).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    format!("Invalid position mutation configuration: {}", e)
+                )
+            })?)
+        } else {
+            None
+        };
+
         // Create fuzzy query configuration
-        let query = if let Some(ref position_config) = self.position_mutations {
+        let query = if let Some(ref config) = position_config {
             FuzzyQuery::with_position_mutations(
                 &pattern_str,
                 self.kmer_size,
@@ -247,7 +283,7 @@ impl PyFuzzyQuery {
                 max_results,
                 false, // Sequential processing
                 1000, // Default batch size
-                Some(position_config.clone()),
+                Some(config.clone()),
             )
         } else {
             FuzzyQuery::with_params(
@@ -324,6 +360,7 @@ impl PyFuzzyQuery {
             total_matches: result.total_count as usize,
             mutation_tolerance: max_mutations,
             query_time_ms,
+            has_position_mutations: !position_mutations.is_empty(),
         })
     }
     
@@ -331,11 +368,5 @@ impl PyFuzzyQuery {
     #[getter]
     fn kmer_size(&self) -> usize {
         self.kmer_size
-    }
-    
-    /// Check if position mutations are configured
-    #[getter]
-    fn has_position_mutations(&self) -> bool {
-        self.position_mutations.is_some()
     }
 }
