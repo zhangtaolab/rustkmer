@@ -13,6 +13,9 @@ categories = ["science", "development-tools"]
 name = "rustkmer_pyo3"
 crate-type = ["cdylib"]
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# macOS specific dependencies
+
 [dependencies]
 # PyO3 - Python bindings
 pyo3 = { version = "0.22", features = ["extension-module"] }

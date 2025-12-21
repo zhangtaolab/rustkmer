@@ -8,4 +8,5 @@ pub mod dump;
 pub mod fuzzy;
 pub mod merge;
 pub mod stats;
+pub mod prefix;
 pub mod args;

@@ -301,6 +301,52 @@ pub enum Commands {
         /// Output file for frequency distribution (required when --split-output is used)
         #[arg(long, required_if_eq("split_output", "true"))]
         freq_output: Option<String>,
+    },
+
+    /// Efficient prefix-based k-mer query for sorted databases
+    PrefixQuery {
+        /// Database file
+        database: String,
+
+        /// Sequence pattern to match (prefix or hybrid format like ATAC{N5}ACAC)
+        #[arg(short = 'p', long, default_value = "")]
+        pattern: String,
+
+        /// Explicit prefix sequence (alternative to pattern)
+        #[arg(short = 'x', long, conflicts_with = "pattern")]
+        prefix: Option<String>,
+
+        /// Enable hybrid search mode for patterns with internal wildcards
+        #[arg(long, requires = "pattern")]
+        hybrid: bool,
+
+        /// Output format (table, json, csv, tsv)
+        #[arg(short = 'f', long, default_value = "table", value_parser = ["table", "json", "csv", "tsv"])]
+        format: String,
+
+        /// Output file (stdout if not specified)
+        #[arg(short = 'o', long)]
+        output: Option<String>,
+
+        /// Enable verbose output
+        #[arg(short = 'v', long)]
+        verbose: bool,
+
+        /// Suppress non-error output
+        #[arg(short = 'q', long)]
+        quiet: bool,
+
+        /// Show performance profiling
+        #[arg(long = "profile")]
+        profile: bool,
+
+        /// Minimum count threshold
+        #[arg(short = 'L', long = "min-count")]
+        min_count: Option<u64>,
+
+        /// Maximum count threshold
+        #[arg(short = 'U', long = "max-count")]
+        max_count: Option<u64>,
     }
 }
 

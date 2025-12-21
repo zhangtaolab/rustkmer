@@ -90,6 +90,9 @@ fn main() -> anyhow::Result<()> {
             };
             rustkmer::cli::commands::merge::execute_merge(&args)?;
         }
+        rustkmer::cli::args::Commands::PrefixQuery { .. } => {
+            rustkmer::cli::commands::prefix::execute_prefix_query(&args)?;
+        }
     }
 
     Ok(())

@@ -50,46 +50,8 @@ theme:
 
 # Plugins
 plugins:
-  - mkdocstrings:
-      handlers:
-        python:
-          paths: [python]
-          options:
-            # Core options
-            docstring_style: google
-            show_source: true
-            show_signature: true
-            show_signature_annotations: true
-            separate_signature: false
-
-            # Organization
-            group_by_category: true
-            members_order: alphabetical
-            show_root_heading: true
-            show_root_toc_entry: true
-
-            # Content filtering
-            filters: ["!^_"]
-            show_if_no_docstring: false
-
-            # Advanced features
-            show_inheritance_diagram: true
-            backlinks: true
-            merge_init_into_class: true
-
-            # Summary options
-            summary:
-              attributes: true
-              functions: true
-              classes: true
-              modules: true
-
-          # Cross-references to standard library
-          inventories:
-            - url: https://docs.python.org/3/objects.inv
-              base_url: https://docs.python.org/3/
-            - url: https://numpy.org/doc/stable/objects.inv
-              base_url: https://numpy.org/doc/stable/
+  - search:
+      lang: en
 
   - search:
       lang: en

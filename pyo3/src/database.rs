@@ -4,15 +4,17 @@
 //! functionality for querying k-mer databases.
 
 use pyo3::prelude::*;
-use pyo3::types::PyString;
+use pyo3::types::{PyString, PyDict};
 use std::path::Path;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Read};
 // use memmap2::{Mmap, MmapOptions}; // No longer needed - using direct I/O
 use rustkmer::database::format::{RKDatabase, DatabaseHeader, KmerEntry};
-use rustkmer::kmer::encoding::encode_kmer_u128;
+use rustkmer::kmer::encoding::{encode_kmer_u128, decode_kmer_u128};
 use rustkmer::kmer::canonical::canonical_kmer_u128;
+use rustkmer::database::prefix_query_optimized::{extract_prefix_optimized, extract_hybrid_by_pattern, parse_hybrid_pattern, OptimizedPrefixResult};
+use rustkmer::database::{PrefixQueryResult, extract_kmers_by_prefix, SuffixQueryResult, extract_kmers_by_suffix, SmartWildcardResult};
 
 /// Database loading modes
 #[pyclass(eq, eq_int)]
@@ -56,6 +58,65 @@ impl PyQueryResult {
     
     fn __repr__(&self) -> String {
         format!("PyQueryResult(kmer='{}', count={}, found={})", self.kmer, self.count, self.found)
+    }
+}
+
+/// Result of optimized prefix query for Python
+#[pyclass]
+pub struct PyPrefixQueryResult {
+    /// List of matching k-mers with their counts
+    pub matches: HashMap<String, String>,
+    /// Memory block information for performance analysis
+    pub start_index: usize,
+    pub end_index: usize,
+    pub block_size: usize,
+    pub is_sorted: bool,
+    /// Total number of matches found
+    pub total_matches: usize,
+    /// Query execution time in milliseconds
+    pub query_time_ms: u64,
+}
+
+#[pymethods]
+impl PyPrefixQueryResult {
+    #[getter]
+    fn matches(&self) -> HashMap<String, String> {
+        self.matches.clone()
+    }
+    
+    #[getter]
+    fn total_matches(&self) -> usize {
+        self.total_matches
+    }
+    
+    #[getter]
+    fn query_time_ms(&self) -> u64 {
+        self.query_time_ms
+    }
+    
+    #[getter]
+    fn start_index(&self) -> usize {
+        self.start_index
+    }
+    
+    #[getter]
+    fn end_index(&self) -> usize {
+        self.end_index
+    }
+    
+    #[getter]
+    fn block_size(&self) -> usize {
+        self.block_size
+    }
+    
+    #[getter]
+    fn is_sorted(&self) -> bool {
+        self.is_sorted
+    }
+    
+    fn __repr__(&self) -> String {
+        format!("PyPrefixQueryResult(matches={}, total_matches={}, query_time_ms={}ms, sorted={})", 
+            self.matches.len(), self.total_matches, self.query_time_ms, self.is_sorted)
     }
 }
 
@@ -458,6 +519,248 @@ impl PyDatabase {
     fn exists(&self, kmer: &Bound<'_, PyString>) -> PyResult<bool> {
         let result = self.query(kmer)?;
         Ok(result.found)
+    }
+    
+    /// Extract all k-mers that start with the given prefix (legacy linear search)
+    fn extract_by_prefix(&self, prefix: &Bound<'_, PyString>) -> PyResult<HashMap<String, String>> {
+        if !self.is_loaded {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Database not loaded"
+            ));
+        }
+        
+        let prefix_str = prefix.to_string();
+        
+        // Validate prefix format
+        if prefix_str.trim().is_empty() {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Prefix cannot be empty"
+            ));
+        }
+        
+        if !prefix_str.chars().all(|c| matches!(c.to_ascii_uppercase(), 'A' | 'T' | 'C' | 'G')) {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Prefix contains invalid characters (only A, T, C, G allowed)"
+            ));
+        }
+        
+        let prefix_upper = prefix_str.to_uppercase();
+        
+        // Use linear search for now (legacy implementation)
+        let mut matches = HashMap::new();
+        
+        if let Some(kmer_cache) = &self.kmer_cache {
+            let kmer_size = self.header.kmer_size as usize;
+            
+            for (encoded_kmer, count) in kmer_cache {
+                let decoded_kmer = decode_kmer_u128(*encoded_kmer, kmer_size);
+                if decoded_kmer.starts_with(&prefix_upper) {
+                    matches.insert(decoded_kmer, count.to_string());
+                }
+            }
+        }
+        
+        Ok(matches)
+    }
+    
+    /// Extract all k-mers that start with the given prefix using optimized algorithm
+    #[pyo3(signature = (prefix))]
+    fn extract_prefix_optimized(&self, prefix: &Bound<'_, PyString>) -> PyResult<PyPrefixQueryResult> {
+        if !self.is_loaded {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Database not loaded"
+            ));
+        }
+        
+        let prefix_str = prefix.to_string();
+        
+        // Validate prefix format
+        if prefix_str.trim().is_empty() {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Prefix cannot be empty"
+            ));
+        }
+        
+        if !prefix_str.chars().all(|c| matches!(c.to_ascii_uppercase(), 'A' | 'T' | 'C' | 'G')) {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Prefix contains invalid characters (only A, T, C, G allowed)"
+            ));
+        }
+        
+        let prefix_upper = prefix_str.to_uppercase();
+        
+        // Reload database for optimized extraction
+        let database = match RKDatabase::from_file_path(Path::new(&self.path)) {
+            Ok(db) => db,
+            Err(e) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                    format!("Failed to load database: {}", e)
+                ));
+            }
+        };
+        
+        // Use optimized extraction
+        let result = match extract_prefix_optimized(&database, &prefix_upper) {
+            Ok(result) => result,
+            Err(e) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                    format!("Prefix query failed: {}", e)
+                ));
+            }
+        };
+        
+        // Convert matches to HashMap<String, String>
+        let matches: HashMap<String, String> = result.matches
+            .into_iter()
+            .map(|(kmer, count)| (kmer, count.to_string()))
+            .collect();
+        
+        Ok(PyPrefixQueryResult {
+            matches,
+            start_index: result.memory_block.start_index,
+            end_index: result.memory_block.end_index,
+            block_size: result.memory_block.block_size,
+            is_sorted: result.memory_block.is_sorted,
+            total_matches: result.total_matches,
+            query_time_ms: result.query_time_ms,
+        })
+    }
+    
+    /// Extract k-mers by pattern (supports hybrid format like ATAC{N5}ACAC)
+    #[pyo3(signature = (pattern))]
+    fn extract_by_pattern(&self, pattern: &Bound<'_, PyString>) -> PyResult<HashMap<String, String>> {
+        if !self.is_loaded {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Database not loaded"
+            ));
+        }
+        
+        let pattern_str = pattern.to_string();
+        
+        // Validate pattern format
+        if pattern_str.trim().is_empty() {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Pattern cannot be empty"
+            ));
+        }
+        
+        let pattern_upper = pattern_str.to_uppercase();
+        
+        // Reload database for hybrid extraction
+        let database = match RKDatabase::from_file_path(Path::new(&self.path)) {
+            Ok(db) => db,
+            Err(e) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                    format!("Failed to load database: {}", e)
+                ));
+            }
+        };
+        
+        // Use hybrid extraction
+        let result = match extract_hybrid_by_pattern(&database, &pattern_upper) {
+            Ok(result) => result,
+            Err(e) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                    format!("Pattern query failed: {}", e)
+                ));
+            }
+        };
+        
+        // Convert matches to HashMap<String, String>
+        let matches: HashMap<String, String> = result.matches
+            .into_iter()
+            .map(|(kmer, count)| (kmer, count.to_string()))
+            .collect();
+        
+        Ok(matches)
+    }
+    
+    /// Parse hybrid pattern without executing query
+    #[pyo3(signature = (pattern))]
+    fn parse_hybrid_pattern(&self, pattern: &Bound<'_, PyString>) -> PyResult<HashMap<String, String>> {
+        let pattern_str = pattern.to_string();
+        let pattern_upper = pattern_str.to_uppercase();
+        
+        let result = match parse_hybrid_pattern(&pattern_upper) {
+            Ok(pattern) => {
+                let mut info = HashMap::new();
+                info.insert("prefix".to_string(), pattern.prefix);
+                info.insert("suffix".to_string(), pattern.suffix);
+                info.insert("n_count".to_string(), pattern.n_count.to_string());
+                info.insert("total_length".to_string(), pattern.total_length.to_string());
+                info.insert("n_positions".to_string(), format!("{:?}", pattern.n_positions));
+                info
+            }
+            Err(e) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    format!("Pattern parsing failed: {}", e)
+                ));
+            }
+        };
+        
+        Ok(result)
+    }
+    
+    /// Extract all k-mers that end with the given suffix
+    fn extract_by_suffix(&self, suffix: &Bound<'_, PyString>) -> PyResult<HashMap<String, String>> {
+        if !self.is_loaded {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Database not loaded"
+            ));
+        }
+        
+        let suffix_str = suffix.to_string();
+        
+        // Validate suffix format
+        if suffix_str.trim().is_empty() {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Suffix cannot be empty"
+            ));
+        }
+        
+        if !suffix_str.chars().all(|c| matches!(c.to_ascii_uppercase(), 'A' | 'T' | 'C' | 'G' | 'N')) {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Suffix contains invalid characters (only A, T, C, G, N allowed)"
+            ));
+        }
+        
+        let suffix_upper = suffix_str.to_uppercase();
+        
+        // Use linear search for now
+        let mut matches = HashMap::new();
+        
+        if let Some(kmer_cache) = &self.kmer_cache {
+            use rustkmer::kmer::encoding::decode_kmer_u128;
+            
+            let kmer_size = self.header.kmer_size as usize;
+            
+            for (encoded_kmer, count) in kmer_cache {
+                let decoded_kmer = decode_kmer_u128(*encoded_kmer, kmer_size);
+                if decoded_kmer.ends_with(&suffix_upper) {
+                    matches.insert(decoded_kmer, count.to_string());
+                }
+            }
+        }
+        
+        Ok(matches)
+    }
+    
+    /// Smart wildcard query that automatically chooses the best strategy (placeholder)
+    fn smart_wildcard_query(&self, pattern: &Bound<'_, PyString>) -> PyResult<HashMap<String, String>> {
+        if !self.is_loaded {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Database not loaded"
+            ));
+        }
+        
+        let pattern_str = pattern.to_string();
+        let pattern_upper = pattern_str.to_uppercase();
+        
+        println!("🔍 Smart wildcard query: {} (placeholder implementation)", pattern_upper);
+        println!("   This feature will be implemented in the next version");
+        
+        // Return empty results for now
+        Ok(HashMap::new())
     }
     
     /// Get current loading mode

@@ -64,20 +64,61 @@ rustkmer fuzzy-query -d genome_k21.rkdb -q "AATN" -m 1
 
 ## 📖 Documentation
 
+### 📚 Getting Started
 - **[Installation](installation.md)** - Installation guide for Python API
-- **[User Guide](user-guide/)** - Comprehensive Python API guide
-  - [Quick Start](user-guide/quickstart.md) - Get started in 5 minutes
-  - [Fuzzy Search](user-guide/fuzzy-search.md) - Wildcard and mutation-tolerant queries
-  - [Examples](user-guide/examples.md) - Practical code examples
-  - [Tutorials](user-guide/tutorials/) - Step-by-step tutorials
-- **[API Reference](api-reference/)** - Complete Python API documentation
-  - [KmerCounter](api-reference/kmercounter.md) - k-mer counting
-  - [Database](api-reference/database.md) - Database operations
-  - [FuzzyQuery](api-reference/fuzzyquery.md) - Fuzzy searching API
-- **[Examples](examples/)** - Real-world code examples
-  - [Fuzzy Search Examples](examples/fuzzy-search.md) - Practical fuzzy query examples
-  - [Batch Processing](examples/batch-processing.md) - Large-scale processing
-- **[Developer Guide](dev-guide/)** - Contributing and architecture
+- **[Advanced Installation](getting-started/installation-advanced.md)** - Detailed installation for developers
+- **[Quick Start Guide](getting-started/first-steps.md)** - Get started in 5 minutes
+
+### 👥 User Guide
+- **[User Guide](guides/user-guide.md)** - Comprehensive usage guide
+- **[Querying](user-guide/querying.md)** - K-mer query operations
+- **[Counting k-mers](user-guide/counting-kmers.md)** - K-mer counting guide
+- **[Performance Tips](user-guide/performance-tips.md)** - Optimization guide
+
+### 🔧 Guides
+- **[PyO3 Binding Guide](guides/pyo3-binding-guide.md)** - Complete Python API guide
+- **[PyO3 Quick Reference](guides/pyo3-binding-readme.md)** - Quick start for Python users
+- **[Prefix Query Guide](guides/prefix-query-guide.md)** - Efficient prefix-based querying
+- **[Hybrid Search Guide](guides/hybrid-search-guide.md)** - Advanced search patterns
+
+### 🔍 API Reference
+- **[API Overview](api-reference/overview.md)** - Complete API documentation
+- **[Database API](api-reference/database.md)** - Database operations
+- **[Query API](api-reference/query.md)** - Query operations
+- **[Fuzzy Query](api-reference/fuzzyquery.md)** - Fuzzy search API
+- **[Statistics](api-reference/stats.md)** - Database statistics
+
+### 💡 Implementation & Development
+- **[Algorithm Implementation](dev-guide/algorithm-implementation.md)** - Core algorithms detailed
+- **[Memory Optimization](performance/memory-optimization.md)** - Performance optimization techniques
+- **[CLI Design](dev-guide/cli-design.md)** - Command-line interface design
+- **[Development Guidelines](dev-guide/agents.md)** - Development standards
+- **[Project History](dev-guide/claude.md)** - Development timeline
+
+### 🔧 Implementation Reports
+- **[Prefix Query Report](implementation/prefix-query-report.md)** - Implementation details
+- **[Bug Fixes](implementation/bug-fixes.md)** - Known issues and fixes
+- **[Hybrid Search Fixes](implementation/hybrid-search-fixes.md)** - Search improvements
+
+### 🚨 Troubleshooting
+- **[CLI Status](troubleshooting/cli-status.md)** - Current command availability
+- **[N-position Demo](troubleshooting/n-position-demo.md)** - Efficiency analysis
+- **[Prefix Extraction Demo](troubleshooting/prefix-extraction-demo.md)** - Feature demonstration
+
+### 📊 Performance
+- **[Memory Optimization](performance/memory-optimization.md)** - Memory efficiency techniques
+- **[Performance Analysis](PERFORMANCE.md)** - Benchmark results
+
+### 📖 Examples
+- **[Basic Usage](examples/basic-usage.md)** - Simple examples
+- **[Fuzzy Search](examples/fuzzy-search.md)** - Wildcard examples
+- **[Batch Processing](examples/batch-processing.md)** - Large-scale processing
+- **[Advanced Examples](examples/advanced.md)** - Complex use cases
+
+### 🎓 Tutorials
+- **[Basic Workflow](tutorials/basic-workflow.md)** - Step-by-step tutorial
+- **[Large Genomes](tutorials/large-genomes.md)** - Handling big data
+- **[Integration Guide](tutorials/integration.md)** - Workflow integration
 
 ## 🏆 Performance
 
