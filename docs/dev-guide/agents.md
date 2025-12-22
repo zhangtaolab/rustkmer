@@ -28,3 +28,4 @@ Rust 1.80+ stable channel + Python 3.10+ via PyO3 0.22.6: Follow standard conven
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
 
+

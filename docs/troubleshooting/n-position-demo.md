@@ -167,3 +167,4 @@ print(f"Found {len(results)} matches with hybrid strategy")
 
 这个分析清楚地表明：**对于N在开头或结尾的情况，前后缀查询的效率远超变体生成！**
 
+

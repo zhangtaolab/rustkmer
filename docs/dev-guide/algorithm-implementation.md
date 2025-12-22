@@ -452,3 +452,4 @@ fn extract_with_variant_strategy(
 
 这个实现为你的问题提供了完整的答案：**对于AAAANNN、NNNAAA这种N在边缘的情况，前后缀查询确实比变体生成高效得多！**
 
+

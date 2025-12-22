@@ -248,3 +248,4 @@ fn test_prefix_optimization_correctness() {
 
 这个优化方案将我们的高效算法提升到了一个新的水平，真正做到了"快如闪电"的k-mer查询！
 
+

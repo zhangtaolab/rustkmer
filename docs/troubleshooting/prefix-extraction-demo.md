@@ -174,3 +174,4 @@ python test_prefix_simple.py
 
 现在你可以轻松提取所有以"AAATT"开头的k-mer，而不需要复杂的模糊查询设置！
 
+

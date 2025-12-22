@@ -368,3 +368,4 @@ echo "Log file available at: $LOG_FILE"
 
 echo ""
 echo "Performance comparison completed successfully!"
+

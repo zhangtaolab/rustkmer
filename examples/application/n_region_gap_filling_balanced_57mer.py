@@ -186,90 +186,97 @@ def handle_boundary_constraints(seq, nstart, nend, desired_upstream, desired_dow
 def build_progressive_57mer_pattern(seq, nstart, nend, initial_n_length=None, verbose=True):
     """
     Build balanced 57-mer pattern with progressive fallback strategy.
-    Start with smaller N lengths and only increase if query fails.
+    First try original N length, then progressively increase if query fails.
     
     Args:
         seq: Original sequence
         nstart: N region start position
         nend: N region end position
-        initial_n_length: Initial N length to try (default: try smaller values first)
+        initial_n_length: Initial N length to try (default: use original N length first)
         verbose: Whether to print detailed information
         
     Returns:
         tuple: (pattern, upstream_seq, downstream_seq, n_length, balance_info, used_fallback)
     """
     original_n_length = nend - nstart + 1
+    max_allowed_n = min(original_n_length, 43)  # Maximum allowed N length
     
-    # Start with smaller N lengths and progressively increase
+    # Check available flanking sequence (correct logic: extract real sequences around N region)
+    max_upstream_available = nstart
+    max_downstream_available = len(seq) - nend - 1
+    
+    # Extract real flanking sequences from around the N region
+    # These are the actual sequences that exist on both sides of the N region
+    
+    # For upstream: extract sequence ending at the N region start
+    target_upstream_length = min(28, max_upstream_available)
+    upstream_seq = seq[nstart - target_upstream_length:nstart]
+    
+    # For downstream: extract sequence starting from the N region end, skipping any consecutive N's
+    downstream_start = nend + 1
+    # Skip any consecutive N's after the target N region
+    while downstream_start < len(seq) and seq[downstream_start] == 'N':
+        downstream_start += 1
+    
+    target_downstream_length = min(28, len(seq) - downstream_start)
+    downstream_seq = seq[downstream_start:downstream_start + target_downstream_length]
+    
+    # Ensure we have valid flanking sequences
+    if not upstream_seq or not downstream_seq:
+        return None, "", "", 0, {'error': 'insufficient_flanking_sequences'}
+    
+    # If no N-free flanking sequences found, fall back to balanced approach
+    if not upstream_seq or not downstream_seq:
+        return build_balanced_57mer_pattern(seq, nstart, nend, verbose=False)
+    
+    # Strategy: Start with original N length, then progressively increase
     if initial_n_length is None:
-        # Start with small N lengths and increase
-        n_lengths_to_try = []
-        # Try lengths from 3 up to min(original_n_length, 43)
-        max_n = min(original_n_length, 43)
-        for n_len in range(3, max_n + 1, 4):  # Start small, increase by 4
-            n_lengths_to_try.append(n_len)
+        # First try: original N length (if reasonable)
+        if original_n_length <= 43:
+            n_lengths_to_try = [original_n_length]
+        else:
+            n_lengths_to_try = [43]  # Start with capped length
         
-        # Also try the capped length if different
-        capped_length = min(original_n_length, 43)
-        if capped_length not in n_lengths_to_try:
-            n_lengths_to_try.append(capped_length)
+        # Add progressive increases: +4, +8, +12, etc.
+        for increment in range(4, 17, 4):  # Up to +16
+            next_length = n_lengths_to_try[0] + increment
+            if next_length <= max_allowed_n:
+                n_lengths_to_try.append(next_length)
     else:
         n_lengths_to_try = [initial_n_length]
     
-    # Check available flanking sequence
-    max_upstream_available = nstart
-    max_downstream_available = len(seq) - nend - 1
-    available_flanking_total = max_upstream_available + max_downstream_available
-    
+    # Check if we have enough flanking sequences
+    available_flanking_total = len(upstream_seq) + len(downstream_seq)
     if available_flanking_total < 6:  # Need at least 3+3 for flanking sequences
-        # Not enough space for flanking sequences, fall back to balanced approach
         return build_balanced_57mer_pattern(seq, nstart, nend, verbose=False)
     
-    for current_n_length in n_lengths_to_try:
-        # Calculate flanking sequence lengths for balance
-        remaining_length = 57 - current_n_length
-        target_upstream = remaining_length // 2
-        target_downstream = remaining_length - target_upstream
+    for i, current_n_length in enumerate(n_lengths_to_try):
+        # Check if total length can be 57
+        total_length = len(upstream_seq) + current_n_length + len(downstream_seq)
         
-        # Use available flanking sequence
-        upstream_length = min(target_upstream, max_upstream_available)
-        downstream_length = min(target_downstream, max_downstream_available)
-        
-        # Ensure minimum flanking lengths
-        if upstream_length < 3:
-            upstream_length = min(3, max_upstream_available)
-        if downstream_length < 3:
-            downstream_length = min(3, max_downstream_available)
-        
-        # Calculate total length
-        actual_total = upstream_length + current_n_length + downstream_length
-        
-        if actual_total <= 57:
-            # Extract sequences
-            upstream_seq = seq[nstart - upstream_length:nstart]
-            downstream_seq = seq[nend + 1:nend + 1 + downstream_length]
+        if total_length <= 57:
+            # Build pattern with N-free flanking sequences
+            pattern = f"{upstream_seq}{{N{current_n_length}}}{downstream_seq}"
             
-            # Verify we have valid sequences
-            if len(upstream_seq) == upstream_length and len(downstream_seq) == downstream_length:
-                # Build pattern
-                pattern = f"{upstream_seq}{{N{current_n_length}}}{downstream_seq}"
-                
-                balance_info = {
-                    'n_length': current_n_length,
-                    'upstream_length': len(upstream_seq),
-                    'downstream_length': len(downstream_seq),
-                    'balance_score': abs(len(upstream_seq) - len(downstream_seq)),
-                    'center_position': (len(upstream_seq) + current_n_length / 2) / 57,
-                    'used_fallback': current_n_length > (n_lengths_to_try[0] if n_lengths_to_try else 3)
-                }
-                
-                if verbose:
-                    fallback_note = " (使用回退策略)" if balance_info['used_fallback'] else ""
-                    print(f"    🔄 渐进式Pattern: {pattern}{fallback_note}")
-                    print(f"    📊 分解: 上游({len(upstream_seq)}) + N({current_n_length}) + 下游({len(downstream_seq)}) = {len(upstream_seq) + current_n_length + len(downstream_seq)}")
-                    print(f"    ⚖️  平衡性: 分数={balance_info['balance_score']}, 中心位置={balance_info['center_position']:.3f}")
-                
-                return pattern, upstream_seq, downstream_seq, current_n_length, balance_info
+            balance_info = {
+                'n_length': current_n_length,
+                'upstream_length': len(upstream_seq),
+                'downstream_length': len(downstream_seq),
+                'balance_score': abs(len(upstream_seq) - len(downstream_seq)),
+                'center_position': (len(upstream_seq) + current_n_length / 2) / 57,
+                'used_fallback': i > 0  # Only mark as fallback if not the first (original) attempt
+            }
+            
+            if verbose:
+                if i == 0:
+                    strategy_note = " (优先尝试原始N长度)"
+                else:
+                    strategy_note = f" (回退策略: N长度+{current_n_length - n_lengths_to_try[0]})"
+                print(f"    🔄 渐进式Pattern: {pattern}{strategy_note}")
+                print(f"    📊 分解: 上游({len(upstream_seq)}) + N({current_n_length}) + 下游({len(downstream_seq)}) = {total_length}")
+                print(f"    ⚖️  平衡性: 分数={balance_info['balance_score']}, 中心位置={balance_info['center_position']:.3f}")
+            
+            return pattern, upstream_seq, downstream_seq, current_n_length, balance_info
     
     # If no progressive pattern works, try balanced approach
     return build_balanced_57mer_pattern(seq, nstart, nend, verbose=False)
@@ -311,62 +318,23 @@ def build_balanced_57mer_pattern(seq, nstart, nend, verbose=True):
         'center_position': 0.0
     }
     
-    # Strategy 1: Ideal balanced allocation
-    if max_upstream_available >= target_upstream and max_downstream_available >= target_downstream:
-        upstream_seq = seq[nstart - target_upstream:nstart]
-        downstream_seq = seq[nend + 1:nend + 1 + target_downstream]
-        balance_info['allocation_strategy'] = 'perfect_balance'
-        balance_info['balance_score'] = 0
-        
-    # Strategy 2: One side insufficient, extend from the other side (keep N region centered)
-    elif max_upstream_available < target_upstream and max_downstream_available >= target_upstream:
-        # Left side insufficient, extend right side
-        total_available = max_upstream_available + max_downstream_available
-        if total_available >= target_total_flanking:
-            upstream_seq = seq[0:nstart]  # Use all left sequences
-            remaining_for_downstream = target_total_flanking - len(upstream_seq)
-            downstream_seq = seq[nend + 1:nend + 1 + remaining_for_downstream]
-            balance_info['allocation_strategy'] = 'left_extend_right'
-        else:
-            upstream_seq = seq[0:nstart]
-            downstream_seq = seq[nend + 1:]
-            balance_info['allocation_strategy'] = 'use_all_available'
-            
-    elif max_downstream_available < target_downstream and max_upstream_available >= target_downstream:
-        # Right side insufficient, extend left side
-        total_available = max_upstream_available + max_downstream_available
-        if total_available >= target_total_flanking:
-            downstream_seq = seq[nend + 1:]  # Use all right sequences
-            remaining_for_upstream = target_total_flanking - len(downstream_seq)
-            upstream_seq = seq[nstart - remaining_for_upstream:nstart]
-            balance_info['allocation_strategy'] = 'right_extend_left'
-        else:
-            upstream_seq = seq[nstart - max_upstream_available:nstart]
-            downstream_seq = seq[nend + 1:]
-            balance_info['allocation_strategy'] = 'use_all_available'
+    # Extract real flanking sequences from around the N region
+    # These are the actual sequences that exist on both sides of the N region
     
-    # Strategy 3: Both sides insufficient, use all available sequences
-    else:
-        total_available = max_upstream_available + max_downstream_available
-        if total_available >= target_total_flanking:
-            # Try to allocate as balanced as possible
-            upstream_seq = seq[nstart - target_upstream:nstart]
-            remaining_for_downstream = target_total_flanking - len(upstream_seq)
-            downstream_seq = seq[nend + 1:nend + 1 + remaining_for_downstream]
-            balance_info['allocation_strategy'] = 'insufficient_both_sides'
-        else:
-            # Extreme case: total length insufficient for 57-mer
-            # Use all available sequences but pad with N's to reach 57
-            upstream_seq = seq[0:nstart]
-            downstream_seq = seq[nend + 1:]
-            balance_info['allocation_strategy'] = 'extreme_shortage'
-            
-            # Calculate how many N's we need to add to reach 57
-            current_total = len(upstream_seq) + n_length + len(downstream_seq)
-            if current_total < 57:
-                # Add extra N's to the N region to reach exactly 57
-                n_length = 57 - len(upstream_seq) - len(downstream_seq)
-                balance_info['n_length'] = n_length
+    # For upstream: extract sequence ending at the N region start
+    target_upstream_length = min(28, max_upstream_available)
+    upstream_seq = seq[nstart - target_upstream_length:nstart]
+    
+    # For downstream: extract sequence starting from the N region end, skipping any consecutive N's
+    downstream_start = nend + 1
+    # Skip any consecutive N's after the target N region
+    while downstream_start < len(seq) and seq[downstream_start] == 'N':
+        downstream_start += 1
+    
+    target_downstream_length = min(28, len(seq) - downstream_start)
+    downstream_seq = seq[downstream_start:downstream_start + target_downstream_length]
+    
+    balance_info['allocation_strategy'] = 'real_flanking_sequences'
     
     # 5. Calculate actual allocation and balance score
     actual_upstream = len(upstream_seq)
@@ -433,15 +401,17 @@ def build_balanced_57mer_pattern(seq, nstart, nend, verbose=True):
     return pattern, upstream_seq, downstream_seq, n_length, balance_info
 
 
-def select_best_filling_for_n_region(query_results, upstream_seq, n_length, downstream_seq):
+def select_best_filling_for_n_region(query_results, upstream_seq, n_length, downstream_seq, verbose=True):
     """
     Select the best filling result for a specific N region.
+    Simple algorithm: Pattern侧翼序列在kmer两端，中间就是填充序列。
     
     Args:
         query_results: Results from query_hybrid
-        upstream_seq: Upstream sequence
+        upstream_seq: Upstream sequence (N-free)
         n_length: N region length
-        downstream_seq: Downstream sequence
+        downstream_seq: Downstream sequence (N-free)
+        verbose: Whether to print detailed information
         
     Returns:
         tuple: (best_fill_sequence, best_kmer, best_count, best_polymers)
@@ -449,36 +419,137 @@ def select_best_filling_for_n_region(query_results, upstream_seq, n_length, down
     if not query_results:
         return None, None, 0, float('inf')
     
+    if verbose:
+        print(f"    🔍 分析查询结果:")
+        print(f"       侧翼序列: 上游'{upstream_seq}' + 下游'{downstream_seq}'")
+        print(f"       N长度: {n_length}")
+        print(f"       期望kmer长度: {len(upstream_seq) + n_length + len(downstream_seq)}")
+        print(f"       找到 {len(query_results)} 个kmer")
+    
     candidates = []
+    all_matches = []  # Track all kmer analysis
     
     for kmer, count_str in query_results.items():
         try:
             count = int(count_str)
+            match_info = {
+                'kmer': kmer,
+                'count': count,
+                'kmer_length': len(kmer),
+                'match_result': '无匹配',
+                'fill_sequence': None,
+                'polymers': None,
+                'match_type': None
+            }
             
-            # Verify kmer matches the pattern
+            # 简化算法逻辑：
+            # 1. Pattern的侧翼序列肯定是在搜索到的kmer的两端
+            # 2. 中间的部分就是可以填充N区域的序列
+            
+            # 首先尝试精确匹配：kmer以上游开始，以下游结束
             if kmer.startswith(upstream_seq) and kmer.endswith(downstream_seq):
-                # Extract filling sequence (remove upstream/downstream sequences)
+                # 提取中间的填充序列
                 fill_sequence = kmer[len(upstream_seq):len(upstream_seq) + n_length]
                 
-                # Calculate polymers
-                polymers = count_polymers(fill_sequence)
+                # 验证填充序列长度
+                if len(fill_sequence) == n_length:
+                    polymers = count_polymers(fill_sequence)
+                    
+                    candidates.append({
+                        'kmer': kmer,
+                        'fill_sequence': fill_sequence,
+                        'count': count,
+                        'polymers': polymers,
+                        'match_type': 'exact'
+                    })
+                    
+                    match_info.update({
+                        'match_result': '精确匹配',
+                        'fill_sequence': fill_sequence,
+                        'polymers': polymers,
+                        'match_type': 'exact'
+                    })
+                else:
+                    match_info['match_result'] = f'长度不匹配 (期望{n_length}, 实际{len(fill_sequence)})'
+            
+            # 如果精确匹配失败，尝试在kmer中寻找上游和下游序列的位置
+            else:
+                # 在kmer中搜索上游序列的位置
+                upstream_pos = kmer.find(upstream_seq)
+                if upstream_pos != -1:
+                    # 在kmer中搜索下游序列的位置
+                    downstream_pos = kmer.find(downstream_seq, upstream_pos + len(upstream_seq))
+                    if downstream_pos != -1:
+                        # 检查中间部分的长度
+                        middle_start = upstream_pos + len(upstream_seq)
+                        middle_end = downstream_pos
+                        if middle_end - middle_start == n_length:
+                            # 提取填充序列
+                            fill_sequence = kmer[middle_start:middle_end]
+                            polymers = count_polymers(fill_sequence)
+                            
+                            candidates.append({
+                                'kmer': kmer,
+                                'fill_sequence': fill_sequence,
+                                'count': count,
+                                'polymers': polymers,
+                                'match_type': 'found_in_kmer'
+                            })
+                            
+                            match_info.update({
+                                'match_result': f'在kmer中找到匹配 (上游位置{upstream_pos}, 下游位置{downstream_pos})',
+                                'fill_sequence': fill_sequence,
+                                'polymers': polymers,
+                                'match_type': 'found_in_kmer'
+                            })
+                        else:
+                            match_info['match_result'] = f'中间部分长度不匹配 (期望{n_length}, 实际{middle_end - middle_start})'
+                    else:
+                        match_info['match_result'] = '下游序列未在kmer中找到'
+                else:
+                    match_info['match_result'] = '上游序列未在kmer中找到'
                 
-                candidates.append({
-                    'kmer': kmer,
-                    'fill_sequence': fill_sequence,
-                    'count': count,
-                    'polymers': polymers
-                })
         except (ValueError, IndexError) as e:
+            match_info['match_result'] = f'处理错误: {e}'
             print(f"    ⚠️  处理kmer时出错: {e}")
             continue
+        
+        all_matches.append(match_info)
+    
+    # 打印所有kmer的分析结果
+    if verbose:
+        print(f"    📊 所有kmer分析:")
+        for i, match in enumerate(all_matches[:5]):  # 只显示前5个
+            print(f"       {i+1}. Kmer: {match['kmer'][:20]}...{match['kmer'][-20:] if len(match['kmer']) > 40 else match['kmer']}")
+            print(f"          计数: {match['count']}, 长度: {match['kmer_length']}")
+            print(f"          匹配: {match['match_result']}")
+            if match['fill_sequence']:
+                print(f"          填充序列: {match['fill_sequence']} (多聚体: {match['polymers']})")
+            print()
+        
+        if len(all_matches) > 5:
+            print(f"       ... 还有 {len(all_matches) - 5} 个kmer")
     
     if not candidates:
+        if verbose:
+            print(f"    ❌ 没有找到合适的候选序列")
         return None, None, 0, float('inf')
     
     # Sort by count (descending) then by polymers (ascending)
     candidates.sort(key=lambda x: (-x['count'], x['polymers']))
     best_candidate = candidates[0]
+    
+    if verbose:
+        print(f"    🏆 选择最佳填充序列:")
+        print(f"       最佳kmer: {best_candidate['kmer'][:20]}...{best_candidate['kmer'][-20:] if len(best_candidate['kmer']) > 40 else best_candidate['kmer']}")
+        print(f"       填充序列: {best_candidate['fill_sequence']}")
+        print(f"       选择依据: 计数={best_candidate['count']} (最高), 多聚体={best_candidate['polymers']} (最少)")
+        print(f"       匹配类型: {best_candidate['match_type']}")
+        
+        if len(candidates) > 1:
+            print(f"    📋 其他候选序列:")
+            for i, candidate in enumerate(candidates[1:4]):  # 显示前3个其他候选
+                print(f"       {i+2}. 计数={candidate['count']}, 多聚体={candidate['polymers']}, 序列={candidate['fill_sequence']}")
     
     return (best_candidate['fill_sequence'], 
             best_candidate['kmer'], 
@@ -547,9 +618,7 @@ class FastaGapFilling57merProcessor:
     def process_sequence(self, header, sequence, verbose=True):
         """
         Process a single sequence for gap filling following the correct logic:
-        1. Reduce N regions to max_N length
-        2. Perform gap filling on reduced sequence
-        3. Return filled reduced sequence
+        从左到右顺序fill多个N区域，每个fill完后用fill后的序列确定下一个region的位置。
         
         Args:
             header: FASTA header
@@ -563,78 +632,85 @@ class FastaGapFilling57merProcessor:
             print(f"\n🔍 处理序列: {header}")
             print(f"   原始序列长度: {len(sequence)}")
         
-        # Find original N regions for reporting
-        original_n_regions = get_consecutive_N_regions(sequence)
+        # Find all N regions
+        n_regions = get_consecutive_N_regions(sequence)
         
-        if not original_n_regions:
+        if not n_regions:
             if verbose:
                 print(f"   ✅ 序列中未发现N区域，跳过处理")
             return header, sequence, {'n_regions_found': 0, 'gaps_filled': 0}
         
         if verbose:
-            print(f"   📍 发现 {len(original_n_regions)} 个N区域")
-            for i, region in enumerate(original_n_regions):
+            print(f"   📍 发现 {len(n_regions)} 个N区域")
+            for i, region in enumerate(n_regions):
                 n_length = region['nend'] - region['nstart'] + 1
                 print(f"     区域{i+1}: 位置{region['nstart']}-{region['nend']}, 长度{n_length}")
         
-        # Step 1: Reduce N positions (limit gaps to 43 N's)
-        reduced_sequence = reduce_N_positions(sequence, max_N=43)
-        
-        if verbose:
-            print(f"   ✂️  N区域缩减后序列长度: {len(reduced_sequence)}")
-            if len(reduced_sequence) != len(sequence):
-                print(f"   📉 序列缩短了 {len(sequence) - len(reduced_sequence)} 个字符")
-        
-        # Find N regions in reduced sequence
-        reduced_n_regions = get_consecutive_N_regions(reduced_sequence)
-        
-        if not reduced_n_regions:
-            if verbose:
-                print(f"   ✅ 缩减后无N区域，无需gap filling")
-            return header, reduced_sequence, {'n_regions_found': 0, 'gaps_filled': 0}
-        
-        if verbose:
-            print(f"   📍 缩减后发现 {len(reduced_n_regions)} 个N区域")
-            for i, region in enumerate(reduced_n_regions):
-                n_length = region['nend'] - region['nstart'] + 1
-                print(f"     区域{i+1}: 位置{region['nstart']}-{region['nend']}, 长度{n_length}")
-        
-        # Step 2: Process each N region in reduced sequence
+        # Process N regions from left to right
         processing_info = {
-            'n_regions_found': len(original_n_regions),
-            'n_regions_reduced': len(reduced_n_regions),
+            'n_regions_found': len(n_regions),
             'gaps_filled': 0,
             'total_patterns': 0,
             'successful_queries': 0,
             'balance_stats': []
         }
         
-        for i, n_region in enumerate(reduced_n_regions):
+        current_sequence = sequence
+        filled_count = 0
+        
+        for i, n_region in enumerate(n_regions):
             nstart = n_region['nstart']
             nend = n_region['nend']
+            original_n_length = nend - nstart + 1
             
             if verbose:
-                print(f"\n   🛠️  处理第{i+1}个缩减N区域 (位置{nstart}-{nend})")
+                print(f"\n   🛠️  处理第{i+1}个N区域 (位置{nstart}-{nend}, 原始长度{original_n_length})")
             
-            # Try progressive pattern building with fallback
+            # Try progressive pattern building
             pattern, upstream, downstream, n_length, balance_info = build_progressive_57mer_pattern(
-                reduced_sequence, nstart, nend, verbose=True
+                current_sequence, nstart, nend, verbose=True
             )
             
             processing_info['total_patterns'] += 1
             processing_info['balance_stats'].append(balance_info)
             
-            # Query database with retry mechanism
-            query_results = None
-            max_retries = 5  # Maximum number of fallback attempts
+            # Query database with progressive fallback strategy
+            max_allowed_n = min(original_n_length, 43)
+            n_lengths_to_try = [balance_info['n_length']]
             
-            for attempt in range(max_retries):
+            # Add progressive increases: +4, +8, +12, etc.
+            for increment in range(4, 17, 4):
+                next_length = n_lengths_to_try[0] + increment
+                if next_length <= max_allowed_n:
+                    n_lengths_to_try.append(next_length)
+            
+            query_results = None
+            final_n_length = n_lengths_to_try[0]
+            final_pattern = pattern
+            final_upstream = upstream
+            final_downstream = downstream
+            
+            for attempt, current_n_length in enumerate(n_lengths_to_try):
                 try:
-                    query_results = self.db.query_hybrid(pattern)
+                    if attempt > 0:
+                        # Need to rebuild pattern with different N length
+                        pattern, upstream, downstream, final_n_length, balance_info = build_progressive_57mer_pattern(
+                            current_sequence, nstart, nend, initial_n_length=current_n_length, verbose=False
+                        )
+                        final_pattern = pattern
+                        final_upstream = upstream
+                        final_downstream = downstream
+                        processing_info['total_patterns'] += 1
+                        processing_info['balance_stats'].append(balance_info)
+                        
+                        if verbose:
+                            print(f"    🔄 回退尝试 {attempt}: 重建Pattern (N{current_n_length}): {pattern}")
+                    
+                    query_results = self.db.query_hybrid(final_pattern)
                     processing_info['successful_queries'] += 1
                     
                     if verbose:
-                        print(f"    🔍 查询结果 (尝试{attempt + 1}): 找到 {len(query_results)} 个匹配")
+                        print(f"    🔍 查询成功 (尝试{attempt + 1}): 找到 {len(query_results)} 个匹配")
                     
                     # If we found results, break out of retry loop
                     if query_results:
@@ -644,62 +720,44 @@ class FastaGapFilling57merProcessor:
                     if verbose:
                         print(f"    ⚠️  查询失败 (尝试{attempt + 1}): {e}")
                     
-                    # If this isn't the last attempt, try with more N's
-                    if attempt < max_retries - 1:
-                        original_n_length = nend - nstart + 1
-                        initial_n_length = min(original_n_length, 43)
-                        next_n_length = initial_n_length + (attempt + 1) * 4
-                        
-                        if next_n_length <= min(original_n_length, 53):  # Don't exceed reasonable limits
-                            if verbose:
-                                print(f"    🔄 回退策略: 尝试增加N数量到{next_n_length}")
-                            
-                            # Try building new pattern with more N's
-                            pattern, upstream, downstream, n_length, balance_info = build_progressive_57mer_pattern(
-                                reduced_sequence, nstart, nend, initial_n_length=next_n_length, verbose=False
-                            )
-                            
-                            if verbose:
-                                fallback_note = " (回退策略)" if balance_info.get('used_fallback', False) else ""
-                                print(f"    🔄 新Pattern: {pattern}{fallback_note}")
-                            
-                            processing_info['total_patterns'] += 1
-                            processing_info['balance_stats'].append(balance_info)
-                        else:
-                            if verbose:
-                                print(f"    ❌ 已达到最大重试次数，放弃此N区域")
-                            break
-                    else:
+                    # If this is the last attempt and still failed
+                    if attempt == len(n_lengths_to_try) - 1:
                         if verbose:
-                            print(f"    ❌ 已达到最大重试次数，放弃此N区域")
+                            print(f"    ❌ 所有渐进式尝试都失败，无法填充此N区域")
+                        query_results = None
+                        break
             
             # Select best filling if we have results
-            if query_results and query_results:
+            if query_results:
+                if verbose:
+                    print(f"    🔍 查询结果: 找到 {len(query_results)} 个匹配")
+                
                 fill_seq, best_kmer, best_count, best_polymers = select_best_filling_for_n_region(
-                    query_results, upstream, n_length, downstream
+                    query_results, final_upstream, final_n_length, final_downstream, verbose=verbose
                 )
                 
-                # Apply filling to reduced sequence
+                # Apply filling to current sequence
                 if fill_seq:
-                    # Fill the N region in reduced sequence
-                    reduced_sequence = apply_gap_filling(
-                        reduced_sequence, nstart, nstart + n_length - 1, fill_seq
+                    # Fill the N region in current sequence
+                    current_sequence = apply_gap_filling(
+                        current_sequence, nstart, nstart + final_n_length - 1, fill_seq
                     )
                     processing_info['gaps_filled'] += 1
+                    filled_count += 1
                     
                     if verbose:
                         print(f"    ✅ 成功填充: {fill_seq}")
-                        print(f"       填充位置: {nstart}-{nstart + n_length - 1} (长度: {len(fill_seq)})")
-                        print(f"       最佳匹配: {best_kmer}")
+                        print(f"       填充位置: {nstart}-{nstart + final_n_length - 1} (长度: {len(fill_seq)})")
+                        print(f"       最佳匹配: {best_kmer[:20]}...{best_kmer[-20:]}")
                         print(f"       计数: {best_count}, 多聚体: {best_polymers}")
+                        print(f"       已完成 {filled_count}/{len(n_regions)} 个N区域")
                 else:
                     if verbose:
                         print(f"    ❌ 未找到合适的填充序列")
             elif verbose:
                 print(f"    ❌ 所有查询尝试都失败，无法填充此N区域")
         
-        # Step 3: Return filled reduced sequence
-        return header, reduced_sequence, processing_info
+        return header, current_sequence, processing_info
     
     def process_fasta_file(self, input_file, output_file, limit=None, verbose=True):
         """
