@@ -149,7 +149,7 @@ def demo_basic_usage():
             extended_engine = rustkmer_pyo3.PyExtendedPrefixQuery(db_path)
             
             # 带指标的查询
-            metrics = extended_engine.query_with_metrics("AAAAAAAAA")
+            metrics = extended_engine.query_prefix_metrics("AAAAAAAAA")
             print(f"   前缀查询指标:")
             print(f"     执行时间: {metrics.execution_time_ms} ms")
             print(f"     总匹配数: {metrics.total_matches}")

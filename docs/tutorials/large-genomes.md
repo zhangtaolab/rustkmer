@@ -677,8 +677,11 @@ with Database("large_db.rkdb") as db:
 # Use fast storage (SSD preferred)
 db_path = "/fast_storage/human_genome.rkdb"
 
-# Batch queries to reduce I/O
-results = db.query_batch(large_query_list)
+# Batch queries to reduce I/O（推荐使用新命名）
+results = db.query_exact_batch(large_query_list)
+
+# 兼容性说明：旧方法名仍然可用但已废弃
+# results = db.query_batch(large_query_list)  # 已废弃，请使用 query_exact_batch()
 
 # Cache frequently accessed k-mers
 cached_queries = CacheDatabase(db_path, cache_size=50000)

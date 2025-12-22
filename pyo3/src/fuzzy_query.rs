@@ -177,6 +177,7 @@ impl PyFuzzyQuery {
         })
     }
     /// Perform fuzzy query with wildcard and mutation support
+    #[deprecated(since = "2.0.0", note = "Use `query_fuzzy()` instead")]
     #[pyo3(signature = (pattern, max_mutations, max_results=None))]
     fn fuzzy_query(
         &self,
@@ -189,6 +190,7 @@ impl PyFuzzyQuery {
     }
     
     /// Perform fuzzy query with position-specific mutations
+    #[deprecated(since = "2.0.0", note = "Use `query_fuzzy_position()` instead")]
     #[pyo3(signature = (pattern, max_mutations, position_mutations, max_results=None))]
     fn fuzzy_query_with_position_mutations(
         &self,
@@ -275,7 +277,7 @@ impl PyFuzzyQuery {
         };
 
         // Create fuzzy query configuration
-        let query = if let Some(ref config) = position_config {
+        let _query = if let Some(ref config) = position_config {
             FuzzyQuery::with_position_mutations(
                 &pattern_str,
                 self.kmer_size,
@@ -362,6 +364,31 @@ impl PyFuzzyQuery {
             query_time_ms,
             has_position_mutations: !position_mutations.is_empty(),
         })
+    }
+    
+    // ===== 统一API命名方法 =====
+    
+    /// 模糊查询 - 统一命名版本
+    #[pyo3(signature = (pattern, max_mutations, max_results=None))]
+    fn query_fuzzy(
+        &self,
+        pattern: &Bound<'_, pyo3::types::PyString>,
+        max_mutations: u32,
+        max_results: Option<usize>
+    ) -> PyResult<PyFuzzyResult> {
+        self.fuzzy_query(pattern, max_mutations, max_results)
+    }
+    
+    /// 位置特异性模糊查询 - 统一命名版本
+    #[pyo3(signature = (pattern, max_mutations, position_mutations, max_results=None))]
+    fn query_fuzzy_position(
+        &self,
+        pattern: &Bound<'_, pyo3::types::PyString>,
+        max_mutations: u32,
+        position_mutations: &str,
+        max_results: Option<usize>
+    ) -> PyResult<PyFuzzyResult> {
+        self.fuzzy_query_with_position_mutations(pattern, max_mutations, position_mutations, max_results)
     }
     
     /// Get database k-mer size

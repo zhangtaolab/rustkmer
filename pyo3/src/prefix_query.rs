@@ -249,6 +249,7 @@ impl PyExtendedPrefixQuery {
     }
     
     /// Query prefix with detailed metrics
+    #[deprecated(since = "2.0.0", note = "Use `query_prefix_metrics()` instead")]
     #[pyo3(signature = (prefix))]
     fn query_with_metrics(&self, prefix: &Bound<'_, pyo3::types::PyString>) -> PyResult<PyPrefixQueryMetrics> {
         use std::time::Instant;
@@ -275,6 +276,7 @@ impl PyExtendedPrefixQuery {
     }
     
     /// Query hybrid pattern with detailed metrics
+    #[deprecated(since = "2.0.0", note = "Use `query_hybrid_metrics()` instead")]
     #[pyo3(signature = (pattern))]
     fn query_hybrid_with_metrics(&self, pattern: &Bound<'_, pyo3::types::PyString>) -> PyResult<PyPrefixQueryMetrics> {
         use std::time::Instant;
@@ -301,6 +303,7 @@ impl PyExtendedPrefixQuery {
     }
     
     /// Query prefix with metrics using string input
+    #[deprecated(since = "2.0.0", note = "Use `query_prefix_metrics_string()` instead")]
     #[pyo3(signature = (prefix))]
     fn query_with_metrics_string(&self, prefix: &str) -> PyResult<PyPrefixQueryMetrics> {
         use std::time::Instant;
@@ -327,6 +330,7 @@ impl PyExtendedPrefixQuery {
     }
     
     /// Batch query multiple prefixes
+    #[deprecated(since = "2.0.0", note = "Use `query_prefix_batch_metrics()` instead")]
     #[pyo3(signature = (prefixes))]
     fn batch_query(&self, prefixes: Vec<String>) -> PyResult<HashMap<String, PyPrefixQueryMetrics>> {
         let mut results = HashMap::new();
@@ -337,6 +341,32 @@ impl PyExtendedPrefixQuery {
         }
         
         Ok(results)
+    }
+    
+    // ===== 统一API命名方法 =====
+    
+    /// 前缀查询带指标 - 统一命名版本
+    #[pyo3(signature = (prefix))]
+    fn query_prefix_metrics(&self, prefix: &Bound<'_, pyo3::types::PyString>) -> PyResult<PyPrefixQueryMetrics> {
+        self.query_with_metrics(prefix)
+    }
+    
+    /// 混合模式查询带指标 - 统一命名版本
+    #[pyo3(signature = (pattern))]
+    fn query_hybrid_metrics(&self, pattern: &Bound<'_, pyo3::types::PyString>) -> PyResult<PyPrefixQueryMetrics> {
+        self.query_hybrid_with_metrics(pattern)
+    }
+    
+    /// 前缀查询带指标（字符串输入）- 统一命名版本
+    #[pyo3(signature = (prefix))]
+    fn query_prefix_metrics_string(&self, prefix: &str) -> PyResult<PyPrefixQueryMetrics> {
+        self.query_with_metrics_string(prefix)
+    }
+    
+    /// 批量前缀查询带指标 - 统一命名版本
+    #[pyo3(signature = (prefixes))]
+    fn query_prefix_batch_metrics(&self, prefixes: Vec<String>) -> PyResult<HashMap<String, PyPrefixQueryMetrics>> {
+        self.batch_query(prefixes)
     }
     
     fn __repr__(&self) -> String {

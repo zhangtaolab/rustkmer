@@ -35,7 +35,8 @@ try:
     patterns = [
         "AAAAAAAAAAAAAAAAAAA",  # All A sequence
         "TTTTTTTTTTTTTTTTTTT",  # All T sequence
-        "GCCGCGNNNNNNNNNNNGCC",  # N-wildcard pattern (corrected to 19 chars)
+        "GCCCGNNNNNNNNNNNGCC",  # N-wildcard pattern (corrected to 19 chars)
+        "AAAAAANNNAAAAAAAAAA"
     ]
 
     print(f"\n🧬 Testing fuzzy queries:")
@@ -47,7 +48,7 @@ try:
 
         try:
             start_time = time.time()
-            result = fuzzy.fuzzy_query(pattern, max_mutations=1)
+            result = fuzzy.query_fuzzy(pattern, max_mutations=1)
             query_time = time.time() - start_time
 
             print(f"   ✅ {result.total_matches:,} matches in {query_time:.2f}s")

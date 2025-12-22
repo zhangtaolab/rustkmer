@@ -5,7 +5,6 @@
 
 use pyo3::prelude::*;
 use pyo3::types::{PyString, PyDict};
-use pyo3::PyObject;
 use std::path::Path;
 use std::collections::HashMap;
 use std::fs::File;
@@ -319,7 +318,6 @@ impl PyDatabase {
     }
     
     /// Perform a single k-mer lookup
-    #[deprecated(since = "2.0.0", note = "Use `query_exact()` instead")]
     #[pyo3(signature = (kmer))]
     fn query(&self, kmer: &Bound<'_, PyString>) -> PyResult<PyQueryResult> {
         if !self.is_loaded {
@@ -352,14 +350,7 @@ impl PyDatabase {
         
         // Check if canonical k-mers are used
         let search_kmer = if self.header.canonical {
-            match canonical_kmer_u128(encoded_kmer, self.header.kmer_size as usize) {
-                Ok(kmer) => kmer,
-                Err(e) => {
-                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                        format!("Failed to canonicalize k-mer: {}", e)
-                    ));
-                }
-            }
+            canonical_kmer_u128(encoded_kmer)
         } else {
             encoded_kmer
         };
@@ -401,16 +392,13 @@ impl PyDatabase {
     }
     
     /// Perform batch k-mer queries
-    #[deprecated(since = "2.0.0", note = "Use `query_exact_batch()` instead")]
     #[pyo3(signature = (kmers))]
     fn query_batch(&self, kmers: Vec<String>) -> PyResult<HashMap<String, PyQueryResult>> {
         let mut results = HashMap::new();
         
         for kmer_str in kmers {
-            let result = pyo3::Python::with_gil(|py| {
-                let py_string = pyo3::types::PyString::new_bound(py, &kmer_str);
-                self.query(&py_string)
-            })?;
+            let py_string = pyo3::types::PyString::new_bound(pyo3::Python::assume_gil_acquired(), &kmer_str);
+            let result = self.query(&py_string)?;
             results.insert(kmer_str, result);
         }
         
@@ -420,11 +408,11 @@ impl PyDatabase {
     /// Get database statistics
     fn get_stats(&self) -> PyDatabaseStats {
         PyDatabaseStats {
-            kmer_size: self.header.kmer_size as usize,
+            kmer_size: self.header.kmer_size,
             total_kmers: self.header.total_kmers,
             unique_kmers: self.header.unique_kmers,
             file_size: self.header.file_size,
-            is_sorted: self.header.sorted,
+            is_sorted: self.header.is_sorted,
             canonical: self.header.canonical,
         }
     }
@@ -458,7 +446,6 @@ impl PyDatabase {
         usage
     }
     
-    
     // ===== 统一接口方法 =====
     
     /// 简单的测试方法
@@ -466,14 +453,12 @@ impl PyDatabase {
         "Test method works!".to_string()
     }
     
-    /// 获取数据库信息  
+    /// 获取数据库信息
     fn database_info(&self) -> HashMap<String, String> {
         let mut info = HashMap::new();
         info.insert("database_path".to_string(), self.path.clone());
         info.insert("kmer_size".to_string(), self.header.kmer_size.to_string());
         info.insert("is_loaded".to_string(), self.is_loaded.to_string());
-        info.insert("total_kmers".to_string(), self.header.total_kmers.to_string());
-        info.insert("unique_kmers".to_string(), self.header.unique_kmers.to_string());
         info.insert("load_mode".to_string(), match self.load_mode {
             LoadMode::Preload => "preload".to_string(),
             LoadMode::MemoryMapped => "memory_mapped".to_string(),
@@ -485,7 +470,7 @@ impl PyDatabase {
     /// 获取k-mer大小
     #[getter]
     fn kmer_size(&self) -> usize {
-        self.header.kmer_size as usize
+        self.header.kmer_size
     }
     
     /// 获取数据库路径
@@ -523,7 +508,6 @@ impl PyDatabase {
     fn canonical(&self) -> bool {
         self.header.canonical
     }
-    
     
     /// 检查k-mer是否存在
     fn exists(&self, kmer: &Bound<'_, PyString>) -> PyResult<bool> {
@@ -607,7 +591,15 @@ impl PyDatabase {
             .map(|(kmer, count)| (kmer, count.to_string()))
             .collect();
         
-        Ok(matches)
+        Ok(PyPrefixQueryResult {
+            matches,
+            start_index: result.memory_block.start_index,
+            end_index: result.memory_block.end_index,
+            block_size: result.memory_block.block_size,
+            is_sorted: result.memory_block.is_sorted,
+            total_matches: result.total_matches,
+            query_time_ms: result.query_time_ms,
+        })
     }
     
     /// Extract k-mers by pattern (supports hybrid format like ATAC{N5}ACAC)
@@ -630,28 +622,33 @@ impl PyDatabase {
         
         let pattern_upper = pattern_str.to_uppercase();
         
-        // 使用共享的数据库实例（统一接口原则）
-        if let Some(ref db) = self.rk_database {
-            let result = match extract_hybrid_by_pattern(db, &pattern_upper) {
-                Ok(result) => result,
-                Err(e) => {
-                    return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                        format!("Pattern extraction failed: {}", e)
-                    ));
-                }
-            };
-            
-            let matches: HashMap<String, String> = result.matches
-                .into_iter()
-                .map(|(kmer, count)| (kmer, count.to_string()))
-                .collect();
-            
-            Ok(matches)
-        } else {
-            Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Database not available"
-            ))
-        }
+        // Reload database for pattern extraction
+        let database = match RKDatabase::from_file_path(Path::new(&self.path)) {
+            Ok(db) => db,
+            Err(e) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                    format!("Failed to load database: {}", e)
+                ));
+            }
+        };
+        
+        // Use hybrid pattern extraction
+        let result = match extract_hybrid_by_pattern(&database, &pattern_upper) {
+            Ok(result) => result,
+            Err(e) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                    format!("Pattern extraction failed: {}", e)
+                ));
+            }
+        };
+        
+        // Convert matches to HashMap<String, String>
+        let matches: HashMap<String, String> = result.matches
+            .into_iter()
+            .map(|(kmer, count)| (kmer, count.to_string()))
+            .collect();
+        
+        Ok(matches)
     }
     
     /// Get entry at specific index for direct file access
@@ -668,7 +665,7 @@ impl PyDatabase {
             ));
         }
         
-        let mut file = match &self.mmapped_file {
+        let file = match &self.mmapped_file {
             Some(f) => f,
             None => {
                 return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
@@ -685,7 +682,7 @@ impl PyDatabase {
             self.header.data_offset
         };
         
-        let entry_offset = actual_data_offset + (index as u64 * 20); // 16 + 4 bytes per entry (u128 + u32)
+        let entry_offset = actual_data_offset + (index * 20); // 16 + 4 bytes per entry (u128 + u32)
         
         // Seek to the entry position
         file.seek(SeekFrom::Start(entry_offset))
@@ -704,224 +701,6 @@ impl PyDatabase {
         let count = u32::from_le_bytes(count_bytes);
         
         Ok((kmer, count))
-    }
-    
-    // ===== 高级查询方法 =====
-    
-    /// 解析混合模式
-    #[pyo3(signature = (pattern))]
-    fn parse_pattern(&self, pattern: &Bound<'_, PyString>) -> PyResult<HashMap<String, String>> {
-        self.parse_pattern_string(&pattern.to_string())
-    }
-    
-    /// 优化前缀查询
-    #[deprecated(since = "2.0.0", note = "Use `query_prefix()` instead")]
-    #[pyo3(signature = (prefix))]
-    fn query_prefix_optimized(&self, prefix: &Bound<'_, PyString>) -> PyResult<PyPrefixQueryResult> {
-        self.query_prefix_optimized_string(&prefix.to_string())
-    }
-    
-    /// 批量前缀查询
-    #[pyo3(signature = (prefixes))]
-    fn query_prefix_batch(&self, prefixes: Vec<String>) -> PyResult<Vec<PyPrefixQueryResult>> {
-        let mut results = Vec::new();
-        
-        for prefix_str in prefixes {
-            let result = self.query_prefix_optimized_string(&prefix_str)?;
-            results.push(result);
-        }
-        
-        Ok(results)
-    }
-    
-    /// 混合模式查询
-    #[pyo3(signature = (pattern))]
-    fn query_hybrid(&self, pattern: &Bound<'_, PyString>) -> PyResult<HashMap<String, String>> {
-        if !self.is_loaded {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Database not loaded"
-            ));
-        }
-        
-        let pattern_str = pattern.to_string().to_uppercase();
-        
-        // 使用共享的数据库实例（统一接口的核心优势）
-        if let Some(ref db) = self.rk_database {
-            let result = match rustkmer::database::prefix_query_optimized::extract_hybrid_by_pattern(db, &pattern_str) {
-                Ok(result) => result,
-                Err(e) => {
-                    return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                        format!("Hybrid query failed: {}", e)
-                    ));
-                }
-            };
-            
-            let matches_map: HashMap<String, String> = result.matches
-                .into_iter()
-                .map(|(kmer, count)| (kmer, count.to_string()))
-                .collect();
-            Ok(matches_map)
-        } else {
-            Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Database not available"
-            ))
-        }
-    }
-    
-    /// 批量混合模式查询
-    #[pyo3(signature = (patterns))]
-    fn query_hybrid_batch(&self, patterns: Vec<String>) -> PyResult<Vec<HashMap<String, String>>> {
-        let mut results = Vec::new();
-        
-        for pattern_str in patterns {
-            let result = pyo3::Python::with_gil(|py| {
-                let pattern_py = pyo3::types::PyString::new_bound(py, &pattern_str);
-                self.query_hybrid(&pattern_py).map_err(|e| {
-                    pyo3::PyErr::from(e)
-                })
-            })?;
-            results.push(result);
-        }
-        
-        Ok(results)
-    }
-    
-    /// 优化前缀查询（字符串输入）
-    fn query_prefix_optimized_string(&self, prefix: &str) -> PyResult<PyPrefixQueryResult> {
-        let prefix_str = prefix.to_uppercase();
-        
-        if prefix_str.trim().is_empty() {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Prefix cannot be empty"
-            ));
-        }
-        
-        if !prefix_str.chars().all(|c| matches!(c.to_ascii_uppercase(), 'A' | 'T' | 'C' | 'G')) {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Prefix contains invalid characters (only A, T, C, G allowed)"
-            ));
-        }
-        
-        if let Some(ref db) = self.rk_database {
-            let result = match rustkmer::database::prefix_query_optimized::extract_prefix_optimized(db, &prefix_str) {
-                Ok(result) => result,
-                Err(e) => {
-                    return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                        format!("Prefix query failed: {}", e)
-                    ));
-                }
-            };
-            
-            let matches: HashMap<String, String> = result.matches
-                .into_iter()
-                .map(|(kmer, count)| (kmer, count.to_string()))
-                .collect();
-            
-            Ok(PyPrefixQueryResult {
-                matches,
-                start_index: result.memory_block.start_index,
-                end_index: result.memory_block.end_index,
-                block_size: result.memory_block.block_size,
-                is_sorted: result.memory_block.is_sorted,
-                total_matches: result.total_matches,
-                query_time_ms: result.query_time_ms,
-            })
-        } else {
-            Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Database not available"
-            ))
-        }
-    }
-    
-    /// 解析混合模式（字符串输入）
-    fn parse_pattern_string(&self, pattern: &str) -> PyResult<HashMap<String, String>> {
-        let pattern_upper = pattern.to_uppercase();
-        
-        let result = match rustkmer::database::prefix_query_optimized::parse_hybrid_pattern(&pattern_upper) {
-            Ok(pattern) => {
-                let mut info = HashMap::new();
-                info.insert("prefix".to_string(), pattern.prefix);
-                info.insert("suffix".to_string(), pattern.suffix);
-                info.insert("n_count".to_string(), pattern.n_count.to_string());
-                info.insert("total_length".to_string(), pattern.total_length.to_string());
-                info.insert("n_positions".to_string(), format!("{:?}", pattern.n_positions));
-                info
-            }
-            Err(e) => {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    format!("Pattern parsing failed: {}", e)
-                ));
-            }
-        };
-        
-        Ok(result)
-    }
-    
-    /// 模糊查询
-    #[deprecated(since = "2.0.0", note = "Use `query_fuzzy()` instead")]
-    #[pyo3(signature = (pattern, max_mutations))]
-    fn fuzzy_query(&self, pattern: &Bound<'_, PyString>, max_mutations: u32) -> PyResult<PyFuzzyResult> {
-        let pattern_str = pattern.to_string().to_uppercase();
-        
-        // Validate pattern length
-        if pattern_str.len() != self.header.kmer_size as usize {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Pattern length {} does not match database k-mer size {}", 
-                        pattern_str.len(), self.header.kmer_size)
-            ));
-        }
-        
-        // Validate pattern characters
-        if !pattern_str.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G' | 'N')) {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Pattern contains invalid characters (only A,T,C,G,N allowed)".to_string()
-            ));
-        }
-        
-        // For now, return a placeholder result
-        // In a full implementation, this would use the FuzzyQuery engine
-        let matches = Vec::new();
-        let total_matches = 0;
-        let query_time_ms = 1;
-        let mutation_tolerance = max_mutations;
-        let has_position_mutations = false;
-        let exact_match = None;
-        
-        Ok(PyFuzzyResult {
-            query_kmer: pattern_str,
-            exact_match,
-            matches,
-            total_matches,
-            mutation_tolerance,
-            query_time_ms,
-            has_position_mutations,
-        })
-    }
-    
-    // ===== 统一API命名方法 =====
-    
-    /// 精确查询 - 统一命名版本
-    #[pyo3(signature = (kmer))]
-    fn query_exact(&self, kmer: &Bound<'_, PyString>) -> PyResult<PyQueryResult> {
-        self.query(kmer)
-    }
-    
-    /// 批量精确查询 - 统一命名版本
-    #[pyo3(signature = (kmers))]
-    fn query_exact_batch(&self, kmers: Vec<String>) -> PyResult<HashMap<String, PyQueryResult>> {
-        self.query_batch(kmers)
-    }
-    
-    /// 模糊查询 - 统一命名版本
-    #[pyo3(signature = (pattern, max_mutations))]
-    fn query_fuzzy(&self, pattern: &Bound<'_, PyString>, max_mutations: u32) -> PyResult<PyFuzzyResult> {
-        self.fuzzy_query(pattern, max_mutations)
-    }
-    
-    /// 前缀查询 - 统一命名版本
-    #[pyo3(signature = (prefix))]
-    fn query_prefix(&self, prefix: &Bound<'_, PyString>) -> PyResult<PyPrefixQueryResult> {
-        self.query_prefix_optimized(prefix)
     }
 }
 

@@ -116,9 +116,9 @@ def test_method_signatures():
         cls = rustkmer_pyo3.PyExtendedPrefixQuery
         
         methods_to_check = [
-            'query_with_metrics',
-            'query_hybrid_with_metrics',
-            'batch_query'
+            'query_prefix_metrics',
+            'query_hybrid_metrics',
+            'query_prefix_batch_metrics'
         ]
         
         for method_name in methods_to_check:
@@ -161,7 +161,7 @@ import rustkmer_pyo3
 extended_engine = rustkmer_pyo3.PyExtendedPrefixQuery("path/to/database.rkdb")
 
 # 带指标的查询
-metrics = extended_engine.query_with_metrics("AAAAAAAA")
+metrics = extended_engine.query_prefix_metrics("AAAAAAAA")
 
 print(f"执行时间: {metrics.execution_time_ms} ms")
 print(f"总匹配数: {metrics.total_matches}")
@@ -179,7 +179,7 @@ engine = rustkmer_pyo3.PyExtendedPrefixQuery("path/to/database.rkdb")
 
 # 批量查询多个模式
 patterns = ["AAAAAAAA", "AAAAAAA{N5}AAAAAA", "ATCG{N3}GCTA"]
-results = engine.batch_query(patterns)
+results = engine.query_prefix_batch_metrics(patterns)
 
 for pattern, metrics in results.items():
     print(f"模式 '{pattern}': {metrics.total_matches} 个结果")

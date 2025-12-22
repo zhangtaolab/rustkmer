@@ -88,7 +88,7 @@ try:
 
         try:
             start_time = time.time()
-            result = fuzzy.fuzzy_query(pattern, max_mutations=mutations)
+            result = fuzzy.query_fuzzy(pattern, max_mutations=mutations)
             query_time = time.time() - start_time
             total_query_time += query_time
             successful_queries += 1

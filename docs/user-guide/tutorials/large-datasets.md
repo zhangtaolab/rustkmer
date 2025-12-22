@@ -79,8 +79,11 @@ stats = engine.get_stats()
 print(f"Total k-mers: {stats.total_kmers:,}")
 print(f"Unique k-mers: {stats.unique_kmers:,}")
 
-# Efficient prefix queries
-prefix_results = engine.query_batch(["ATG", "GTG", "CTG"])  # Start codons
+# Efficient prefix queries（推荐使用新命名）
+prefix_results = engine.query_exact_batch(["ATG", "GTG", "CTG"])  # Start codons
+
+# 兼容性说明：旧方法名仍然可用但已废弃
+# prefix_results = engine.query_batch(["ATG", "GTG", "CTG"])  # 已废弃，请使用 query_exact_batch()
 ```
 
 This approach ensures efficient processing of large genomic datasets while maintaining optimal memory usage.
