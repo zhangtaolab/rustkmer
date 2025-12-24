@@ -419,7 +419,7 @@ def main():
             name = seqobj.name
             seq = seqobj.seq
 
-            print(f"处理序列: {name}, 总数: {len(fastx_obj)}")
+            print(f"处理序列: {name}, {i+1} / {len(fastx_obj)}")
             print(f"原始序列长度: {len(seq)}")
             print(f"原始序列前50字符: {seq[:50]}")
             
@@ -433,7 +433,7 @@ def main():
             print(f"添加到输出列表: {name} (长度: {len(processed_seq)})")
             print("---")
             print(f">{name}\n{processed_seq}\n", file=output_file)
-            
+            i+=1
     except Exception as e:
         print(f"❌ 读取FASTA文件失败: {e}")
         sys.exit(1)

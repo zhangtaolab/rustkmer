@@ -568,12 +568,105 @@ impl RKDatabase {
         input_paths: &[std::path::PathBuf],
         config: &crate::database::MergeConfig,
     ) -> crate::error::ProcessingResult<Self> {
-        // use std::collections::HashMap; // Unused import
+        use std::time::Instant;
+
+        if input_paths.is_empty() {
+            return Err(crate::error::ProcessingError::new(
+                "At least one input database is required"
+            ));
+        }
+
+        let _start_time = Instant::now();
+
+        if config.use_streaming || Self::should_use_streaming(input_paths, config)? {
+            return Self::merge_databases_streaming(input_paths, config);
+        }
+
+        Self::merge_databases_inmemory(input_paths, config)
+    }
+
+    fn should_use_streaming(
+        input_paths: &[std::path::PathBuf],
+        config: &crate::database::MergeConfig,
+    ) -> crate::error::ProcessingResult<bool> {
+        use crate::database::format::RKDatabase;
+
+        let mut total_kmers = 0u64;
+
+        for path in input_paths {
+            let db = RKDatabase::from_file_path(path)?;
+            total_kmers += db.total_kmers();
+        }
+
+        let estimated_memory = total_kmers as usize * 24;
+
+        Ok(estimated_memory > config.max_memory_usage)
+    }
+
+    fn merge_databases_streaming(
+        input_paths: &[std::path::PathBuf],
+        config: &crate::database::MergeConfig,
+    ) -> crate::error::ProcessingResult<Self> {
+        use std::time::Instant;
+        use crate::database::streaming_merge::ExternalMerger;
+        use crate::database::format::RKDatabase;
+
+        if config.verbose {
+            eprintln!("Using streaming merge for large datasets");
+        }
+
+        let start_time = Instant::now();
+
+        let first_db = RKDatabase::from_file_path(&input_paths[0])?;
+        let kmer_size = first_db.kmer_size();
+        let canonical = first_db.is_canonical();
+
+        let mut merger = ExternalMerger::new(config.chunk_size, config.temp_dir.clone());
+
+        for path in input_paths {
+            if config.verbose {
+                eprintln!("Sorting database: {}", path.display());
+            }
+            merger.sort_database(path)?;
+        }
+
+        if config.verbose {
+            eprintln!("Merging sorted chunks...");
+        }
+
+        let merge_iter = merger.merge_sorted_chunks()?;
+        let mut sorted_kmers: Vec<(u128, u32)> = Vec::new();
+
+        for result in merge_iter {
+            match result {
+                Ok((kmer, count)) => sorted_kmers.push((kmer, count)),
+                Err(e) => return Err(e),
+            }
+        }
+
+        if config.verbose {
+            let stats = merger.stats();
+            eprintln!("Streaming merge stats:");
+            eprintln!("  Total k-mers read: {}", stats.total_kmers_read);
+            eprintln!("  Chunks created: {}", stats.chunks_created);
+            eprintln!("  Read time: {:?}", stats.read_time);
+            eprintln!("  Sort time: {:?}", stats.sort_time);
+            eprintln!("  Merge time: {:?}", stats.merge_time);
+            eprintln!("  Write time: {:?}", stats.write_time);
+            eprintln!("  Total time: {:?}", start_time.elapsed());
+        }
+
+        Self::from_kmer_pairs(sorted_kmers, kmer_size as u8, canonical, true)
+    }
+
+    fn merge_databases_inmemory(
+        input_paths: &[std::path::PathBuf],
+        config: &crate::database::MergeConfig,
+    ) -> crate::error::ProcessingResult<Self> {
         use hashbrown::HashMap as HashMapBrown;
         use hashbrown::hash_map::DefaultHashBuilder;
-        // use ahash::AHasher; // Unused import
-        use std::time::Instant;
         use indicatif::{ProgressBar, ProgressStyle};
+        use std::time::Instant;
 
         let _start_time = Instant::now();
 
@@ -772,6 +865,49 @@ mod tests {
         // Basic memory sanity check
         assert!(monitor.peak_usage() < constraints::SMALL.max_usage,
                "Memory usage should be within small constraint");
+    }
+
+    #[test]
+    fn test_merge_streaming_basic() {
+        let temp_dir = tempdir().unwrap();
+        let db1_path = temp_dir.path().join("db1.rkdb");
+        let db2_path = temp_dir.path().join("db2.rkdb");
+
+        let db1 = RKDatabase::from_kmer_pairs(
+            vec![(0x0010, 10), (0x0020, 20), (0x0030, 30)],
+            31,
+            false,
+            true
+        ).unwrap();
+
+        let db2 = RKDatabase::from_kmer_pairs(
+            vec![(0x0010, 5), (0x0040, 15), (0x0030, 25)],
+            31,
+            false,
+            true
+        ).unwrap();
+
+        db1.to_file_path(&db1_path).unwrap();
+        db2.to_file_path(&db2_path).unwrap();
+
+        let config = crate::database::MergeConfig {
+            max_memory_usage: 1024,
+            chunk_size: 2,
+            temp_dir: temp_dir.path().to_path_buf(),
+            use_streaming: true,
+            verbose: false,
+        };
+
+        let merged_db = RKDatabase::merge_databases(&[db1_path, db2_path], &config)
+            .expect("Streaming merge should succeed");
+
+        let all_kmers = merged_db.all_kmers().unwrap();
+        let kmer_map: std::collections::HashMap<_, _> = all_kmers.into_iter().collect();
+
+        assert_eq!(kmer_map.get(&0x0010), Some(&15));
+        assert_eq!(kmer_map.get(&0x0020), Some(&20));
+        assert_eq!(kmer_map.get(&0x0030), Some(&55));
+        assert_eq!(kmer_map.get(&0x0040), Some(&15));
     }
 
     #[test]
