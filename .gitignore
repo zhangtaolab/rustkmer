@@ -211,3 +211,18 @@ tmp/
 # Hypothesis testing cache (property-based testing)
 .hypothesis/
 .pytest_cache/
+# Test databases
+*.rkd
+*.rkb
+
+# Test binaries
+test_memory
+test_memory_fixed
+
+# Temporary merge files
+ext_sort_*
+external_sort_*
+
+# Debug files
+*.tmp
+merged_test*.rkd

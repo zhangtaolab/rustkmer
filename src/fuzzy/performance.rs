@@ -423,7 +423,7 @@ pub mod utils {
     pub fn estimate_query_time(
         database_size: u64,
         variant_count: usize,
-        _use_parallel: bool,
+        use_parallel: bool,
     ) -> Duration {
         let base_time_per_query_ms = if database_size < 1_000_000 {
             1.0 // Small database
@@ -435,8 +435,9 @@ pub mod utils {
 
         let total_time_ms = variant_count as f64 * base_time_per_query_ms;
 
-        // Sequential processing time (no parallel speedup)
-        Duration::from_millis(total_time_ms as u64)
+        // Apply parallel speedup factor
+        let speedup_factor = if use_parallel { 4.0 } else { 1.0 };
+        Duration::from_millis((total_time_ms / speedup_factor) as u64)
     }
 
     /// Determine if query should be aborted based on performance

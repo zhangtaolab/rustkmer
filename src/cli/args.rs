@@ -263,6 +263,26 @@ pub enum Commands {
         /// Check compatibility of databases without merging
         #[arg(long, help = "Check compatibility of databases without performing the merge")]
         check_compatibility: bool,
+
+        /// Maximum memory usage for merge operations (e.g., "32GB", "1TB")
+        #[arg(long, help = "Maximum memory usage for merge operations (e.g., '32GB', '1TB'). Defaults to 50% of system memory.")]
+        max_memory: Option<String>,
+
+        /// Use prefix cache merge (memory-efficient with error isolation)
+        #[arg(long, help = "Use prefix cache merge strategy for memory-efficient processing with error isolation")]
+        use_prefix_cache: bool,
+
+        /// Batch size for prefix cache merge (number of k-mers per buffer flush)
+        #[arg(long, default_value = "100000", help = "Batch size for prefix cache merge. Higher values use more memory but are faster. (default: 100000)")]
+        batch_size: usize,
+
+        /// Number of threads for parallel processing (0 = all cores)
+        #[arg(long, default_value = "0", help = "Number of threads for parallel processing (0 = use all cores).")]
+        num_threads: usize,
+
+        /// Merge strategy for prefix cache mode
+        #[arg(long, value_parser = ["auto", "memory", "streaming"], default_value = "auto", help = "Merge strategy for prefix cache mode: auto (use memory if <100MB), memory (force in-memory), streaming (always stream).")]
+        merge_mode: String,
     },
 
     /// Calculate statistics for a k-mer database

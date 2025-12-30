@@ -112,6 +112,45 @@ pub struct MergeArgs {
         help = "Check compatibility of databases without performing the merge"
     )]
     pub check_compatibility: bool,
+
+    /// Maximum memory usage for merge operations (e.g., "32GB", "1TB")
+    #[arg(
+        long,
+        help = "Maximum memory usage for merge operations (e.g., '32GB', '1TB'). Defaults to 50% of system memory."
+    )]
+    pub max_memory: Option<String>,
+
+    /// Use prefix cache merge (memory-efficient with error isolation)
+    #[arg(
+        long,
+        help = "Use prefix cache merge strategy for memory-efficient processing with error isolation"
+    )]
+    pub use_prefix_cache: bool,
+
+    /// Batch size for prefix cache merge (number of k-mers per buffer flush)
+    #[arg(
+        long,
+        default_value = "50000",
+        help = "Batch size for prefix cache merge (k-mers per buffer flush). Lower values use less memory but are slower. (default: 50000)"
+    )]
+    pub batch_size: usize,
+
+    /// Number of threads for parallel processing (0 = all cores)
+    #[arg(
+        long,
+        default_value = "0",
+        help = "Number of threads for parallel processing (0 = use all cores). Can also be set via RAYON_NUM_THREADS environment variable."
+    )]
+    pub num_threads: usize,
+
+    /// Merge strategy for prefix cache mode
+    #[arg(
+        long,
+        value_parser = ["auto", "memory", "streaming"],
+        default_value = "auto",
+        help = "Merge strategy for prefix cache mode: auto (use memory if <100MB), memory (force in-memory), streaming (always stream). (default: auto)"
+    )]
+    pub merge_mode: String,
 }
 
 /// Execute merge command
@@ -139,9 +178,60 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
     }
     let reference_db = RKDatabase::from_file_path(first_db_path)?;
 
-    // Validate all databases have compatible settings (always enforced)
-    if args.verbose {
-        eprintln!("Validating database compatibility...");
+    // Validate all databases have compatible settings (skip if using prefix cache)
+    if !args.use_prefix_cache {
+        if args.verbose {
+            eprintln!("Validating database compatibility...");
+        }
+
+        let ref_kmer_size = reference_db.kmer_size();
+        let ref_canonical = reference_db.is_canonical();
+
+        for (_i, db_path) in args.input.iter().enumerate().skip(1) {
+            let db = match RKDatabase::from_file_path(db_path) {
+                Ok(db) => db,
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Failed to load database '{}': {}",
+                                           db_path.display(), e));
+                }
+            };
+
+            if db.kmer_size() != ref_kmer_size {
+                let mut error_msg = format!(
+                    "Database '{}' has k-mer size {}, expected {}",
+                    db_path.display(),
+                    db.kmer_size(),
+                    ref_kmer_size
+                );
+
+                // Add recovery suggestions
+                error_msg.push_str("\n\nRecovery suggestions:");
+                error_msg.push_str(&format!("\n  • Create a new database with k-mer size {}", ref_kmer_size));
+                error_msg.push_str("\n  • Use 'rustkmer stats' to verify database parameters before merging");
+                error_msg.push_str("\n  • Use 'rustkmer count --k <size>' to create compatible databases");
+
+                return Err(anyhow::anyhow!("{}", error_msg));
+            }
+
+            if db.is_canonical() != ref_canonical {
+                let mut error_msg = format!(
+                    "Database '{}' has canonical mode {}, expected {}",
+                    db_path.display(),
+                    db.is_canonical(),
+                    ref_canonical
+                );
+
+                // Add recovery suggestions
+                error_msg.push_str("\n\nRecovery suggestions:");
+                error_msg.push_str(&format!("\n  • Create a new database with canonical mode {}", ref_canonical));
+                error_msg.push_str("\n  • Use 'rustkmer count --canonical' or 'rustkmer count --no-canonical' as needed");
+                error_msg.push_str("\n  • Verify all databases use the same canonical mode before merging");
+
+                return Err(anyhow::anyhow!("{}", error_msg));
+            }
+        }
+    } else if args.verbose {
+        eprintln!("Skipping compatibility validation (using prefix cache merge)");
     }
 
     let ref_kmer_size = reference_db.kmer_size();
@@ -172,24 +262,27 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
             return Err(anyhow::anyhow!(error_msg));
         }
 
-        if db.is_canonical() != ref_canonical {
-            let mut error_msg = format!(
-                "Database '{}' has canonical mode {}, expected {}",
-                db_path.display(),
-                db.is_canonical(),
-                ref_canonical
-            );
+        // Only check canonical mode if not using prefix cache
+        if !args.use_prefix_cache {
+            if db.is_canonical() != ref_canonical {
+                let mut error_msg = format!(
+                    "Database '{}' has canonical mode {}, expected {}",
+                    db_path.display(),
+                    db.is_canonical(),
+                    ref_canonical
+                );
 
-            // Add recovery suggestions
-            error_msg.push_str("\n\nRecovery suggestions:");
-            error_msg.push_str(&format!(
-                "\n  • Create a new database with canonical mode {}",
-                if ref_canonical { "enabled" } else { "disabled" }
-            ));
-            error_msg.push_str("\n  • Use 'rustkmer count --canonical' or 'rustkmer count --no-canonical' as needed");
-            error_msg.push_str("\n  • Verify all databases use the same canonical mode before merging");
+                // Add recovery suggestions
+                error_msg.push_str("\n\nRecovery suggestions:");
+                error_msg.push_str(&format!(
+                    "\n  • Create a new database with canonical mode {}",
+                    if ref_canonical { "enabled" } else { "disabled" }
+                ));
+                error_msg.push_str("\n  • Use 'rustkmer count --canonical' or 'rustkmer count --no-canonical' as needed");
+                error_msg.push_str("\n  • Verify all databases use the same canonical mode before merging");
 
-            return Err(anyhow::anyhow!(error_msg));
+                return Err(anyhow::anyhow!("{}", error_msg));
+            }
         }
 
         if args.verbose {
@@ -202,7 +295,55 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
     if let Some(temp_dir) = &args.temp_dir {
         config.temp_dir = temp_dir.clone();
     }
+
+    // Parse and set max memory if provided
+    if let Some(max_memory_str) = &args.max_memory {
+        match parse_memory_size(max_memory_str) {
+            Ok(memory_bytes) => {
+                config.max_memory_usage = memory_bytes;
+                if args.verbose {
+                    eprintln!("Using custom memory limit: {} bytes ({:.2} GB)",
+                             memory_bytes, memory_bytes as f64 / 1_000_000_000.0);
+                }
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!("Invalid memory limit '{}': {}", max_memory_str, e));
+            }
+        }
+    } else if args.verbose {
+        eprintln!("Using default memory limit: {:.2} GB",
+                 config.max_memory_usage as f64 / 1_000_000_000.0);
+    }
+
     config.verbose = args.verbose;
+    config.use_prefix_cache = args.use_prefix_cache;
+    config.merge_mode = args.merge_mode.clone();
+    config.keep_intermediate = args.keep_intermediate;
+
+    // Configure thread pool from command line argument
+    if args.num_threads > 0 {
+        config.num_threads = args.num_threads;
+        if args.verbose {
+            eprintln!("Using {} threads from command line", args.num_threads);
+        }
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(args.num_threads)
+            .build_global()
+            .expect("Failed to set rayon thread pool");
+    } else if let Ok(num_threads_str) = std::env::var("RAYON_NUM_THREADS") {
+        if let Ok(num_threads) = num_threads_str.parse::<usize>() {
+            if num_threads > 0 {
+                config.num_threads = num_threads;
+                if args.verbose {
+                    eprintln!("Using {} threads from RAYON_NUM_THREADS", num_threads);
+                }
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(num_threads)
+                    .build_global()
+                    .expect("Failed to set rayon thread pool");
+            }
+        }
+    }
 
     // Check compatibility only if requested
     if args.check_compatibility {
@@ -313,10 +454,15 @@ mod tests {
             input: vec![db1_path, db2_path],
             output: output_path.clone(),
             temp_dir: None,
-            verbose: false,
-            quiet: true,
+            verbose: true,
+            quiet: false,
             keep_intermediate: false,
             check_compatibility: false,
+            max_memory: None,
+            use_prefix_cache: false,
+            batch_size: 50000,
+            num_threads: 0,
+            merge_mode: "auto".to_string(),
         };
 
         // Execute merge
@@ -365,6 +511,10 @@ mod tests {
             chunk_size: 1000,
             temp_dir: temp_dir.path().to_path_buf(),
             use_streaming: false,
+            use_prefix_cache: false,
+            num_threads: 0,
+            merge_mode: "auto".to_string(),
+            keep_intermediate: false,
             verbose: false,
         };
 
@@ -383,4 +533,52 @@ mod tests {
         assert_eq!(kmer_map.get(&0x5678), Some(&20));
         assert_eq!(kmer_map.get(&0x9ABC), Some(&15));
     }
+}
+
+/// Parse memory size string like "32GB", "1TB", "512MB" into bytes
+fn parse_memory_size(size_str: &str) -> Result<usize, String> {
+    let size_str = size_str.trim().to_uppercase();
+
+    // Parse number and unit - handle multi-character units properly
+    let (number_str, unit) = if size_str.ends_with("B") {
+        if size_str.ends_with("KB") {
+            (&size_str[..size_str.len() - 2], "KB")
+        } else if size_str.ends_with("MB") {
+            (&size_str[..size_str.len() - 2], "MB")
+        } else if size_str.ends_with("GB") {
+            (&size_str[..size_str.len() - 2], "GB")
+        } else if size_str.ends_with("TB") {
+            (&size_str[..size_str.len() - 2], "TB")
+        } else if size_str.len() > 1 {
+            (&size_str[..size_str.len() - 1], "B")
+        } else {
+            return Err(format!("Invalid memory size format: {}", size_str));
+        }
+    } else {
+        (size_str.as_str(), "")
+    };
+
+    let number: usize = number_str.parse()
+        .map_err(|_| format!("Invalid number: {}", number_str))?;
+
+    let bytes = match unit {
+        "B" => number,
+        "KB" => number * 1024,
+        "MB" => number * 1024 * 1024,
+        "GB" => number * 1024 * 1024 * 1024,
+        "TB" => number * 1024 * 1024 * 1024 * 1024,
+        "" => number, // Default to bytes
+        _ => return Err(format!("Unknown unit: {}", unit)),
+    };
+
+    // Validate reasonable bounds
+    if bytes < 1024 {
+        return Err("Memory size too small (minimum 1KB)".to_string());
+    }
+
+    if bytes > 1024 * 1024 * 1024 * 1024 { // 1TB
+        return Err("Memory size too large (maximum 1TB)".to_string());
+    }
+
+    Ok(bytes)
 }

@@ -49,3 +49,6 @@ if __name__ == "__main__":
         print("\n🎉 multiprocessing基本功能正常！")
     else:
         print("\n❌ multiprocessing功能异常")
+
+
+

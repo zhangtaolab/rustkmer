@@ -78,7 +78,7 @@ fn extract_suffix_matches(
     suffix: &str,
 ) -> ProcessingResult<Vec<(String, u64)>> {
     let mut matches = Vec::new();
-    let suffix_len = suffix.len();
+    let _suffix_len = suffix.len();
     
     for &(encoded_kmer, count) in all_kmers {
         // Decode k-mer and check if it ends with suffix
@@ -310,7 +310,7 @@ fn extract_with_hybrid_strategy(
 }
 
 fn extract_with_variant_strategy(
-    database: &RKDatabase,
+    _database: &RKDatabase,
     pattern: &str,
     n_positions: &[usize],
     total_variants: usize,
@@ -324,9 +324,9 @@ fn extract_with_variant_strategy(
     
     // Generate variants and query each
     let variants = generate_variants(pattern, n_positions)?;
-    let mut matches = Vec::new();
+    let matches = Vec::new();
     
-    for variant in variants {
+    for _variant in variants {
         // Query this variant (implement k-mer query here)
         // For now, return empty - this would integrate with the database query
         // let result = database.query_kmer(&variant)?;
@@ -396,7 +396,7 @@ fn generate_variants(pattern: &str, n_positions: &[usize]) -> ProcessingResult<V
 }
 
 fn do_exact_query(
-    database: &RKDatabase,
+    _database: &RKDatabase,
     pattern: &str,
     start_time: std::time::Instant,
 ) -> ProcessingResult<SmartWildcardResult> {

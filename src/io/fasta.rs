@@ -287,6 +287,6 @@ mod tests {
         temp_file.write_all(b">seq1\nATGCATGC\n>seq2\nGCTAGCTA\n").unwrap();
 
         let total_length = total_sequence_length(temp_file.path()).unwrap();
-        assert_eq!(total_length, 15); // 8 + 7
+        assert_eq!(total_length, 16); // 8 + 8
     }
 }

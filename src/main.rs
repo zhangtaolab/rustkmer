@@ -78,7 +78,7 @@ fn main() -> anyhow::Result<()> {
             };
             rustkmer::cli::commands::fuzzy::execute_fuzzy_query_batch(&args)?;
         }
-        rustkmer::cli::args::Commands::Merge { input, output, temp_dir, verbose, quiet, keep_intermediate, check_compatibility } => {
+        rustkmer::cli::args::Commands::Merge { input, output, temp_dir, verbose, quiet, keep_intermediate, check_compatibility, max_memory, use_prefix_cache, batch_size, num_threads, merge_mode } => {
             let args = rustkmer::cli::commands::merge::MergeArgs {
                 input,
                 output,
@@ -87,6 +87,11 @@ fn main() -> anyhow::Result<()> {
                 quiet,
                 keep_intermediate,
                 check_compatibility,
+                max_memory,
+                use_prefix_cache,
+                batch_size,
+                num_threads,
+                merge_mode,
             };
             rustkmer::cli::commands::merge::execute_merge(&args)?;
         }

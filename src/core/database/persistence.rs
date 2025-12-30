@@ -195,8 +195,8 @@ pub fn load_kmer_database(
     let metadata_path = database_path.join("metadata.json");
     let metadata = load_metadata(&metadata_path)?;
 
-    // Validate metadata
-    validate_metadata(database_path)?;
+    // Validate metadata (pass the metadata file path, not directory path)
+    validate_metadata(&metadata_path)?;
 
     // Determine data file path
     let data_file_path = if config.compression_enabled {

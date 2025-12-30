@@ -9,7 +9,7 @@ use std::path::Path;
 use crate::cli::args::Args;
 use crate::database::format::RKDatabase;
 use crate::error::{KmerError, ProcessingResult};
-use crate::database::prefix_query_optimized::{extract_prefix_optimized, extract_hybrid_by_pattern, MemoryBlockInfo};
+use crate::database::prefix_query_optimized::MemoryBlockInfo;
 
 /// Arguments for prefix query command
 #[derive(Debug)]
@@ -110,7 +110,7 @@ fn execute_prefix_query_impl(args: &PrefixQueryArgs) -> ProcessingResult<()> {
             eprintln!("Executing hybrid search for pattern: {}", search_pattern);
         }
         
-        use crate::database::prefix_query_optimized::{extract_hybrid_by_pattern, parse_hybrid_pattern};
+        use crate::database::prefix_query_optimized::{extract_hybrid_by_pattern};
         
         
         extract_hybrid_by_pattern(&database, &search_pattern.to_uppercase())
@@ -186,7 +186,7 @@ fn execute_prefix_query_impl(args: &PrefixQueryArgs) -> ProcessingResult<()> {
 fn output_table(
     writer: &mut Box<dyn Write>,
     matches: &[(String, u64)],
-    memory_info: &MemoryBlockInfo,
+    _memory_info: &MemoryBlockInfo,
     _args: &PrefixQueryArgs,
 ) -> ProcessingResult<()> {
     // Write header

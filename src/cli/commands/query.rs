@@ -328,12 +328,25 @@ pub fn validate_query_args(args: &Args) -> Result<(), Vec<String>> {
 mod tests {
     use super::*;
     use crate::cli::args::{Commands, Args};
+    use std::io::Write;
+
+    // Helper function to create a temporary database file
+    fn create_temp_db() -> tempfile::NamedTempFile {
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        // Write minimal valid content
+        let mut file = temp_file.as_file();
+        // Write a minimal header (magic + version)
+        file.write_all(b"RKDB").unwrap();
+        file.write_all(&[1u8; 8]).unwrap(); // placeholder for version and other fields
+        temp_file
+    }
 
     #[test]
     fn test_validate_query_args_valid() {
+        let temp_db = create_temp_db();
         let args = Args {
             command: Commands::Query {
-                database: "test.rkdb".to_string(),
+                database: temp_db.path().to_str().unwrap().to_string(),
                 kmers: vec!["ATGCG".to_string()],
                 sequence: None,
                 output: None,
@@ -349,9 +362,10 @@ mod tests {
 
     #[test]
     fn test_validate_query_args_conflicting_options() {
+        let temp_db = create_temp_db();
         let args = Args {
             command: Commands::Query {
-                database: "test.rkdb".to_string(),
+                database: temp_db.path().to_str().unwrap().to_string(),
                 kmers: vec!["ATGCG".to_string()],
                 sequence: Some("test.fa".to_string()),
                 output: None,
@@ -367,9 +381,10 @@ mod tests {
 
     #[test]
     fn test_validate_query_args_invalid_kmer() {
+        let temp_db = create_temp_db();
         let args = Args {
             command: Commands::Query {
-                database: "test.rkdb".to_string(),
+                database: temp_db.path().to_str().unwrap().to_string(),
                 kmers: vec!["ATXCG".to_string()], // Invalid character
                 sequence: None,
                 output: None,

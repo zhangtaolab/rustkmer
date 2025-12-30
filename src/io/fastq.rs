@@ -457,16 +457,16 @@ mod tests {
     #[test]
     fn test_read_all_sequences() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"@seq1\nATGCATGC\nIIIIIIII\n@seq2\nGCTAGCTA\nHHHHHHHHH\n").unwrap();
+        temp_file.write_all(b"@seq1\nATGCATGC\n+\nIIIIIIII\n@seq2\nGCTAGCTA\n+\nHHHHHHHHH\n").unwrap();
 
         let processor = FastqProcessor::new(temp_file.path());
         let sequences = processor.read_all().unwrap();
 
         assert_eq!(sequences.len(), 2);
-        assert_eq!(sequences[0].id(), "@seq1");
+        assert_eq!(sequences[0].id(), "seq1"); // bio crate returns ID without @ prefix
         assert_eq!(sequences[0].seq(), b"ATGCATGC");
         assert_eq!(sequences[0].qual(), b"IIIIIIII");
-        assert_eq!(sequences[1].id(), "@seq2");
+        assert_eq!(sequences[1].id(), "seq2"); // bio crate returns ID without @ prefix
         assert_eq!(sequences[1].seq(), b"GCTAGCTA");
         assert_eq!(sequences[1].qual(), b"HHHHHHHHH");
     }
@@ -474,7 +474,7 @@ mod tests {
     #[test]
     fn test_validate_fastq_file() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"@valid_seq\nATGC\n+IIII\n@another_seq\nGCTA\n+HHHH\n").unwrap();
+        temp_file.write_all(b"@valid_seq\nATGC\n+\nIIII\n@another_seq\nGCTA\n+\nHHHH\n").unwrap();
 
         assert!(validate_fastq_file(temp_file.path()).is_ok());
     }
@@ -491,7 +491,7 @@ mod tests {
     #[test]
     fn test_count_sequences() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"@seq1\nATGC\n+IIII\n@seq2\nGCTA\n+HHHH\n@seq3\nATGCGAT\n+JJJJJJJJ\n").unwrap();
+        temp_file.write_all(b"@seq1\nATGC\n+\nIIII\n@seq2\nGCTA\n+\nHHHH\n@seq3\nATGCGAT\n+\nJJJJJJJ\n").unwrap();
 
         let count = count_sequences(temp_file.path()).unwrap();
         assert_eq!(count, 3);
@@ -500,33 +500,34 @@ mod tests {
     #[test]
     fn test_total_sequence_length() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"@seq1\nATGCATGC\n+IIIIII\n@seq2\nGCTAGCTA\n+HHHHHH\n").unwrap();
+        temp_file.write_all(b"@seq1\nATGCATGC\n+\nIIIIIIII\n@seq2\nGCTAGCTA\n+\nHHHHHHHH\n").unwrap();
 
         let total_length = total_sequence_length(temp_file.path()).unwrap();
-        assert_eq!(total_length, 15); // 8 + 7
+        assert_eq!(total_length, 16); // 8 + 8
     }
 
     #[test]
     fn test_average_quality() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"@seq1\nATGC\n+IIII\n@seq2\nGCTA\n+HHHH\n").unwrap();
+        temp_file.write_all(b"@seq1\nATGC\n+\nIIII\n@seq2\nGCTA\n+\nHHHH\n").unwrap();
 
         let avg_quality = average_quality(temp_file.path()).unwrap();
-        // Average of [40, 40, 40, 40, 40, 40] and [40, 40, 40, 40, 40, 40]
-        assert!((avg_quality - 40.0).abs() < f64::EPSILON);
+        // Average of raw ASCII values: I=73, H=72
+        // (73*4 + 72*4) / 8 = 72.5
+        assert!((avg_quality - 72.5).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_filter_by_quality() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"@seq1\nATGC\n+IIII\n@seq2\nGCTA\n+HHHH\n@seq3\nNNNN\n+JJJJ\n").unwrap();
+        temp_file.write_all(b"@seq1\nATGC\n+\nIIII\n@seq2\nGCTA\n+\nHHHH\n@seq3\nNNNN\n+\nDDDD\n").unwrap();
 
         let processor = FastqProcessor::new(temp_file.path());
-        let filtered = processor.filter_by_quality(39).unwrap();
+        let filtered = processor.filter_by_quality(70).unwrap();
 
-        // Should include first two records (quality scores 40+), exclude third (quality scores 30+)
+        // Should include first two records (I=73, H=72), exclude third (D=68)
         assert_eq!(filtered.len(), 2);
-        assert_eq!(filtered[0].id(), "@seq1");
-        assert_eq!(filtered[1].id(), "@seq2");
+        assert_eq!(filtered[0].id(), "seq1"); // bio crate returns ID without @ prefix
+        assert_eq!(filtered[1].id(), "seq2");
     }
 }

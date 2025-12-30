@@ -8,11 +8,9 @@ use crate::error::ProcessingError;
 use std::collections::BinaryHeap;
 use std::cmp::Ordering;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Write, Seek, SeekFrom};
+use std::io::{BufReader, BufWriter, Write, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 /// Streaming iterator for reading database entries in chunks
 pub struct DatabaseStreamIterator {
@@ -358,6 +356,20 @@ impl Iterator for StreamingMergeIterator {
         }
 
         None
+    }
+}
+
+impl Drop for StreamingMergeIterator {
+    fn drop(&mut self) {
+        // Close all file readers first
+        self.file_readers.clear();
+        
+        // Clean up temporary files
+        for temp_file in &self._temp_files {
+            if let Err(e) = std::fs::remove_file(temp_file) {
+                eprintln!("Warning: Failed to remove temporary file {}: {}", temp_file.display(), e);
+            }
+        }
     }
 }
 

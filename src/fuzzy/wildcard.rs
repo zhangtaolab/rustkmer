@@ -238,7 +238,9 @@ fn generate_wildcard_combinations_batched(
 
     if start_wildcard >= wildcard_positions.len() {
         // No more wildcards to process, add this variant
-        batch.push(query_chars.iter().collect::<String>());
+        // Build string from the current modified characters
+        let variant: String = query_chars.iter().collect();
+        batch.push(variant);
         *generated += 1;
 
         // Process batch if full
@@ -257,9 +259,10 @@ fn generate_wildcard_combinations_batched(
         new_chars[wildcard_pos] = nucleotide;
         let new_query: String = new_chars.iter().collect();
 
+        // Start fresh with the new query (recalculate wildcard positions)
         generate_wildcard_combinations_batched(
             &new_query,
-            start_wildcard + 1,
+            0,  // Start fresh for the new query
             batch,
             generated,
             total_variants,
@@ -327,21 +330,21 @@ mod tests {
     #[test]
     fn test_count_wildcards() {
         assert_eq!(count_wildcards("ATGCGATGCTAGCN"), 1);
-        assert_eq!(count_wildcards("ATNNGATGCTNGCN"), 3);
+        assert_eq!(count_wildcards("ATNNGATGCTGCN"), 3);
         assert_eq!(count_wildcards("ATGCGATGCTAGCG"), 0);
     }
 
     #[test]
     fn test_estimate_wildcard_variants() {
         assert_eq!(estimate_wildcard_variants("ATGCGATGCTAGCN"), 4);
-        assert_eq!(estimate_wildcard_variants("ATNNGATGCTNGCN"), 64); // 4^3
+        assert_eq!(estimate_wildcard_variants("ATNNGATGCTGCN"), 64); // 4^3
         assert_eq!(estimate_wildcard_variants("ATGCGATGCTAGCG"), 1);
     }
 
     #[test]
     fn test_would_exceed_wildcard_limit() {
         assert!(would_exceed_wildcard_limit("ATNNNNATGCTNGCN", 1000)); // 4^6 = 4096 > 1000
-        assert!(!would_exceed_wildcard_limit("ATNNGATGCTNGCN", 100)); // 4^3 = 64 <= 100
+        assert!(!would_exceed_wildcard_limit("ATNNGATGCTGCN", 100)); // 4^3 = 64 <= 100
     }
 
     #[test]

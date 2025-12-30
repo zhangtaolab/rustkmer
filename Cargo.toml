@@ -55,6 +55,9 @@ proptest = "1.5"
 # Synchronization primitives
 parking_lot = "0.12"
 
+# Parallel processing
+rayon = "1.8"
+
 # Progress reporting
 indicatif = "0.17"
 

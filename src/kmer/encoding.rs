@@ -367,8 +367,9 @@ mod tests {
     #[test]
     fn test_encode_decode_longer() {
         let sequence = "ATGCGATGCGATGCGATGCGATGCGATGCGATGC";
-        let encoded = encode_kmer(sequence).unwrap();
-        let decoded = decode_kmer(encoded, sequence.len());
+        // Use u128 encoding for sequences > 32 chars
+        let encoded = encode_kmer_u128(sequence).unwrap();
+        let decoded = decode_kmer_u128(encoded, sequence.len());
         assert_eq!(decoded, sequence);
     }
 

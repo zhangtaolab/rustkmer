@@ -41,7 +41,7 @@ impl BinaryHeader {
 
     /// Serialize header to bytes
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(32);
+        let mut bytes = Vec::with_capacity(36);
         bytes.extend_from_slice(&self.magic);
         bytes.extend_from_slice(&self.version.to_le_bytes());
         bytes.extend_from_slice(&self.kmer_length.to_le_bytes());
@@ -54,7 +54,7 @@ impl BinaryHeader {
 
     /// Parse header from bytes
     pub fn from_bytes(bytes: &[u8]) -> ProcessingResult<Self> {
-        if bytes.len() < 32 {
+        if bytes.len() < 36 {
             return Err(ProcessingError::new("Header too short"));
         }
 
@@ -130,7 +130,7 @@ pub fn write_binary_format<W: Write>(
 /// # Returns
 /// Expected file size in bytes
 pub fn calculate_file_size(num_kmers: usize) -> usize {
-    32 + (num_kmers * 12) // Header (32) + k-mer (8) + count (4)
+    36 + (num_kmers * 12) // Header (36) + k-mer (8) + count (4)
 }
 
 #[cfg(test)]
@@ -169,7 +169,7 @@ mod tests {
         let bytes = header.to_bytes();
 
         // Check length
-        assert_eq!(bytes.len(), 32);
+        assert_eq!(bytes.len(), 36); // 4 + 4 + 4 + 8 + 8 + 1 + 7 = 36
 
         // Parse back
         let parsed = BinaryHeader::from_bytes(&bytes).unwrap();
@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_invalid_magic_number() {
-        let invalid_bytes = vec![0u8; 32];
+        let invalid_bytes = vec![0u8; 36];
         let result = BinaryHeader::from_bytes(&invalid_bytes);
         assert!(result.is_err());
     }
@@ -189,6 +189,6 @@ mod tests {
     #[test]
     fn test_calculate_file_size() {
         let size = calculate_file_size(1000);
-        assert_eq!(size, 32 + 1000 * 12); // Header + 1000 * (8 + 4)
+        assert_eq!(size, 36 + 1000 * 12); // Header + 1000 * (8 + 4)
     }
 }

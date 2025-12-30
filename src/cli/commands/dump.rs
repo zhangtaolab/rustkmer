@@ -293,7 +293,7 @@ mod tests {
         // Test basic k-mer decoding
         let encoded = 0b00_01_10_11; // ACGT in reverse order (LSB first)
         let sequence = decode_kmer_to_sequence(encoded, 4);
-        assert_eq!(sequence, "TGCA"); // Reversed back to original
+        assert_eq!(sequence, "ACGT"); // Decoded: LSB first (T,G,C,A) then reversed
     }
 
     #[test]

@@ -15,7 +15,7 @@ use anyhow::{Context, Result};
 /// Default configuration file name
 pub const DEFAULT_CONFIG_FILE: &str = ".rustkmerrc";
 /// Environment variable prefix
-pub const ENV_PREFIX: &str = "RUSTKMER_";
+pub const ENV_PREFIX: &str = "RUSTKMER";
 
 /// Thread-safe configuration manager
 #[derive(Debug)]
@@ -604,7 +604,7 @@ mod tests {
         unsafe {
             env::set_var("RUSTKMER_DEFAULT_K", "21");
             env::set_var("RUSTKMER_THREADS", "4");
-            env::set_var("RUSTKVER_VERBOSE", "true");
+            env::set_var("RUSTKMER_VERBOSE", "true");
         }
 
         let manager = ConfigManager::new();
@@ -626,6 +626,10 @@ mod tests {
         // Create a temporary config file
         let mut temp_file = NamedTempFile::new()?;
         let config_content = r#"
+[database]
+format = "binary"
+compression = false
+
 [memory]
 memory_limit = 512000000  # 512MB
 mmap_threshold = 50000000  # 50MB
@@ -638,6 +642,9 @@ threads = 2
 [output]
 format = "json"
 verbose = true
+
+[logging]
+level = "info"
 "#;
 
         temp_file.write_all(config_content.as_bytes())?;
