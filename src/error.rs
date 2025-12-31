@@ -45,6 +45,12 @@ pub enum KmerError {
 
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
+
+    #[error("Invalid parameters: {0}")]
+    InvalidParameters(String),
+
+    #[error("Too many variants: {actual} (limit: {limit})")]
+    TooManyVariants { actual: usize, limit: usize },
 }
 
 /// Application-level errors with anyhow for context

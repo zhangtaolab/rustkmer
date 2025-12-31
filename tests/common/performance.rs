@@ -183,11 +183,11 @@ impl BenchmarkSuite {
         if self.results.is_empty() {
             None
         } else {
-            let total_ms: u64 = self.results
+            let total_ms: u128 = self.results
                 .iter()
                 .map(|m| m.duration().unwrap_or_default().as_millis())
                 .sum();
-            Some(Duration::from_millis(total_ms / self.results.len() as u64))
+            Some(Duration::from_millis((total_ms / self.results.len() as u128) as u64))
         }
     }
 
@@ -196,11 +196,11 @@ impl BenchmarkSuite {
         if self.results.is_empty() {
             None
         } else {
-            let total_ms: u64 = self.results
+            let total_ms: u128 = self.results
                 .iter()
                 .map(|m| m.duration().unwrap_or_default().as_millis())
                 .sum();
-            Some(Duration::from_millis(total_ms))
+            Some(Duration::from_millis(total_ms as u64))
         }
     }
 
@@ -223,7 +223,7 @@ impl BenchmarkSuite {
             }
 
             report.push_str("\nBenchmark Results:\n");
-            report.push_str("-".repeat(80));
+            report.push_str(&"-".repeat(80));
 
             for (i, metrics) in self.results.iter().enumerate() {
                 report.push_str(&format!(
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn test_format_bytes() {
-        let metrics = PerformanceMetrics::new("test");
+        let mut metrics = PerformanceMetrics::new("test");
         metrics.complete(1000, 100 * 1024 * 1024);
 
         assert_eq!(metrics.format_ops_per_sec().parse::<f64>().unwrap() > 0.0, true);

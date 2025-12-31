@@ -22,6 +22,21 @@ Auto-generated from all feature plans. Last updated: 2025-11-28
 - Rust 1.80+ stable channel + clap v4.5 (CLI), serde 1.0 (serialization), rayon 1.10 (parallel processing), memmap2 0.9 (memory mapping) (010-rkdb-merge)
 - Binary RKDB format (custom k-mer database format) (010-rkdb-merge)
 - Binary RKDB (.rkdb) files with custom database forma (010-rkdb-merge)
+- Rust 1.80+ (stable) + Python 3.10+ + PyO3 0.23.4, serde, thiserror, anyhow, rayon, clap, bio, memmap2 (012-python-bindings-complete)
+- RKDB二进制格式文件（自定义k-mer数据库格式） (012-python-bindings-complete)
+- Rust 1.80+ stable with Python 3.10+ via PyO3 0.23 + PyO3, serde, thiserror, rayon, memmap2 (012-python-bindings-complete)
+- Rust 1.80+ stable, Python 3.10+ + PyO3 0.27.2 (Python bindings), serde 1.0 (serialization) (012-python-bindings-complete)
+- Binary RKDB files (custom k-mer database format) (012-python-bindings-complete)
+- Rust 1.80+ stable, Python 3.10+ + PyO3 0.27.2 (Python bindings), serde 1.0+ (序列化), thiserror 2.0.17 (错误处理), clap 4.5.53 (CLI) (012-python-bindings-complete)
+- 二进制RKDB文件（自定义k-mer数据库格式） (012-python-bindings-complete)
+- Rust 1.80+ stable, Python 3.10+ + PyO3 0.27.2 (Python bindings), pytest 8.4+ (testing), subprocess (CLI invocation) (012-python-bindings-complete)
+- Python 3.10+ + mkdocs, mkdocstrings[python], mkdocs-material theme (012-python-bindings-complete)
+- Documentation files in `docs/` directory (012-python-bindings-complete)
+- Python 3.10+ with PyO3 0.27.2 bindings to Rust 1.80+ + pytest 9.0+, pytest-benchmark, hypothesis, numpy, matplotlib (012-python-bindings-complete)
+- Python 3.10+ (for the API), Rust 1.80+ (existing CLI) + subprocess (Python standard library), pytest for testing (001-python-binding)
+- Binary .rkdb files (existing format) (001-python-binding)
+- Rust 1.80+ (stable) + Python 3.10+ via PyO3 0.27.2 (001-python-fuzzy-query)
+- Rust 1.80+ (stable) + Python 3.10+ via subprocess (001-python-fuzzy-query)
 
 - Rust 1.80+ stable channel (latest stable for performance optimizations) + clap v4.0+ (CLI with derive macros), serde (serialization), thiserror (error handling), anyhow (error handling), rayon (parallel processing), criterion (benchmarks), bio (FASTA/FASTQ parsing), memmap2 (memory-mapped files) (001-jellyfish-rust-port)
 
@@ -41,9 +56,9 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 Rust 1.80+ stable channel (latest stable for performance optimizations): Follow standard conventions
 
 ## Recent Changes
-- 011-stats-frequency: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
-- 010-rkdb-merge: Added Rust 1.80+ stable channel
-- 010-rkdb-merge: Added Rust 1.80+ stable channel + clap v4.5 (CLI), serde 1.0 (serialization), rayon 1.10 (parallel processing), memmap2 0.9 (memory mapping)
+- 001-python-fuzzy-query: Added Rust 1.80+ (stable) + Python 3.10+ via subprocess
+- 001-python-fuzzy-query: Added Rust 1.80+ (stable) + Python 3.10+ via PyO3 0.27.2
+- 001-python-binding: Added Python 3.10+ (for the API), Rust 1.80+ (existing CLI) + subprocess (Python standard library), pytest for testing
 
 
 <!-- MANUAL ADDITIONS START -->

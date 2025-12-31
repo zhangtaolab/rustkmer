@@ -1,88 +1,65 @@
-"""
-RustKmer Python Bindings
+"""RustKmer Python Bindings
 
-High-performance k-mer counting, database queries, and fuzzy search
-for genomic data analysis.
+A Python package for querying k-mer databases through the rustkmer CLI tool.
+This package provides an object-oriented interface for database operations
+without requiring PyO3.
 """
 
 __version__ = "0.1.0"
+__author__ = "RustKmer Team"
+__email__ = "team@rustkmer.org"
 
-# Import from Rust extension first, fall back to Python placeholders
-try:
-    # Try to import from the Rust extension
-    from ._rustkmer import KmerCounter, Database, FuzzyQuery
-    from ._rustkmer import QueryResult, FuzzyQueryResult, DatabaseStats  # Stats classes from Rust
-    from ._rustkmer import set_verbosity, get_version
-    from ._rustkmer import (
-        RustKmerError, KmerError, DatabaseError, FuzzyQueryError,
-        SequenceError, ConfigurationError, ValidationError
-    )
-    # Import logging and debugging utilities
-    from ._rustkmer import (
-        get_log_level, log_message, is_log_enabled, get_system_info,
-        enable_debug_mode, enable_trace_mode, flush_logs
-    )
-    # Import memory management utilities
-    from ._rustkmer import get_resource_stats, cleanup_resources
-    # Import performance timer
-    from ._rustkmer import PerformanceTimer
+# Import main classes
+from .database import Database
+from .query import QueryResult
+from .stats import DatabaseStats
 
-    # Re-export Rust classes
-    __all__ = [
-        'KmerCounter',
-        'Database',
-        'FuzzyQuery',
-        'QueryResult',
-        'FuzzyQueryResult',
-        'DatabaseStats',
-        'set_verbosity',
-        'get_version',
-        'RustKmerError',
-        'KmerError',
-        'DatabaseError',
-        'FuzzyQueryError',
-        'SequenceError',
-        'ConfigurationError',
-        'ValidationError',
-        # Logging and debugging utilities
-        'get_log_level',
-        'log_message',
-        'is_log_enabled',
-        'get_system_info',
-        'enable_debug_mode',
-        'enable_trace_mode',
-        'flush_logs',
-        # Memory management utilities
-        'get_resource_stats',
-        'cleanup_resources',
-        # Performance utilities
-        'PerformanceTimer'
-    ]
+# Import exceptions
+from .exceptions import (
+    RustKmerError,
+    DatabaseError,
+    DatabaseNotFoundError,
+    InvalidDatabaseError,
+    DatabaseCorruptedError,
+    QueryError,
+    InvalidKmerError,
+    KmerLengthError,
+    SubprocessError,
+    ConfigurationError,
+    FuzzyQueryError,
+    InvalidMutationToleranceError,
+    CombinatorialExplosionError,
+    BatchQueryError,
+)
 
-except ImportError:
-    # Rust extension not available, import Python placeholders
-    try:
-        from .core import KmerCounter, Database
-        from .fuzzy import FuzzyQuery
-        from .sequence import Sequence
-        from .stats import QueryResult, FuzzyQueryResult, CounterStats, DatabaseStats
-        from .exceptions import KmerError, DatabaseError, FuzzyQueryError, SequenceError
+# Fuzzy query classes
+from .fuzzy_query import FuzzyMatchResult, FuzzyQueryResult, FuzzyBatchResult
 
-        __all__ = [
-            'KmerCounter',
-            'Database',
-            'FuzzyQuery',
-            'Sequence',
-            'QueryResult',
-            'FuzzyQueryResult',
-            'CounterStats',
-            'DatabaseStats',
-            'KmerError',
-            'DatabaseError',
-            'FuzzyQueryError',
-            'SequenceError',
-        ]
+# Public API
+__all__ = [
+    # Main classes
+    "Database",
+    "QueryResult",
+    "DatabaseStats",
 
-    except ImportError:
-        # No implementation available
-        __all__ = []
+    # Exceptions
+    "RustKmerError",
+    "DatabaseError",
+    "DatabaseNotFoundError",
+    "InvalidDatabaseError",
+    "DatabaseCorruptedError",
+    "QueryError",
+    "InvalidKmerError",
+    "KmerLengthError",
+    "SubprocessError",
+    "ConfigurationError",
+    "FuzzyQueryError",
+    "InvalidMutationToleranceError",
+    "CombinatorialExplosionError",
+    "BatchQueryError",
+
+    # Fuzzy query classes
+    "FuzzyMatchResult",
+    "FuzzyQueryResult",
+    "FuzzyBatchResult",
+]

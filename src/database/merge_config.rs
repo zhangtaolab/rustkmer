@@ -14,8 +14,14 @@ pub struct MergeConfig {
     pub temp_dir: PathBuf,
     /// Force streaming mode
     pub use_streaming: bool,
-    /// Number of threads for parallel processing
-    pub threads: usize,
+    /// Use prefix cache merge (memory-efficient with error isolation)
+    pub use_prefix_cache: bool,
+    /// Number of threads for parallel processing (0 = use all cores)
+    pub num_threads: usize,
+    /// Merge mode for prefix cache: "auto", "memory", "streaming"
+    pub merge_mode: String,
+    /// Keep intermediate files for debugging
+    pub keep_intermediate: bool,
     /// Enable detailed logging
     pub verbose: bool,
 }
@@ -24,10 +30,13 @@ impl Default for MergeConfig {
     fn default() -> Self {
         Self {
             max_memory_usage: get_default_memory_limit(),
-            chunk_size: 1_000_000, // 1M k-mers
+            chunk_size: 50_000_000, // 50M k-mers to drastically reduce temp files
             temp_dir: std::env::temp_dir(),
             use_streaming: false,
-            threads: num_cpus::get(),
+            use_prefix_cache: false,
+            num_threads: 0,
+            merge_mode: "auto".to_string(),
+            keep_intermediate: false,
             verbose: false,
         }
     }
@@ -40,6 +49,8 @@ pub enum MergeStrategy {
     InMemory,
     /// Streaming merge for large datasets
     Streaming,
+    /// Prefix cache merge (memory-efficient with error isolation)
+    PrefixCache,
     /// Hybrid approach (start in-memory, fallback to streaming)
     Hybrid,
 }
@@ -123,16 +134,17 @@ impl MergeStats {
 
 /// Get default memory limit (50% of available memory)
 fn get_default_memory_limit() -> usize {
-    // Try to get available memory
+    // Try to get total system memory
     #[cfg(unix)]
     {
         if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
             for line in meminfo.lines() {
-                if line.starts_with("MemAvailable:") {
+                if line.starts_with("MemTotal:") {
                     if let Some(kb_str) = line.split_whitespace().nth(1) {
                         if let Ok(kb) = kb_str.parse::<usize>() {
-                            // Use 50% of available memory
-                            return (kb * 1024) / 2;
+                            // Use 50% of total system memory
+                            let total_bytes = kb * 1024;
+                            return total_bytes / 2;
                         }
                     }
                 }
@@ -140,8 +152,8 @@ fn get_default_memory_limit() -> usize {
         }
     }
 
-    // Fallback: assume 8GB total, use 2GB for merge
-    2 * 1024 * 1024 * 1024 // 2GB
+    // Fallback: assume 64GB total, use 32GB for merge (instead of 2GB)
+    32 * 1024 * 1024 * 1024 // 32GB default
 }
 
 #[cfg(test)]
@@ -152,9 +164,9 @@ mod tests {
     fn test_merge_config_default() {
         let config = MergeConfig::default();
         assert!(config.max_memory_usage > 0);
-        assert_eq!(config.chunk_size, 1_000_000);
+        assert_eq!(config.chunk_size, 50_000_000);
         assert!(!config.use_streaming);
-        assert_eq!(config.threads, num_cpus::get());
+        assert!(!config.use_prefix_cache);
         assert!(!config.verbose);
     }
 
@@ -188,6 +200,7 @@ mod tests {
     fn test_merge_strategy() {
         assert_eq!(MergeStrategy::InMemory, MergeStrategy::InMemory);
         assert_ne!(MergeStrategy::InMemory, MergeStrategy::Streaming);
-        assert_ne!(MergeStrategy::Streaming, MergeStrategy::Hybrid);
+        assert_ne!(MergeStrategy::Streaming, MergeStrategy::PrefixCache);
+        assert_ne!(MergeStrategy::PrefixCache, MergeStrategy::Hybrid);
     }
 }

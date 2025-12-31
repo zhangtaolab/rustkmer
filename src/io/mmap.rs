@@ -137,7 +137,7 @@ mod tests {
         temp_file.write_all(b"ATGCATGCATGC\nATGCATGCATGC\n").unwrap();
 
         let mmap_file = MemoryMappedFile::open(temp_file.path()).unwrap();
-        assert_eq!(mmap_file.len(), 28);
+        assert_eq!(mmap_file.len(), 26); // 12 + 1 + 12 + 1
 
         let content = mmap_file.read_to_string().unwrap();
         assert_eq!(content, "ATGCATGCATGC\nATGCATGCATGC\n");

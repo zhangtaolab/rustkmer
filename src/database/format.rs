@@ -60,17 +60,20 @@ impl Default for DatabaseHeader {
 impl DatabaseHeader {
     /// Create a new database header
     pub fn new(kmer_size: u8, total_kmers: u64, canonical: bool) -> Self {
+        // Standard header size is 42 bytes:
+        // 4 (magic) + 2 (version) + 1 (kmer_size) + 1 (padding) + 2 (padding) +
+        // 8 (total_kmers) + 1 (flags) + 7 (padding) + 8 (data_offset) + 8 (index_offset) = 42
         Self {
             magic: *DATABASE_MAGIC,
             version: DATABASE_VERSION,
             kmer_size,
             total_kmers,
             sorted: false,
-            data_offset: std::mem::size_of::<DatabaseHeader>() as u64,
+            data_offset: 42,
             index_offset: 0,
             canonical,
-            unique_kmers: total_kmers,  // Same as total_kmers for now
-            file_size: 0,  // Will be calculated when writing
+            unique_kmers: total_kmers,
+            file_size: 0,
         }
     }
 
@@ -99,7 +102,6 @@ impl DatabaseHeader {
         writer.write_u8(0)?; // padding
         writer.write_u8(0)?; // padding
         // Write actual data
-        eprintln!("DEBUG: About to write data_offset = {} to file", self.data_offset);
         writer.write_u64::<LittleEndian>(self.data_offset)?;
         writer.write_u64::<LittleEndian>(self.index_offset)?;
 
@@ -545,6 +547,7 @@ impl RKDatabase {
                         i + 1, db.kmer_size(), db.is_canonical(), db.header().total_kmers));
                     msg.push_str("\n  Hint: All databases must have the same canonical mode to merge");
                     msg.push_str("\n  Canonical mode merges reverse complements together");
+                    msg.push_str("\n  Note: Use --use-prefix-cache for flexible canonical mode merging");
                 }
 
                 return Err(crate::error::ProcessingError::new(msg));
@@ -568,14 +571,129 @@ impl RKDatabase {
         input_paths: &[std::path::PathBuf],
         config: &crate::database::MergeConfig,
     ) -> crate::error::ProcessingResult<Self> {
-        use std::collections::HashMap;
-        use hashbrown::HashMap as HashMapBrown;
-        use hashbrown::hash_map::DefaultHashBuilder;
-        use ahash::AHasher;
+        let total_kmers: u64 = input_paths
+            .iter()
+            .map(|path| {
+                let db = Self::from_file_path(path)?;
+                Ok(db.total_kmers())
+            })
+            .collect::<crate::error::ProcessingResult<Vec<_>>>()?
+            .iter()
+            .sum();
+
+        let estimated_memory = total_kmers as usize * 24;
+
+        // Use prefix cache merge if enabled
+        if config.use_prefix_cache {
+            if config.verbose {
+                eprintln!("DEBUG: Using prefix cache merge for {} k-mers (estimated {} bytes)",
+                         total_kmers, estimated_memory);
+            }
+            return Self::merge_databases_prefix_cache(input_paths, config);
+        }
+
+        // For streaming vs in-memory decision
+        let use_streaming = Self::should_use_streaming(input_paths, config)?;
+
+        if use_streaming {
+            if config.verbose {
+                eprintln!("DEBUG: Using streaming merge for {} k-mers (estimated {} bytes)",
+                         total_kmers, estimated_memory);
+            }
+            Self::merge_databases_streaming(input_paths, config)
+        } else {
+            if config.verbose {
+                eprintln!("DEBUG: Using in-memory merge for {} k-mers (estimated {} bytes)",
+                         total_kmers, estimated_memory);
+            }
+            Self::merge_databases_inmemory(input_paths, config)
+        }
+    }
+
+    fn should_use_streaming(
+        input_paths: &[std::path::PathBuf],
+        config: &crate::database::MergeConfig,
+    ) -> crate::error::ProcessingResult<bool> {
+        use crate::database::format::RKDatabase;
+
+        let mut total_kmers = 0u64;
+
+        for path in input_paths {
+            let db = RKDatabase::from_file_path(path)?;
+            total_kmers += db.total_kmers();
+        }
+
+        let estimated_memory = total_kmers as usize * 24;
+
+        Ok(estimated_memory > config.max_memory_usage)
+    }
+
+    fn merge_databases_streaming(
+        input_paths: &[std::path::PathBuf],
+        config: &crate::database::MergeConfig,
+    ) -> crate::error::ProcessingResult<Self> {
         use std::time::Instant;
-        use indicatif::{ProgressBar, ProgressStyle};
+        use crate::database::streaming_merge::ExternalMerger;
+        use crate::database::format::RKDatabase;
+
+        if config.verbose {
+            eprintln!("Using streaming merge for large datasets");
+        }
 
         let start_time = Instant::now();
+
+        let first_db = RKDatabase::from_file_path(&input_paths[0])?;
+        let kmer_size = first_db.kmer_size();
+        let canonical = first_db.is_canonical();
+
+        let mut merger = ExternalMerger::new(config.chunk_size, config.temp_dir.clone());
+
+        for path in input_paths {
+            if config.verbose {
+                eprintln!("Sorting database: {}", path.display());
+            }
+            merger.sort_database(path)?;
+        }
+
+        if config.verbose {
+            eprintln!("Merging sorted chunks...");
+        }
+
+        let merge_iter = merger.merge_sorted_chunks()?;
+        let mut sorted_kmers: Vec<(u128, u32)> = Vec::new();
+
+        for result in merge_iter {
+            match result {
+                Ok((kmer, count)) => sorted_kmers.push((kmer, count)),
+                Err(e) => return Err(e),
+            }
+        }
+
+        if config.verbose {
+            let stats = merger.stats();
+            eprintln!("Streaming merge stats:");
+            eprintln!("  Total k-mers read: {}", stats.total_kmers_read);
+            eprintln!("  Chunks created: {}", stats.chunks_created);
+            eprintln!("  Read time: {:?}", stats.read_time);
+            eprintln!("  Sort time: {:?}", stats.sort_time);
+            eprintln!("  Merge time: {:?}", stats.merge_time);
+            eprintln!("  Write time: {:?}", stats.write_time);
+            eprintln!("  Total time: {:?}", start_time.elapsed());
+        }
+
+        Self::from_kmer_pairs(sorted_kmers, kmer_size as u8, canonical, true)
+    }
+
+    fn merge_databases_inmemory(
+        input_paths: &[std::path::PathBuf],
+        config: &crate::database::MergeConfig,
+    ) -> crate::error::ProcessingResult<Self> {
+        use hashbrown::HashMap as HashMapBrown;
+        use hashbrown::hash_map::DefaultHashBuilder;
+        use indicatif::{ProgressBar, ProgressStyle};
+        use std::time::Instant;
+
+        let _start_time = Instant::now();
 
         if input_paths.is_empty() {
             return Err(crate::error::ProcessingError::new(
@@ -587,10 +705,13 @@ impl RKDatabase {
         type KmerMap = HashMapBrown<u128, u32, DefaultHashBuilder>;
         let mut all_kmers: KmerMap = KmerMap::default();
 
+        // Variables are assigned now and used later - suppress false positive warnings
+        #[allow(unused_assignments)]
         let mut kmer_size = None;
+        #[allow(unused_assignments)]
         let mut canonical = None;
         let mut sorted = true;
-        let mut total_input_kmers = 0u64;
+        let mut _total_input_kmers = 0u64;
 
         // Create progress bar for loading databases
         let progress = if config.verbose && input_paths.len() > 1 {
@@ -638,7 +759,7 @@ impl RKDatabase {
                         u32::MAX
                     }
                 };
-                total_input_kmers += count as u64;
+                _total_input_kmers += count as u64;
             }
 
             sorted = sorted && db.header().sorted;
@@ -702,6 +823,113 @@ impl RKDatabase {
         // Create database
         Self::from_kmer_pairs(sorted_kmers, kmer_size as u8, canonical, sorted)
     }
+
+    /// Prefix cache merge implementation (memory-efficient with error isolation)
+    fn merge_databases_prefix_cache(
+        input_paths: &[std::path::PathBuf],
+        config: &crate::database::MergeConfig,
+    ) -> crate::error::ProcessingResult<Self> {
+        use std::time::Instant;
+        use crate::database::prefix_cache_merge::ExternalSortMerger;
+
+        let start_time = Instant::now();
+
+        if input_paths.is_empty() {
+            return Err(crate::error::ProcessingError::new(
+                "At least one input database is required"
+            ));
+        }
+
+        // Validate compatibility
+        let mut db_refs = Vec::new();
+        for path in input_paths {
+            let db = Self::from_file_path(path)?;
+            db_refs.push(db);
+        }
+        let db_refs_slice: Vec<&Self> = db_refs.iter().collect();
+
+        // Create external sort merger
+        let merge_buffer_mb = (config.max_memory_usage / 1024 / 1024) as usize; // Convert bytes to MB
+        
+        // Validate for external sort merge (allow mixed canonical modes)
+        let (_kmer_size, _final_canonical) = Self::validate_compatibility_external_sort(&db_refs_slice, config.verbose)?;
+        
+        let mut merger = ExternalSortMerger::new(
+            input_paths.to_vec(), 
+            config.temp_dir.clone(), 
+            merge_buffer_mb.max(1024), // At least 1GB buffer
+            config.num_threads,
+            config.merge_mode.clone(),
+            config.keep_intermediate,
+        )?;
+
+        // Create temporary output path
+        let temp_output = config.temp_dir.join("external_sort_merge_output.tmp");
+        merger.external_sort_merge(&temp_output)?;
+        
+        let _elapsed = start_time.elapsed();
+        
+        // Read the merged result
+        let result_db = Self::from_file_path(&temp_output)?;
+        
+        Ok(result_db)
+    }
+    
+    /// Validate compatibility for external sort merge (allows mixed canonical modes)
+    fn validate_compatibility_external_sort(
+        db_refs: &[&Self],
+        verbose: bool
+    ) -> crate::error::ProcessingResult<(u8, bool)> {
+        let first_db = db_refs[0];
+        let kmer_size = first_db.kmer_size();
+        let canonical = first_db.is_canonical();
+        
+        if verbose {
+            eprintln!("Validating databases for external sort merge...");
+        }
+
+        let mut has_canonical = false;
+        let mut has_non_canonical = false;
+        
+        for (i, db) in db_refs.iter().enumerate() {
+            if db.kmer_size() != kmer_size {
+                let mut msg = format!("Database {} has k-mer size {}, expected {}",
+                           i + 1, db.kmer_size(), kmer_size);
+
+                if verbose {
+                    msg.push_str(&format!("\n  Database 1: k-mer size={}, canonical={}, k-mers={}",
+                        kmer_size, canonical, first_db.header().total_kmers));
+                    msg.push_str(&format!("\n  Database {}: k-mer size={}, canonical={}, k-mers={}",
+                        i + 1, db.kmer_size(), db.is_canonical(), db.header().total_kmers));
+                    msg.push_str("\n  Hint: All databases must have the same k-mer size to merge");
+                }
+
+                return Err(crate::error::ProcessingError::new(msg));
+            }
+            
+            if db.is_canonical() {
+                has_canonical = true;
+            } else {
+                has_non_canonical = true;
+            }
+
+            if verbose {
+                eprintln!("  Database {}: compatible (k-mer size={}, canonical={})",
+                    i + 1, db.kmer_size(), db.is_canonical());
+            }
+        }
+        
+        let final_canonical = has_canonical;
+        
+        if verbose {
+            if has_canonical && has_non_canonical {
+                eprintln!("  Mixed canonical modes detected - converting all to canonical mode");
+            }
+            eprintln!("  Final merge mode: canonical={}", final_canonical);
+        }
+        
+        Ok((kmer_size.try_into().unwrap(), final_canonical))
+    }
 }
 
 #[cfg(test)]
@@ -745,7 +973,10 @@ mod tests {
             chunk_size: 100,
             temp_dir: temp_dir.path().to_path_buf(),
             use_streaming: false,
-            threads: 1,
+            use_prefix_cache: false,
+            num_threads: 0,
+            merge_mode: "auto".to_string(),
+            keep_intermediate: false,
             verbose: false,
         };
 
@@ -770,6 +1001,53 @@ mod tests {
         // Basic memory sanity check
         assert!(monitor.peak_usage() < constraints::SMALL.max_usage,
                "Memory usage should be within small constraint");
+    }
+
+    #[test]
+    fn test_merge_streaming_basic() {
+        let temp_dir = tempdir().unwrap();
+        let db1_path = temp_dir.path().join("db1.rkdb");
+        let db2_path = temp_dir.path().join("db2.rkdb");
+
+        let db1 = RKDatabase::from_kmer_pairs(
+            vec![(0x0010, 10), (0x0020, 20), (0x0030, 30)],
+            31,
+            false,
+            true
+        ).unwrap();
+
+        let db2 = RKDatabase::from_kmer_pairs(
+            vec![(0x0010, 5), (0x0040, 15), (0x0030, 25)],
+            31,
+            false,
+            true
+        ).unwrap();
+
+        db1.to_file_path(&db1_path).unwrap();
+        db2.to_file_path(&db2_path).unwrap();
+
+        let config = crate::database::MergeConfig {
+            max_memory_usage: 1024,
+            chunk_size: 2,
+            temp_dir: temp_dir.path().to_path_buf(),
+            use_streaming: true,
+            use_prefix_cache: false,
+            num_threads: 0,
+            merge_mode: "auto".to_string(),
+            keep_intermediate: false,
+            verbose: false,
+        };
+
+        let merged_db = RKDatabase::merge_databases(&[db1_path, db2_path], &config)
+            .expect("Streaming merge should succeed");
+
+        let all_kmers = merged_db.all_kmers().unwrap();
+        let kmer_map: std::collections::HashMap<_, _> = all_kmers.into_iter().collect();
+
+        assert_eq!(kmer_map.get(&0x0010), Some(&15));
+        assert_eq!(kmer_map.get(&0x0020), Some(&20));
+        assert_eq!(kmer_map.get(&0x0030), Some(&55));
+        assert_eq!(kmer_map.get(&0x0040), Some(&15));
     }
 
     #[test]

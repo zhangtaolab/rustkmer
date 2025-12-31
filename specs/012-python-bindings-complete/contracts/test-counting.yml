@@ -1,0 +1,129 @@
+# Test Contract: K-mer Counting
+
+## Command
+- **CLI**: `rustkmer count`
+- **Python**: `rustkmer.KmerCounter`
+
+## Parameters Mapping
+
+| CLI Option | Python Parameter | Required | Type | Default | Test Required |
+|-------------|------------------|----------|------|---------|--------------|
+| `-k, --k` | `k` | Yes | int | 21 | ✅ |
+| `-C, --canonical` | `canonical` | No | bool | False | ✅ |
+| `-t, --threads` | `threads` | No | int | 0 | ✅ |
+| `--size` | `hash_size` | No | int | 1000000 | ⚠️ |
+| `--sort` | `sort_output` | No | bool | True | ⚠️ |
+| `--no-sort` | `sort_output=False` | No | bool | - | ⚠️ |
+| `-L, --min-count` | `min_count` | No | int | 1 | ⚠️ |
+| `-U, --max-count` | `max_count` | No | int | None | ⚠️ |
+| `-q, --quiet` | `quiet` | No | bool | False | ⚠️ |
+| `-v, --verbose` | `verbose` | No | bool | False | ⚠️ |
+| `--show-warnings` | N/A | No | - | - | ❌ |
+
+## Input Mapping
+
+| CLI Option | Python Method | Test Required |
+|-------------|---------------|--------------|
+| `-i, --input` | `count_file()` / `count_files()` | ✅ |
+| `-d, --directory` | `count_directory()` | ⚠️ |
+| `-s, --select` | N/A (Interactive) | ❌ |
+| `--recursive` | `count_directory(recursive=True/False)` | ⚠️ |
+
+## Output Mapping
+
+| CLI Option | Python Method | Format | Test Required |
+|-------------|---------------|--------|--------------|
+| `-o, --output` | `save_to_database()` | `.rkdb` | ✅ |
+| `--format` | `save_to_database(format=...)` | binary/text | ⚠️ |
+
+## Error Code Mapping
+
+| CLI Exit Code | Python Exception | Test Required |
+|---------------|-----------------|--------------|
+| 1 | `FileNotFoundError`, `PermissionError` | ⚠️ |
+| 2 | `KmerSizeError`, `ValueError` | ⚠️ |
+| 4 | `SequenceError` | ⚠️ |
+| 5 | `MemoryError` | ⚠️ |
+
+## Test Scenarios
+
+### 1. Basic Counting
+```python
+def test_count_basic():
+    """Test basic k-mer counting"""
+    # CLI: rustkmer count -k 21 -o out.rkdb input.fasta
+    # Python: KmerCounter(k=21).count_file("input.fasta")
+```
+
+### 2. Canonical K-mers
+```python
+def test_count_canonical():
+    """Test canonical k-mer counting"""
+    # CLI: rustkmer count -k 21 -C -o out.rkdb input.fasta
+    # Python: KmerCounter(k=21, canonical=True)
+```
+
+### 3. Multiple Threads
+```python
+def test_count_threads():
+    """Test multi-threaded counting"""
+    # CLI: rustkmer count -k 21 -t 4 -o out.rkdb input.fasta
+    # Python: KmerCounter(k=21, threads=4)
+```
+
+### 4. Directory Processing
+```python
+def test_count_directory():
+    """Test directory processing"""
+    # CLI: rustkmer count -k 21 -d /path/to/files -o out.rkdb
+    # Python: KmerCounter(k=21).count_directory("/path/to/files")
+```
+
+### 5. Output Formats
+```python
+def test_count_output_formats():
+    """Test different output formats"""
+    # CLI: rustkmer count -k 21 --format text -o out.txt input.fasta
+    # Python: counter.save_to_database("out.txt", format="text")
+```
+
+### 6. Error Conditions
+```python
+def test_count_errors():
+    """Test error handling"""
+    # Invalid k-mer size
+    # File not found
+    # Permission denied
+    # Invalid sequence
+```
+
+## Validation Rules
+
+1. **K-mer size validation**:
+   - Must be 1-64
+   - CLI error: exit code 2
+   - Python: raises `ValueError` or `KmerSizeError`
+
+2. **Input validation**:
+   - Must exist and be readable
+   - Must be valid FASTA/FASTQ
+   - CLI error: exit code 1 or 4
+   - Python: raises `FileNotFoundError` or `SequenceError`
+
+3. **Output validation**:
+   - Database must be valid RKDB format
+   - Must contain expected k-mers
+   - Verify k-mer size matches
+
+4. **Performance requirements**:
+   - Memory usage O(n*k)
+   - Parallel speedup with threads
+   - Streaming for large files
+
+## Success Criteria
+
+1. All CLI options have Python equivalent tests
+2. Output files are identical (byte-for-byte)
+3. Error codes map to correct exceptions
+4. Performance within 10% of CLI
+5. Thread safety for concurrent operations

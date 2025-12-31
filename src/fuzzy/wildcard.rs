@@ -13,6 +13,7 @@ const NUCLEOTIDES: [char; 4] = ['A', 'T', 'C', 'G'];
 ///
 /// # Arguments
 /// * `query` - Query string possibly containing 'N' wildcards
+/// * `max_variants` - Maximum number of variants to generate (None for default)
 ///
 /// # Returns
 /// Vector of all concrete sequences without wildcards
@@ -21,14 +22,14 @@ const NUCLEOTIDES: [char; 4] = ['A', 'T', 'C', 'G'];
 /// ```
 /// use rustkmer::fuzzy::wildcard::expand_wildcards;
 ///
-/// let variants = expand_wildcards("ATGCGATGCTAGCN").unwrap();
+/// let variants = expand_wildcards("ATGCGATGCTAGCN", None).unwrap();
 /// assert_eq!(variants.len(), 4);
 /// assert!(variants.contains(&"ATGCGATGCTAGCA".to_string()));
 /// assert!(variants.contains(&"ATGCGATGCTAGCT".to_string()));
 /// assert!(variants.contains(&"ATGCGATGCTAGCC".to_string()));
 /// assert!(variants.contains(&"ATGCGATGCTAGCG".to_string()));
 /// ```
-pub fn expand_wildcards(query: &str) -> FuzzyResult<Vec<String>> {
+pub fn expand_wildcards(query: &str, max_variants: Option<usize>) -> FuzzyResult<Vec<String>> {
     let wildcard_positions: Vec<usize> = query
         .chars()
         .enumerate()
@@ -42,10 +43,11 @@ pub fn expand_wildcards(query: &str) -> FuzzyResult<Vec<String>> {
 
     // Check combinatorial explosion protection
     let combination_count = 4_usize.pow(wildcard_positions.len() as u32);
-    if combination_count > constants::DEFAULT_MAX_VARIANTS {
+    let limit = max_variants.unwrap_or(constants::DEFAULT_MAX_VARIANTS);
+    if combination_count > limit {
         return Err(FuzzyError::TooManyVariants {
             actual: combination_count,
-            limit: constants::DEFAULT_MAX_VARIANTS,
+            limit,
         });
     }
 
@@ -85,7 +87,14 @@ fn generate_wildcard_combinations(
 ///
 /// This method generates variants iteratively to avoid deep recursion
 /// for queries with many wildcards.
-pub fn expand_wildcards_iterative(query: &str) -> FuzzyResult<Vec<String>> {
+///
+/// # Arguments
+/// * `query` - Query string possibly containing 'N' wildcards
+/// * `max_variants` - Maximum number of variants to generate (None for default)
+///
+/// # Returns
+/// Vector of all concrete sequences without wildcards
+pub fn expand_wildcards_iterative(query: &str, max_variants: Option<usize>) -> FuzzyResult<Vec<String>> {
     let wildcard_positions: Vec<usize> = query
         .chars()
         .enumerate()
@@ -99,10 +108,11 @@ pub fn expand_wildcards_iterative(query: &str) -> FuzzyResult<Vec<String>> {
 
     // Check combinatorial explosion protection
     let combination_count = 4_usize.pow(wildcard_positions.len() as u32);
-    if combination_count > constants::DEFAULT_MAX_VARIANTS {
+    let limit = max_variants.unwrap_or(constants::DEFAULT_MAX_VARIANTS);
+    if combination_count > limit {
         return Err(FuzzyError::TooManyVariants {
             actual: combination_count,
-            limit: constants::DEFAULT_MAX_VARIANTS,
+            limit,
         });
     }
 
@@ -167,18 +177,29 @@ pub fn validate_wildcard_query(query: &str, max_variants: Option<usize>) -> Fuzz
 ///
 /// This method processes variants in batches to reduce memory usage
 /// for large wildcard expansions.
+///
+/// # Arguments
+/// * `query` - Query string possibly containing 'N' wildcards
+/// * `batch_size` - Size of each batch for processing
+/// * `max_variants` - Maximum number of variants to generate (None for default)
+/// * `processor` - Function to process each batch of variants
+///
+/// # Returns
+/// Result indicating success or failure
 pub fn expand_wildcards_streaming(
     query: &str,
     batch_size: usize,
+    max_variants: Option<usize>,
     mut processor: impl FnMut(&[String]) -> FuzzyResult<()>,
 ) -> FuzzyResult<()> {
     let _wildcard_count = count_wildcards(query);
     let total_variants = estimate_wildcard_variants(query);
 
-    if total_variants > constants::DEFAULT_MAX_VARIANTS {
+    let limit = max_variants.unwrap_or(constants::DEFAULT_MAX_VARIANTS);
+    if total_variants > limit {
         return Err(FuzzyError::TooManyVariants {
             actual: total_variants,
-            limit: constants::DEFAULT_MAX_VARIANTS,
+            limit,
         });
     }
 
@@ -217,7 +238,9 @@ fn generate_wildcard_combinations_batched(
 
     if start_wildcard >= wildcard_positions.len() {
         // No more wildcards to process, add this variant
-        batch.push(query_chars.iter().collect::<String>());
+        // Build string from the current modified characters
+        let variant: String = query_chars.iter().collect();
+        batch.push(variant);
         *generated += 1;
 
         // Process batch if full
@@ -236,9 +259,10 @@ fn generate_wildcard_combinations_batched(
         new_chars[wildcard_pos] = nucleotide;
         let new_query: String = new_chars.iter().collect();
 
+        // Start fresh with the new query (recalculate wildcard positions)
         generate_wildcard_combinations_batched(
             &new_query,
-            start_wildcard + 1,
+            0,  // Start fresh for the new query
             batch,
             generated,
             total_variants,
@@ -262,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_expand_wildcards_single() {
-        let variants = expand_wildcards("ATGCGATGCTAGCN").unwrap();
+        let variants = expand_wildcards("ATGCGATGCTAGCN", None).unwrap();
         assert_eq!(variants.len(), 4);
 
         let expected_variants = [
@@ -279,21 +303,21 @@ mod tests {
 
     #[test]
     fn test_expand_wildcards_multiple() {
-        let variants = expand_wildcards("ATNNGATGCTAGCG").unwrap();
+        let variants = expand_wildcards("ATNNGATGCTAGCG", None).unwrap();
         assert_eq!(variants.len(), 16); // 4^2 = 16
     }
 
     #[test]
     fn test_expand_wildcards_none() {
-        let variants = expand_wildcards("ATGCGATGCTAGCG").unwrap();
+        let variants = expand_wildcards("ATGCGATGCTAGCG", None).unwrap();
         assert_eq!(variants.len(), 1);
         assert_eq!(variants[0], "ATGCGATGCTAGCG");
     }
 
     #[test]
     fn test_expand_wildcards_iterative() {
-        let variants_recursive = expand_wildcards("ATNNGATGCTAGCG").unwrap();
-        let variants_iterative = expand_wildcards_iterative("ATNNGATGCTAGCG").unwrap();
+        let variants_recursive = expand_wildcards("ATNNGATGCTAGCG", None).unwrap();
+        let variants_iterative = expand_wildcards_iterative("ATNNGATGCTAGCG", None).unwrap();
 
         assert_eq!(variants_recursive.len(), variants_iterative.len());
 
@@ -306,21 +330,21 @@ mod tests {
     #[test]
     fn test_count_wildcards() {
         assert_eq!(count_wildcards("ATGCGATGCTAGCN"), 1);
-        assert_eq!(count_wildcards("ATNNGATGCTNGCN"), 3);
+        assert_eq!(count_wildcards("ATNNGATGCTGCN"), 3);
         assert_eq!(count_wildcards("ATGCGATGCTAGCG"), 0);
     }
 
     #[test]
     fn test_estimate_wildcard_variants() {
         assert_eq!(estimate_wildcard_variants("ATGCGATGCTAGCN"), 4);
-        assert_eq!(estimate_wildcard_variants("ATNNGATGCTNGCN"), 64); // 4^3
+        assert_eq!(estimate_wildcard_variants("ATNNGATGCTGCN"), 64); // 4^3
         assert_eq!(estimate_wildcard_variants("ATGCGATGCTAGCG"), 1);
     }
 
     #[test]
     fn test_would_exceed_wildcard_limit() {
         assert!(would_exceed_wildcard_limit("ATNNNNATGCTNGCN", 1000)); // 4^6 = 4096 > 1000
-        assert!(!would_exceed_wildcard_limit("ATNNGATGCTNGCN", 100)); // 4^3 = 64 <= 100
+        assert!(!would_exceed_wildcard_limit("ATNNGATGCTGCN", 100)); // 4^3 = 64 <= 100
     }
 
     #[test]
@@ -354,7 +378,7 @@ mod tests {
     #[test]
     fn test_expand_wildcards_combinatorial_explosion() {
         // This should fail due to too many variants
-        let result = expand_wildcards("NNNNNNNNNN"); // 4^10 = 1,048,576 variants
+        let result = expand_wildcards("NNNNNNNNNN", None); // 4^10 = 1,048,576 variants
         assert!(result.is_err());
 
         match result.unwrap_err() {
@@ -375,7 +399,7 @@ mod tests {
             Ok(())
         };
 
-        expand_wildcards_streaming("ATNNGATGCTAGCG", 5, &mut processor).unwrap();
+        expand_wildcards_streaming("ATNNGATGCTAGCG", 5, None, &mut processor).unwrap();
 
         // Should have processed all 16 variants
         assert_eq!(processed_variants.len(), 16);

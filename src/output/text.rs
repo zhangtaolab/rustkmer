@@ -135,7 +135,6 @@ pub fn write_summary<W: Write>(mut writer: W, stats: &CounterStats) -> Processin
 mod tests {
     use super::*;
     use crate::hash::table::CounterStats;
-    use std::io::Cursor;
 
     #[test]
     fn test_text_format() {

@@ -1,85 +1,74 @@
-"""
-Statistics and result types for RustKmer operations.
-
-This module contains data classes for representing query results,
-statistics, and metadata from k-mer counting and database operations.
-"""
+"""DatabaseStats and related classes for rustkmer Python bindings."""
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, Union
 
-# Placeholder classes for development
-@dataclass
-class QueryResult:
-    """Result from a single k-mer query operation.
-
-    Attributes:
-        kmer: The queried k-mer sequence (uppercase)
-        count: The number of occurrences of this k-mer
-        found: Whether the k-mer was found in the database
-        distance: Edit distance from query (for fuzzy queries, 0 for exact queries)
-    """
-    kmer: str
-    count: int
-    found: bool
-    distance: int = 0  # Default to 0 for exact queries
-
-    @property
-    def exists(self) -> bool:
-        """Alias for found property for compatibility with documentation."""
-        return self.found
-
-@dataclass
-class FuzzyQueryResult:
-    """Results from fuzzy query operations with match details.
-
-    Attributes:
-        kmer: The matching k-mer sequence found in the database
-        count: The number of occurrences of this k-mer
-        distance: Edit distance from the original query pattern
-        pattern: The original query pattern (may contain wildcards)
-        matched_positions: List of positions where substitutions occurred
-    """
-    kmer: str
-    count: int
-    distance: int
-    pattern: str
-    matched_positions: Optional[List[int]] = None
-
-@dataclass
-class CounterStats:
-    """Statistics for k-mer counting operations.
-
-    Attributes:
-        total_kmers: Total number of unique k-mers
-        total_count: Total k-mer occurrences
-        average_count: Average k-mer count
-        median_count: Median k-mer count
-        max_count: Maximum k-mer count
-    """
-    total_kmers: int
-    total_count: int
-    average_count: float
-    median_count: float
-    max_count: int
 
 @dataclass
 class DatabaseStats:
-    """Statistics and metadata for a k-mer database.
+    """Statistics about a k-mer database.
+
+    This class contains metadata about the database such as k-mer size,
+    number of unique k-mers, and file information.
 
     Attributes:
-        kmer_size: The length of k-mers stored in the database
-        total_kmers: Total number of k-mer occurrences (including duplicates)
+        kmer_size: Length of k-mers in the database
         unique_kmers: Number of unique k-mer sequences
-        sorted: Whether the database is sorted for efficient querying
-        canonical: Whether the database stores canonical k-mers
-        preloaded: Whether the database is preloaded into memory
-        filename: The path to the database file
+        total_counts: Sum of all k-mer counts
+        min_count: Minimum count for any single k-mer
+        max_count: Maximum count for any single k-mer
+        file_size: Size of database file in bytes
+        format_version: Version of the database format
     """
     kmer_size: int
-    total_kmers: int
     unique_kmers: int
-    sorted: bool
-    canonical: bool
-    preloaded: bool
-    filename: str
+    total_counts: int
+    min_count: int
+    max_count: int
+    file_size: int
+    format_version: str
+
+    def to_dict(self) -> Dict[str, Union[str, int]]:
+        """Convert to dictionary representation."""
+        return {
+            'kmer_size': self.kmer_size,
+            'unique_kmers': self.unique_kmers,
+            'total_counts': self.total_counts,
+            'min_count': self.min_count,
+            'max_count': self.max_count,
+            'file_size': self.file_size,
+            'format_version': self.format_version
+        }
+
+    def to_json(self) -> str:
+        """Convert to JSON string."""
+        import json
+        return json.dumps(self.to_dict())
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Union[str, int]]) -> 'DatabaseStats':
+        """Create DatabaseStats from dictionary."""
+        return cls(
+            kmer_size=int(data.get('kmer_size', 0)),
+            unique_kmers=int(data.get('unique_kmers', 0)),
+            total_counts=int(data.get('total_counts', 0)),
+            min_count=int(data.get('min_count', 0)),
+            max_count=int(data.get('max_count', 0)),
+            file_size=int(data.get('file_size', 0)),
+            format_version=str(data.get('format_version', 'unknown'))
+        )
+
+    @property
+    def average_count(self) -> float:
+        """Calculate average k-mer count."""
+        if self.unique_kmers == 0:
+            return 0.0
+        return self.total_counts / self.unique_kmers
+
+    def __str__(self) -> str:
+        """String representation."""
+        return (
+            f"DatabaseStats(k={self.kmer_size}, "
+            f"unique={self.unique_kmers}, "
+            f"total={self.total_counts})"
+        )

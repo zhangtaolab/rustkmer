@@ -210,18 +210,21 @@ pub fn validate_memory_usage(
 pub fn format_bytes(bytes: usize) -> String {
     const UNITS: &[(&str, u64)] = &[("B", 1), ("KB", 1024), ("MB", 1_048_576), ("GB", 1_073_741_824)];
 
+    let bytes = bytes as u64;
+
     for (i, &(unit, size)) in UNITS.iter().enumerate() {
         if bytes < size * 1024 || i == UNITS.len() - 1 {
-            if i == 0 {
+            return if i == 0 {
                 format!("{} {}", bytes, unit)
             } else {
                 format!("{:.2} {}", bytes as f64 / size as f64, unit)
-            }
-        } else {
-            continue;
+            };
         }
     }
-    }
+
+    // Default case (should never reach here)
+    format!("{} GB", bytes as f64 / UNITS.last().unwrap().1 as f64)
+}
 
 #[cfg(test)]
 mod tests {
@@ -232,7 +235,7 @@ mod tests {
         let mut monitor = MemoryMonitor::new();
 
         // Initial stats
-        let initial = monitor.current_usage();
+        let initial = monitor.current_stats();
         assert!(initial.current_usage > 0);
 
         // Recording should update peak if necessary

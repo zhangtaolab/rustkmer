@@ -27,7 +27,16 @@ fn main() -> anyhow::Result<()> {
         rustkmer::cli::args::Commands::Count { .. } => {
             rustkmer::cli::commands::count::execute_count(&args)?;
         }
-        rustkmer::cli::args::Commands::Query { .. } => {
+        rustkmer::cli::args::Commands::Query {
+            database: _,
+            kmers: _,
+            sequence: _,
+            batch: _,
+            output: _,
+            interactive: _,
+            load: _,
+            no_load: _,
+        } => {
             rustkmer::cli::commands::query::execute_query(&args)?;
         }
         rustkmer::cli::args::Commands::Stats { .. } => {
@@ -36,19 +45,19 @@ fn main() -> anyhow::Result<()> {
         rustkmer::cli::args::Commands::Dump { .. } => {
             rustkmer::cli::commands::dump::execute_dump(&args)?;
         }
-        rustkmer::cli::args::Commands::FuzzyQuery { database, query, mutations, max_variants, parallel, batch_size, format, output, verbose, quiet, profile } => {
+        rustkmer::cli::args::Commands::FuzzyQuery { database, query, mutations, max_variants, batch_size, format, output, verbose, quiet, profile, position_mutations } => {
             let args = rustkmer::cli::commands::fuzzy::FuzzyQueryArgs {
                 database: database.into(),
                 query,
                 mutations,
                 max_variants,
-                enable_parallel: parallel,
                 batch_size,
                 format,
                 output: output.map(|o| o.into()),
                 verbose,
                 quiet,
                 profile,
+                position_mutations,
             };
             rustkmer::cli::commands::fuzzy::execute_fuzzy_query(&args)?;
         }
@@ -69,18 +78,25 @@ fn main() -> anyhow::Result<()> {
             };
             rustkmer::cli::commands::fuzzy::execute_fuzzy_query_batch(&args)?;
         }
-        rustkmer::cli::args::Commands::Merge { input, output, temp_dir, threads, verbose, quiet, keep_intermediate, check_compatibility } => {
+        rustkmer::cli::args::Commands::Merge { input, output, temp_dir, verbose, quiet, keep_intermediate, check_compatibility, max_memory, use_prefix_cache, batch_size, num_threads, merge_mode } => {
             let args = rustkmer::cli::commands::merge::MergeArgs {
                 input,
                 output,
                 temp_dir,
-                threads,
                 verbose,
                 quiet,
                 keep_intermediate,
                 check_compatibility,
+                max_memory,
+                use_prefix_cache,
+                batch_size,
+                num_threads,
+                merge_mode,
             };
             rustkmer::cli::commands::merge::execute_merge(&args)?;
+        }
+        rustkmer::cli::args::Commands::PrefixQuery { .. } => {
+            rustkmer::cli::commands::prefix::execute_prefix_query(&args)?;
         }
     }
 

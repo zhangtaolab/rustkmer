@@ -122,6 +122,9 @@ rustkmer query -d database.rkdb -q "ATCGATCGATCGATCGATCG"
 # Query from file
 rustkmer query -d database.rkdb -f queries.txt
 
+# Batch query from text file (one k-mer per line)
+rustkmer query database.rkdb --batch kmer_list.txt
+
 # Multiple queries
 rustkmer query -d database.rkdb -q "ATCGATCGATCGATCGATCG" -q "GCTAGCTAGCTAGCTAGCTAG"
 ```
@@ -137,6 +140,19 @@ CCCCCCCCCCCCCCCCCCCCCC
 EOF
 
 rustkmer query -d database.rkdb -f queries.txt
+
+# Batch query format (one k-mer per line, supports comments)
+cat > kmer_list.txt << EOF
+# This is a comment and will be ignored
+ATCGATCGATCGATCGATCG
+GCTAGCTAGCTAGCTAGCTAG
+
+# Empty lines are also ignored
+TTTTTTTTTTTTTTTTTTTTT
+CCCCCCCCCCCCCCCCCCCCCC
+EOF
+
+rustkmer query database.rkdb --batch kmer_list.txt
 ```
 
 #### Output Formats

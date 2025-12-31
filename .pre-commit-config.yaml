@@ -1,0 +1,55 @@
+# Pre-commit hooks configuration for rustkmer
+# Install with: pre-commit install
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+
+  - repo: https://github.com/psf/black
+    rev: 24.1.1
+    hooks:
+      - id: black
+        language_version: python3
+        files: ^python/.*\.py$
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        files: ^python/.*\.py$
+        args: ["--profile", "black", "--filter-files"]
+
+  - repo: https://github.com/pycqa/pydocstyle
+    rev: 6.3.0
+    hooks:
+      - id: pydocstyle
+        files: ^python/.*\.py$
+        args: ["--config=.pydocstylerc"]
+        additional_dependencies: [toml]
+
+  - repo: https://github.com/pycqa/docformatter
+    rev: 1.7.5
+    hooks:
+      - id: docformatter
+        files: ^python/.*\.py$
+        args: ["--in-place", "--black"]
+        additional_dependencies: [toml]
+
+  - repo: local
+    hooks:
+      - id: check-docstring-coverage
+        name: Check docstring coverage
+        entry: python -m pydocstyle python/rustkmer/ --count
+        language: system
+        pass: false  # Warn only, don't fail
+        files: ^python/.*\.py$

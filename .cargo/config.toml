@@ -1,0 +1,30 @@
+# Cargo configuration for RustKmer Python bindings
+# This configuration provides cross-platform Python extension linking
+
+# Note: For most users, no special configuration is needed.
+# If you encounter Python linking issues, you can set PYTHON_LIB_DIR environment variable
+# or create a .cargo/config.local.toml with your specific Python paths.
+
+# Example for setting PYTHON_LIB_DIR:
+# export PYTHON_LIB_DIR=$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')
+
+[target.aarch64-apple-darwin]
+rustflags = [
+    # Let maturin handle Python linking automatically
+    # Only add specific flags if needed for your environment
+]
+
+[target.x86_64-apple-darwin]
+rustflags = [
+    # Let maturin handle Python linking automatically
+    # Only add specific flags if needed for your environment
+]
+
+# For Linux support
+[target.x86_64-unknown-linux-gnu]
+rustflags = [
+    # Standard Linux Python library path - may need adjustment for your system
+    # Comment out or modify based on your Python installation
+    # "-C", "link-arg=-L/usr/lib/x86_64-linux-gnu",
+    # "-C", "link-arg=-lpython3"
+]

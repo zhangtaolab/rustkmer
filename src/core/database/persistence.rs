@@ -4,8 +4,8 @@ use crate::core::metadata::{DatabaseMetadata, create_metadata, save_metadata, lo
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write, BufWriter, BufReader, Read, BufRead};
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
+// use std::time::{SystemTime, UNIX_EPOCH}; // Unused imports
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use sha2::{Sha256, Digest};
@@ -133,7 +133,7 @@ fn save_kmer_data_compressed(
     writer.write_u32::<LittleEndian>(21)?; // k-mer size placeholder - should be parameterized
 
     // Write k-mer data
-    let mut total_data_size = 12u64; // header size
+    let _total_data_size = 12u64; // header size
     let mut uncompressed_size = 12u64;
 
     for (kmer, count) in kmer_counts {
@@ -195,8 +195,8 @@ pub fn load_kmer_database(
     let metadata_path = database_path.join("metadata.json");
     let metadata = load_metadata(&metadata_path)?;
 
-    // Validate metadata
-    validate_metadata(database_path)?;
+    // Validate metadata (pass the metadata file path, not directory path)
+    validate_metadata(&metadata_path)?;
 
     // Determine data file path
     let data_file_path = if config.compression_enabled {
@@ -448,7 +448,7 @@ mod tests {
     #[test]
     fn test_compression() {
         let dir = tempdir().unwrap();
-        let db_path = dir.path().join("compressed_db");
+        let _db_path = dir.path().join("compressed_db");
 
         let mut kmer_counts = HashMap::new();
         for i in 0..1000 {

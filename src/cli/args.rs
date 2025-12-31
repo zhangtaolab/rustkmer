@@ -53,10 +53,6 @@ pub enum Commands {
         #[arg(long, default_value = "1000000")]
         size: usize,
 
-        /// Number of threads
-        #[arg(short, long, default_value = "0")]
-        threads: usize,
-
         /// Output format (binary or text)
         #[arg(long, default_value = "binary")]
         format: String,
@@ -106,8 +102,12 @@ pub enum Commands {
         kmers: Vec<String>,
 
         /// Query k-mers from sequence file
-        #[arg(short = 's', long, conflicts_with_all = ["kmers"])]
+        #[arg(short = 's', long, conflicts_with_all = ["kmers", "batch"])]
         sequence: Option<String>,
+
+        /// Query k-mers from text file (one per line)
+        #[arg(short = 'b', long, conflicts_with_all = ["kmers", "sequence"])]
+        batch: Option<String>,
 
         /// Output file (stdout if not specified)
         #[arg(short, long)]
@@ -153,10 +153,6 @@ pub enum Commands {
         #[arg(short = 'M', long, default_value = "10000")]
         max_variants: usize,
 
-        /// Enable parallel processing
-        #[arg(short = 'p', long, default_value = "true")]
-        parallel: bool,
-
         /// Batch size for processing variants
         #[arg(short = 'b', long, default_value = "1000")]
         batch_size: usize,
@@ -180,6 +176,10 @@ pub enum Commands {
         /// Show performance profiling
         #[arg(long)]
         profile: bool,
+
+        /// Position-specific mutations (e.g., "3,4,5:2" or "3,4,5:2;6,7:1")
+        #[arg(long = "position-mutations")]
+        position_mutations: Option<String>,
     },
 
     /// Batch fuzzy queries from file
@@ -247,10 +247,6 @@ pub enum Commands {
         #[arg(long, help = "Temporary directory for merge operations (default: system temp)")]
         temp_dir: Option<std::path::PathBuf>,
 
-        /// Number of threads for merging
-        #[arg(short = 't', long, default_value = "0", help = "Number of threads for merging (0 = auto-detect)")]
-        threads: usize,
-
         /// Enable verbose output
         #[arg(short = 'v', long, help = "Enable verbose output")]
         verbose: bool,
@@ -267,6 +263,26 @@ pub enum Commands {
         /// Check compatibility of databases without merging
         #[arg(long, help = "Check compatibility of databases without performing the merge")]
         check_compatibility: bool,
+
+        /// Maximum memory usage for merge operations (e.g., "32GB", "1TB")
+        #[arg(long, help = "Maximum memory usage for merge operations (e.g., '32GB', '1TB'). Defaults to 50% of system memory.")]
+        max_memory: Option<String>,
+
+        /// Use prefix cache merge (memory-efficient with error isolation)
+        #[arg(long, help = "Use prefix cache merge strategy for memory-efficient processing with error isolation")]
+        use_prefix_cache: bool,
+
+        /// Batch size for prefix cache merge (number of k-mers per buffer flush)
+        #[arg(long, default_value = "100000", help = "Batch size for prefix cache merge. Higher values use more memory but are faster. (default: 100000)")]
+        batch_size: usize,
+
+        /// Number of threads for parallel processing (0 = all cores)
+        #[arg(long, default_value = "0", help = "Number of threads for parallel processing (0 = use all cores).")]
+        num_threads: usize,
+
+        /// Merge strategy for prefix cache mode
+        #[arg(long, value_parser = ["auto", "memory", "streaming"], default_value = "auto", help = "Merge strategy for prefix cache mode: auto (use memory if <100MB), memory (force in-memory), streaming (always stream).")]
+        merge_mode: String,
     },
 
     /// Calculate statistics for a k-mer database
@@ -305,6 +321,52 @@ pub enum Commands {
         /// Output file for frequency distribution (required when --split-output is used)
         #[arg(long, required_if_eq("split_output", "true"))]
         freq_output: Option<String>,
+    },
+
+    /// Efficient prefix-based k-mer query for sorted databases
+    PrefixQuery {
+        /// Database file
+        database: String,
+
+        /// Sequence pattern to match (prefix or hybrid format like ATAC{N5}ACAC)
+        #[arg(short = 'p', long, default_value = "")]
+        pattern: String,
+
+        /// Explicit prefix sequence (alternative to pattern)
+        #[arg(short = 'x', long, conflicts_with = "pattern")]
+        prefix: Option<String>,
+
+        /// Enable hybrid search mode for patterns with internal wildcards
+        #[arg(long, requires = "pattern")]
+        hybrid: bool,
+
+        /// Output format (table, json, csv, tsv)
+        #[arg(short = 'f', long, default_value = "table", value_parser = ["table", "json", "csv", "tsv"])]
+        format: String,
+
+        /// Output file (stdout if not specified)
+        #[arg(short = 'o', long)]
+        output: Option<String>,
+
+        /// Enable verbose output
+        #[arg(short = 'v', long)]
+        verbose: bool,
+
+        /// Suppress non-error output
+        #[arg(short = 'q', long)]
+        quiet: bool,
+
+        /// Show performance profiling
+        #[arg(long = "profile")]
+        profile: bool,
+
+        /// Minimum count threshold
+        #[arg(short = 'L', long = "min-count")]
+        min_count: Option<u64>,
+
+        /// Maximum count threshold
+        #[arg(short = 'U', long = "max-count")]
+        max_count: Option<u64>,
     }
 }
 

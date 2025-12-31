@@ -8,6 +8,44 @@ Cargo.lock
 debug/
 release/
 *.rlib
+
+# Python build artifacts
+python/__pycache__/
+python/*.pyc
+python/*.pyo
+python/*.pyd
+python/.pytest_cache/
+python/.coverage
+python/htmlcov/
+python/build/
+python/dist/
+python/*.egg-info/
+python/.venv
+python/venv
+python/.mypy_cache
+python/.tox
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 *.prof*
 *.d
 *.pdb
@@ -17,6 +55,10 @@ release/
 *.rk
 *.txt
 *.rkdb
+
+# Except test data files that should be tracked
+!python/tests/test_data/*.rkdb
+!python/tests/test_data/*.rk
 
 # Examples output and data
 examples/output/
@@ -52,6 +94,8 @@ criterion/
 # Test coverage
 tarpaulin-report.html
 coverage/
+coverage.xml
+*.xml
 
 # Added by cargo
 
@@ -91,7 +135,25 @@ python/rustkmer/*.cpython-*.so
 #
 .claude/
 .serena/
+.spekrit/
 .specify/
+
+# Documentation build
+site/
+docs/venv/
+docs/_build/
+
+# Temporary scripts
+check_rustkmer_methods.py
+fix_warnings.py
+IMPLEMENTATION_STATUS.md
+
+# Large test data
+tests/python/fixtures/large_scale/sequence_xlarge.fa
+tests/python/fixtures/large_scale/rnaseq_reads.fq.gz
+
+# Benchmarks directory (removed due to non-compliant code)
+benches/
 
 # IDE files
 .vscode/
@@ -108,49 +170,6 @@ python/rustkmer/*.cpython-*.so
 .Trashes
 ehthumbs.db
 Thumbs.db
-
-# Test databases and temporary files
-*.rkdb.test
-test_*.rkdb
-debug_*.py
-bug_*.md
-test_encoding.*
-test_endian.*
-test_*.fasta
-test_*.fa
-
-# Test fixtures (large files)
-tests/data/
-tests/python/fixtures/large_scale/
-!tests/python/fixtures/small_dataset.fa
-
-# Rust compilation artifacts
-*.0.s
-*.1.s
-*.2.s
-*.3.s
-*.4.s
-*.5.s
-*.6.s
-*.7.s
-*.8.s
-*.9.s
-*.10.s
-*.11.s
-*.12.s
-*.13.s
-*.14.s
-*.15.s
-*.16.s
-*.17.s
-*.18.s
-*.19.s
-*.20.s
-*.o
-*.rcgu.o
-*.rcgu
-*.lto.o
-*.lto.rcgu.o
 
 # Performance profiling files
 *.prof
@@ -181,46 +200,29 @@ examples/marimo/__marimo__/
 
 tmp/
 
-# Additional ignore patterns for safety
-# Validation outputs
-validation_outputs/
-validate_*_output/
 
-# Debug and test binaries
-debug_*
-test_*
-bug_*
 
-# Temporary analysis scripts
-analyze_*
-verify_*
+# Tool-specific cache files (can be large)
+.serena/
+.venv/
 
-# Extracted data files
-data/extracted/
-extracted/
+.venv*/
 
-# Intermediate reports and analysis files
-*_report.md
-*_summary.md
-*_ANALYSIS.md
-*_PROGRESS.md
-*_IMPLEMENTATION.md
-canonical_fix_*
-validation_analysis_*
-*_COMPLETION.md
+# Hypothesis testing cache (property-based testing)
+.hypothesis/
+.pytest_cache/
+# Test databases
+*.rkd
+*.rkb
 
-# Validation study (completed research)
-validation_study/
+# Test binaries
+test_memory
+test_memory_fixed
 
-# CLI Test Framework - temporary files and outputs
-/Users/forrest/Temp/demodata/rustkmer_cli_test/
-rustkmer_cli_test/
-specs/009-rustkmer-cli-test/demo_*.sh
-specs/009-rustkmer-cli-test/demo_*.txt
-specs/009-rustkmer-cli-test/demo_*.rkdb
-specs/009-rustkmer-cli-test/demo_*_test.*
+# Temporary merge files
+ext_sort_*
+external_sort_*
 
-# Large dump and query output files
-*_dump.txt
-*_kmers.txt
-temp_*.txt
+# Debug files
+*.tmp
+merged_test*.rkd

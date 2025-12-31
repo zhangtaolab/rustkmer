@@ -1,14 +1,13 @@
 //! Temporary file management utilities for testing
 
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use tempfile::{NamedTempFile, TempDir};
 use thiserror::Error;
 use rustkmer::database::format::RKDatabase;
 
 /// Result type for temporary file operations
-pub type TempFileResult<T> = Result<T, Error>;
+pub type TempFileResult<T> = Result<T, TempFileError>;
 
 /// Error type for temporary file operations
 #[derive(Debug, Error)]
@@ -35,7 +34,7 @@ impl TempFileManager {
     /// Create a new temporary file manager with a dedicated temporary directory
     pub fn new() -> TempFileResult<Self> {
         let temp_dir = TempDir::new()
-            .map_err(|e| Error::msg(format!("Failed to create temp dir: {}", e)))?;
+            .map_err(|e| TempFileError::CreationFailed(format!("Failed to create temp dir: {}", e)))?;
 
         Ok(Self {
             _temp_dir: Some(temp_dir),
@@ -54,19 +53,19 @@ impl TempFileManager {
     /// Create a temporary file with the given content
     pub fn create_temp_file(&mut self, content: &[u8], extension: &str) -> TempFileResult<PathBuf> {
         let temp_file = NamedTempFile::with_suffix(extension)
-            .map_err(|e| Error::msg(format!("Failed to create temp file: {}", e)))?;
+            .map_err(|e| TempFileError::CreationFailed(format!("Failed to create temp file: {}", e)))?;
 
         let path = temp_file.path().to_path_buf();
 
         // Write content
         fs::write(&path, content)
-            .map_err(|e| Error::msg(format!("Failed to write temp file: {}", e)))?;
+            .map_err(|e| TempFileError::WriteFailed(format!("Failed to write temp file: {}", e)))?;
 
         // Keep the temp file by not dropping temp_file
         temp_file.keep().map_err(|e| {
             // Try to remove the file if keep fails
             let _ = fs::remove_file(&path);
-            Error::msg(format!("Failed to keep temp file: {}", e))
+            TempFileError::CreationFailed(format!("Failed to keep temp file: {}", e))
         })?;
 
         self.files.push(path.clone());
@@ -103,7 +102,7 @@ impl TempFileManager {
         let temp_path = self.create_temp_file(&[], ".rkdb")?;
 
         db.to_file_path(&temp_path)
-            .map_err(|e| Error::msg(format!("Failed to save database: {}", e)))?;
+            .map_err(|e| TempFileError::WriteFailed(format!("Failed to save database: {}", e)))?;
 
         Ok(temp_path)
     }
@@ -131,19 +130,19 @@ impl TempFileManager {
     /// Read the content of a temporary file
     pub fn read_temp_file(&self, path: &Path) -> TempFileResult<Vec<u8>> {
         fs::read(path)
-            .map_err(|e| Error::msg(format!("Failed to read temp file: {}", e)))
+            .map_err(|e| TempFileError::ReadFailed(format!("Failed to read temp file: {}", e)))
     }
 
     /// Read the text content of a temporary file
     pub fn read_temp_text_file(&self, path: &Path) -> TempFileResult<String> {
         fs::read_to_string(path)
-            .map_err(|e| Error::msg(format!("Failed to read temp file text: {}", e)))
+            .map_err(|e| TempFileError::ReadFailed(format!("Failed to read temp file text: {}", e)))
     }
 
     /// Get file size
     pub fn get_file_size(&self, path: &Path) -> TempFileResult<u64> {
         fs::metadata(path)
-            .map_err(|e| Error::msg(format!("Failed to get file metadata: {}", e)))
+            .map_err(|e| TempFileError::ReadFailed(format!("Failed to get file metadata: {}", e)))
             .map(|m| m.len())
     }
 
@@ -162,7 +161,7 @@ impl TempFileManager {
         for path in &self.files {
             if path.exists() {
                 fs::remove_file(path)
-                    .map_err(|e| Error::msg(format!("Failed to remove temp file: {}", e)))?;
+                    .map_err(|e| TempFileError::CreationFailed(format!("Failed to remove temp file: {}", e)))?;
             }
         }
         self.files.clear();
@@ -180,7 +179,7 @@ impl Drop for TempFileManager {
 /// Convenience function to create a temporary directory
 pub fn create_temp_dir() -> TempFileResult<TempDir> {
     TempDir::new()
-        .map_err(|e| Error::msg(format!("Failed to create temp directory: {}", e)))
+        .map_err(|e| TempFileError::CreationFailed(format!("Failed to create temp directory: {}", e)))
 }
 
 /// Convenience function to create a temporary file with content

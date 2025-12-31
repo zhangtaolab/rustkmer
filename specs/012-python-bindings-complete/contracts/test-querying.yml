@@ -1,0 +1,124 @@
+# Test Contract: Database Querying
+
+## Command
+- **CLI**: `rustkmer query`
+- **Python**: `rustkmer.Database`
+
+## Parameters Mapping
+
+| CLI Option | Python Method/Property | Required | Type | Default | Test Required |
+|-------------|-----------------------|----------|------|---------|--------------|
+| `<DATABASE>` | `load(path)` | Yes | str | - | ✅ |
+| `[KMERS]...` | `query(kmer)` | No | str | - | ✅ |
+| `-s, --sequence` | `query_from_file(path)` | No | str | - | ⚠️ |
+| `-o, --output` | N/A (CLI only) | No | str | - | ⚠️ |
+| `-i, --interactive` | N/A (CLI only) | No | bool | - | ❌ |
+| `-l, --load` | `load(path, preload=True)` | No | bool | True | ⚠️ |
+| `-L, --no-load` | `load(path, preload=False)` | No | bool | False | ⚠️ |
+
+## Database Properties
+
+| Property | Python Access | Test Required |
+|----------|----------------|--------------|
+| kmer_size | `db.kmer_size` | ✅ |
+| total_kmers | `db.total_kmers` | ✅ |
+| unique_kmers | `db.unique_kmers` | ✅ |
+| metadata | `db.metadata` | ⚠️ |
+
+## Query Methods
+
+| Method | Python Equivalent | Test Required |
+|--------|-------------------|--------------|
+| Single query | `query(kmer: str) -> int` | ✅ |
+| Batch query | `query_batch(kmers: List[str]) -> Dict[str, int]` | ✅ |
+| File query | `query_from_file(path: str) -> Dict[str, int]` | ⚠️ |
+| Existence check | `exists(kmer: str) -> bool` | ✅ |
+| List all k-mers | `get_kmers() -> List[str]` | ⚠️ |
+| Get all counts | `get_counts() -> List[int]` | ⚠️ |
+| Iterator | `iter_kmers() -> Iterator[Tuple[str, int]]` | ⚠️ |
+
+## Error Code Mapping
+
+| CLI Exit Code | Python Exception | Test Required |
+|---------------|-----------------|--------------|
+| 1 | `FileNotFoundError`, `DatabaseError` | ⚠️ |
+| 3 | `DatabaseCorruptionError` | ⚠️ |
+
+## Test Scenarios
+
+### 1. Single K-mer Query
+```python
+def test_query_single():
+    """Test single k-mer query"""
+    # CLI: rustkmer query database.rkdb ATCGATCGATCGATCGATCG
+    # Python: db.query("ATCGATCGATCGATCGATCG")
+```
+
+### 2. Batch K-mer Query
+```python
+def test_query_batch():
+    """Test batch k-mer query"""
+    # CLI: rustkmer query database.rkdb ATCGATCG GCTAGCTA
+    # Python: db.query_batch(["ATCGATCG", "GCTAGCTA"])
+```
+
+### 3. Query from File
+```python
+def test_query_from_file():
+    """Test query from sequence file"""
+    # CLI: rustkmer query -s queries.txt database.rkdb
+    # Python: db.query_from_file("queries.txt")
+```
+
+### 4. Existence Check
+```python
+def test_query_exists():
+    """Test k-mer existence check"""
+    # CLI: query in Python by checking if result > 0
+    # Python: db.exists("ATCGATCGATCGATCGATCG")
+```
+
+### 5. Database Properties
+```python
+def test_database_properties():
+    """Test database metadata access"""
+    # Python: db.kmer_size, db.total_kmers, db.unique_kmers
+```
+
+### 6. Error Handling
+```python
+def test_query_errors():
+    """Test query error conditions"""
+    # Non-existent database
+    # Corrupted database
+    # Invalid k-mer length
+```
+
+## Validation Rules
+
+1. **Database validation**:
+   - Must be valid RKDB format
+   - Version compatibility
+   - Integrity check
+
+2. **K-mer validation**:
+   - Length must match database k-mer size
+   - Only valid nucleotides (A, C, G, T)
+
+3. **Query results**:
+   - Single query returns integer count
+   - Batch query returns dictionary
+   - Non-existent k-mer returns 0
+
+4. **Performance requirements**:
+   - O(1) lookup time
+   - Memory-mapped access for large databases
+   - Thread-safe concurrent access
+
+## Success Criteria
+
+1. All query operations work identically to CLI
+2. Database properties are accessible
+3. Error conditions raise appropriate exceptions
+4. Concurrent access is thread-safe
+5. Memory usage scales with database size

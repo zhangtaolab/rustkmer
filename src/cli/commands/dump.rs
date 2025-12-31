@@ -130,81 +130,54 @@ fn dump_rkdb_database(path: &Path, output_path: Option<&str>) -> ProcessingResul
     writeln!(writer, "#")?;
 
     // Read and dump k-mer entries
-    use byteorder::{LittleEndian, ReadBytesExt};
+    // Note: KmerEntry::read_from handles endianness internally
+
+    // Calculate the number of entries in the database
+    // For RKDB format, entries are stored from data_offset to end of file
+    // Each entry is: u64/u128 (k-mer) + u32 (count) = 12 or 20 bytes
+    let entry_size = if header.version == 2 && header.kmer_size > 32 {
+        20 // u128 (16 bytes) + u32 (4 bytes)
+    } else {
+        12 // u64 (8 bytes) + u32 (4 bytes)
+    };
+
+    let num_entries = (path.metadata()?.len() - header.data_offset) / entry_size;
+    eprintln!("Calculated database entries: {}", num_entries);
+
+    use crate::database::format::KmerEntry;
 
     let mut processed = 0u64;
-    while processed < header.total_kmers {
-        // Read k-mer based on format version
-        if header.version == 2 && header.kmer_size > 32 {
-            // u128 encoding for k > 32 in version 2
-            match reader.read_u128::<LittleEndian>() {
-                Ok(kmer) => {
-                    match reader.read_u32::<LittleEndian>() {
-                        Ok(count) => {
-                            // Decode k-mer back to DNA sequence
-                            let sequence = decode_kmer_to_sequence_u128(kmer, header.kmer_size as usize);
-                            writeln!(writer, "{}\t{}", sequence, count)
-                                .map_err(|e| KmerError::FileWriteError(format!("Failed to write k-mer entry: {}", e)))?;
+    while processed < num_entries {
+        // Read k-mer entry using the proper reader that handles endianness
+        match KmerEntry::read_from(&mut reader) {
+            Ok(entry) => {
+                // Decode k-mer back to DNA sequence based on size
+                let sequence = if header.version == 2 && header.kmer_size > 32 {
+                    decode_kmer_to_sequence_u128(entry.kmer, header.kmer_size as usize)
+                } else {
+                    // Truncate u128 to u64 for k <= 32
+                    decode_kmer_to_sequence(entry.kmer as u64, header.kmer_size as usize)
+                };
 
-                            processed += 1;
+                writeln!(writer, "{}\t{}", sequence, entry.count)
+                    .map_err(|e| KmerError::FileWriteError(format!("Failed to write k-mer entry: {}", e)))?;
 
-                            // Progress reporting for large databases
-                            if processed.is_multiple_of(100_000) {
-                                eprintln!("Processed {} k-mers...", processed);
-                            }
-                        },
-                        Err(e) => {
-                            return Err(KmerError::ProcessingError(
-                                format!("Failed to read k-mer count at position {}: {}", processed, e)
-                            ).into());
-                        }
-                    }
-                },
-                Err(e) => {
-                    if processed == header.total_kmers {
-                        // Expected EOF
-                        break;
-                    } else {
-                        return Err(KmerError::ProcessingError(
-                            format!("Failed to read k-mer entry at position {}: {}", processed, e)
-                        ).into());
-                    }
+                processed += 1;
+
+                // Progress reporting for large databases
+                if processed.is_multiple_of(100_000) {
+                    eprintln!("Processed {} k-mers...", processed);
                 }
-            }
-        } else {
-            // u64 encoding (version 1 or k <= 32)
-            match reader.read_u64::<LittleEndian>() {
-                Ok(kmer) => {
-                    match reader.read_u32::<LittleEndian>() {
-                        Ok(count) => {
-                            // Decode k-mer back to DNA sequence
-                            let sequence = decode_kmer_to_sequence(kmer, header.kmer_size as usize);
-                            writeln!(writer, "{}\t{}", sequence, count)
-                                .map_err(|e| KmerError::FileWriteError(format!("Failed to write k-mer entry: {}", e)))?;
-
-                            processed += 1;
-
-                            // Progress reporting for large databases
-                            if processed.is_multiple_of(100_000) {
-                                eprintln!("Processed {} k-mers...", processed);
-                            }
-                        },
-                        Err(e) => {
-                            return Err(KmerError::ProcessingError(
-                                format!("Failed to read k-mer count at position {}: {}", processed, e)
-                            ).into());
-                        }
-                    }
-                },
-                Err(e) => {
-                    if processed == header.total_kmers {
-                        // Expected EOF
-                        break;
-                    } else {
-                        return Err(KmerError::ProcessingError(
-                            format!("Failed to read k-mer entry at position {}: {}", processed, e)
-                        ).into());
-                    }
+            },
+            Err(e) => {
+                // EOF or read error - expected at end of file
+                if processed > 0 {
+                    eprintln!("Reached end of file at {} k-mers", processed);
+                    break;
+                } else {
+                    return Err(KmerError::ProcessingError(
+                        format!("Failed to read k-mer entry at position {}: {}", processed, e)
+                    ).into());
                 }
             }
         }
@@ -320,7 +293,7 @@ mod tests {
         // Test basic k-mer decoding
         let encoded = 0b00_01_10_11; // ACGT in reverse order (LSB first)
         let sequence = decode_kmer_to_sequence(encoded, 4);
-        assert_eq!(sequence, "TGCA"); // Reversed back to original
+        assert_eq!(sequence, "ACGT"); // Decoded: LSB first (T,G,C,A) then reversed
     }
 
     #[test]

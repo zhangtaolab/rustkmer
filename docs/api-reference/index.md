@@ -5,15 +5,18 @@ This section provides comprehensive API documentation for both Rust and Python i
 ## Quick Navigation
 
 ### Rust API
-- **[KmerCounter](rust/counter.md)** - Core k-mer counting functionality
+- **[KmerCounter](rust/kmer_counter.md)** - Core k-mer counting functionality
 - **[Database](rust/database.md)** - Database operations and storage
-- **[Fuzzy Query](rust/fuzzy.md)** - Pattern matching and fuzzy search
+- **[Fuzzy Query](rust/fuzzy_query.md)** - Pattern matching and fuzzy search
 - **[CLI](rust/cli.md)** - Command-line interface
 
 ### Python API
-- **[KmerCounter](python/kmercounter.md)** - Python k-mer counting interface
-- **[Database](python/database.md)** - Python database operations
-- **[Examples](python/examples.md)** - Python usage examples
+- **[Database](database.md)** - Python database interface for k-mer queries
+- **[QueryResult](query.md)** - Exact query result representation
+- **[DatabaseStats](stats.md)** - Database statistics and metadata
+- **[Fuzzy Query](fuzzyquery.md)** - Fuzzy search with mutation tolerance
+- **[Exceptions](exceptions.md)** - Error handling and exception hierarchy
+- **[Overview](overview.md)** - Complete API overview and usage patterns
 
 ## Language Bindings
 
@@ -29,14 +32,23 @@ println!("Total k-mers: {}", counter.get_total_count());
 ```
 
 ### Python Bindings
-Python bindings offer easy integration with bioinformatics workflows:
+Python bindings offer easy integration with bioinformatics workflows through database queries:
 
 ```python
-from rustkmer import KmerCounter
+from rustkmer import Database
 
-counter = KmerCounter(k=21, canonical=True)
-counter.count_file("genome.fa.gz")
-print(f"Total k-mers: {counter.get_total_count()}")
+# Query existing database
+with Database("genome.rkdb") as db:
+    result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+    print(f"K-mer count: {result.count}")
+
+    # Fuzzy query with mutations
+    fuzzy_result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
+    print(f"Found {fuzzy_result.total_matches} similar k-mers")
+
+    # Database statistics
+    stats = db.stats()
+    print(f"Database contains {stats.unique_kmers:,} unique k-mers")
 ```
 
 ## Core Concepts
@@ -45,24 +57,28 @@ print(f"Total k-mers: {counter.get_total_count()}")
 - **k-mer**: A sequence of length k from DNA/RNA sequences
 - **Canonical k-mer**: The lexicographically smaller of a k-mer and its reverse complement
 - **Counting**: Tallying occurrences of each k-mer in a dataset
+- **RKDB format**: Efficient binary format for storing k-mer databases
 
-### Database Format
-- **RKDB**: RustKmer Database format for efficient storage and retrieval
-- **Memory-mapped**: Fast access without loading entire database into memory
-- **Sorted vs Unsorted**: Optimized for different query patterns
+### Database Operations
+- **Query**: Exact k-mer lookup with count retrieval
+- **Fuzzy Query**: Search within specified Hamming distance
+- **Position Mutations**: Constrain mutations to specific positions
+- **Batch Processing**: Query multiple k-mers efficiently
+- **Statistics**: Retrieve database metadata and composition
 
 ### Fuzzy Querying
-- **Wildcard patterns**: Support for N (any base) and custom patterns
-- **Hamming distance**: Allowable substitutions in matches
-- **Performance optimized**: Efficient algorithms for large-scale searches
+- **Mutation Tolerance**: Allow up to N substitutions in matches
+- **Position Constraints**: Restrict mutations to specific k-mer positions
+- **Hamming Distance**: Number of differing positions between k-mers
+- **Batch Operations**: Parallel processing of multiple queries
 
 ## Performance Characteristics
 
 | Operation | Rust Performance | Python Performance | Notes |
 |-----------|------------------|-------------------|-------|
-| Counting | ~1M k-mers/sec | ~1M k-mers/sec | Similar performance |
-| Querying | ~4M queries/sec | ~3.5M queries/sec | Minimal overhead |
+| Database Query | ~4M queries/sec | ~3.5M queries/sec | Minimal overhead |
 | Fuzzy Query | ~100K queries/sec | ~80K queries/sec | Pattern matching overhead |
+| Batch Query | ~200K queries/sec | ~150K queries/sec | Parallel processing |
 | Memory Usage | Minimal | Minimal | Efficient implementations |
 
 ## Error Handling
@@ -79,31 +95,132 @@ fn process_file() -> KmerResult<()> {
 
 ### Python Exceptions
 ```python
-from rustkmer import KmerError
+from rustkmer import (
+    Database, DatabaseNotFoundError, InvalidKmerError,
+    FuzzyQueryError, QueryError
+)
 
 try:
-    counter.count_file("invalid_file.fa")
-except KmerError as e:
-    print(f"Error: {e}")
+    with Database("database.rkdb") as db:
+        result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+except DatabaseNotFoundError as e:
+    print(f"Database not found: {e.path}")
+except InvalidKmerError as e:
+    print(f"Invalid k-mer: {e.kmer} - {e.reason}")
+except QueryError as e:
+    print(f"Query failed: {e}")
 ```
 
 ## Thread Safety
 
 - **Rust**: All operations are thread-safe when used properly
-- **Python**: Global interpreter lock (GIL) protects most operations
-- **Performance**: Multi-threading available through parallel features
+- **Python**: Thread-safe through subprocess isolation and CLI calls
+- **Performance**: Multi-threading available through batch operations
+- **Concurrency**: Parallel processing for batch fuzzy queries
 
 ## Version Compatibility
 
 - **Rust**: Requires Rust 1.80+ stable
 - **Python**: Supports Python 3.8+
+- **Database Format**: Versioned format with backward compatibility
 - **Cross-platform**: Linux, macOS, Windows
+
+## Python API Structure
+
+The Python API provides a clean, object-oriented interface:
+
+```python
+from rustkmer import (
+    Database, QueryResult, DatabaseStats,
+    FuzzyQueryResult, FuzzyMatchResult, FuzzyBatchResult
+)
+
+# Database class - main interface
+db = Database("database.rkdb")
+
+# Query results
+result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+print(f"Count: {result.count}")
+
+# Fuzzy queries
+fuzzy_result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
+top_matches = fuzzy_result.get_top_matches(5)
+
+# Database statistics
+stats = db.stats()
+print(f"K-mer size: {stats.kmer_size}")
+```
+
+## Integration Examples
+
+### Pandas Integration
+```python
+import pandas as pd
+from rustkmer import Database
+
+def query_dataframe(db_path, df, sequence_col='sequence'):
+    """Query k-mers from a pandas DataFrame."""
+    with Database(db_path) as db:
+        df['count'] = df[sequence_col].apply(
+            lambda seq: db.query(seq).count
+        )
+    return df
+```
+
+### Biopython Integration
+```python
+from Bio import SeqIO
+from rustkmer import Database
+
+def extract_and_query(fasta_file, db_path):
+    """Extract k-mers from FASTA and query database."""
+    with Database(db_path) as db:
+        for record in SeqIO.parse(fasta_file, "fasta"):
+            seq = str(record.seq).upper()
+            # Extract 31-mers (example)
+            for i in range(len(seq) - 31 + 1):
+                kmer = seq[i:i+31]
+                if 'N' not in kmer:
+                    result = db.query(kmer)
+                    if result.is_present:
+                        yield record.id, kmer, result.count
+```
+
+### NumPy Integration
+```python
+import numpy as np
+from rustkmer import Database
+
+def batch_query_numpy(db_path, sequences):
+    """Vectorized batch querying."""
+    with Database(db_path) as db:
+        return np.array([db.query(seq).count for seq in sequences])
+```
 
 ## Getting Help
 
-- **Examples**: See the [Tutorials](../tutorials/) section
-- **Troubleshooting**: Check the [Appendix](../appendix/troubleshooting.md)
+- **Examples**: See the [User Guide](../user-guide/) section
+- **Tutorials**: Check the [Tutorials](../tutorials/) section
+- **Troubleshooting**: Visit the [Error Handling](exceptions.md) documentation
 - **GitHub Issues**: Report bugs and request features
 - **Community**: Join discussions and contribute
+
+## Migration Guide
+
+### From Rust CLI to Python API
+
+| CLI Command | Python Equivalent |
+|-------------|-------------------|
+| `rustkmer query db.rkdb ATCG` | `Database("db.rkdb").query("ATCG")` |
+| `rustkmer fuzzy-query db.rkdb ATCG --mutations 2` | `Database("db.rkdb").fuzzy_query("ATCG", mutations=2)` |
+| `rustkmer stats db.rkdb` | `Database("db.rkdb").stats()` |
+| `rustkmer dump db.rkdb --limit 1000` | `Database("db.rkdb").dump(limit=1000)` |
+
+### Key Differences
+
+1. **Interface**: Python uses method calls vs CLI commands
+2. **Error Handling**: Structured exceptions vs exit codes
+3. **Data Types**: Python objects vs text output
+4. **Batch Processing**: Built-in parallelization vs manual scripting
 
 For detailed documentation of specific APIs, use the navigation sidebar to explore the Rust and Python API references.

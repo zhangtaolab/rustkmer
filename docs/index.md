@@ -1,7 +1,7 @@
 # RustKmer
 
 [![Rust](https://img.shields.io/badge/rust-1.80+-orange.svg)](https://www.rust-lang.org)
-[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://rustkmer.github.io)
 
@@ -64,11 +64,61 @@ rustkmer fuzzy-query -d genome_k21.rkdb -q "AATN" -m 1
 
 ## 📖 Documentation
 
-- **[Getting Started](getting-started/)** - Installation and first steps
-- **[User Guide](user-guide/)** - Comprehensive usage guide
-- **[API Reference](api-reference/)** - Rust and Python API documentation
-- **[Tutorials](tutorials/)** - Step-by-step tutorials and examples
-- **[Performance Guide](user-guide/performance-tips.md)** - Optimization tips and best practices
+### 📚 Getting Started
+- **[Installation](installation.md)** - Installation guide for Python API
+- **[Advanced Installation](getting-started/installation-advanced.md)** - Detailed installation for developers
+- **[Quick Start Guide](getting-started/first-steps.md)** - Get started in 5 minutes
+
+### 👥 User Guide
+- **[User Guide](guides/user-guide.md)** - Comprehensive usage guide
+- **[Querying](user-guide/querying.md)** - K-mer query operations
+- **[Counting k-mers](user-guide/counting-kmers.md)** - K-mer counting guide
+- **[Performance Tips](user-guide/performance-tips.md)** - Optimization guide
+
+### 🔧 Guides
+- **[PyO3 Binding Guide](guides/pyo3-binding-guide.md)** - Complete Python API guide
+- **[PyO3 Quick Reference](guides/pyo3-binding-readme.md)** - Quick start for Python users
+- **[Prefix Query Guide](guides/prefix-query-guide.md)** - Efficient prefix-based querying
+- **[Hybrid Search Guide](guides/hybrid-search-guide.md)** - Advanced search patterns
+
+### 🔍 API Reference
+- **[API Overview](api-reference/overview.md)** - Complete API documentation
+- **[Database API](api-reference/database.md)** - Database operations
+- **[Query API](api-reference/query.md)** - Query operations
+- **[Fuzzy Query](api-reference/fuzzyquery.md)** - Fuzzy search API
+- **[Statistics](api-reference/stats.md)** - Database statistics
+
+### 💡 Implementation & Development
+- **[Algorithm Implementation](dev-guide/algorithm-implementation.md)** - Core algorithms detailed
+- **[Memory Optimization](performance/memory-optimization.md)** - Performance optimization techniques
+- **[CLI Design](dev-guide/cli-design.md)** - Command-line interface design
+- **[Development Guidelines](dev-guide/agents.md)** - Development standards
+- **[Project History](dev-guide/claude.md)** - Development timeline
+
+### 🔧 Implementation Reports
+- **[Prefix Query Report](implementation/prefix-query-report.md)** - Implementation details
+- **[Bug Fixes](implementation/bug-fixes.md)** - Known issues and fixes
+- **[Hybrid Search Fixes](implementation/hybrid-search-fixes.md)** - Search improvements
+
+### 🚨 Troubleshooting
+- **[CLI Status](troubleshooting/cli-status.md)** - Current command availability
+- **[N-position Demo](troubleshooting/n-position-demo.md)** - Efficiency analysis
+- **[Prefix Extraction Demo](troubleshooting/prefix-extraction-demo.md)** - Feature demonstration
+
+### 📊 Performance
+- **[Memory Optimization](performance/memory-optimization.md)** - Memory efficiency techniques
+- **[Performance Analysis](PERFORMANCE.md)** - Benchmark results
+
+### 📖 Examples
+- **[Basic Usage](examples/basic-usage.md)** - Simple examples
+- **[Fuzzy Search](examples/fuzzy-search.md)** - Wildcard examples
+- **[Batch Processing](examples/batch-processing.md)** - Large-scale processing
+- **[Advanced Examples](examples/advanced.md)** - Complex use cases
+
+### 🎓 Tutorials
+- **[Basic Workflow](tutorials/basic-workflow.md)** - Step-by-step tutorial
+- **[Large Genomes](tutorials/large-genomes.md)** - Handling big data
+- **[Integration Guide](tutorials/integration.md)** - Workflow integration
 
 ## 🏆 Performance
 
@@ -112,7 +162,15 @@ from rustkmer import Database
 
 db = Database()
 db.load("genome.rkdb")
+
+# Wildcard search
 results = db.fuzzy_query("AATN")  # Matches AATA, AATC, AATG, AATT
+
+# Mutation tolerance search
+results = db.fuzzy_query("ATCGATCGATCGATCGATCGA", max_distance=2)
+
+# Complex pattern with multiple wildcards
+results = db.fuzzy_query("ATNNGTANN")
 ```
 
 ### Batch Processing

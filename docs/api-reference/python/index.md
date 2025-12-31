@@ -1,224 +1,263 @@
-# Python API Reference
+# Python API
 
-The Python API provides high-performance k-mer counting and database functionality through native Rust bindings. This interface offers the same performance as the Rust library while maintaining Python's ease of use and integration capabilities.
+The RustKmer Python API provides a powerful interface for k-mer analysis, database operations, and fuzzy searching. This section covers the complete Python API documentation.
 
-## Installation
+## Overview
+
+RustKmer's Python bindings offer high-performance k-mer operations with a simple, Pythonic interface. The API is built using PyO3 to provide seamless integration between Rust's performance and Python's ecosystem.
+
+### Key Features
+
+- **High Performance**: Rust-based implementation with multi-threaded processing
+- **Memory Efficient**: Memory-mapped database access for large datasets
+- **Rich Functionality**: Database operations, fuzzy queries, and k-mer counting
+- **Python Integration**: Works seamlessly with pandas, NumPy, BioPython, and more
+- **Type Safety**: Full type hints and error handling
+
+## Quick Start
+
+### Installation
 
 ```bash
 pip install rustkmer
 ```
 
-## Quick Start
+### Basic Usage
 
 ```python
-from rustkmer import KmerCounter, Database
+from rustkmer import Database, KmerCounter
 
-# Count k-mers
-counter = KmerCounter(k=21, canonical=True)
-counter.count_file("genome.fa.gz")
-print(f"Total k-mers: {counter.get_total_count()}")
+# Create a database from sequences
+counter = KmerCounter(k=31, canonical=True)
+counter.count_file("sequences.fasta")
+counter.save_to_database("output.rkdb")
 
-# Query databases
-db = Database()
-db.load("genome.rkdb")
-result = db.query("ATCGATCGATCG")
-print(f"Count: {result.count}")
+# Query the database
+with Database("output.rkdb") as db:
+    result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+    print(f"Count: {result.count}")
+
+    # Fuzzy query
+    fuzzy_result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATGG", mutations=2)
+    print(f"Found {fuzzy_result.total_matches} similar k-mers")
 ```
 
-## Core Classes
+## API Components
 
-### [KmerCounter](kmercounter.md)
-Main class for k-mer counting operations:
-- File and stream processing
-- Multiple input formats (FASTA, FASTQ)
-- Configurable k-mer sizes and options
-- Statistics and result extraction
+### Core Classes
 
-### [Database](database.md)
-Database operations for storing and querying k-mer data:
-- Binary database format (.rkdb)
-- High-speed querying operations
-- Memory-mapped file access
-- Fuzzy search capabilities
+| Component | Description | Key Methods |
+|-----------|-------------|-------------|
+| [`Database`](database.md) | K-mer database operations | `query()`, `fuzzy_query()`, `stats()`, `dump()` |
+| [`KmerCounter`](kmercounter.md) | K-mer counting and database creation | `count_file()`, `count_file_list()`, `save_to_database()` |
+| [`QueryResult`](query.md) | Query results and metadata | `count`, `is_present`, `canonical` |
+| [`FuzzyQueryResult`](fuzzyquery.md) | Fuzzy query results | `total_matches`, `exact_matches`, `get_fuzzy_matches()` |
+| [`DatabaseStats`](stats.md) | Database statistics | `unique_kmers`, `total_counts`, `file_size` |
 
-### [Examples](examples.md)
-Practical usage examples and common patterns:
-- Basic workflows
-- Advanced techniques
-- Performance optimization
-- Integration examples
+### Exceptions
 
-## Performance Characteristics
+| Exception | Description |
+|-----------|-------------|
+| `DatabaseNotFoundError` | Database file not found or inaccessible |
+| `InvalidKmerError` | Invalid k-mer format or characters |
+| `QueryError` | General query operation errors |
+| `FuzzyQueryError` | Fuzzy query specific errors |
 
-The Python bindings provide near-native performance with minimal overhead:
+## Navigation
 
-| Operation | Performance | Memory Usage |
-|-----------|-------------|--------------|
-| Counting | ~1M k-mers/sec | Linear scaling |
-| Querying | ~3.5M queries/sec | <2MB overhead |
-| Fuzzy Query | ~80K queries/sec | Pattern dependent |
-| File I/O | Streaming | Memory efficient |
+- [**Getting Started**](getting-started.md) - Installation, setup, and first steps
+- [**Database**](database.md) - Database operations and management
+- [**Query Results**](query.md) - Query result handling and metadata
+- [**Fuzzy Queries**](fuzzyquery.md) - Advanced fuzzy searching
+- [**Database Stats**](stats.md) - Database statistics and analysis
+- [**Kmer Counter**](kmercounter.md) - K-mer counting and database creation
+- [**Exceptions**](exceptions.md) - Error handling and exceptions
+- [**Examples**](examples.md) - Comprehensive examples and use cases
 
-## Data Types
+## Usage Patterns
 
-### KmerCounter
-```python
-class KmerCounter:
-    def __init__(self, k: int = 21, canonical: bool = True) -> None
-    def count_file(self, filename: str) -> None
-    def count_string(self, sequence: str) -> None
-    def get_total_count(self) -> int
-    def get_unique_count(self) -> int
-    def get_top_kmers(self, limit: int) -> List[Tuple[str, int]]
-```
+### Context Manager (Recommended)
 
-### Database
-```python
-class Database:
-    def __init__(self) -> None
-    def load(self, filename: str, preload: bool = False) -> None
-    def query(self, kmer: str) -> QueryResult
-    def fuzzy_query(self, pattern: str, max_distance: int = 1) -> List[QueryResult]
-    def get_stats(self) -> DatabaseStats
-```
-
-### QueryResult
-```python
-class QueryResult:
-    kmer: str
-    count: int
-    exists: bool
-```
-
-## Error Handling
-
-Python exceptions are raised for error conditions:
+Always use context managers for database operations to ensure proper resource cleanup:
 
 ```python
-from rustkmer import KmerError, KmerCounter
-
-try:
-    counter = KmerCounter(k=21)
-    counter.count_file("nonexistent.fa")
-except KmerError as e:
-    print(f"Error: {e}")
+with Database("my_database.rkdb") as db:
+    # Database operations here
+    result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+    stats = db.stats()
+# Database automatically closed here
 ```
 
-### Exception Types
+### Batch Operations
 
-- **`KmerError`**: Base exception for all k-mer related errors
-- **`FileError`**: File reading/writing errors
-- **`DatabaseError`**: Database operation errors
-- **`ParameterError`**: Invalid parameter values
-
-## Thread Safety
-
-The Python API is thread-safe for most operations:
+For multiple queries, use batch operations for better performance:
 
 ```python
-import threading
-from rustkmer import KmerCounter
+kmer_list = ["ATCGATCG...", "GCTAGCTA...", "TTTTTTTT..."]
+batch_result = db.fuzzy_query_batch(kmer_list, mutations=2, max_workers=4)
 
-def worker_function(filename):
-    counter = KmerCounter(k=21)
-    counter.count_file(filename)
-    return counter.get_total_count()
-
-# Multiple threads can use KmerCounter instances simultaneously
-threads = []
-for file in files:
-    thread = threading.Thread(target=worker_function, args=(file,))
-    threads.append(thread)
-    thread.start()
-
-for thread in threads:
-    thread.join()
+for kmer, result in batch_result.successes.items():
+    print(f"{kmer}: {result.total_matches} matches")
 ```
+
+### Integration with Scientific Libraries
+
+The Python API integrates seamlessly with popular scientific libraries:
+
+```python
+import pandas as pd
+
+# Export database to pandas DataFrame
+with Database("database.rkdb") as db:
+    data = []
+    for result in db.dump(limit=10000):
+        data.append({
+            'kmer': result.kmer,
+            'count': result.count,
+            'canonical': result.canonical
+        })
+
+    df = pd.DataFrame(data)
+    print(f"Loaded {len(df)} k-mers into DataFrame")
+```
+
+## Performance Considerations
+
+### K-mer Size Selection
+
+- **Small k (15-21)**: Better for short reads, more matches
+- **Medium k (25-31)**: Good balance for most applications
+- **Large k (51-127)**: Higher specificity, better for long sequences
+
+### Memory Usage
+
+- Use `canonical=True` to reduce database size by ~50%
+- Process large files in chunks using file lists
+- Use generators for database dumps to minimize memory usage
+
+### Query Optimization
+
+- Batch queries are more efficient than individual queries
+- Position mutations can significantly improve fuzzy query performance
+- Use appropriate mutation tolerances to balance sensitivity and speed
 
 ## Integration Examples
 
-### NumPy Integration
-```python
-import numpy as np
-from rustkmer import KmerCounter
+### BioPython Integration
 
-counter = KmerCounter(k=21)
-counter.count_file("genome.fa.gz")
-
-# Get top k-mers as NumPy arrays
-top_kmers = counter.get_top_kmers(1000)
-kmers = np.array([kmer for kmer, count in top_kmers])
-counts = np.array([count for kmer, count in top_kmers])
-```
-
-### Pandas Integration
-```python
-import pandas as pd
-from rustkmer import KmerCounter
-
-counter = KmerCounter(k=21)
-counter.count_file("genome.fa.gz")
-
-# Create DataFrame of results
-top_kmers = counter.get_top_kmers(1000)
-df = pd.DataFrame(top_kmers, columns=['kmer', 'count'])
-df['frequency'] = df['count'] / counter.get_total_count()
-```
-
-### Biopython Integration
 ```python
 from Bio import SeqIO
-from rustkmer import KmerCounter
+from rustkmer import KmerCounter, Database
 
-counter = KmerCounter(k=21)
+# Process BioPython sequences
+sequences = [record for record in SeqIO.parse("input.fasta", "fasta")]
 
-# Process Biopython sequences
-for record in SeqIO.parse("sequences.fa", "fasta"):
-    counter.count_string(str(record.seq))
+# Create database
+counter = KmerCounter(k=31, canonical=True)
+counter.count_file("input.fasta")
+counter.save_to_database("database.rkdb")
 
-print(f"Processed {len(list(SeqIO.parse("sequences.fa", "fasta")))} sequences")
+# Query with BioPython sequences
+with Database("database.rkdb") as db:
+    for record in sequences[:10]:  # Sample first 10
+        if len(record.seq) >= 31:
+            kmer = str(record.seq[:31])
+            result = db.query(kmer)
+            print(f"{record.id}: {result.count}")
 ```
 
-## Memory Management
+### Jupyter Notebook Workflow
 
-The Python API handles memory management automatically:
-
-- **Automatic cleanup**: Resources are freed when objects are destroyed
-- **Memory-mapped files**: Databases use efficient memory mapping
-- **Streaming processing**: Large files processed without loading entirely into memory
-
-## Configuration
-
-### Environment Variables
-```bash
-# Set number of threads for parallel processing
-export RUSTKMER_THREADS=4
-
-# Enable debug logging
-export RUSTKMER_DEBUG=1
-```
-
-### Runtime Configuration
 ```python
-import rustkmer
+# In Jupyter notebooks, use display and progress indicators
+from IPython.display import display, clear_output
+import time
 
-# Configure performance settings
-rustkmer.set_thread_count(4)
-rustkmer.enable_debug_mode(True)
+with Database("large_database.rkdb") as db:
+    stats = db.stats()
+    display(f"Database: {stats.unique_kmers:,} unique k-mers")
+
+    # Process with progress feedback
+    results = []
+    for i, result in enumerate(db.dump(limit=10000)):
+        results.append(result)
+
+        if i % 1000 == 0:
+            clear_output(wait=True)
+            print(f"Processed {i:,} k-mers...")
+            time.sleep(0.1)
 ```
 
 ## Best Practices
 
-1. **Use appropriate k-mer sizes**: k=21 for most applications, k=31 for higher specificity
-2. **Enable canonical k-mers**: Reduces memory usage and improves matching
-3. **Reuse Database objects**: Avoid repeatedly loading the same database
-4. **Process files in batches**: More efficient than many small operations
-5. **Handle exceptions gracefully**: Always catch and handle KmerError exceptions
+1. **Always Use Context Managers**: Prevent resource leaks
+2. **Handle Errors Appropriately**: Use try-catch blocks with specific exceptions
+3. **Validate K-mers**: Ensure k-mers contain only A,T,C,G characters
+4. **Use Batch Operations**: Better performance for multiple queries
+5. **Choose Appropriate K-mer Size**: Balance specificity and performance
+6. **Monitor Memory Usage**: Use generators for large datasets
 
-## Version Compatibility
+## Common Workflows
 
-- **Python**: 3.8, 3.9, 3.10, 3.11, 3.12, 3.13
-- **Platforms**: Linux, macOS, Windows
-- **Dependencies**: Minimal - only Python standard library required
+### Database Creation and Analysis
 
-For detailed documentation of specific methods and classes, see the individual API reference pages.
+```python
+from rustkmer import KmerCounter, Database
+import pandas as pd
+
+# 1. Create database from FASTA
+counter = KmerCounter(k=31, canonical=True)
+counter.count_file("sequences.fasta")
+counter.save_to_database("analysis.rkdb")
+
+# 2. Analyze database content
+with Database("analysis.rkdb") as db:
+    stats = db.stats()
+    print(f"Database stats: {stats}")
+
+    # 3. Export for analysis
+    df = pd.DataFrame([
+        {'kmer': r.kmer, 'count': r.count}
+        for r in db.dump(limit=50000, canonical_only=True)
+    ])
+
+    # 4. Statistical analysis
+    print(f"Mean count: {df['count'].mean():.1f}")
+    print(f"Median count: {df['count'].median():.1f}")
+    print(f"Max count: {df['count'].max()}")
+```
+
+### Fuzzy Search Pipeline
+
+```python
+def find_variants(reference_kmer, database_path, max_mutations=3):
+    """Find variants of a reference k-mer."""
+
+    with Database(database_path) as db:
+        # Progressive search with increasing mutation tolerance
+        for mutations in range(max_mutations + 1):
+            result = db.fuzzy_query(reference_kmer, mutations=mutations)
+
+            if result.total_matches > 0:
+                print(f"Found {result.total_matches} variants with {mutations} mutations")
+
+                # Get detailed matches
+                for match in result.get_fuzzy_matches():
+                    print(f"  {match.kmer}: {match.count} (distance={match.distance})")
+
+                return result
+
+        print("No variants found")
+        return None
+```
+
+## Getting Help
+
+- **Examples**: See the [examples section](../examples/) for complete working examples
+- **Tutorials**: Check the [tutorials section](../../tutorials/) for step-by-step guides
+- **API Reference**: Detailed documentation for each component is available in the navigation
+- **GitHub Issues**: Report bugs or request features on the project repository
+
+## Version Information
+
+The Python API follows semantic versioning and maintains compatibility within major versions. Check the [compatibility guide](../compatibility/) for detailed version information.

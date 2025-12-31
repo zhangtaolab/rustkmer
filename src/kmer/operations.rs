@@ -255,7 +255,7 @@ mod tests {
     fn test_extract_kmers_simple() {
         let sequence = "ATGCGAT";
         let kmers = extract_kmers(sequence, 3).unwrap();
-        assert_eq!(kmers.len(), 6);
+        assert_eq!(kmers.len(), 5); // 7 - 3 + 1 = 5
     }
 
     #[test]
@@ -295,10 +295,11 @@ mod tests {
     #[test]
     fn test_count_extractable_kmers() {
         let sequence = "ATGCGAT";
-        assert_eq!(count_extractable_kmers(sequence, 3), 6);
+        assert_eq!(count_extractable_kmers(sequence, 3), 5); // 7 - 3 + 1 = 5
 
-        let sequence_with_amb = "ATGNCGAT";
-        assert_eq!(count_extractable_kmers(sequence_with_amb, 3), 4);
+        let sequence_with_amb = "ATGNCGAT"; // 8 chars, k=3, skip kmers with 'N'
+        // Valid: ATG, CGA, GAT (skip TGN, GNC, NCG)
+        assert_eq!(count_extractable_kmers(sequence_with_amb, 3), 3);
     }
 
     #[test]

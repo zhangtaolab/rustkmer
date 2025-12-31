@@ -138,23 +138,22 @@ pub fn reverse_complement(encoded: u64, length: usize) -> u64 {
     }
 
     let mut rc = 0u64;
-    let bits_to_shift = (64 - (length * 2)) as u32;
-    let mut encoded = encoded << bits_to_shift;
 
-    // Process each base
+    // Process each base from right to left (reverse order)
+    // Extract from least significant bits
+    let mut temp_encoded = encoded;
     for _ in 0..length {
-        let base = (encoded >> 62) & 0b11;
+        // Extract the rightmost 2 bits (least significant base)
+        let base = temp_encoded & 0b11;
 
-        // Complement and add to result
+        // Complement and add to result (building from left to right)
         let complement = 3 - base; // 3-base for complement (A<->T, C<->G, G<->C, T<->A)
         rc <<= 2;
         rc |= complement;
 
-        encoded <<= 2;
+        // Shift to get next base (right shift removes the base we just processed)
+        temp_encoded >>= 2;
     }
-
-    // Shift to proper position
-    rc <<= bits_to_shift;
 
     rc
 }
@@ -332,23 +331,22 @@ pub fn reverse_complement_u128(encoded: u128, length: usize) -> u128 {
     }
 
     let mut rc = 0u128;
-    let bits_to_shift = (128 - (length * 2)) as u32;
-    let mut encoded = encoded << bits_to_shift;
 
-    // Process each base
+    // Process each base from right to left (reverse order)
+    // Extract from least significant bits
+    let mut temp_encoded = encoded;
     for _ in 0..length {
-        let base = (encoded >> 126) & 0b11;
+        // Extract the rightmost 2 bits (least significant base)
+        let base = temp_encoded & 0b11;
 
-        // Complement and add to result
+        // Complement and add to result (building from left to right)
         let complement = 3 - base; // 3-base for complement (A<->T, C<->G, G<->C, T<->A)
         rc <<= 2;
         rc |= complement;
 
-        encoded <<= 2;
+        // Shift to get next base (right shift removes the base we just processed)
+        temp_encoded >>= 2;
     }
-
-    // Shift to proper position
-    rc <<= bits_to_shift;
 
     rc
 }
@@ -369,8 +367,9 @@ mod tests {
     #[test]
     fn test_encode_decode_longer() {
         let sequence = "ATGCGATGCGATGCGATGCGATGCGATGCGATGC";
-        let encoded = encode_kmer(sequence).unwrap();
-        let decoded = decode_kmer(encoded, sequence.len());
+        // Use u128 encoding for sequences > 32 chars
+        let encoded = encode_kmer_u128(sequence).unwrap();
+        let decoded = decode_kmer_u128(encoded, sequence.len());
         assert_eq!(decoded, sequence);
     }
 

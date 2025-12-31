@@ -149,8 +149,11 @@ def batch_query_examples():
 
         # Batch query (much faster)
         start_time = time.time()
-        results = db.query_batch(queries)
+        results = db.query_exact_batch(queries)  # 推荐使用新命名
         batch_time = time.time() - start_time
+        
+        # 兼容性说明：旧方法名仍然可用但已废弃
+        # results = db.query_batch(queries)  # 已废弃，请使用 query_exact_batch()
 
         print(f"Batch query: {len(queries)} queries in {batch_time:.2f}s")
         print(f"Rate: {len(queries)/batch_time:.0f} queries/second")

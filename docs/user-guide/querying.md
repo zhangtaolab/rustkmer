@@ -298,8 +298,6 @@ def batch_query_from_file(db_path, query_file, output_file=None):
         if output_file:
             save_query_results(results, output_file)
 
-        return results
-
 def save_query_results(results, output_file):
     """Save query results to CSV file."""
 
@@ -320,13 +318,34 @@ queries_file = "queries.txt"  # One k-mer per line
 results = batch_query_from_file("genome_k21.rkdb", queries_file, "query_results.csv")
 ```
 
-```bash
-# Command line batch querying
-rustkmer query -d genome_k21.rkdb -f queries.txt -o results.csv
+### CLI Batch Querying
 
-# Query from stdin
-cat queries.txt | rustkmer query -d genome_k21.rkdb --file -
+```bash
+# Batch query from text file (one k-mer per line)
+rustkmer query database.rkdb --batch kmer_list.txt
+
+# Batch query with output to file
+rustkmer query database.rkdb --batch kmer_list.txt -o results.txt
+
+# Batch query file format example
+cat > kmer_list.txt << EOF
+# This is a comment line and will be ignored
+ATCGATCGATCGATCGATCG
+GCTAGCTAGCTAGCTAGCTAG
+
+# Empty lines are also ignored
+TTTTTTTTTTTTTTTTTTTTT
+CCCCCCCCCCCCCCCCCCCCCC
+EOF
 ```
+
+### Batch Query Features
+
+- **File Format**: One k-mer per line, supports comments (lines starting with #)
+- **Output Format**: Tab-separated values (kmer<TAB>count)
+- **Zero Counts**: Non-existent k-mers are output with count 0
+- **Performance**: Processes k-mers in batches for optimal performance
+- **Error Handling**: Invalid k-mers are skipped with warnings
 
 ### High-Performance Batch Querying
 

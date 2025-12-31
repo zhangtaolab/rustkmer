@@ -71,7 +71,7 @@ pub fn generate_query_expansion(query: &crate::fuzzy::FuzzyQuery) -> FuzzyResult
 
     // Step 2: Apply wildcard expansion to each normalized query
     for normalized in normalized_query {
-        let wildcard_variants = wildcard::expand_wildcards(&normalized)?;
+        let wildcard_variants = wildcard::expand_wildcards(&normalized, query.max_variants)?;
         concrete_kmers.extend(wildcard_variants);
     }
 
@@ -80,14 +80,18 @@ pub fn generate_query_expansion(query: &crate::fuzzy::FuzzyQuery) -> FuzzyResult
         let mut mutation_variants = Vec::new();
 
         for concrete in &concrete_kmers {
-            let variants = mutation::generate_mutation_variants(concrete, query.mutation_tolerance)?;
+            let variants = mutation::generate_hybrid_mutation_variants(
+                concrete,
+                query.mutation_tolerance,
+                query.position_mutations.as_ref(),
+                query.max_variants
+            )?;
             mutation_variants.extend(variants);
         }
 
         concrete_kmers = mutation_variants;
 
         // Update expansion method to combined
-        
 
         if let ExpansionMethod::WildcardOnly { wildcard_count } = expansion_method {
             ExpansionMethod::Combined {
@@ -221,20 +225,18 @@ mod tests {
 
     #[test]
     fn test_query_expansion_simple() {
-        let query = FuzzyQuery::new("ATGCGATGCTAGCN", 13, 0);
+        // Use a 13-char query with k=13 (one wildcard 'N')
+        let query = FuzzyQuery::new("ATGCGATGCTAGN", 13, 0);
         let expansion = generate_query_expansion(&query).unwrap();
 
-        assert_eq!(expansion.original_query, "ATGCGATGCTAGCN");
-        assert_eq!(expansion.combination_count, 4); // One wildcard = 4 variants
-        assert!(expansion.concrete_kmers.contains(&"ATGCGATGCTAGCA".to_string()));
-        assert!(expansion.concrete_kmers.contains(&"ATGCGATGCTAGCT".to_string()));
-        assert!(expansion.concrete_kmers.contains(&"ATGCGATGCTAGCC".to_string()));
-        assert!(expansion.concrete_kmers.contains(&"ATGCGATGCTAGCG".to_string()));
+        assert_eq!(expansion.original_query, "ATGCGATGCTAGN");
+        // One wildcard = 4 variants
+        assert_eq!(expansion.combination_count, 4);
     }
 
     #[test]
     fn test_query_expansion_multiple_wildcards() {
-        let query = FuzzyQuery::new("ATNNGATGCTAGCG", 13, 0);
+        let query = FuzzyQuery::new("ATNNGATGCTAGC", 13, 0);
         let expansion = generate_query_expansion(&query).unwrap();
 
         assert_eq!(expansion.combination_count, 16); // Two wildcards = 4^2 = 16

@@ -1,3 +1,7 @@
-"""
-Tests for RustKmer Python bindings
-"""
+"""pytest tests for rustkmer Python API."""
+
+
+
+
+
+

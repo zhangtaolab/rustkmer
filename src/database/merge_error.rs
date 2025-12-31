@@ -100,7 +100,7 @@ impl MergeError {
     pub fn recovery_suggestions(&self) -> Vec<String> {
         match self {
             MergeError::EmptyInput => vec![
-                "Provide at least one input database for merge operation".to_string(),
+                "Provide At least one input database for merge operation".to_string(),
                 "Use 'rustkmer merge --help' to see usage examples".to_string(),
             ],
 

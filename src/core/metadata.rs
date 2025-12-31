@@ -535,7 +535,6 @@ pub fn metadata_exists<P: AsRef<Path>>(database_dir: P) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use tempfile::tempdir;
 
     #[test]

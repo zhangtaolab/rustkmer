@@ -2,8 +2,8 @@
 //!
 //! High-performance k-mer counting library for genomic data analysis.
 //!
-//! This library provides the core functionality for counting k-mers in DNA sequences,
-//! with support for multi-threading, memory-efficient storage, and multiple output formats.
+//! This library provides core functionality for counting k-mers in DNA sequences,
+//! with support for memory-efficient storage and multiple output formats.
 //!
 //! # Examples
 //!
@@ -11,8 +11,7 @@
 //! use rustkmer::{KmerCounter, Config};
 //!
 //! let config = Config::new(31)  // 31-mers
-//!     .canonical(true)          // Count canonical k-mers
-//!     .threads(4);              // Use 4 threads
+//!     .canonical(true);         // Count canonical k-mers
 //!
 //! let mut counter = KmerCounter::new(config);
 //! counter.process_file("genome.fa")?;
@@ -20,7 +19,9 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+
 pub mod cli;
+pub mod config;
 pub mod core;
 pub mod database;
 pub mod error;
@@ -28,11 +29,8 @@ pub mod fuzzy;
 pub mod hash;
 pub mod io;
 pub mod kmer;
+pub mod memory;
 pub mod output;
-pub mod parallel;
-
-#[cfg(feature = "python")]
-pub mod python;
 
 // Re-export key types for convenience
 pub use error::{KmerError, ProcessingError, ProcessingResult};
