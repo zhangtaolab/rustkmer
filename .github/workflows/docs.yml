@@ -182,7 +182,7 @@ if total_methods > 0:
 
     - name: Upload documentation artifact
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: documentation-site
         path: site/
