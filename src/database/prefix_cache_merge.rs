@@ -329,25 +329,106 @@ impl ExternalSortMerger {
 
     fn merge_single_prefix_hashmap(files: Vec<(PathBuf, u64)>, output_path: &Path) -> Result<(), anyhow::Error> {
         use std::collections::HashMap;
+        use std::io::BufReader;
 
-        let mut kmer_counts: HashMap<u128, u32> = HashMap::new();
-
-        for (file_path, _) in files {
-            let entries = Self::read_entries_from_file_sync(file_path)?;
-            for entry in entries {
-                *kmer_counts.entry(entry.kmer).or_insert(0) += entry.count;
+        println!("   使用内存合并模式");
+        
+        // 计算总大小
+        let total_size: u64 = files.iter().map(|(_, s)| *s).sum();
+        let total_kmers = total_size / 20;
+        
+        println!("   输入文件: {} 个", files.len());
+        println!("   总数据量: {:.1} MB ({} k-mers)", total_size as f64 / 1024.0 / 1024.0, total_kmers);
+        
+        // 检查可用内存
+        if let Ok(mem_info) = sys_info::mem_info() {
+            let avail_mem_mb = mem_info.avail as f64 / 1024.0 / 1024.0;
+            let required_mem_mb = total_size as f64 / 1024.0 / 1024.0 * 3.0; // 考虑HashMap开销
+            
+            println!("   可用内存: {:.1} MB", avail_mem_mb);
+            println!("   预估需要: {:.1} MB", required_mem_mb);
+            
+            if required_mem_mb > avail_mem_mb {
+                println!("   ⚠️  警告: 预估内存需求超过可用内存！");
+                println!("   建议: 使用 --merge-mode streaming 模式");
             }
         }
 
+        let mut kmer_counts: HashMap<u128, u32> = HashMap::new();
+        kmer_counts.reserve((total_kmers as usize).min(100_000_000));
+
+        let start_time = std::time::Instant::now();
+        let mut processed_kmers = 0u64;
+
+        for (idx, (file_path, file_size)) in files.iter().enumerate() {
+            let file_start = std::time::Instant::now();
+            
+            // 检查内存使用
+            if idx > 0 && idx % 5 == 0 {
+                if let Ok(mem_info) = sys_info::mem_info() {
+                    println!("   进度: {}/{} | 已处理 {} M k-mers | 可用内存: {:.1} MB",
+                             idx, files.len(),
+                             processed_kmers / 1_000_000,
+                             mem_info.avail as f64 / 1024.0 / 1024.0);
+                }
+            }
+            
+            let file = File::open(file_path)
+                .map_err(|e| anyhow::anyhow!("无法打开文件 {}: {}", file_path.display(), e))?;
+            
+            let mut reader = BufReader::with_capacity(1_000_000, file);
+            let mut buffer = Vec::new();
+            
+            reader.read_to_end(&mut buffer)
+                .map_err(|e| anyhow::anyhow!("读取文件 {} 失败: {}", file_path.display(), e))?;
+            
+            let mut offset = 0usize;
+            while offset + 20 <= buffer.len() {
+                let kmer = u128::from_le_bytes(buffer[offset..offset + 16].try_into().unwrap());
+                let count = u32::from_le_bytes(buffer[offset + 16..offset + 20].try_into().unwrap());
+                *kmer_counts.entry(kmer).or_insert(0) += count;
+                offset += 20;
+                processed_kmers += 1;
+            }
+            
+            let file_elapsed = file_start.elapsed();
+            let speed = if file_elapsed.as_secs_f64() > 0.0 {
+                (*file_size as f64 / 1024.0 / 1024.0) / file_elapsed.as_secs_f64()
+            } else { 0.0 };
+            
+            println!("   ✓ 文件 {}: {:.1} MB @ {:.1} MB/s",
+                     idx + 1, *file_size as f64 / 1024.0 / 1024.0, speed);
+        }
+
+        // 检查最终内存使用
+        if let Ok(mem_info) = sys_info::mem_info() {
+            println!("   合并完成: {} 个唯一k-mers | 可用内存: {:.1} MB",
+                     kmer_counts.len(),
+                     mem_info.avail as f64 / 1024.0 / 1024.0);
+        }
+
+        println!("   开始排序...");
+        let sort_start = std::time::Instant::now();
+        
         let mut sorted_kmers: Vec<(u128, u32)> = kmer_counts.into_iter().collect();
         sorted_kmers.sort_by_key(|(k, _)| *k);
+        
+        let sort_time = sort_start.elapsed();
+        println!("   排序完成: 耗时 {:.1}s", sort_time.as_secs_f64());
 
-        let mut output_file = File::create(output_path)?;
-        for (kmer, count) in sorted_kmers {
+        println!("   写入输出文件...");
+        let mut output_file = File::create(output_path)
+            .map_err(|e| anyhow::anyhow!("无法创建输出文件 {}: {}", output_path.display(), e))?;
+        
+        for (kmer, count) in &sorted_kmers {
             output_file.write_all(&kmer.to_le_bytes())?;
             output_file.write_all(&count.to_le_bytes())?;
         }
-        output_file.sync_all()?;
+        output_file.sync_all()
+            .map_err(|e| anyhow::anyhow!("无法同步文件 {}: {}", output_path.display(), e))?;
+
+        let total_time = start_time.elapsed();
+        println!("   完成: 总耗时 {:.1}s", total_time.as_secs_f64());
 
         Ok(())
     }
@@ -521,13 +602,24 @@ impl ExternalSortMerger {
     }
     
     fn concatenate_final_output(&self, output_path: &Path) -> ProcessingResult<()> {
+        use std::io::{BufWriter, Write};
+        
         println!("\n📦 阶段3 - 最终拼接 (使用RKDB标准格式)");
 
         let start_time = Instant::now();
+        
+        // 监控内存使用
+        if let Ok(mem_info) = sys_info::mem_info() {
+            println!("   当前内存使用: {:.1} GB / {:.1} GB (可用 {:.1} GB)", 
+                     (mem_info.total - mem_info.avail) as f64 / 1024.0 / 1024.0 / 1024.0,
+                     mem_info.total as f64 / 1024.0 / 1024.0 / 1024.0,
+                     mem_info.avail as f64 / 1024.0 / 1024.0 / 1024.0);
+        }
 
         let temp_data_file = self.temp_dir.join("ext_sort_final_data.tmp");
         let mut temp_file = File::create(&temp_data_file)?;
         let mut data_size = 0u64;
+        let mut total_kmers_in_files = 0u64;
 
         for prefix in 0..self.num_buckets {
             let dna = Self::prefix_to_dna(prefix);
@@ -542,6 +634,9 @@ impl ExternalSortMerger {
                     continue;
                 }
 
+                let kmers_in_file = file_size / 20;
+                total_kmers_in_files += kmers_in_file;
+
                 let mut input_file = File::open(&prefix_file)?;
                 let mut buffer = Vec::new();
                 input_file.read_to_end(&mut buffer)?;
@@ -552,34 +647,121 @@ impl ExternalSortMerger {
                 if !self.keep_intermediate {
                     let _ = std::fs::remove_file(&prefix_file);
                 }
+                
+                // 每处理一个文件后报告进度和内存
+                let processed = prefix + 1;
+                if processed % 16 == 0 || processed == self.num_buckets {
+                    if let Ok(mem_info) = sys_info::mem_info() {
+                        println!("   进度: {}/{} | 数据: {:.1} MB | k-mers: {} M | 可用内存: {:.1} MB",
+                                 processed, self.num_buckets,
+                                 data_size as f64 / 1024.0 / 1024.0,
+                                 total_kmers_in_files / 1_000_000,
+                                 mem_info.avail as f64 / 1024.0 / 1024.0);
+                    }
+                }
             }
         }
         temp_file.sync_all()?;
         drop(temp_file);
 
         let total_kmers = data_size / 20;
-
-        let mut file = File::open(&temp_data_file)?;
-        let mut data = Vec::new();
-        file.read_to_end(&mut data)?;
-
-        let mut kmer_pairs: Vec<(u128, u32)> = Vec::with_capacity(total_kmers as usize);
-        let mut offset = 0usize;
-        while offset + 20 <= data.len() {
-            let kmer = u128::from_le_bytes(data[offset..offset+16].try_into().unwrap());
-            let count = u32::from_le_bytes(data[offset+16..offset+20].try_into().unwrap());
-            kmer_pairs.push((kmer, count));
-            offset += 20;
+        
+        println!("   开始写入RKDB格式，总计 {} M 个k-mers...", total_kmers / 1_000_000);
+        println!("   从各文件统计: {} M 个k-mers", total_kmers_in_files / 1_000_000);
+        
+        // 检查是否有重复
+        if total_kmers != total_kmers_in_files {
+            println!("   ⚠️  警告: 数据大小不一致！可能有重复或丢失");
+        }
+        
+        // 监控内存使用
+        if let Ok(mem_info) = sys_info::mem_info() {
+            println!("   当前可用内存: {:.1} GB", mem_info.avail as f64 / 1024.0 / 1024.0 / 1024.0);
         }
 
-        let db = RKDatabase::from_kmer_pairs(
-            kmer_pairs,
-            self.kmer_size as u8,
+        // 使用流式处理而不是一次性加载所有数据
+        let mut file = File::open(&temp_data_file)?;
+        
+        // 创建 RKDatabase header (data_offset 在 header 之后，通常是 42 字节)
+        let header = crate::database::format::DatabaseHeader {
+            magic: *b"RKDB",
+            version: 2,
+            kmer_size: self.kmer_size as u8,
+            canonical: self.canonical,
+            sorted: true,
+            total_kmers,
+            unique_kmers: total_kmers,
+            data_offset: 42,  // header size
+            file_size: 42 + data_size,  // header + data
+            index_offset: 0,  // no index for now
+        };
+        
+        // 创建输出文件
+        let output = File::create(output_path)?;
+        let mut writer = BufWriter::with_capacity(10_000_000, output);
+        
+        // 写入 header
+        header.write_to(&mut writer)?;
+        
+        // 流式读取和写入 k-mer 数据
+        let mut buffer = vec![0u8; 20 * 100_000]; // 每次 100k k-mers
+        let mut processed_kmers = 0u64;
+        let mut last_report = std::time::Instant::now();
+        
+        loop {
+            match file.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let num_kmers = n / 20;
+                    processed_kmers += num_kmers as u64;
+                    writer.write_all(&buffer[..n])?;
+                    
+                    // 每 100 万 k-mers 报告进度
+                    if processed_kmers % 1_000_000 == 0 || last_report.elapsed().as_secs() >= 5 {
+                        if let Ok(mem_info) = sys_info::mem_info() {
+                            println!("   进度: {} M / {} M k-mers | 可用内存: {:.1} MB",
+                                     processed_kmers / 1_000_000, total_kmers / 1_000_000,
+                                     mem_info.avail as f64 / 1024.0 / 1024.0);
+                        }
+                        last_report = std::time::Instant::now();
+                    }
+                }
+                Err(e) => {
+                    return Err(crate::error::ProcessingError::new(&format!("读取数据失败: {}", e)));
+                }
+            }
+        }
+        
+        writer.flush()?;
+        drop(writer);
+        
+        // 写入 metadata - 使用 create_metadata 函数
+        use crate::core::metadata::create_metadata;
+        use std::time::SystemTime;
+        
+        let now = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        
+        let mut metadata = create_metadata(
+            self.kmer_size,
             self.canonical,
-            true
-        )?;
-
-        db.to_file_path(output_path)?;
+            self.input_files.iter().filter_map(|p| p.to_str().map(String::from)).collect()
+        );
+        
+        // 更新统计信息
+        metadata.total_kmers = total_kmers;
+        metadata.unique_kmers = total_kmers;
+        metadata.created_at = now;
+        metadata.modified_at = now;
+        
+        // 写入 metadata
+        let metadata_path = output_path.with_extension("json");
+        let metadata_json = serde_json::to_string_pretty(&metadata)
+            .map_err(|e| crate::error::ProcessingError::new(&format!("序列化元数据失败: {}", e)))?;
+        std::fs::write(&metadata_path, metadata_json)
+            .map_err(|e| crate::error::ProcessingError::new(&format!("写入元数据失败: {}", e)))?;
 
         let phase_time = start_time.elapsed();
         println!("   ✅ 拼接完成: {} M 个k-mers (耗时 {:.1}s)",
