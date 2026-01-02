@@ -426,6 +426,104 @@ impl PyDatabase {
         Ok(results)
     }
 
+    /// Internal implementation for fuzzy k-mer query
+    fn query_fuzzy_impl(&self, pattern: &str, max_mutations: u32) -> PyResult<PyFuzzyResult> {
+        let pattern_str = pattern.to_uppercase();
+
+        // Validate pattern length
+        if pattern_str.len() != self.header.kmer_size as usize {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Pattern length {} does not match database k-mer size {}",
+                pattern_str.len(),
+                self.header.kmer_size
+            )));
+        }
+
+        // Validate pattern characters
+        if !pattern_str
+            .chars()
+            .all(|c| matches!(c, 'A' | 'T' | 'C' | 'G' | 'N'))
+        {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Pattern contains invalid characters (only A,T,C,G,N allowed)".to_string(),
+            ));
+        }
+
+        // For now, return a placeholder result
+        // In a full implementation, this would use the FuzzyQuery engine
+        let matches = Vec::new();
+        let total_matches = 0;
+        let query_time_ms = 1;
+        let mutation_tolerance = max_mutations;
+        let has_position_mutations = false;
+        let exact_match = None;
+
+        Ok(PyFuzzyResult {
+            query_kmer: pattern_str,
+            exact_match,
+            matches,
+            total_matches,
+            mutation_tolerance,
+            query_time_ms,
+            has_position_mutations,
+        })
+    }
+
+    /// Internal implementation for prefix query
+    fn query_prefix_impl(&self, prefix: &str) -> PyResult<PyPrefixQueryResult> {
+        let prefix_str = prefix.to_uppercase();
+
+        if prefix_str.trim().is_empty() {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Prefix cannot be empty",
+            ));
+        }
+
+        if !prefix_str
+            .chars()
+            .all(|c| matches!(c.to_ascii_uppercase(), 'A' | 'T' | 'C' | 'G'))
+        {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Prefix contains invalid characters (only A, T, C, G allowed)",
+            ));
+        }
+
+        if let Some(ref db) = self.rk_database {
+            let result = match rustkmer::database::prefix_query_optimized::extract_prefix_optimized(
+                db,
+                &prefix_str,
+            ) {
+                Ok(result) => result,
+                Err(e) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                        "Prefix query failed: {}",
+                        e
+                    )));
+                }
+            };
+
+            let matches: HashMap<String, String> = result
+                .matches
+                .into_iter()
+                .map(|(kmer, count)| (kmer, count.to_string()))
+                .collect();
+
+            Ok(PyPrefixQueryResult {
+                matches,
+                start_index: result.memory_block.start_index,
+                end_index: result.memory_block.end_index,
+                block_size: result.memory_block.block_size,
+                is_sorted: result.memory_block.is_sorted,
+                total_matches: result.total_matches,
+                query_time_ms: result.query_time_ms,
+            })
+        } else {
+            Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Database not available",
+            ))
+        }
+    }
+
     // ===== 公共 API（旧版本，已标记为 deprecated）=====
 
     /// Perform a single k-mer lookup
@@ -559,7 +657,7 @@ impl PyDatabase {
 
     /// 检查k-mer是否存在
     fn exists(&self, kmer: &Bound<'_, PyString>) -> PyResult<bool> {
-        let result = self.query(kmer)?;
+        let result = self.query_exact(kmer)?;
         Ok(result.found)
     }
 
@@ -767,7 +865,7 @@ impl PyDatabase {
         &self,
         prefix: &Bound<'_, PyString>,
     ) -> PyResult<PyPrefixQueryResult> {
-        self.query_prefix_optimized_string(&prefix.to_string())
+        self.query_prefix_impl(&prefix.to_string())
     }
 
     /// 批量前缀查询
@@ -776,7 +874,7 @@ impl PyDatabase {
         let mut results = Vec::new();
 
         for prefix_str in prefixes {
-            let result = self.query_prefix_optimized_string(&prefix_str)?;
+            let result = self.query_prefix_impl(&prefix_str)?;
             results.push(result);
         }
 
@@ -839,61 +937,6 @@ impl PyDatabase {
         Ok(results)
     }
 
-    /// 优化前缀查询（字符串输入）
-    fn query_prefix_optimized_string(&self, prefix: &str) -> PyResult<PyPrefixQueryResult> {
-        let prefix_str = prefix.to_uppercase();
-
-        if prefix_str.trim().is_empty() {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Prefix cannot be empty",
-            ));
-        }
-
-        if !prefix_str
-            .chars()
-            .all(|c| matches!(c.to_ascii_uppercase(), 'A' | 'T' | 'C' | 'G'))
-        {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Prefix contains invalid characters (only A, T, C, G allowed)",
-            ));
-        }
-
-        if let Some(ref db) = self.rk_database {
-            let result = match rustkmer::database::prefix_query_optimized::extract_prefix_optimized(
-                db,
-                &prefix_str,
-            ) {
-                Ok(result) => result,
-                Err(e) => {
-                    return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Prefix query failed: {}",
-                        e
-                    )));
-                }
-            };
-
-            let matches: HashMap<String, String> = result
-                .matches
-                .into_iter()
-                .map(|(kmer, count)| (kmer, count.to_string()))
-                .collect();
-
-            Ok(PyPrefixQueryResult {
-                matches,
-                start_index: result.memory_block.start_index,
-                end_index: result.memory_block.end_index,
-                block_size: result.memory_block.block_size,
-                is_sorted: result.memory_block.is_sorted,
-                total_matches: result.total_matches,
-                query_time_ms: result.query_time_ms,
-            })
-        } else {
-            Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Database not available",
-            ))
-        }
-    }
-
     /// 解析混合模式（字符串输入）
     fn parse_pattern_string(&self, pattern: &str) -> PyResult<HashMap<String, String>> {
         let pattern_upper = pattern.to_uppercase();
@@ -932,45 +975,7 @@ impl PyDatabase {
         pattern: &Bound<'_, PyString>,
         max_mutations: u32,
     ) -> PyResult<PyFuzzyResult> {
-        let pattern_str = pattern.to_string().to_uppercase();
-
-        // Validate pattern length
-        if pattern_str.len() != self.header.kmer_size as usize {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Pattern length {} does not match database k-mer size {}",
-                pattern_str.len(),
-                self.header.kmer_size
-            )));
-        }
-
-        // Validate pattern characters
-        if !pattern_str
-            .chars()
-            .all(|c| matches!(c, 'A' | 'T' | 'C' | 'G' | 'N'))
-        {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Pattern contains invalid characters (only A,T,C,G,N allowed)".to_string(),
-            ));
-        }
-
-        // For now, return a placeholder result
-        // In a full implementation, this would use the FuzzyQuery engine
-        let matches = Vec::new();
-        let total_matches = 0;
-        let query_time_ms = 1;
-        let mutation_tolerance = max_mutations;
-        let has_position_mutations = false;
-        let exact_match = None;
-
-        Ok(PyFuzzyResult {
-            query_kmer: pattern_str,
-            exact_match,
-            matches,
-            total_matches,
-            mutation_tolerance,
-            query_time_ms,
-            has_position_mutations,
-        })
+        self.query_fuzzy_impl(&pattern.to_string(), max_mutations)
     }
 
     // ===== 统一API命名方法 =====
@@ -994,12 +999,12 @@ impl PyDatabase {
         pattern: &Bound<'_, PyString>,
         max_mutations: u32,
     ) -> PyResult<PyFuzzyResult> {
-        self.fuzzy_query(pattern, max_mutations)
+        self.query_fuzzy_impl(&pattern.to_string(), max_mutations)
     }
 
     /// 前缀查询 - 统一命名版本
     #[pyo3(signature = (prefix))]
     fn query_prefix(&self, prefix: &Bound<'_, PyString>) -> PyResult<PyPrefixQueryResult> {
-        self.query_prefix_optimized(prefix)
+        self.query_prefix_impl(&prefix.to_string())
     }
 }

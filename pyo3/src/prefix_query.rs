@@ -347,25 +347,94 @@ impl PyExtendedPrefixQuery {
     /// 前缀查询带指标 - 统一命名版本
     #[pyo3(signature = (prefix))]
     fn query_prefix_metrics(&self, prefix: &Bound<'_, pyo3::types::PyString>) -> PyResult<PyPrefixQueryMetrics> {
-        self.query_with_metrics(prefix)
+        use std::time::Instant;
+
+        let start_time = Instant::now();
+        let prefix_str = prefix.to_string().to_uppercase();
+
+        // Perform query - call base implementation directly
+        let results = self.query_engine.query_prefix_string(&prefix_str)?;
+        let execution_time = start_time.elapsed().as_millis() as u64;
+
+        let start_index = 0;
+        let end_index = results.len();
+        let block_size = end_index - start_index;
+        let total_matches = results.len();
+
+        Ok(PyPrefixQueryMetrics {
+            results,
+            execution_time_ms: execution_time,
+            start_index,
+            end_index,
+            block_size,
+            total_matches,
+        })
     }
-    
+
     /// 混合模式查询带指标 - 统一命名版本
     #[pyo3(signature = (pattern))]
     fn query_hybrid_metrics(&self, pattern: &Bound<'_, pyo3::types::PyString>) -> PyResult<PyPrefixQueryMetrics> {
-        self.query_hybrid_with_metrics(pattern)
+        use std::time::Instant;
+
+        let start_time = Instant::now();
+        let pattern_str = pattern.to_string().to_uppercase();
+
+        // Perform query - call base implementation directly
+        let results = self.query_engine.query_hybrid(&pattern_str)?;
+        let execution_time = start_time.elapsed().as_millis() as u64;
+
+        let start_index = 0;
+        let end_index = results.len();
+        let block_size = end_index - start_index;
+        let total_matches = results.len();
+
+        Ok(PyPrefixQueryMetrics {
+            results,
+            execution_time_ms: execution_time,
+            start_index,
+            end_index,
+            block_size,
+            total_matches,
+        })
     }
-    
+
     /// 前缀查询带指标（字符串输入）- 统一命名版本
     #[pyo3(signature = (prefix))]
     fn query_prefix_metrics_string(&self, prefix: &str) -> PyResult<PyPrefixQueryMetrics> {
-        self.query_with_metrics_string(prefix)
+        use std::time::Instant;
+
+        let start_time = Instant::now();
+
+        // Perform query - call base implementation directly
+        let results = self.query_engine.query_prefix_string(prefix)?;
+        let execution_time = start_time.elapsed().as_millis() as u64;
+
+        let start_index = 0;
+        let end_index = results.len();
+        let block_size = end_index - start_index;
+        let total_matches = results.len();
+
+        Ok(PyPrefixQueryMetrics {
+            results,
+            execution_time_ms: execution_time,
+            start_index,
+            end_index,
+            block_size,
+            total_matches,
+        })
     }
-    
+
     /// 批量前缀查询带指标 - 统一命名版本
     #[pyo3(signature = (prefixes))]
     fn query_prefix_batch_metrics(&self, prefixes: Vec<String>) -> PyResult<HashMap<String, PyPrefixQueryMetrics>> {
-        self.batch_query(prefixes)
+        let mut results = HashMap::new();
+
+        for prefix in prefixes {
+            let metrics = self.query_prefix_metrics_string(&prefix)?;
+            results.insert(prefix, metrics);
+        }
+
+        Ok(results)
     }
     
     fn __repr__(&self) -> String {

@@ -185,7 +185,6 @@ impl PyFuzzyQuery {
         max_mutations: u32,
         max_results: Option<usize>
     ) -> PyResult<PyFuzzyResult> {
-        // For now, just call with empty position mutations
         self.fuzzy_query_with_position_mutations(pattern, max_mutations, "", max_results)
     }
     
@@ -376,9 +375,9 @@ impl PyFuzzyQuery {
         max_mutations: u32,
         max_results: Option<usize>
     ) -> PyResult<PyFuzzyResult> {
-        self.fuzzy_query(pattern, max_mutations, max_results)
+        self.fuzzy_query_with_position_mutations(pattern, max_mutations, "", max_results)
     }
-    
+
     /// 位置特异性模糊查询 - 统一命名版本
     #[pyo3(signature = (pattern, max_mutations, position_mutations, max_results=None))]
     fn query_fuzzy_position(
