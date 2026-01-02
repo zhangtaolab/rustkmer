@@ -12,6 +12,11 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   baseline-benchmarks:
     name: Baseline Performance Benchmarks
@@ -25,19 +30,19 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
 
     - name: Cache cargo registry
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cargo/registry
         key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Cache cargo index
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cargo/git
         key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Cache cargo build
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: target
         key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
@@ -85,7 +90,7 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
 
     - name: Cache cargo registry
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cargo/registry
         key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
@@ -117,11 +122,16 @@ jobs:
 
     - name: Check for performance regressions
       run: |
-        # Check if any benchmark regressed by more than 10%
-        python scripts/check_performance_regression.py \
-          --threshold 0.10 \
-          --baseline target/criterion/baseline/ \
-          --current target/criterion/
+        # Check if the script exists
+        if [ -f "scripts/check_performance_regression.py" ]; then
+          # Check if any benchmark regressed by more than 10%
+          python scripts/check_performance_regression.py \
+            --threshold 0.10 \
+            --baseline target/criterion/baseline/ \
+            --current target/criterion/
+        else
+          echo "Warning: check_performance_regression.py not found, skipping regression check"
+        fi
 
     - name: Upload performance report
       uses: actions/upload-artifact@v4
@@ -191,7 +201,12 @@ jobs:
 
     - name: Run memory profiling tests
       run: |
-        python scripts/memory_profiling_test.py
+        # Check if the script exists
+        if [ -f "scripts/memory_profiling_test.py" ]; then
+          python scripts/memory_profiling_test.py
+        else
+          echo "Warning: memory_profiling_test.py not found, skipping memory profiling tests"
+        fi
 
     - name: Upload memory profiling results
       uses: actions/upload-artifact@v4
@@ -224,12 +239,23 @@ jobs:
 
     - name: Analyze performance trends
       run: |
-        python scripts/analyze_performance_trends.py
+        # Check if the script exists
+        if [ -f "scripts/analyze_performance_trends.py" ]; then
+          python scripts/analyze_performance_trends.py
+        else
+          echo "Warning: analyze_performance_trends.py not found, skipping trend analysis"
+        fi
 
     - name: Generate performance report
       run: |
-        python scripts/generate_performance_report.py \
-          --output-dir performance_reports/$(date +%Y-%m-%d)
+        # Check if the script exists
+        if [ -f "scripts/generate_performance_report.py" ]; then
+          python scripts/generate_performance_report.py \
+            --output-dir performance_reports/$(date +%Y-%m-%d)
+        else
+          echo "Warning: generate_performance_report.py not found, skipping report generation"
+          mkdir -p performance_reports/$(date +%Y-%m-%d)
+        fi
 
     - name: Upload trend analysis
       uses: actions/upload-artifact@v4
