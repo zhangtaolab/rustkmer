@@ -141,7 +141,7 @@ class PyO3MarkNProcessor:
             if 'N' not in kmer:  # 跳过包含N的kmer
                 try:
                     # 使用PyO3统一接口进行精确查询
-                    result = self.db.query(kmer)
+                    result = self.db.query_exact(kmer)
                     if result.found and result.count > 0:
                         # 这个kmer覆盖的kmer_size个位置都是正确的
                         for j in range(i, i + kmer_size):
@@ -239,7 +239,7 @@ class PyO3MarkNProcessor:
         if kmers:
             try:
                 # 使用批量查询
-                batch_results = self.db.query_batch(kmers)
+                batch_results = self.db.query_exact_batch(kmers)
                 
                 # 处理批量结果
                 for kmer, result, pos in zip(kmers, batch_results, positions):
