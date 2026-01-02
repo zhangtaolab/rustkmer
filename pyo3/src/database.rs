@@ -3,6 +3,9 @@
 //! This module provides a Python class that wraps the Rust Database
 //! functionality for querying k-mer databases.
 
+// Allow deprecated methods for backward compatibility
+#![allow(deprecated)]
+
 use pyo3::prelude::*;
 use pyo3::types::PyString;
 use std::collections::HashMap;
@@ -215,6 +218,7 @@ pub struct PyDatabase {
     pub cached_entries: Option<Vec<(u128, u32)>>, // (encoded_kmer, count) sorted
 }
 
+#[allow(deprecated)]
 #[pymethods]
 impl PyDatabase {
     /// Load a k-mer database from file with specified loading mode
@@ -527,6 +531,7 @@ impl PyDatabase {
     // ===== 公共 API（旧版本，已标记为 deprecated）=====
 
     /// Perform a single k-mer lookup
+    #[allow(deprecated)]
     #[deprecated(since = "2.0.0", note = "Use `query_exact()` instead")]
     #[pyo3(signature = (kmer))]
     fn query(&self, kmer: &Bound<'_, PyString>) -> PyResult<PyQueryResult> {
@@ -534,6 +539,7 @@ impl PyDatabase {
     }
 
     /// Perform batch k-mer queries
+    #[allow(deprecated)]
     #[deprecated(since = "2.0.0", note = "Use `query_exact_batch()` instead")]
     #[pyo3(signature = (kmers))]
     fn query_batch(&self, kmers: Vec<String>) -> PyResult<HashMap<String, PyQueryResult>> {
@@ -859,6 +865,7 @@ impl PyDatabase {
     }
 
     /// 优化前缀查询
+    #[allow(deprecated)]
     #[deprecated(since = "2.0.0", note = "Use `query_prefix()` instead")]
     #[pyo3(signature = (prefix))]
     fn query_prefix_optimized(
@@ -968,6 +975,7 @@ impl PyDatabase {
     }
 
     /// 模糊查询
+    #[allow(deprecated)]
     #[deprecated(since = "2.0.0", note = "Use `query_fuzzy()` instead")]
     #[pyo3(signature = (pattern, max_mutations))]
     fn fuzzy_query(

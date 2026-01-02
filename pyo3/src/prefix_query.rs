@@ -3,11 +3,14 @@
 //! This module provides a dedicated prefix query engine that can be used
 //! independently for high-performance k-mer prefix queries.
 
+// Allow deprecated methods for backward compatibility
+#![allow(deprecated)]
+
 use pyo3::prelude::*;
 use std::path::Path;
 use std::collections::HashMap;
 use rustkmer::database::format::RKDatabase;
-use rustkmer::database::prefix_query_optimized::{extract_prefix_optimized, extract_hybrid_by_pattern};
+use rustkmer::database::prefix_query_optimized::{extract_prefix_optimized, extract_hybrid_by_pattern, parse_hybrid_pattern};
 
 /// High-performance prefix query engine
 #[pyclass]
@@ -238,6 +241,7 @@ pub struct PyExtendedPrefixQuery {
     query_engine: PyPrefixQuery,
 }
 
+#[allow(deprecated)]
 #[pymethods]
 impl PyExtendedPrefixQuery {
     /// Create a new extended prefix query engine
@@ -248,22 +252,23 @@ impl PyExtendedPrefixQuery {
     }
     
     /// Query prefix with detailed metrics
+    #[allow(deprecated)]
     #[deprecated(since = "2.0.0", note = "Use `query_prefix_metrics()` instead")]
     #[pyo3(signature = (prefix))]
     fn query_with_metrics(&self, prefix: &Bound<'_, pyo3::types::PyString>) -> PyResult<PyPrefixQueryMetrics> {
         use std::time::Instant;
-        
+
         let start_time = Instant::now();
-        
+
         // Perform query
         let results = self.query_engine.query_prefix(prefix)?;
         let execution_time = start_time.elapsed().as_millis() as u64;
-        
+
         let start_index = 0;
         let end_index = results.len();
         let block_size = end_index - start_index;
         let total_matches = results.len();
-        
+
         Ok(PyPrefixQueryMetrics {
             results,
             execution_time_ms: execution_time,
@@ -273,24 +278,25 @@ impl PyExtendedPrefixQuery {
             total_matches,
         })
     }
-    
+
     /// Query hybrid pattern with detailed metrics
+    #[allow(deprecated)]
     #[deprecated(since = "2.0.0", note = "Use `query_hybrid_metrics()` instead")]
     #[pyo3(signature = (pattern))]
     fn query_hybrid_with_metrics(&self, pattern: &Bound<'_, pyo3::types::PyString>) -> PyResult<PyPrefixQueryMetrics> {
         use std::time::Instant;
-        
+
         let start_time = Instant::now();
-        
+
         // Perform query
         let results = self.query_engine.query_hybrid(pattern)?;
         let execution_time = start_time.elapsed().as_millis() as u64;
-        
+
         let start_index = 0;
         let end_index = results.len();
         let block_size = end_index - start_index;
         let total_matches = results.len();
-        
+
         Ok(PyPrefixQueryMetrics {
             results,
             execution_time_ms: execution_time,
@@ -300,24 +306,25 @@ impl PyExtendedPrefixQuery {
             total_matches,
         })
     }
-    
+
     /// Query prefix with metrics using string input
+    #[allow(deprecated)]
     #[deprecated(since = "2.0.0", note = "Use `query_prefix_metrics_string()` instead")]
     #[pyo3(signature = (prefix))]
     fn query_with_metrics_string(&self, prefix: &str) -> PyResult<PyPrefixQueryMetrics> {
         use std::time::Instant;
-        
+
         let start_time = Instant::now();
-        
+
         // Perform query
         let results = self.query_engine.query_prefix_string(prefix)?;
         let execution_time = start_time.elapsed().as_millis() as u64;
-        
+
         let start_index = 0;
         let end_index = results.len();
         let block_size = end_index - start_index;
         let total_matches = results.len();
-        
+
         Ok(PyPrefixQueryMetrics {
             results,
             execution_time_ms: execution_time,
@@ -327,18 +334,19 @@ impl PyExtendedPrefixQuery {
             total_matches,
         })
     }
-    
+
     /// Batch query multiple prefixes
+    #[allow(deprecated)]
     #[deprecated(since = "2.0.0", note = "Use `query_prefix_batch_metrics()` instead")]
     #[pyo3(signature = (prefixes))]
     fn batch_query(&self, prefixes: Vec<String>) -> PyResult<HashMap<String, PyPrefixQueryMetrics>> {
         let mut results = HashMap::new();
-        
+
         for prefix in prefixes {
             let metrics = self.query_with_metrics_string(&prefix)?;
             results.insert(prefix, metrics);
         }
-        
+
         Ok(results)
     }
     
@@ -377,10 +385,9 @@ impl PyExtendedPrefixQuery {
         use std::time::Instant;
 
         let start_time = Instant::now();
-        let pattern_str = pattern.to_string().to_uppercase();
 
         // Perform query - call base implementation directly
-        let results = self.query_engine.query_hybrid(&pattern_str)?;
+        let results = self.query_engine.query_hybrid(pattern)?;
         let execution_time = start_time.elapsed().as_millis() as u64;
 
         let start_index = 0;
