@@ -73,52 +73,7 @@ jobs:
       run: |
         echo "Checking for broken links..."
         cd docs
-
-        # Create a simple link checker using Python
-        python -c "
-import os
-import re
-from pathlib import Path
-
-site_dir = Path('../site')
-if not site_dir.exists():
-    print('No site directory to check')
-    exit(0)
-
-# Find all HTML files and check for internal links
-broken_links = []
-for html_file in site_dir.rglob('*.html'):
-    try:
-        with open(html_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-
-        # Check for broken internal links
-        internal_links = re.findall(r'href=\"([^\"#]+)\"', content)
-        for link in internal_links:
-            if link.startswith('http'):
-                continue  # Skip external links
-            if link.startswith('#'):
-                continue  # Skip anchor links
-            if link.startswith('mailto:'):
-                continue  # Skip mailto links
-            if link.startswith('../'):
-                # Check if relative path exists
-                target_path = html_file.parent / link
-                if not target_path.exists():
-                    broken_links.append(f'{html_file}: {link}')
-    except Exception as e:
-        print(f'Error checking {html_file}: {e}')
-
-if broken_links:
-    print(f'Found {len(broken_links)} broken links:')
-    for link in broken_links[:10]:  # Show first 10
-        print(f'  {link}')
-    if len(broken_links) > 10:
-        print(f'  ... and {len(broken_links) - 10} more')
-    exit(1)
-else:
-    print('No broken internal links found')
-"
+        python ../scripts/check_broken_links.py
 
     - name: Generate documentation stats
       run: |
@@ -137,36 +92,7 @@ else:
 
         # Show API coverage
         echo "API Coverage:"
-        python -c "
-import sys
-sys.path.insert(0, '../python')
-from rustkmer import database, fuzzy_query, query, stats, exceptions
-
-# Count classes and methods
-import inspect
-
-modules = [database, fuzzy_query, query, stats, exceptions]
-total_classes = 0
-total_methods = 0
-documented_methods = 0
-
-for module in modules:
-    for name, obj in inspect.getmembers(module, inspect.isclass):
-        if obj.__module__ == module.__name__:
-            total_classes += 1
-            for method_name, method_obj in inspect.getmembers(obj, inspect.ismethod):
-                if not method_name.startswith('_'):
-                    total_methods += 1
-                    if method_obj.__doc__:
-                        documented_methods += 1
-
-print(f'Classes: {total_classes}')
-print(f'Public methods: {total_methods}')
-print(f'Documented methods: {documented_methods}')
-if total_methods > 0:
-    coverage = (documented_methods / total_methods) * 100
-    print(f'Documentation coverage: {coverage:.1f}%')
-"
+        python ../scripts/check_doc_coverage.py
 
     - name: Deploy to GitHub Pages
       if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
