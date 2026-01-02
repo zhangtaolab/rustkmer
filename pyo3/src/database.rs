@@ -4,28 +4,20 @@
 //! functionality for querying k-mer databases.
 
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyString};
-use pyo3::PyObject;
+use pyo3::types::PyString;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
-// use memmap2::{Mmap, MmapOptions}; // No longer needed - using direct I/O
 use rustkmer::database::format::{DatabaseHeader, KmerEntry, RKDatabase};
-use rustkmer::database::prefix_query::{extract_kmers_by_prefix, PrefixQueryResult};
 use rustkmer::database::prefix_query_optimized::{
-    extract_hybrid_by_pattern, extract_prefix_optimized, parse_hybrid_pattern,
-    OptimizedPrefixResult,
+    extract_hybrid_by_pattern, extract_prefix_optimized,
 };
-use rustkmer::database::suffix_query::{
-    extract_kmers_by_suffix, SmartWildcardResult, SuffixQueryResult,
-};
-use rustkmer::fuzzy::{FuzzyQuery, FuzzyQueryEngine};
 use rustkmer::kmer::canonical::canonical_kmer_u128;
-use rustkmer::kmer::encoding::{decode_kmer_u128, encode_kmer_u128};
+use rustkmer::kmer::encoding::encode_kmer_u128;
 
 // Import PyO3 types for unified interface
-use crate::fuzzy_query::{PyFuzzyMatch, PyFuzzyResult};
+use crate::fuzzy_query::PyFuzzyResult;
 
 /// Database loading modes
 #[pyclass(eq, eq_int)]
@@ -336,17 +328,17 @@ impl PyDatabase {
         Ok(())
     }
 
-    /// Perform a single k-mer lookup
-    #[deprecated(since = "2.0.0", note = "Use `query_exact()` instead")]
-    #[pyo3(signature = (kmer))]
-    fn query(&self, kmer: &Bound<'_, PyString>) -> PyResult<PyQueryResult> {
+    // ===== 内部实现方法 =====
+
+    /// Internal implementation for exact k-mer query
+    fn query_exact_impl(&self, kmer: &str) -> PyResult<PyQueryResult> {
         if !self.is_loaded {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Database not loaded",
             ));
         }
 
-        let kmer_str = kmer.to_string().to_uppercase();
+        let kmer_str = kmer.to_uppercase();
 
         // Validate k-mer format
         if kmer_str.len() != self.header.kmer_size as usize {
@@ -422,21 +414,32 @@ impl PyDatabase {
         })
     }
 
-    /// Perform batch k-mer queries
-    #[deprecated(since = "2.0.0", note = "Use `query_exact_batch()` instead")]
-    #[pyo3(signature = (kmers))]
-    fn query_batch(&self, kmers: Vec<String>) -> PyResult<HashMap<String, PyQueryResult>> {
+    /// Internal implementation for batch exact k-mer query
+    fn query_exact_batch_impl(&self, kmers: Vec<String>) -> PyResult<HashMap<String, PyQueryResult>> {
         let mut results = HashMap::new();
 
         for kmer_str in kmers {
-            let result = pyo3::Python::with_gil(|py| {
-                let py_string = pyo3::types::PyString::new_bound(py, &kmer_str);
-                self.query(&py_string)
-            })?;
+            let result = self.query_exact_impl(&kmer_str)?;
             results.insert(kmer_str, result);
         }
 
         Ok(results)
+    }
+
+    // ===== 公共 API（旧版本，已标记为 deprecated）=====
+
+    /// Perform a single k-mer lookup
+    #[deprecated(since = "2.0.0", note = "Use `query_exact()` instead")]
+    #[pyo3(signature = (kmer))]
+    fn query(&self, kmer: &Bound<'_, PyString>) -> PyResult<PyQueryResult> {
+        self.query_exact_impl(&kmer.to_string())
+    }
+
+    /// Perform batch k-mer queries
+    #[deprecated(since = "2.0.0", note = "Use `query_exact_batch()` instead")]
+    #[pyo3(signature = (kmers))]
+    fn query_batch(&self, kmers: Vec<String>) -> PyResult<HashMap<String, PyQueryResult>> {
+        self.query_exact_batch_impl(kmers)
     }
 
     /// Get database statistics
@@ -975,13 +978,13 @@ impl PyDatabase {
     /// 精确查询 - 统一命名版本
     #[pyo3(signature = (kmer))]
     fn query_exact(&self, kmer: &Bound<'_, PyString>) -> PyResult<PyQueryResult> {
-        self.query(kmer)
+        self.query_exact_impl(&kmer.to_string())
     }
 
     /// 批量精确查询 - 统一命名版本
     #[pyo3(signature = (kmers))]
     fn query_exact_batch(&self, kmers: Vec<String>) -> PyResult<HashMap<String, PyQueryResult>> {
-        self.query_batch(kmers)
+        self.query_exact_batch_impl(kmers)
     }
 
     /// 模糊查询 - 统一命名版本

@@ -4,11 +4,10 @@
 //! independently for high-performance k-mer prefix queries.
 
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyString};
 use std::path::Path;
 use std::collections::HashMap;
 use rustkmer::database::format::RKDatabase;
-use rustkmer::database::prefix_query_optimized::{extract_prefix_optimized, extract_hybrid_by_pattern, parse_hybrid_pattern};
+use rustkmer::database::prefix_query_optimized::{extract_prefix_optimized, extract_hybrid_by_pattern};
 
 /// High-performance prefix query engine
 #[pyclass]

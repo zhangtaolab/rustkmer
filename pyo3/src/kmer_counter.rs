@@ -5,7 +5,6 @@
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
-use crate::utils::{validate_kmer, py_string_to_string};
 
 /// Statistics for KmerCounter operations
 #[pyclass]
