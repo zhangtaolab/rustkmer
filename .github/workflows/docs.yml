@@ -34,7 +34,7 @@ jobs:
         cache: 'pip'
 
     - name: Cache pip dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-docs-${{ hashFiles('docs/requirements.txt') }}
@@ -169,8 +169,10 @@ if total_methods > 0:
 "
 
     - name: Deploy to GitHub Pages
-      if github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
-        run: |
+      if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
           cd docs
 
           # Configure git user
@@ -182,7 +184,7 @@ if total_methods > 0:
 
     - name: Upload documentation artifact
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: documentation-site
         path: site/
@@ -193,6 +195,15 @@ if total_methods > 0:
     needs: build-docs
 
     steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Download documentation artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: documentation-site
+        path: site/
+
     - name: Test documentation links
       run: |
         echo "Testing documentation accessibility..."
