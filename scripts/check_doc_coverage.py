@@ -29,4 +29,3 @@ print(f'Documented methods: {documented_methods}')
 if total_methods > 0:
     coverage = (documented_methods / total_methods) * 100
     print(f'Documentation coverage: {coverage:.1f}%')
-

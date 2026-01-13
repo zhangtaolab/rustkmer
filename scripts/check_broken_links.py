@@ -42,4 +42,3 @@ if broken_links:
     exit(1)
 else:
     print('No broken internal links found')
-

@@ -103,7 +103,7 @@ def get_kmer_count_zero(seq, kmerlen, db):
     
     kmerlist = get_kmer_list(seq, kmerlen)
 
-    batch_query_res =db.query_batch(kmerlist)
+    batch_query_res = db.query_exact_batch(kmerlist)
     # print(batch_query_res)
     count_zero = 0
     for res in batch_query_res:
