@@ -10,6 +10,15 @@ from typing import Dict, Iterator, List, Optional, Union
 
 from .query import QueryResult
 from .stats import DatabaseStats
+from .fuzzy_query import (
+    FuzzyQueryResult,
+    FuzzyMatchResult,
+    FuzzyBatchResult,
+)
+from .types import (
+    FuzzyResult,
+    LoadMode,
+)
 from .fuzzy_query import FuzzyQueryResult, FuzzyMatchResult, FuzzyBatchResult
 from .utils import (
     run_rustkmer_command,
@@ -52,12 +61,20 @@ class Database:
         ...     count = db.query("ATCG")
     """
 
-    def __init__(self, path: Union[str, Path], validate: bool = False):
+    def __init__(
+        self,
+        path: Union[str, Path],
+        load_mode: Optional[LoadMode] = None,
+        validate: bool = False,
+    ):
         """
         Initialize database connection.
 
         Args:
             path: Path to the .rkdb database file
+            load_mode: Loading mode for PyO3 backend compatibility.
+                     This parameter is kept for API consistency but is
+                     currently ignored in the subprocess backend.
             validate: Whether to fully validate database on initialization.
                      When False (default), only checks if file exists and is readable.
                      When True, performs full validation including stats check.
@@ -71,6 +88,8 @@ class Database:
         self._is_loaded = False
         self._is_closed = False
         self._stats_cache: Optional[DatabaseStats] = None
+
+        # load_mode is accepted for API compatibility but not used in subprocess backend
 
         # Always perform basic validation to ensure database exists and is readable
         self._validate_database_basic()
@@ -135,19 +154,19 @@ class Database:
         except Exception as e:
             raise QueryError(f"Failed to load database metadata: {e}")
 
-    def query(self, kmer: str, validate_strict: bool = True) -> QueryResult:
+    def query(self, kmer: str, validate: bool = True) -> QueryResult:
         """
         Query a single k-mer in the database.
 
         Args:
             kmer: The k-mer sequence to query
-            validate_strict: If True, raise exceptions for invalid k-mers. If False, return count=0 for invalid k-mers.
+            validate: If True, raise exceptions for invalid k-mers. If False, return count=0 for invalid k-mers.
 
         Returns:
             QueryResult object with the k-mer information
 
         Raises:
-            InvalidKmerError: If k-mer is invalid and validate_strict=True
+            InvalidKmerError: If k-mer is invalid and validate=True
             QueryError: If query fails
             DatabaseError: If database is closed
         """
@@ -156,7 +175,7 @@ class Database:
             raise DatabaseError("Cannot query: database is closed")
 
         # Validate k-mer format without requiring kmer_size to avoid stats() call
-        if validate_strict:
+        if validate:
             # Only validate basic format (ATCG only) without length check
             if not isinstance(kmer, str) or not re.match(r"^[ATCG]+$", kmer.upper()):
                 raise InvalidKmerError(kmer, "K-mer contains invalid characters")
@@ -167,7 +186,11 @@ class Database:
                 validated_kmer = kmer.upper()
             else:
                 # Return result with count=0 for invalid k-mers
-                return QueryResult(kmer=kmer, count=0, canonical=None)
+                return QueryResult(
+                    kmer=kmer,
+                    count=0,
+                    canonical=kmer if isinstance(kmer, str) else str(kmer),
+                )
 
         # Get canonical form (CLI will handle length validation)
         canonical = canonical_kmer(validated_kmer)
@@ -183,8 +206,293 @@ class Database:
 
         # Create and return result
         return QueryResult(
-            kmer=validated_kmer, count=data.get("count", 0), canonical=canonical
+            kmer=validated_kmer, count=int(data.get("count", 0)), canonical=canonical
         )
+
+    def query_fuzzy(
+        self,
+        pattern: str,
+        mutations: int = 1,
+        max_results: Optional[int] = None,
+    ) -> FuzzyResult:
+        """
+        Fuzzy query with mutation tolerance.
+
+        This method searches for k-mers in the database that are within a specified
+        Hamming distance from the query pattern. Unlike exact queries, fuzzy queries
+        can find similar sequences that differ by a small number of mutations,
+        which is useful for handling sequencing errors, natural variations,
+        or finding related sequences.
+
+        Args:
+            pattern: The k-mer pattern to query. Must contain only A, T, C, G, N characters
+            mutations: Maximum number of mutations allowed (0-5). A value
+                      of 0 performs an exact match query, while higher values
+                      allow increasingly divergent matches
+            max_results: Maximum number of results to return. If None, returns all matches.
+
+        Returns:
+            FuzzyResult object containing all matches found within the
+                mutation tolerance, including:
+                - Exact matches (if any)
+                - Fuzzy matches with their distances and mutations
+                - Summary statistics
+
+        Raises:
+            InvalidKmerError: If pattern contains invalid characters
+            InvalidMutationToleranceError: If mutations is not in the range 0-5
+            DatabaseError: If the database has been closed
+            QueryError: If the CLI command fails or returns unexpected output
+
+        Example:
+            >>> db = Database("example.rkdb")
+            >>> # Find exact matches only
+            >>> result = db.query_fuzzy("ATCG", mutations=0)
+            >>>
+            >>> # Allow up to 2 mutations
+            >>> result = db.query_fuzzy("ATCG", mutations=2)
+            >>> print(f"Found {result.total_matches} matches")
+            >>>
+            >>> # Get top 5 most abundant matches
+            >>> top_matches = result.get_top_matches(5)
+            >>> for match in top_matches:
+            ...     print(f"{match.kmer}: {match.count} (distance={match.distance})")
+        """
+        # Check if database is closed
+        if self._is_closed:
+            raise DatabaseError("Cannot perform fuzzy query: database is closed")
+
+        # Validate mutations parameter
+        if not isinstance(mutations, int) or mutations < 0 or mutations > 5:
+            raise InvalidMutationToleranceError(
+                f"Invalid mutation tolerance: {mutations}. Must be an integer between 0 and 5."
+            )
+
+        # Validate k-mer format without requiring kmer_size to avoid stats() call
+        # Allow N wildcards for fuzzy query
+        if not isinstance(pattern, str) or not re.match(r"^[ATCGN]+$", pattern.upper()):
+            raise InvalidKmerError(
+                pattern,
+                "K-mer contains invalid characters. Only A, T, C, G, N are allowed",
+            )
+        validated_pattern = pattern.upper()
+
+        # Build CLI command arguments
+        args = [
+            "fuzzy-query",
+            str(self._path),
+            validated_pattern,
+            "--mutations",
+            str(mutations),
+        ]
+
+        # Execute fuzzy query command
+        try:
+            output = run_rustkmer_command(args)
+        except Exception as e:
+            raise QueryError(
+                f"Failed to perform fuzzy query for k-mer '{validated_pattern}': {e}"
+            )
+
+        # Parse output
+        data = parse_fuzzy_query_output(output, "auto")
+
+        # Create FuzzyMatchResult objects from parsed data
+        matches = []
+        exact_match = None
+
+        for match_data in data.get("matches", []):
+            match = FuzzyMatchResult(
+                kmer=match_data.get("kmer", ""),
+                count=match_data.get("count", 0),
+                distance=match_data.get("distance", 0),
+                mutations=match_data.get("mutations", []),
+            )
+            matches.append(match)
+
+            # Track exact match (distance == 0)
+            if match.distance == 0:
+                exact_match = match
+
+        # Apply max_results limit if specified
+        if max_results is not None and len(matches) > max_results:
+            matches = matches[:max_results]
+
+        # Create and return FuzzyQueryResult
+        return FuzzyQueryResult(
+            query_kmer=validated_pattern,
+            exact_match=exact_match,
+            matches=matches,
+            total_matches=len(matches),
+            mutation_tolerance=mutations,
+            database_path=str(self._path),
+            position_mutations_config=data.get("position_mutations_config"),
+        )
+
+    def query_prefix(self, prefix: str) -> Dict[str, str]:
+        """
+        Prefix query.
+
+        This method searches for all k-mers in the database that start with
+        the given prefix. This is useful for exploring the database or
+        finding all variants of a partial sequence.
+
+        Args:
+            prefix: Prefix string to search for
+
+        Returns:
+            Dict[kmer, count]: Mapping of matching k-mers to their counts
+
+        Raises:
+            InvalidKmerError: If prefix contains invalid characters
+            DatabaseError: If database is closed
+            QueryError: If query fails
+
+        Note:
+            The subprocess backend uses a different implementation than PyO3.
+            Results may differ slightly in ordering but are functionally equivalent.
+        """
+        # Check if database is closed
+        if self._is_closed:
+            raise DatabaseError("Cannot query prefix: database is closed")
+
+        # Validate prefix
+        if not isinstance(prefix, str) or not re.match(r"^[ATCG]+$", prefix.upper()):
+            raise InvalidKmerError(
+                prefix,
+                "Prefix contains invalid characters. Only A, T, C, G are allowed",
+            )
+
+        validated_prefix = prefix.upper()
+
+        # Get kmer_size for validation
+        stats = self.stats()
+        kmer_size = stats.kmer_size
+
+        if len(validated_prefix) >= kmer_size:
+            raise InvalidKmerError(
+                prefix,
+                f"Prefix length ({len(validated_prefix)}) must be less than k-mer size ({kmer_size})",
+            )
+
+        # Try to use rustkmer_pyo3 if available for prefix query
+        try:
+            import rustkmer_pyo3
+
+            # Use PyO3 backend for prefix query
+            db_pyo3 = rustkmer_pyo3.PyDatabase(
+                str(self._path), rustkmer_pyo3.LoadMode.MemoryMapped
+            )
+            query_engine = rustkmer_pyo3.PyPrefixQuery(db_pyo3)
+            results = query_engine.query_prefix(validated_prefix)
+
+            # Convert PyO3 results to dict format
+            return {kmer: str(count) for kmer, count in results.items()}
+        except ImportError:
+            # Fallback to subprocess implementation
+            # Dump all k-mers and filter by prefix
+            return self._query_prefix_subprocess(validated_prefix)
+
+    def _query_prefix_subprocess(self, prefix: str) -> Dict[str, str]:
+        """
+        Subprocess fallback for prefix query.
+
+        This method dumps all k-mers and filters by prefix when PyO3
+        backend is not available.
+        """
+        results = {}
+
+        # Dump k-mers in chunks to avoid memory issues
+        chunk_size = 10000
+        for result in self.dump(as_string=False):
+            # Filter by prefix
+            if result.kmer.upper().startswith(prefix.upper()):
+                results[result.kmer] = str(result.count)
+
+        return results
+
+    def query_hybrid(self, pattern: str) -> Dict[str, str]:
+        """
+        Hybrid search (e.g., ATGC{N5}TACG).
+
+        This method supports complex search patterns with wildcards and fixed
+        segments. Patterns can use {N<count>} syntax to specify variable
+        regions.
+
+        Args:
+            pattern: Hybrid pattern to search for
+
+        Returns:
+            Dict[kmer, count]: Mapping of matching k-mers to their counts
+
+        Raises:
+            InvalidKmerError: If pattern is invalid
+            DatabaseError: If database is closed
+            QueryError: If query fails
+
+        Example:
+            >>> db = Database("genome.rkdb")
+            >>> # Find k-mers matching ATGC + any 5 bases + TACG
+            >>> results = db.query_hybrid("ATGC{N5}TACG")
+            >>> print(f"Found {len(results)} matches")
+
+        Note:
+            The subprocess backend uses a different implementation than PyO3.
+            Results may differ slightly in ordering but are functionally equivalent.
+        """
+        # Check if database is closed
+        if self._is_closed:
+            raise DatabaseError("Cannot query hybrid: database is closed")
+
+        # Validate pattern format
+        if not isinstance(pattern, str) or not pattern:
+            raise InvalidKmerError(pattern, "Pattern must be a non-empty string")
+
+        validated_pattern = pattern.upper()
+
+        # Try to use rustkmer_pyo3 if available for hybrid query
+        try:
+            import rustkmer_pyo3
+
+            # Use PyO3 backend for hybrid query
+            db_pyo3 = rustkmer_pyo3.PyDatabase(
+                str(self._path), rustkmer_pyo3.LoadMode.MemoryMapped
+            )
+            query_engine = rustkmer_pyo3.PyPrefixQuery(db_pyo3)
+            results = query_engine.query_hybrid(validated_pattern)
+
+            # Convert PyO3 results to dict format
+            return {kmer: str(count) for kmer, count in results.items()}
+        except ImportError:
+            # Fallback to subprocess implementation
+            return self._query_hybrid_subprocess(validated_pattern)
+
+    def _query_hybrid_subprocess(self, pattern: str) -> Dict[str, str]:
+        """
+        Subprocess fallback for hybrid query.
+
+        This method implements a simple hybrid pattern matcher when PyO3
+        backend is not available.
+        """
+        results = {}
+        import re as regex_module
+
+        # Convert hybrid pattern to regex
+        # ATGC{N5}TACG -> ATGC.{5}TACG
+        regex_pattern = pattern
+        while "{N" in regex_pattern:
+            regex_pattern = regex_pattern.replace("{N", ".", 1).replace(
+                "}", "", 1
+            )  # Replace first occurrence
+
+        regex = regex_module.compile(regex_pattern)
+
+        # Dump all k-mers and filter by pattern
+        for result in self.dump(as_string=False):
+            if regex.fullmatch(result.kmer):
+                results[result.kmer] = str(result.count)
+
+        return results
 
     def fuzzy_query(
         self,
@@ -197,15 +505,14 @@ class Database:
         """
         Perform a fuzzy k-mer query with mutation tolerance.
 
+        This is the original fuzzy query method with full parameter support.
+        For basic fuzzy queries, consider using query_fuzzy() instead.
+
         This method searches for k-mers in the database that are within a specified
         Hamming distance from the query k-mer. Unlike exact queries, fuzzy queries
         can find similar sequences that differ by a small number of mutations,
         which is useful for handling sequencing errors, natural variations,
         or finding related sequences.
-
-        The search generates all possible variants of the query k-mer within the
-        specified mutation tolerance and checks each against the database. The
-        results are returned as a FuzzyQueryResult containing all matches found.
 
         Args:
             kmer (str): The k-mer sequence to query. Must contain only A, T, C, G
@@ -739,7 +1046,11 @@ class Database:
             if validated_kmer is None:
                 # Invalid k-mer, return count=0
                 results[original_kmer] = QueryResult(
-                    kmer=original_kmer, count=0, canonical=None
+                    kmer=original_kmer,
+                    count=0,
+                    canonical=original_kmer
+                    if isinstance(original_kmer, str)
+                    else str(original_kmer),
                 )
                 # Remove from validated list so we don't try to query it
                 del validated_kmers[original_kmer]
@@ -812,7 +1123,9 @@ class Database:
         canonical = canonical_kmer(kmer)
 
         # Create and return result
-        return QueryResult(kmer=kmer, count=data.get("count", 0), canonical=canonical)
+        return QueryResult(
+            kmer=kmer, count=int(data.get("count", 0)), canonical=canonical
+        )
 
     def _single_fuzzy_query(
         self,
@@ -1029,13 +1342,13 @@ class Database:
 
         # Create DatabaseStats object
         stats = DatabaseStats(
-            kmer_size=data["kmer_size"],
-            unique_kmers=data["unique_kmers"],
-            total_counts=data["total_counts"],
-            min_count=data.get("min_count", 0),  # Add min_count field with default
-            max_count=data["max_count"],
-            file_size=self._path.stat().st_size,
-            format_version=data["format_version"],
+            kmer_size=int(data["kmer_size"]),
+            unique_kmers=int(data["unique_kmers"]),
+            total_counts=int(data["total_counts"]),
+            min_count=int(data.get("min_count", 0)),  # Add min_count field with default
+            max_count=int(data["max_count"]),
+            file_size=int(self._path.stat().st_size),
+            format_version=str(data["format_version"]),
         )
 
         # Cache the result
@@ -1072,3 +1385,6 @@ class Database:
     def __repr__(self) -> str:
         """String representation."""
         return f"Database(path='{self._path}', loaded={self._is_loaded})"
+
+
+# Backward compatibility aliases for unified API

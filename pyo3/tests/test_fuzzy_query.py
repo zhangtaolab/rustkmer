@@ -8,13 +8,13 @@ class TestFuzzyQueryInitialization:
     
     def test_create_fuzzy_query(self, PyFuzzyQuery, LoadMode, tiny_db_path):
         """Test creating a fuzzy query object."""
-        query = PyFuzzyQuery(tiny_db_path, LoadMode.Preload)
+        query = PyFuzzyQuery(PyDatabase(tiny_db_path, LoadMode.Preload))
         assert query is not None
     
     def test_fuzzy_query_with_load_mode(self, PyFuzzyQuery, LoadMode, tiny_db_path):
         """Test creating fuzzy query with different load modes."""
         for mode in [LoadMode.Preload, LoadMode.MemoryMapped]:
-            query = PyFuzzyQuery(tiny_db_path, mode)
+            query = PyFuzzyQuery(PyDatabase(tiny_db_path, mode))
             assert query is not None
 
 
@@ -23,7 +23,7 @@ class TestFuzzyQueryBasic:
     
     def test_wildcard_query(self, PyFuzzyQuery, LoadMode, tiny_db_path):
         """Test wildcard pattern query."""
-        query = PyFuzzyQuery(tiny_db_path, LoadMode.Preload)
+        query = PyFuzzyQuery(PyDatabase(tiny_db_path, LoadMode.Preload))
         
         result = query.fuzzy_query("ATNNGTA")
         
@@ -33,7 +33,7 @@ class TestFuzzyQueryBasic:
     
     def test_wildcard_query_with_mutations(self, PyFuzzyQuery, LoadMode, tiny_db_path):
         """Test wildcard query with mutation tolerance."""
-        query = PyFuzzyQuery(tiny_db_path, LoadMode.Preload)
+        query = PyFuzzyQuery(PyDatabase(tiny_db_path, LoadMode.Preload))
         
         result = query.fuzzy_query("AAAAAAA", max_mutations=1)
         
@@ -42,7 +42,7 @@ class TestFuzzyQueryBasic:
     
     def test_simple_wildcard_patterns(self, PyFuzzyQuery, LoadMode, tiny_db_path):
         """Test various wildcard patterns."""
-        query = PyFuzzyQuery(tiny_db_path, LoadMode.Preload)
+        query = PyFuzzyQuery(PyDatabase(tiny_db_path, LoadMode.Preload))
         
         patterns = [
             "ANNNNNN",  # N at position 1
@@ -57,7 +57,7 @@ class TestFuzzyQueryBasic:
     
     def test_mutation_tolerance(self, PyFuzzyQuery, LoadMode, tiny_db_path):
         """Test different mutation tolerance levels."""
-        query = PyFuzzyQuery(tiny_db_path, LoadMode.Preload)
+        query = PyFuzzyQuery(PyDatabase(tiny_db_path, LoadMode.Preload))
         
         base_kmer = "AAAAAAA"
         
@@ -75,7 +75,7 @@ class TestFuzzyQueryResults:
     
     def test_result_has_matches_attribute(self, PyFuzzyQuery, LoadMode, tiny_db_path):
         """Test that result has matches information."""
-        query = PyFuzzyQuery(tiny_db_path, LoadMode.Preload)
+        query = PyFuzzyQuery(PyDatabase(tiny_db_path, LoadMode.Preload))
         
         result = query.fuzzy_query("ATNNGTA")
         
@@ -87,7 +87,7 @@ class TestFuzzyQueryResults:
     
     def test_result_has_count_information(self, PyFuzzyQuery, LoadMode, tiny_db_path):
         """Test that result has count information."""
-        query = PyFuzzyQuery(tiny_db_path, LoadMode.Preload)
+        query = PyFuzzyQuery(PyDatabase(tiny_db_path, LoadMode.Preload))
         
         result = query.fuzzy_query("ATNNGTA")
         
@@ -103,7 +103,7 @@ class TestFuzzyQueryEdgeCases:
     
     def test_all_wildcard_pattern(self, PyFuzzyQuery, LoadMode, tiny_db_path):
         """Test pattern with all wildcards."""
-        query = PyFuzzyQuery(tiny_db_path, LoadMode.Preload)
+        query = PyFuzzyQuery(PyDatabase(tiny_db_path, LoadMode.Preload))
         
         result = query.fuzzy_query("NNNNNNN")
         
@@ -113,7 +113,7 @@ class TestFuzzyQueryEdgeCases:
     
     def test_no_wildcard_pattern(self, PyFuzzyQuery, LoadMode, tiny_db_path):
         """Test pattern without wildcards."""
-        query = PyFuzzyQuery(tiny_db_path, LoadMode.Preload)
+        query = PyFuzzyQuery(PyDatabase(tiny_db_path, LoadMode.Preload))
         
         result = query.fuzzy_query("AAAAAAA")
         
@@ -123,7 +123,7 @@ class TestFuzzyQueryEdgeCases:
     
     def test_high_mutation_count(self, PyFuzzyQuery, LoadMode, tiny_db_path):
         """Test with high mutation tolerance."""
-        query = PyFuzzyQuery(tiny_db_path, LoadMode.Preload)
+        query = PyFuzzyQuery(PyDatabase(tiny_db_path, LoadMode.Preload))
         
         result = query.fuzzy_query("AAAAAAA", max_mutations=7)
         
@@ -132,7 +132,7 @@ class TestFuzzyQueryEdgeCases:
     
     def test_empty_result_for_no_match(self, PyFuzzyQuery, LoadMode, tiny_db_path):
         """Test pattern that likely returns no matches."""
-        query = PyFuzzyQuery(tiny_db_path, LoadMode.Preload)
+        query = PyFuzzyQuery(PyDatabase(tiny_db_path, LoadMode.Preload))
         
         # Very specific pattern unlikely to match
         result = query.fuzzy_query("TTTTTTT", max_mutations=0)

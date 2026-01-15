@@ -144,7 +144,7 @@ class TestPyO3SpecificFeatures:
     
     def test_prefix_query_not_in_cli(self, PyPrefixQuery, LoadMode, tiny_db_path):
         """Test prefix query feature (not available in basic CLI)."""
-        query = PyPrefixQuery(tiny_db_path, LoadMode.Preload)
+        query = PyPrefixQuery(tiny_db_path)
         
         result = query.query_prefix("AAA")
         
@@ -154,7 +154,7 @@ class TestPyO3SpecificFeatures:
     
     def test_fuzzy_query_equivalence(self, PyFuzzyQuery, LoadMode, tiny_db_path):
         """Test fuzzy query returns reasonable results."""
-        query = PyFuzzyQuery(tiny_db_path, LoadMode.Preload)
+        query = PyFuzzyQuery(PyDatabase(tiny_db_path, LoadMode.Preload))
         
         # Test wildcard query
         result = query.fuzzy_query("ANNNNNN")

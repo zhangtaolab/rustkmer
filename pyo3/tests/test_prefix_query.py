@@ -8,13 +8,13 @@ class TestPrefixQueryInitialization:
     
     def test_create_prefix_query(self, PyPrefixQuery, LoadMode, tiny_db_path):
         """Test creating a prefix query object."""
-        query = PyPrefixQuery(tiny_db_path, LoadMode.Preload)
+        query = PyPrefixQuery(tiny_db_path)
         assert query is not None
     
     def test_prefix_query_with_load_mode(self, PyPrefixQuery, LoadMode, tiny_db_path):
         """Test creating prefix query with different load modes."""
         for mode in [LoadMode.Preload, LoadMode.MemoryMapped]:
-            query = PyPrefixQuery(tiny_db_path, mode)
+            query = PyPrefixQuery(tiny_db_path)
             assert query is not None
 
 
@@ -23,7 +23,7 @@ class TestPrefixQueryExecution:
     
     def test_query_prefix_basic(self, PyPrefixQuery, LoadMode, tiny_db_path):
         """Test basic prefix query."""
-        query = PyPrefixQuery(tiny_db_path, LoadMode.Preload)
+        query = PyPrefixQuery(tiny_db_path)
         
         results = query.query_prefix("AAA")
         
@@ -32,7 +32,7 @@ class TestPrefixQueryExecution:
     
     def test_query_prefix_returns_results(self, PyPrefixQuery, LoadMode, tiny_db_path):
         """Test that prefix query returns result object."""
-        query = PyPrefixQuery(tiny_db_path, LoadMode.Preload)
+        query = PyPrefixQuery(tiny_db_path)
         
         result = query.query_prefix("AAA")
         
@@ -41,7 +41,7 @@ class TestPrefixQueryExecution:
     
     def test_query_different_prefixes(self, PyPrefixQuery, LoadMode, tiny_db_path):
         """Test querying different prefixes."""
-        query = PyPrefixQuery(tiny_db_path, LoadMode.Preload)
+        query = PyPrefixQuery(tiny_db_path)
         
         prefixes = ["AAA", "CCC", "GGG", "TTT"]
         
@@ -51,7 +51,7 @@ class TestPrefixQueryExecution:
     
     def test_prefix_length_affects_results(self, PyPrefixQuery, LoadMode, tiny_db_path):
         """Test that different prefix lengths affect results."""
-        query = PyPrefixQuery(tiny_db_path, LoadMode.Preload)
+        query = PyPrefixQuery(tiny_db_path)
         
         # Shorter prefix should match more kmers
         result_short = query.query_prefix("A")
@@ -66,7 +66,7 @@ class TestPrefixQueryMetrics:
     
     def test_query_with_metrics(self, PyPrefixQuery, LoadMode, tiny_db_path):
         """Test query with performance metrics."""
-        query = PyPrefixQuery(tiny_db_path, LoadMode.Preload)
+        query = PyPrefixQuery(tiny_db_path)
         
         result = query.query_prefix("AAA")
         
@@ -75,7 +75,7 @@ class TestPrefixQueryMetrics:
     
     def test_result_has_block_information(self, PyPrefixQuery, LoadMode, tiny_db_path):
         """Test that result has memory block information."""
-        query = PyPrefixQuery(tiny_db_path, LoadMode.Preload)
+        query = PyPrefixQuery(tiny_db_path)
         
         result = query.query_prefix("AAA")
         
@@ -90,7 +90,7 @@ class TestPrefixQueryEdgeCases:
     
     def test_query_empty_prefix(self, PyPrefixQuery, LoadMode, tiny_db_path):
         """Test querying with empty prefix."""
-        query = PyPrefixQuery(tiny_db_path, LoadMode.Preload)
+        query = PyPrefixQuery(tiny_db_path)
         
         try:
             result = query.query_prefix("")
@@ -100,7 +100,7 @@ class TestPrefixQueryEdgeCases:
     
     def test_query_nonexistent_prefix(self, PyPrefixQuery, LoadMode, tiny_db_path):
         """Test querying prefix that doesn't exist in database."""
-        query = PyPrefixQuery(tiny_db_path, LoadMode.Preload)
+        query = PyPrefixQuery(tiny_db_path)
         
         result = query.query_prefix("ZZZ")
         
@@ -112,7 +112,7 @@ class TestPrefixQueryEdgeCases:
     
     def test_query_single_character_prefix(self, PyPrefixQuery, LoadMode, tiny_db_path):
         """Test querying single character prefix."""
-        query = PyPrefixQuery(tiny_db_path, LoadMode.Preload)
+        query = PyPrefixQuery(tiny_db_path)
         
         result = query.query_prefix("A")
         

@@ -70,7 +70,7 @@ class TestSingleQuery:
 
         # Use lenient validation for mixed k-mer (8-mer for k=7 database)
         if kmer == "ATCGATCG":
-            result = db.query(kmer, validate_strict=False)
+            result = db.query(kmer, validate=False)
         else:
             result = db.query(kmer)
 
@@ -86,8 +86,8 @@ class TestSingleQuery:
         kmer = "ATCGATCG"
         rc_kmer = reverse_complement(kmer)
 
-        result1 = db.query(kmer, validate_strict=False)
-        result2 = db.query(rc_kmer, validate_strict=False)
+        result1 = db.query(kmer, validate=False)
+        result2 = db.query(rc_kmer, validate=False)
 
         # Both should return the same count (canonical representation)
         assert result1.count == result2.count
@@ -99,7 +99,7 @@ class TestSingleQuery:
         db = Database(sample_database)
         # Use a k-mer unlikely to exist
         result = db.query(
-            "NNNNNNN", validate_strict=False
+            "NNNNNNN", validate=False
         )  # Invalid character should return 0
 
         assert isinstance(result, QueryResult)
@@ -125,7 +125,7 @@ class TestSingleQuery:
                 db.query(invalid_kmer)
         else:
             # String but invalid format - use lenient validation
-            result = db.query(invalid_kmer, validate_strict=False)
+            result = db.query(invalid_kmer, validate=False)
             # Should return count=0 for invalid k-mers
             assert result.count == 0
 
@@ -506,12 +506,12 @@ class TestDatabaseErrorPaths:
         db = Database(sample_database)
 
         # Test with valid characters but wrong length
-        result = db.query("ATCG", validate_strict=False)
+        result = db.query("ATCG", validate=False)
         assert result.count == 0
         # Should compute canonical even for invalid k-mers
         assert result.canonical is not None
 
         # Test with invalid characters
-        result = db.query("ATCX", validate_strict=False)
+        result = db.query("ATCX", validate=False)
         assert result.count == 0
-        assert result.canonical is None  # Can't compute canonical with invalid chars
+        assert result.canonical == "ATCX"  # With validate=False, returns kmer as canonical

@@ -7,17 +7,18 @@
 #![allow(deprecated)]
 
 use pyo3::prelude::*;
-use pyo3::types::PyString;
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use pyo3::types::{PyList, PyString};
 use rustkmer::database::format::{DatabaseHeader, KmerEntry, RKDatabase};
 use rustkmer::database::prefix_query_optimized::{
     extract_hybrid_by_pattern, extract_prefix_optimized,
 };
+use rustkmer::database::MergeConfig;
 use rustkmer::kmer::canonical::canonical_kmer_u128;
 use rustkmer::kmer::encoding::encode_kmer_u128;
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
 
 // Import PyO3 types for unified interface
 use crate::fuzzy_query::PyFuzzyResult;
@@ -27,10 +28,13 @@ use crate::fuzzy_query::PyFuzzyResult;
 #[derive(Clone, PartialEq)]
 pub enum LoadMode {
     /// Preload all k-mers into memory (fastest queries, higher memory usage)
+    #[pyo3(name = "preload")]
     Preload,
     /// Use memory-mapped file access (balanced memory/performance)
+    #[pyo3(name = "mmap")]
     MemoryMapped,
     /// Lazy loading - load k-mers on-demand (lowest memory, slower queries)
+    #[pyo3(name = "lazy")]
     Lazy,
 }
 
@@ -218,7 +222,6 @@ pub struct PyDatabase {
     pub cached_entries: Option<Vec<(u128, u32)>>, // (encoded_kmer, count) sorted
 }
 
-#[allow(deprecated)]
 #[pymethods]
 impl PyDatabase {
     /// Load a k-mer database from file with specified loading mode
@@ -419,7 +422,10 @@ impl PyDatabase {
     }
 
     /// Internal implementation for batch exact k-mer query
-    fn query_exact_batch_impl(&self, kmers: Vec<String>) -> PyResult<HashMap<String, PyQueryResult>> {
+    fn query_exact_batch_impl(
+        &self,
+        kmers: Vec<String>,
+    ) -> PyResult<HashMap<String, PyQueryResult>> {
         let mut results = HashMap::new();
 
         for kmer_str in kmers {
@@ -557,6 +563,8 @@ impl PyDatabase {
             canonical: self.header.canonical,
         }
     }
+
+
 
     /// Get memory usage information
     fn get_memory_usage(&self) -> HashMap<String, String> {
@@ -1014,5 +1022,158 @@ impl PyDatabase {
     #[pyo3(signature = (prefix))]
     fn query_prefix(&self, prefix: &Bound<'_, PyString>) -> PyResult<PyPrefixQueryResult> {
         self.query_prefix_impl(&prefix.to_string())
+    }
+
+    /// Dump database contents with pagination support
+    ///
+    /// Args:
+    ///     limit: Maximum number of entries to return (None for all)
+    ///     offset: Number of entries to skip
+    ///
+    /// Returns:
+    ///     List of PyQueryResult objects containing k-mer, count, and found status
+    #[pyo3(signature = (limit=None, offset=0))]
+    fn dump(&self, limit: Option<usize>, offset: usize, py: Python<'_>) -> PyResult<Py<PyList>> {
+        use pyo3::types::PyList;
+
+        let mut results = Vec::new();
+
+        // Determine the actual limit to use
+        let actual_limit = limit.unwrap_or(usize::MAX);
+
+        // Handle different loading modes
+        match &self.load_mode {
+            LoadMode::Preload => {
+                // Get k-mers from the HashMap cache
+                if let Some(cache) = &self.kmer_cache {
+                    let mut count = 0;
+                    for (kmer_encoded, cnt) in cache.iter() {
+                        if count >= offset {
+                            if count >= offset + actual_limit {
+                                break;
+                            }
+                            // Convert u128 k-mer to hex string for display
+                            let kmer_hex = format!("{:x}", kmer_encoded);
+                            results.push(PyQueryResult {
+                                kmer: kmer_hex,
+                                count: *cnt,
+                                found: *cnt > 0,
+                            });
+                        }
+                        count += 1;
+                    }
+                }
+            }
+            LoadMode::Lazy => {
+                // Get k-mers from entries
+                if let Some(entries) = &self.entries {
+                    for entry in entries.iter().skip(offset).take(actual_limit) {
+                        // Convert u128 k-mer to hex string for display
+                        let kmer_hex = format!("{:x}", entry.kmer);
+                        results.push(PyQueryResult {
+                            kmer: kmer_hex,
+                            count: entry.count,
+                            found: entry.count > 0,
+                        });
+                    }
+                }
+            }
+            LoadMode::MemoryMapped => {
+                // For MemoryMapped mode, use direct file access via get_entry_by_index
+                // Start from offset and read up to limit entries
+                for i in offset..(offset + actual_limit) {
+                    match self.get_entry_by_index(i) {
+                        Ok((kmer, count)) => {
+                            // Convert u128 k-mer to hex string for display
+                            let kmer_hex = format!("{:x}", kmer);
+                            results.push(PyQueryResult {
+                                kmer: kmer_hex,
+                                count,
+                                found: count > 0,
+                            });
+                        }
+                        Err(_) => {
+                            // Reached end of database or encountered an error
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Create Python list from results
+        let py_list = PyList::new(py, results);
+        Ok(py_list?.into_py(py))
+    }
+
+    /// Merge multiple databases into a single output database
+    ///
+    /// This static method merges multiple k-mer databases into a single output database.
+    /// The merge operation automatically chooses the optimal strategy (in-memory, streaming,
+    /// or prefix cache) based on the size of the input databases and available memory.
+    ///
+    /// Args:
+    ///     databases: List of database file paths to merge
+    ///     output: Output database file path for the merged database
+    ///
+    /// Returns:
+    ///     None (the merged database is saved to the specified output path)
+    ///
+    /// Raises:
+    ///     PyValueError: If databases list is empty or files don't exist
+    ///     PyRuntimeError: If merge operation fails
+    ///
+    /// Example:
+    ///     >>> import rustkmer_pyo3
+    ///     >>> rustkmer_pyo3.PyDatabase.merge(
+    ///     ...     ["db1.rkdb", "db2.rkdb", "db3.rkdb"],
+    ///     ...     "merged.rkdb"
+    ///     ... )
+    #[staticmethod]
+    #[pyo3(signature = (databases, output))]
+    fn merge(databases: Vec<String>, output: String) -> PyResult<()> {
+        use std::path::PathBuf;
+
+        // Validate input: check databases list is not empty
+        if databases.is_empty() {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "databases list cannot be empty",
+            ));
+        }
+
+        // Validate all input files exist
+        for db_path in &databases {
+            if !Path::new(db_path).exists() {
+                return Err(PyErr::new::<pyo3::exceptions::PyFileNotFoundError, _>(
+                    format!("Database file not found: {}", db_path),
+                ));
+            }
+        }
+
+        // Convert to PathBuf
+        let input_paths: Vec<PathBuf> = databases.into_iter().map(|p| PathBuf::from(p)).collect();
+
+        // Create default merge configuration
+        let config = MergeConfig::default();
+
+        // Call Rust core merge functionality
+        // This automatically chooses optimal strategy (in-memory, streaming, or prefix cache)
+        let merged_db = RKDatabase::merge_databases(&input_paths, &config).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Merge operation failed: {}",
+                e
+            ))
+        })?;
+
+        // Save merged database to output file
+        let output_path = Path::new(&output);
+        merged_db.write_to_file(output_path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to save merged database to {}: {}",
+                output, e
+            ))
+        })?;
+
+        Ok(())
     }
 }
