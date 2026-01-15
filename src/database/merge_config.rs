@@ -188,7 +188,7 @@ mod tests {
         stats.complete(
             Duration::from_secs(10),
             1024 * 1024 * 100, // 100MB
-            MergeStrategy::InMemory
+            MergeStrategy::InMemory,
         );
 
         assert_eq!(stats.merge_time.as_secs(), 10);

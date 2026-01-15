@@ -79,7 +79,9 @@ impl DiskOverflow {
 
     /// Create a new overflow file
     fn new_file(&mut self) -> ProcessingResult<()> {
-        let file_path = self.temp_dir.join(format!("overflow_{:04}.dat", self.current_file));
+        let file_path = self
+            .temp_dir
+            .join(format!("overflow_{:04}.dat", self.current_file));
         let file = File::create(&file_path)?;
 
         self.current_writer = Some(BufWriter::new(file));
@@ -193,7 +195,10 @@ impl Iterator for OverflowFileReader {
             // Open first file if needed
             if self.current_reader.is_none() && !self.files.is_empty() {
                 if let Err(e) = self.advance_to_next_file() {
-                    return Some(Err(ProcessingError::with_context("Failed to open overflow file", e)));
+                    return Some(Err(ProcessingError::with_context(
+                        "Failed to open overflow file",
+                        e,
+                    )));
                 }
             }
 
@@ -208,12 +213,11 @@ impl Iterator for OverflowFileReader {
                     Ok(_) => {
                         // Parse k-mer and count
                         let kmer = u64::from_le_bytes([
-                            buffer[0], buffer[1], buffer[2], buffer[3],
-                            buffer[4], buffer[5], buffer[6], buffer[7],
+                            buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5],
+                            buffer[6], buffer[7],
                         ]);
-                        let count = u32::from_le_bytes([
-                            buffer[8], buffer[9], buffer[10], buffer[11],
-                        ]);
+                        let count =
+                            u32::from_le_bytes([buffer[8], buffer[9], buffer[10], buffer[11]]);
 
                         self.pos += 1;
                         return Some(Ok((kmer, count)));
@@ -221,13 +225,21 @@ impl Iterator for OverflowFileReader {
                     Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                         // End of current file, advance to next
                         match self.advance_to_next_file() {
-                            Ok(true) => continue, // Try next file
+                            Ok(true) => continue,     // Try next file
                             Ok(false) => return None, // No more files
-                            Err(e) => return Some(Err(ProcessingError::with_context("Error advancing files", e))),
+                            Err(e) => {
+                                return Some(Err(ProcessingError::with_context(
+                                    "Error advancing files",
+                                    e,
+                                )))
+                            }
                         }
                     }
                     Err(e) => {
-                        return Some(Err(ProcessingError::with_context("Error reading overflow file", e)));
+                        return Some(Err(ProcessingError::with_context(
+                            "Error reading overflow file",
+                            e,
+                        )));
                     }
                 }
             }

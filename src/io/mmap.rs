@@ -83,25 +83,19 @@ pub fn read_file_to_string<P: AsRef<Path>>(path: P) -> ProcessingResult<String> 
 
     // Try memory-mapped first for efficiency
     if let Ok(mmap_file) = MemoryMappedFile::open(path) {
-        mmap_file.read_to_string()
-            .map_err(|e| ProcessingError::with_context(
-                format!("Failed to read file as UTF-8: {:?}", path),
-                e
-            ))
+        mmap_file.read_to_string().map_err(|e| {
+            ProcessingError::with_context(format!("Failed to read file as UTF-8: {:?}", path), e)
+        })
     } else {
         // Fallback to regular file reading
         let mut contents = String::new();
-        let mut file = File::open(path)
-            .map_err(|e| ProcessingError::with_context(
-                format!("Failed to open file: {:?}", path),
-                e
-            ))?;
+        let mut file = File::open(path).map_err(|e| {
+            ProcessingError::with_context(format!("Failed to open file: {:?}", path), e)
+        })?;
 
-        file.read_to_string(&mut contents)
-            .map_err(|e| ProcessingError::with_context(
-                format!("Failed to read file: {:?}", path),
-                e
-            ))?;
+        file.read_to_string(&mut contents).map_err(|e| {
+            ProcessingError::with_context(format!("Failed to read file: {:?}", path), e)
+        })?;
 
         Ok(contents)
     }
@@ -116,11 +110,9 @@ pub fn read_file_to_string<P: AsRef<Path>>(path: P) -> ProcessingResult<String> 
 /// File size in bytes
 pub fn file_size<P: AsRef<Path>>(path: P) -> ProcessingResult<u64> {
     let path_ref = path.as_ref();
-    let metadata = std::fs::metadata(path_ref)
-        .map_err(|e| ProcessingError::with_context(
-            format!("Failed to get file metadata: {:?}", path_ref),
-            e
-        ))?;
+    let metadata = std::fs::metadata(path_ref).map_err(|e| {
+        ProcessingError::with_context(format!("Failed to get file metadata: {:?}", path_ref), e)
+    })?;
 
     Ok(metadata.len())
 }
@@ -128,13 +120,15 @@ pub fn file_size<P: AsRef<Path>>(path: P) -> ProcessingResult<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_memory_mapped_file() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"ATGCATGCATGC\nATGCATGCATGC\n").unwrap();
+        temp_file
+            .write_all(b"ATGCATGCATGC\nATGCATGCATGC\n")
+            .unwrap();
 
         let mmap_file = MemoryMappedFile::open(temp_file.path()).unwrap();
         assert_eq!(mmap_file.len(), 26); // 12 + 1 + 12 + 1

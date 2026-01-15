@@ -66,7 +66,10 @@ pub enum Commands {
         verbose: bool,
 
         /// Show warnings for invalid k-mer characters (default: false)
-        #[arg(long, help = "Display warnings when skipping k-mers with invalid characters")]
+        #[arg(
+            long,
+            help = "Display warnings when skipping k-mers with invalid characters"
+        )]
         show_warnings: bool,
 
         /// Sort output by k-mer sequence (default: sorted for optimal query performance)
@@ -77,14 +80,14 @@ pub enum Commands {
         #[arg(long, conflicts_with = "sort")]
         no_sort: bool,
 
-        /// Minimum k-mer count threshold (jellyfish compatible)
+        /// Minimum k-mer count threshold
         #[arg(short = 'L', long = "min-count")]
         #[arg(alias = "lower-count")]
         #[arg(alias = "low-count")]
         #[arg(help = "Filter out k-mers with count below this threshold")]
         min_count: Option<u64>,
 
-        /// Maximum k-mer count threshold (jellyfish compatible)
+        /// Maximum k-mer count threshold
         #[arg(short = 'U', long = "max-count")]
         #[arg(alias = "upper-count")]
         #[arg(alias = "high-count")]
@@ -126,7 +129,6 @@ pub enum Commands {
         no_load: bool,
     },
 
-    
     /// Dump k-mer database to text format
     Dump {
         /// Database file
@@ -232,7 +234,6 @@ pub enum Commands {
         include_headers: bool,
     },
 
-  
     /// Merge multiple RKDB databases
     Merge {
         /// Input database files to merge
@@ -244,7 +245,10 @@ pub enum Commands {
         output: std::path::PathBuf,
 
         /// Temporary directory for merge operations
-        #[arg(long, help = "Temporary directory for merge operations (default: system temp)")]
+        #[arg(
+            long,
+            help = "Temporary directory for merge operations (default: system temp)"
+        )]
         temp_dir: Option<std::path::PathBuf>,
 
         /// Enable verbose output
@@ -255,29 +259,45 @@ pub enum Commands {
         #[arg(short = 'q', long, help = "Suppress non-error output")]
         quiet: bool,
 
-        
         /// Keep intermediate files (for debugging)
         #[arg(long, help = "Keep intermediate files (for debugging)")]
         keep_intermediate: bool,
 
         /// Check compatibility of databases without merging
-        #[arg(long, help = "Check compatibility of databases without performing the merge")]
+        #[arg(
+            long,
+            help = "Check compatibility of databases without performing the merge"
+        )]
         check_compatibility: bool,
 
         /// Maximum memory usage for merge operations (e.g., "32GB", "1TB")
-        #[arg(long, help = "Maximum memory usage for merge operations (e.g., '32GB', '1TB'). Defaults to 50% of system memory.")]
+        #[arg(
+            long,
+            help = "Maximum memory usage for merge operations (e.g., '32GB', '1TB'). Defaults to 50% of system memory."
+        )]
         max_memory: Option<String>,
 
         /// Use prefix cache merge (memory-efficient with error isolation)
-        #[arg(long, help = "Use prefix cache merge strategy for memory-efficient processing with error isolation")]
+        #[arg(
+            long,
+            help = "Use prefix cache merge strategy for memory-efficient processing with error isolation"
+        )]
         use_prefix_cache: bool,
 
         /// Batch size for prefix cache merge (number of k-mers per buffer flush)
-        #[arg(long, default_value = "100000", help = "Batch size for prefix cache merge. Higher values use more memory but are faster. (default: 100000)")]
+        #[arg(
+            long,
+            default_value = "100000",
+            help = "Batch size for prefix cache merge. Higher values use more memory but are faster. (default: 100000)"
+        )]
         batch_size: usize,
 
         /// Number of threads for parallel processing (0 = all cores)
-        #[arg(long, default_value = "0", help = "Number of threads for parallel processing (0 = use all cores).")]
+        #[arg(
+            long,
+            default_value = "0",
+            help = "Number of threads for parallel processing (0 = use all cores)."
+        )]
         num_threads: usize,
 
         /// Merge strategy for prefix cache mode
@@ -367,7 +387,7 @@ pub enum Commands {
         /// Maximum count threshold
         #[arg(short = 'U', long = "max-count")]
         max_count: Option<u64>,
-    }
+    },
 }
 
 // Filtering helper functions for the Count command
@@ -378,7 +398,11 @@ impl Commands {
     /// Option<CountFilter> for the filtering parameters
     pub fn create_count_filter(&self) -> Option<crate::hash::CountFilter> {
         match self {
-            Commands::Count { min_count, max_count, .. } => {
+            Commands::Count {
+                min_count,
+                max_count,
+                ..
+            } => {
                 if min_count.is_some() || max_count.is_some() {
                     Some(crate::hash::CountFilter::new(*min_count, *max_count))
                 } else {
@@ -395,12 +419,16 @@ impl Commands {
     /// Result<(), Vec<String>> with validation errors if any
     pub fn validate_filtering(&self) -> Result<(), Vec<String>> {
         match self {
-            Commands::Count { min_count, max_count, .. } => {
+            Commands::Count {
+                min_count,
+                max_count,
+                ..
+            } => {
                 let mut errors = Vec::new();
 
                 if let Some(min) = min_count {
                     if *min == 0 {
-                        // Allow min_count = 0 for jellyfish compatibility
+                        // Allow min_count = 0, which includes all k-mers
                         // but warn that it includes all k-mers
                     }
                 }
@@ -433,9 +461,11 @@ impl Commands {
     /// true if filtering parameters are specified
     pub fn has_filtering(&self) -> bool {
         match self {
-            Commands::Count { min_count, max_count, .. } => {
-                min_count.is_some() || max_count.is_some()
-            }
+            Commands::Count {
+                min_count,
+                max_count,
+                ..
+            } => min_count.is_some() || max_count.is_some(),
             _ => false,
         }
     }
@@ -456,7 +486,9 @@ impl Commands {
 
                 // Check if either input files or directory is provided
                 if input.is_empty() && directory.is_none() {
-                    errors.push("Either input files (-i) or directory (-d) must be specified".to_string());
+                    errors.push(
+                        "Either input files (-i) or directory (-d) must be specified".to_string(),
+                    );
                 }
 
                 // Validate k-mer size

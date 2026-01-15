@@ -2,10 +2,10 @@
 //!
 //! Provides human-readable text format for k-mer counting results.
 
-use std::io::Write;
 use crate::error::{ProcessingError, ProcessingResult};
 use crate::hash::table::CounterStats;
 use crate::kmer::encoding::decode_kmer;
+use std::io::Write;
 
 /// Write k-mer counts in text format
 ///
@@ -73,8 +73,12 @@ pub fn write_json_format<W: Write>(
         .map_err(|e| ProcessingError::with_context("Failed to write kmer length", e))?;
     writeln!(writer, "  \"canonical_mode\": {},", stats.canonical_mode)
         .map_err(|e| ProcessingError::with_context("Failed to write canonical mode", e))?;
-    writeln!(writer, "  \"total_kmers_processed\": {},", stats.total_kmers)
-        .map_err(|e| ProcessingError::with_context("Failed to write total processed", e))?;
+    writeln!(
+        writer,
+        "  \"total_kmers_processed\": {},",
+        stats.total_kmers
+    )
+    .map_err(|e| ProcessingError::with_context("Failed to write total processed", e))?;
     writeln!(writer, "  \"unique_kmers\": {},", stats.unique_kmers)
         .map_err(|e| ProcessingError::with_context("Failed to write unique count", e))?;
     writeln!(writer, "  \"kmers\": [")
@@ -86,11 +90,19 @@ pub fn write_json_format<W: Write>(
         let is_last = i == kmer_counts.len() - 1;
 
         if is_last {
-            writeln!(writer, "    {{\"sequence\": \"{}\", \"count\": {}}}", sequence, count)
-                .map_err(|e| ProcessingError::with_context("Failed to write last k-mer", e))?;
+            writeln!(
+                writer,
+                "    {{\"sequence\": \"{}\", \"count\": {}}}",
+                sequence, count
+            )
+            .map_err(|e| ProcessingError::with_context("Failed to write last k-mer", e))?;
         } else {
-            writeln!(writer, "    {{\"sequence\": \"{}\", \"count\": {}}},", sequence, count)
-                .map_err(|e| ProcessingError::with_context("Failed to write k-mer", e))?;
+            writeln!(
+                writer,
+                "    {{\"sequence\": \"{}\", \"count\": {}}},",
+                sequence, count
+            )
+            .map_err(|e| ProcessingError::with_context("Failed to write k-mer", e))?;
         }
     }
 

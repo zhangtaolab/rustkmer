@@ -4,13 +4,13 @@
 [![Build Status](https://img.shields.io/github/workflow/status/your-username/rustkmer/CI)](https://github.com/your-username/rustkmer/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-高性能的k-mer计数和查询工具，使用Rust实现，专为现代生物信息学应用设计。相比Jellyfish实现**84倍性能提升**。
+高性能的k-mer计数和查询工具，使用Rust实现，专为现代生物信息学应用设计。
 
 ## 🚀 主要特性
 
 ### 🏆 性能优势
-- **84倍查询性能提升**: 22,703 queries/sec vs Jellyfish 270 queries/sec (50k k-mers测试)
-- **384-1526倍排序数据库提升**: 相比非排序数据库的查询性能
+- **高性能查询**: 优化的查询引擎，支持22,703+ queries/sec
+- **排序数据库优化**: 二分搜索提供384-1526倍性能提升
 - **内存优化**: 高效的内存管理和缓存友好的数据结构
 - **大规模处理**: 支持>100M k-mers的大型基因组数据集
 
@@ -19,14 +19,14 @@
 - **批量查询**: 高效的批量k-mer查询处理
 - **🔥 模糊查询**: 通配符和突变容忍搜索，支持复杂模式匹配
 - **排序数据库**: 二分搜索优化，无需预加载
-- **Jellyfish兼容**: 命令行接口与jellyfish高度兼容
+- **标准兼容**: 遵循k-mer计数的行业标准
 - **Python集成**: 完整的Python API和示例代码
 - **压缩文件支持**: 自动处理.gz压缩的FASTA/FASTQ文件
 - **跨平台**: 支持Linux、macOS和Windows
 - **内存映射**: 高效的文件I/O操作
 
 ### 🔬 科学验证
-- **100%准确性**: 与Jellyfish结果完全一致
+- **准确性验证**: 经过大规模真实数据测试验证
 - **大规模测试**: 基于OSA1 r7 assembly (381MB)的真实数据测试
 - **性能分析**: 详细的性能基准测试和优化建议
 
@@ -431,10 +431,10 @@ rustkmer fuzzy-query -d genome.rkdb -q "ATCGATCGATCGATCGATCGA" -m 2
 rustkmer fuzzy-query -d genome.rkdb -f patterns.txt -o results.csv --format csv
 ```
 
-### Jellyfish兼容示例
+### 标准使用示例
 
 ```bash
-# 与jellyfish相同的参数
+# 计数参数
 rustkmer count -k 31 -m 4G -t 16 -s 100M -L 5 -U 1000 -C -o counts.rkdb reads.fastq
 
 # 查询多个k-mers
@@ -621,8 +621,7 @@ RustKmer使用自定义的RKDB (RustKmer Database) 二进制格式：
 
 | 工具 | 查询速度 | 处理时间 | 性能提升 |
 |------|----------|----------|----------|
-| **RustKmer** | 22,703 queries/sec | 2.20秒 | **84.1x** |
-| Jellyfish | 270 queries/sec | ~185秒 | 基准 |
+| **RustKmer** | 22,703 queries/sec | 2.20秒 | 基准 |
 
 **数据库优化效果**:
 
@@ -634,24 +633,7 @@ RustKmer使用自定义的RKDB (RustKmer Database) 二进制格式：
 **关键发现**:
 - ✅ 排序数据库提供巨大性能提升
 - ✅ 批量查询比单个查询效率高数千倍
-- ✅ 与Jellyfish 100%结果一致性
-
-### 兼容性
-
-#### 与Jellyfish的兼容性
-
-**完全兼容的功能**:
-- k-mer计数和基本参数
-- canonical k-mer处理
-- 计数过滤 (-L/-U 参数)
-- FASTA/FASTQ输入格式
-- 查询功能
-
-**差异和改进**:
-- 自定义RKDB格式 (更高效的查询)
-- 排序数据库支持 (显著的性能提升)
-- 更好的内存管理
-- Rust实现的内存安全保证
+- ✅ 高性能 Rust 实现
 
 ## 🚀 快速示例
 
@@ -705,9 +687,9 @@ python3 examples/python_integration.py
 
 我们进行了大规模性能测试，验证了以下关键发现：
 
-1. **84倍性能提升**: 相比Jellyfish (50k k-mers测试)
+1. **高性能查询**: 22,703+ queries/sec
 2. **排序数据库优化**: 384-1526倍性能提升
-3. **100%准确性**: 与Jellyfish结果完全一致
+3. **准确性验证**: 经过大规模测试验证
 4. **批量查询优化**: 批量查询比单个查询效率高数千倍
 
 详细测试报告见: [性能分析文档](specs/003-parallel-query/LARGE_SCALE_PERFORMANCE_ANALYSIS.md)
@@ -839,7 +821,6 @@ cargo flamegraph --bin rustkmer -- count -k 21 input.fa
 
 ## 🙏 致谢
 
-- **Jellyfish**: 提供了优秀的k-mer计数工具和算法参考
 - **Rust社区**: 提供了高性能的系统和生物信息学库
 - **Rayon**: 出色的并行计算框架
 
@@ -1672,12 +1653,10 @@ git push origin feature/your-modification
 - 🔥 PyO3高性能Python扩展
 - Python API集成（多种方式）
 - 完整的性能测试验证
-- 与Jellyfish 100%兼容性
 
 🚀 **性能指标**:
-- 84倍查询性能提升 (vs Jellyfish)
-- 22,703 queries/sec 处理能力
-- 384-1526倍排序数据库优化
+- 高性能查询: 22,703+ queries/sec
+- 排序数据库优化: 384-1526倍性能提升
 - 支持>100M k-mers大规模数据
 - PyO3扩展：最高性能和完整功能访问
 

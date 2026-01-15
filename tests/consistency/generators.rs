@@ -49,23 +49,19 @@ pub fn create_mixed_sequences() -> Vec<String> {
         "C".repeat(32),
         "G".repeat(32),
         "T".repeat(32),
-
         // Alternating patterns
         "AC".repeat(16),
         "AG".repeat(16),
         "AT".repeat(16),
         "CG".repeat(16),
-
         // Complex patterns
         "ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGACGT".to_string(),
         "TTTTGGGGAAAAACCCCTTTTGGGGGGGAAAAACCCCTTTTGGGGGGGAAAAACCCCTTTTGGGGGGGAAAAACCC".to_string(),
-
         // With ambiguous bases
         "ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGNN".to_string(),
-
         // Edge cases
-        "A".to_string(),  // Single base
+        "A".to_string(),   // Single base
         "AC".to_string(),  // Two bases
-        "ACG".to_string(),  // Three bases
+        "ACG".to_string(), // Three bases
     ]
 }

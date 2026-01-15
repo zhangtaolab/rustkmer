@@ -31,11 +31,10 @@ pub enum MergeError {
     },
 
     /// Memory allocation error during merge
-    #[error("Insufficient memory for merge operation. Required: {required}MB, Available: {available}MB")]
-    InsufficientMemory {
-        required: u64,
-        available: u64,
-    },
+    #[error(
+        "Insufficient memory for merge operation. Required: {required}MB, Available: {available}MB"
+    )]
+    InsufficientMemory { required: u64, available: u64 },
 
     /// K-mer count overflow during merge
     #[error("K-mer count overflow for k-mer {kmer:X}. Current count: {current}, Additional: {additional}")]
@@ -47,16 +46,11 @@ pub enum MergeError {
 
     /// Invalid database format
     #[error("Invalid database format in '{path}': {reason}")]
-    InvalidFormat {
-        path: String,
-        reason: String,
-    },
+    InvalidFormat { path: String, reason: String },
 
     /// Merge operation interrupted
     #[error("Merge operation interrupted: {reason}")]
-    Interrupted {
-        reason: String,
-    },
+    Interrupted { reason: String },
 
     /// Temporary file operation failed
     #[error("Temporary file operation failed: {operation} on '{path}': {error}")]
@@ -68,15 +62,11 @@ pub enum MergeError {
 
     /// Concurrent modification detected
     #[error("Concurrent modification detected on database '{path}' during merge")]
-    ConcurrentModification {
-        path: String,
-    },
+    ConcurrentModification { path: String },
 
     /// Configuration error
     #[error("Invalid merge configuration: {details}")]
-    Configuration {
-        details: String,
-    },
+    Configuration { details: String },
 }
 
 impl MergeError {
@@ -127,14 +117,27 @@ impl MergeError {
                 "Verify file permissions and disk space".to_string(),
             ],
 
-            MergeError::InsufficientMemory { required, available } => vec![
-                format!("Free up memory: need {}MB but only {}MB available", required, available),
+            MergeError::InsufficientMemory {
+                required,
+                available,
+            } => vec![
+                format!(
+                    "Free up memory: need {}MB but only {}MB available",
+                    required, available
+                ),
                 "Try merging smaller databases or use --force to enable streaming mode".to_string(),
                 "Close other applications to free memory".to_string(),
             ],
 
-            MergeError::CountOverflow { kmer, current, additional } => vec![
-                format!("K-mer {kmer:X} has count {} which would overflow with additional {}", current, additional),
+            MergeError::CountOverflow {
+                kmer,
+                current,
+                additional,
+            } => vec![
+                format!(
+                    "K-mer {kmer:X} has count {} which would overflow with additional {}",
+                    current, additional
+                ),
                 "Consider using larger integer types or filter out high-count k-mers".to_string(),
             ],
 
@@ -150,7 +153,11 @@ impl MergeError {
                 "The merge can be resumed if temporary files are preserved".to_string(),
             ],
 
-            MergeError::TempFileError { operation, path, error } => vec![
+            MergeError::TempFileError {
+                operation,
+                path,
+                error,
+            } => vec![
                 format!("{} failed on '{}': {}", operation, path, error),
                 "Check temporary directory permissions".to_string(),
                 "Ensure sufficient disk space for temporary files".to_string(),
@@ -158,7 +165,8 @@ impl MergeError {
 
             MergeError::ConcurrentModification { path } => vec![
                 format!("Database '{}' was modified during merge", path),
-                "Retry the merge operation when no other processes are accessing the databases".to_string(),
+                "Retry the merge operation when no other processes are accessing the databases"
+                    .to_string(),
                 "Consider using file locking to prevent concurrent access".to_string(),
             ],
 
@@ -176,10 +184,15 @@ impl MergeError {
         if self.is_recoverable() {
             let suggestions = self.recovery_suggestions();
             if !suggestions.is_empty() {
-                format!("{}\n\nRecovery suggestions:\n{}", base, suggestions.iter()
-                    .map(|s| format!("  • {}", s))
-                    .collect::<Vec<_>>()
-                    .join("\n"))
+                format!(
+                    "{}\n\nRecovery suggestions:\n{}",
+                    base,
+                    suggestions
+                        .iter()
+                        .map(|s| format!("  • {}", s))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
             } else {
                 base
             }
@@ -222,13 +235,15 @@ mod tests {
         assert!(MergeError::IncompatibleDatabase {
             details: "test".to_string(),
             source: None,
-        }.is_recoverable());
+        }
+        .is_recoverable());
 
         assert!(!MergeError::CountOverflow {
             kmer: 0,
             current: u32::MAX,
             additional: 1,
-        }.is_recoverable());
+        }
+        .is_recoverable());
     }
 
     #[test]

@@ -76,8 +76,7 @@ pub fn create_database_from_kmers(
         sorted_kmers.sort_by_key(|(kmer, _)| *kmer);
     }
 
-    RKDatabase::from_kmer_pairs(sorted_kmers, kmer_size, canonical, sorted)
-        .map_err(|e| e.into())
+    RKDatabase::from_kmer_pairs(sorted_kmers, kmer_size, canonical, sorted).map_err(|e| e.into())
 }
 
 /// Generate a simple test k-mer encoding
@@ -97,13 +96,19 @@ pub fn encode_test_kmer(value: u64, kmer_size: u8) -> u128 {
 
 /// Generate a sequence of k-mers for testing
 pub fn generate_kmer_sequence(start: u64, count: usize, kmer_size: u8) -> Vec<u128> {
-    (0..count).map(|i| encode_test_kmer(start + i as u64, kmer_size)).collect()
+    (0..count)
+        .map(|i| encode_test_kmer(start + i as u64, kmer_size))
+        .collect()
 }
 
 /// Validate that two databases have the same k-mers (order-independent)
 pub fn databases_have_same_kmers(db1: &RKDatabase, db2: &RKDatabase) -> TestResult<bool> {
-    let kmers1: Vec<(u128, u32)> = db1.all_kmers().map_err(|e| format!("Database error: {}", e))?;
-    let kmers2: Vec<(u128, u32)> = db2.all_kmers().map_err(|e| format!("Database error: {}", e))?;
+    let kmers1: Vec<(u128, u32)> = db1
+        .all_kmers()
+        .map_err(|e| format!("Database error: {}", e))?;
+    let kmers2: Vec<(u128, u32)> = db2
+        .all_kmers()
+        .map_err(|e| format!("Database error: {}", e))?;
 
     if kmers1.len() != kmers2.len() {
         return Ok(false);

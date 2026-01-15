@@ -13,8 +13,14 @@ pub enum KmerError {
     #[error("Invalid character at position {pos}: '{char}' in sequence")]
     InvalidCharacter { pos: usize, char: char },
 
-    #[error("Sequence too short: {length} bases (minimum {min_required} for k-mer size {kmer_size})")]
-    SequenceTooShort { length: usize, min_required: usize, kmer_size: usize },
+    #[error(
+        "Sequence too short: {length} bases (minimum {min_required} for k-mer size {kmer_size})"
+    )]
+    SequenceTooShort {
+        length: usize,
+        min_required: usize,
+        kmer_size: usize,
+    },
 
     #[error("File format error in '{file}': {reason}")]
     FileFormatError { file: String, reason: String },

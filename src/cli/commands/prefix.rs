@@ -8,8 +8,8 @@ use std::path::Path;
 
 use crate::cli::args::Args;
 use crate::database::format::RKDatabase;
-use crate::error::{KmerError, ProcessingResult};
 use crate::database::prefix_query_optimized::MemoryBlockInfo;
+use crate::error::{KmerError, ProcessingResult};
 
 /// Arguments for prefix query command
 #[derive(Debug)]
@@ -58,10 +58,11 @@ pub fn execute_prefix_query(args: &Args) -> ProcessingResult<()> {
             };
 
             execute_prefix_query_impl(&prefix_args)
-        },
+        }
         _ => Err(KmerError::ProcessingError(
-            "Invalid command for prefix query execution".to_string()
-        ).into()),
+            "Invalid command for prefix query execution".to_string(),
+        )
+        .into()),
     }
 }
 
@@ -76,15 +77,14 @@ fn execute_prefix_query_impl(args: &PrefixQueryArgs) -> ProcessingResult<()> {
         args.pattern.clone()
     } else {
         return Err(KmerError::ProcessingError(
-            "Either --pattern or --prefix must be specified".to_string()
-        ).into());
+            "Either --pattern or --prefix must be specified".to_string(),
+        )
+        .into());
     };
 
     // Validate pattern format
     if search_pattern.is_empty() {
-        return Err(KmerError::ProcessingError(
-            "Pattern cannot be empty".to_string()
-        ).into());
+        return Err(KmerError::ProcessingError("Pattern cannot be empty".to_string()).into());
     }
 
     // Check if database file exists
@@ -109,26 +109,32 @@ fn execute_prefix_query_impl(args: &PrefixQueryArgs) -> ProcessingResult<()> {
         if !args.quiet {
             eprintln!("Executing hybrid search for pattern: {}", search_pattern);
         }
-        
-        use crate::database::prefix_query_optimized::{extract_hybrid_by_pattern};
-        
-        
+
+        use crate::database::prefix_query_optimized::extract_hybrid_by_pattern;
+
         extract_hybrid_by_pattern(&database, &search_pattern.to_uppercase())
             .map_err(|e| KmerError::ProcessingError(format!("Hybrid query failed: {}", e)))?
     } else {
         // Simple prefix search mode
         let prefix_len = search_pattern.len();
-        
+
         if prefix_len >= kmer_size {
-            return Err(KmerError::ProcessingError(
-                format!("Prefix length ({}) must be less than k-mer size ({})", prefix_len, kmer_size)
-            ).into());
+            return Err(KmerError::ProcessingError(format!(
+                "Prefix length ({}) must be less than k-mer size ({})",
+                prefix_len, kmer_size
+            ))
+            .into());
         }
 
-        if !search_pattern.chars().all(|c| matches!(c.to_ascii_uppercase(), 'A' | 'T' | 'C' | 'G')) {
-            return Err(KmerError::ProcessingError(
-                format!("Pattern contains invalid characters: {}. Only A, T, C, G are allowed.", search_pattern)
-            ).into());
+        if !search_pattern
+            .chars()
+            .all(|c| matches!(c.to_ascii_uppercase(), 'A' | 'T' | 'C' | 'G'))
+        {
+            return Err(KmerError::ProcessingError(format!(
+                "Pattern contains invalid characters: {}. Only A, T, C, G are allowed.",
+                search_pattern
+            ))
+            .into());
         }
 
         if !args.quiet {
@@ -145,8 +151,9 @@ fn execute_prefix_query_impl(args: &PrefixQueryArgs) -> ProcessingResult<()> {
     let filtered_matches = if args.min_count.is_some() || args.max_count.is_some() {
         let min_count = args.min_count.unwrap_or(0);
         let max_count = args.max_count.unwrap_or(u64::MAX);
-        
-        result.matches
+
+        result
+            .matches
             .into_iter()
             .filter(|(_, count)| *count >= min_count && *count <= max_count)
             .collect()
@@ -156,8 +163,9 @@ fn execute_prefix_query_impl(args: &PrefixQueryArgs) -> ProcessingResult<()> {
 
     // Setup output writer
     let mut writer: Box<dyn Write> = if let Some(output_file) = &args.output {
-        let file = std::fs::File::create(output_file)
-            .map_err(|e| KmerError::FileWriteError(format!("Failed to create output file: {}", e)))?;
+        let file = std::fs::File::create(output_file).map_err(|e| {
+            KmerError::FileWriteError(format!("Failed to create output file: {}", e))
+        })?;
         Box::new(std::io::BufWriter::new(file))
     } else {
         Box::new(std::io::stdout())
@@ -169,14 +177,23 @@ fn execute_prefix_query_impl(args: &PrefixQueryArgs) -> ProcessingResult<()> {
         "json" => output_json(&mut writer, &filtered_matches, &result.memory_block, args)?,
         "csv" => output_csv(&mut writer, &filtered_matches, &result.memory_block, args)?,
         "tsv" => output_tsv(&mut writer, &filtered_matches, &result.memory_block, args)?,
-        _ => return Err(KmerError::ProcessingError(
-            format!("Unsupported output format: {}", args.format)
-        ).into()),
+        _ => {
+            return Err(KmerError::ProcessingError(format!(
+                "Unsupported output format: {}",
+                args.format
+            ))
+            .into())
+        }
     }
 
     // Performance profiling output
     if args.profile || args.verbose {
-        output_performance_info(&result.memory_block, query_time, filtered_matches.len(), args)?;
+        output_performance_info(
+            &result.memory_block,
+            query_time,
+            filtered_matches.len(),
+            args,
+        )?;
     }
 
     Ok(())
@@ -191,7 +208,7 @@ fn output_table(
 ) -> ProcessingResult<()> {
     // Write header
     writeln!(writer, "K-mer\tCount")?;
-    
+
     // Write data
     for (kmer, count) in matches {
         writeln!(writer, "{}\t{}", kmer, count)?;
@@ -207,11 +224,13 @@ fn output_json(
     memory_info: &MemoryBlockInfo,
     args: &PrefixQueryArgs,
 ) -> ProcessingResult<()> {
-    let matches_json: Vec<String> = matches.iter()
+    let matches_json: Vec<String> = matches
+        .iter()
         .map(|(kmer, count)| format!(r#"{{"kmer": "{}", "count": {}}}"#, kmer, count))
         .collect();
-    
-    let json_output = format!(r#"{{
+
+    let json_output = format!(
+        r#"{{
   "query": {{
     "prefix": "{}",
     "database": "{}"
@@ -252,7 +271,7 @@ fn output_csv(
 ) -> ProcessingResult<()> {
     // Write header
     writeln!(writer, "kmer,count")?;
-    
+
     // Write data
     for (kmer, count) in matches {
         writeln!(writer, "{},{}", kmer, count)?;
@@ -270,7 +289,7 @@ fn output_tsv(
 ) -> ProcessingResult<()> {
     // Write header
     writeln!(writer, "kmer\tcount")?;
-    
+
     // Write data
     for (kmer, count) in matches {
         writeln!(writer, "{}\t{}", kmer, count)?;
@@ -290,11 +309,13 @@ fn output_performance_info(
         eprintln!("\n=== Performance Profile ===");
         eprintln!("Query time: {:?}", query_time);
         eprintln!("Matches found: {}", match_count);
-        eprintln!("Memory block: [{}, {}) - {} k-mers", 
-                 memory_info.start_index, memory_info.end_index, memory_info.block_size);
+        eprintln!(
+            "Memory block: [{}, {}) - {} k-mers",
+            memory_info.start_index, memory_info.end_index, memory_info.block_size
+        );
         eprintln!("Database sorted: {}", memory_info.is_sorted);
         eprintln!("Optimization enabled: Yes");
-        
+
         if memory_info.is_sorted {
             eprintln!("Performance gain: ~10-100x vs fuzzy-query for prefix patterns");
         }
@@ -311,7 +332,7 @@ mod tests {
     fn test_prefix_validation() {
         // Test valid prefix
         assert!(validate_prefix("ATCG").is_ok());
-        
+
         // Test invalid prefix
         assert!(validate_prefix("").is_err());
         assert!(validate_prefix("ATCGNN").is_err());
@@ -322,10 +343,14 @@ mod tests {
             return Err(crate::error::ProcessingError::new("Prefix cannot be empty"));
         }
 
-        if !prefix.chars().all(|c| matches!(c.to_ascii_uppercase(), 'A' | 'T' | 'C' | 'G')) {
-            return Err(crate::error::ProcessingError::new(
-                format!("Prefix contains invalid characters: {}", prefix)
-            ));
+        if !prefix
+            .chars()
+            .all(|c| matches!(c.to_ascii_uppercase(), 'A' | 'T' | 'C' | 'G'))
+        {
+            return Err(crate::error::ProcessingError::new(format!(
+                "Prefix contains invalid characters: {}",
+                prefix
+            )));
         }
 
         Ok(())

@@ -94,7 +94,10 @@ fn generate_wildcard_combinations(
 ///
 /// # Returns
 /// Vector of all concrete sequences without wildcards
-pub fn expand_wildcards_iterative(query: &str, max_variants: Option<usize>) -> FuzzyResult<Vec<String>> {
+pub fn expand_wildcards_iterative(
+    query: &str,
+    max_variants: Option<usize>,
+) -> FuzzyResult<Vec<String>> {
     let wildcard_positions: Vec<usize> = query
         .chars()
         .enumerate()
@@ -154,7 +157,10 @@ pub fn would_exceed_wildcard_limit(query: &str, max_variants: usize) -> bool {
 /// Validate wildcard query parameters
 pub fn validate_wildcard_query(query: &str, max_variants: Option<usize>) -> FuzzyResult<()> {
     // Check for invalid characters
-    if !query.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G' | 'N')) {
+    if !query
+        .chars()
+        .all(|c| matches!(c, 'A' | 'T' | 'C' | 'G' | 'N'))
+    {
         return Err(FuzzyError::InvalidQuery(
             "Query contains invalid characters (only A,T,C,G,N allowed)".to_string(),
         ));
@@ -208,7 +214,15 @@ pub fn expand_wildcards_streaming(
     let mut generated = 0;
 
     // Use iterative generation with batch processing
-    generate_wildcard_combinations_batched(query, 0, &mut batch, &mut generated, total_variants, batch_size, &mut processor)?;
+    generate_wildcard_combinations_batched(
+        query,
+        0,
+        &mut batch,
+        &mut generated,
+        total_variants,
+        batch_size,
+        &mut processor,
+    )?;
 
     // Process any remaining variants in the last batch
     if !batch.is_empty() {
@@ -262,7 +276,7 @@ fn generate_wildcard_combinations_batched(
         // Start fresh with the new query (recalculate wildcard positions)
         generate_wildcard_combinations_batched(
             &new_query,
-            0,  // Start fresh for the new query
+            0, // Start fresh for the new query
             batch,
             generated,
             total_variants,

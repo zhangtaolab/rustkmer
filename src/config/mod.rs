@@ -7,6 +7,6 @@
 pub mod manager;
 
 pub use manager::{
-    ConfigManager, GlobalConfig, MemoryConfig, KmerCountingConfig,
-    DatabaseConfig, OutputConfig, LoggingConfig, OperationConfig,
+    ConfigManager, DatabaseConfig, GlobalConfig, KmerCountingConfig, LoggingConfig, MemoryConfig,
+    OperationConfig, OutputConfig,
 };

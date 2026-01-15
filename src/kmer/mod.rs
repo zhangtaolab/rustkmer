@@ -13,8 +13,10 @@ pub mod operations;
 /// u128 encoding validation module
 pub mod validation;
 
-pub use encoding::{encode_kmer, decode_kmer, encode_kmer_u64, decode_kmer_u64, encode_kmer_u128, decode_kmer_u128};
 pub use canonical::canonical_kmer;
+pub use encoding::{
+    decode_kmer, decode_kmer_u128, decode_kmer_u64, encode_kmer, encode_kmer_u128, encode_kmer_u64,
+};
 
 /// A k-mer that can be encoded as either u64 (k≤32) or u128 (k≤64)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

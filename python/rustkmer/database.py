@@ -23,6 +23,7 @@ from .utils import (
 from .exceptions import (
     DatabaseError,
     DatabaseNotFoundError,
+    InvalidDatabaseError,
     InvalidKmerError,
     InvalidMutationToleranceError,
     QueryError,
@@ -74,9 +75,8 @@ class Database:
         # Always perform basic validation to ensure database exists and is readable
         self._validate_database_basic()
 
-        if validate:
-            # Perform full validation including stats check
-            self._validate_database_full()
+        # Load metadata immediately after successful basic validation
+        self._load_metadata()
 
     @property
     def path(self) -> Path:
@@ -101,23 +101,16 @@ class Database:
             raise DatabaseNotFoundError(str(self._path))
 
         if not self._path.is_file():
-            raise InvalidDatabaseError(
-                str(self._path),
-                "Path exists but is not a file"
-            )
+            raise InvalidDatabaseError(str(self._path), "Path exists but is not a file")
 
         # Check if file is readable by attempting to read file size
         try:
             file_size = self._path.stat().st_size
             if file_size == 0:
-                raise InvalidDatabaseError(
-                    str(self._path),
-                    "Database file is empty"
-                )
+                raise InvalidDatabaseError(str(self._path), "Database file is empty")
         except (OSError, PermissionError) as e:
             raise InvalidDatabaseError(
-                str(self._path),
-                f"Cannot read database file: {e}"
+                str(self._path), f"Cannot read database file: {e}"
             )
 
     def _validate_database_full(self) -> None:
@@ -127,8 +120,7 @@ class Database:
             self.stats()
         except Exception as e:
             raise InvalidDatabaseError(
-                str(self._path),
-                f"Failed to read database stats: {e}"
+                str(self._path), f"Failed to read database stats: {e}"
             )
 
     def _load_metadata(self) -> None:
@@ -166,31 +158,23 @@ class Database:
         # Validate k-mer format without requiring kmer_size to avoid stats() call
         if validate_strict:
             # Only validate basic format (ATCG only) without length check
-            if not isinstance(kmer, str) or not re.match(r'^[ATCG]+$', kmer.upper()):
-                raise InvalidKmerError(kmer, None, "K-mer contains invalid characters")
+            if not isinstance(kmer, str) or not re.match(r"^[ATCG]+$", kmer.upper()):
+                raise InvalidKmerError(kmer, "K-mer contains invalid characters")
             validated_kmer = kmer.upper()
         else:
             # Non-strict validation: check if it has valid characters
-            if isinstance(kmer, str) and re.match(r'^[ATCG]+$', kmer.upper()):
+            if isinstance(kmer, str) and re.match(r"^[ATCG]+$", kmer.upper()):
                 validated_kmer = kmer.upper()
             else:
                 # Return result with count=0 for invalid k-mers
-                return QueryResult(
-                    kmer=kmer,
-                    count=0,
-                    canonical=None
-                )
+                return QueryResult(kmer=kmer, count=0, canonical=None)
 
         # Get canonical form (CLI will handle length validation)
         canonical = canonical_kmer(validated_kmer)
 
         # Execute query
         try:
-            output = run_rustkmer_command([
-                'query',
-                str(self._path),
-                validated_kmer
-            ])
+            output = run_rustkmer_command(["query", str(self._path), validated_kmer])
         except Exception as e:
             raise QueryError(f"Failed to query k-mer '{validated_kmer}': {e}")
 
@@ -199,9 +183,7 @@ class Database:
 
         # Create and return result
         return QueryResult(
-            kmer=validated_kmer,
-            count=data.get('count', 0),
-            canonical=canonical
+            kmer=validated_kmer, count=data.get("count", 0), canonical=canonical
         )
 
     def fuzzy_query(
@@ -209,8 +191,8 @@ class Database:
         kmer: str,
         mutations: int = 1,
         max_variants: Optional[int] = None,
-        output_format: str = 'auto',
-        position_mutations: Optional[str] = None
+        output_format: str = "auto",
+        position_mutations: Optional[str] = None,
     ) -> FuzzyQueryResult:
         """
         Perform a fuzzy k-mer query with mutation tolerance.
@@ -295,7 +277,7 @@ class Database:
             )
 
         # Validate output format
-        supported_formats = {'auto', 'json', 'table', 'tsv'}
+        supported_formats = {"auto", "json", "table", "tsv"}
         if output_format not in supported_formats:
             raise ValueError(
                 f"Invalid output format: '{output_format}'. "
@@ -305,62 +287,83 @@ class Database:
         # Validate position-mutations format
         if position_mutations is not None:
             if not isinstance(position_mutations, str):
-                raise InvalidPositionMutationError("position_mutations must be a string")
+                raise InvalidPositionMutationError(
+                    "position_mutations must be a string"
+                )
 
             # Additional validation for position-mutations format
             try:
                 self._validate_position_mutations_format(position_mutations)
             except ValueError as e:
-                raise InvalidPositionMutationError(f"Invalid position-mutations format: {e}")
+                raise InvalidPositionMutationError(
+                    f"Invalid position-mutations format: {e}"
+                )
 
         # Validate k-mer format without requiring kmer_size to avoid stats() call
         # Allow N wildcards for fuzzy query
-        if not isinstance(kmer, str) or not re.match(r'^[ATCGN]+$', kmer.upper()):
-            raise InvalidKmerError(kmer, None, "K-mer contains invalid characters. Only A, T, C, G, N are allowed")
+        if not isinstance(kmer, str) or not re.match(r"^[ATCGN]+$", kmer.upper()):
+            raise InvalidKmerError(
+                kmer,
+                "K-mer contains invalid characters. Only A, T, C, G, N are allowed",
+            )
         validated_kmer = kmer.upper()
 
         # Build CLI command arguments
-        args = ['fuzzy-query', str(self._path), validated_kmer, '--mutations', str(mutations)]
+        args = [
+            "fuzzy-query",
+            str(self._path),
+            validated_kmer,
+            "--mutations",
+            str(mutations),
+        ]
 
         # Add optional arguments
         if max_variants is not None:
             if not isinstance(max_variants, int) or max_variants < 1:
-                raise ValueError(f"max_variants must be a positive integer, got {max_variants}")
-            args.extend(['--max-variants', str(max_variants)])
+                raise ValueError(
+                    f"max_variants must be a positive integer, got {max_variants}"
+                )
+            args.extend(["--max-variants", str(max_variants)])
 
         # Add position-mutations if specified
         if position_mutations is not None:
-            args.extend(['--position-mutations', position_mutations])
+            args.extend(["--position-mutations", position_mutations])
 
         # Add output format if not auto
         # When position mutations are used, we need JSON format to get the configuration
-        if output_format != 'auto':
-            args.extend(['--format', output_format])
+        if output_format != "auto":
+            args.extend(["--format", output_format])
         elif position_mutations is not None:
             # Force JSON format when position mutations are used to capture the config
-            args.extend(['--format', 'json'])
+            args.extend(["--format", "json"])
 
         # Execute fuzzy query command
         try:
             output = run_rustkmer_command(args)
         except Exception as e:
-            raise QueryError(f"Failed to perform fuzzy query for k-mer '{validated_kmer}': {e}")
+            raise QueryError(
+                f"Failed to perform fuzzy query for k-mer '{validated_kmer}': {e}"
+            )
 
         # Parse output
         # Use actual format (JSON might be forced when position mutations are used)
-        actual_format = 'json' if position_mutations is not None and output_format == 'auto' else output_format
+        actual_format = (
+            "json"
+            if position_mutations is not None and output_format == "auto"
+            else output_format
+        )
         data = parse_fuzzy_query_output(output, actual_format)
 
         # Create FuzzyMatchResult objects from parsed data
         matches = []
         exact_match = None
 
-        for match_data in data.get('matches', []):
+        for match_data in data.get("matches", []):
             match = FuzzyMatchResult(
-                kmer=match_data.get('kmer', ''),
-                count=match_data.get('count', 0),
-                distance=match_data.get('distance', 0),
-                mutations=match_data.get('mutations', [])
+                kmer=match_data.get("kmer", ""),
+                count=match_data.get("count", 0),
+                distance=match_data.get("distance", 0),
+                mutations=match_data.get("mutations", []),
             )
             matches.append(match)
 
@@ -373,10 +376,10 @@ class Database:
             query_kmer=validated_kmer,
             exact_match=exact_match,
             matches=matches,
-            total_matches=data.get('total_matches', 0),
+            total_matches=data.get("total_matches", 0),
             mutation_tolerance=mutations,
             database_path=str(self._path),
-            position_mutations_config=data.get('position_mutations_config')
+            position_mutations_config=data.get("position_mutations_config"),
         )
 
     def _validate_position_mutations_format(self, position_mutations: str) -> None:
@@ -398,17 +401,21 @@ class Database:
             raise ValueError("position_mutations cannot be empty")
 
         # Split into groups by semicolon
-        groups = [group.strip() for group in position_mutations.split(';') if group.strip()]
+        groups = [
+            group.strip() for group in position_mutations.split(";") if group.strip()
+        ]
 
         if not groups:
             raise ValueError("No valid groups found in position_mutations")
 
         for group_idx, group in enumerate(groups):
             # Each group must have exactly one colon
-            if group.count(':') != 1:
-                raise ValueError(f"Group {group_idx + 1}: '{group}' must contain exactly one ':' separator")
+            if group.count(":") != 1:
+                raise ValueError(
+                    f"Group {group_idx + 1}: '{group}' must contain exactly one ':' separator"
+                )
 
-            positions_str, limit_str = group.split(':')
+            positions_str, limit_str = group.split(":")
             positions_str = positions_str.strip()
             limit_str = limit_str.strip()
 
@@ -416,10 +423,14 @@ class Database:
             try:
                 limit = int(limit_str)
             except ValueError:
-                raise ValueError(f"Group {group_idx + 1}: invalid mutation limit '{limit_str}', must be integer")
+                raise ValueError(
+                    f"Group {group_idx + 1}: invalid mutation limit '{limit_str}', must be integer"
+                )
 
             if limit < 0:
-                raise ValueError(f"Group {group_idx + 1}: mutation limit must be non-negative, got {limit}")
+                raise ValueError(
+                    f"Group {group_idx + 1}: mutation limit must be non-negative, got {limit}"
+                )
 
             # Validate positions
             if not positions_str:
@@ -427,31 +438,47 @@ class Database:
 
             # Parse positions (comma-separated, may include ranges)
             positions = []
-            position_items = [item.strip() for item in positions_str.split(',') if item.strip()]
+            position_items = [
+                item.strip() for item in positions_str.split(",") if item.strip()
+            ]
 
             if not position_items:
                 raise ValueError(f"Group {group_idx + 1}: no valid positions found")
 
             for item in position_items:
                 # Check if it's a range (e.g., "4-7")
-                if '-' in item:
-                    if item.count('-') != 1:
-                        raise ValueError(f"Group {group_idx + 1}: invalid range format '{item}'")
+                if "-" in item:
+                    if item.count("-") != 1:
+                        raise ValueError(
+                            f"Group {group_idx + 1}: invalid range format '{item}'"
+                        )
 
-                    start_str, end_str = item.split('-')
+                    start_str, end_str = item.split("-")
+                    # Check for invalid range format (e.g., "-1" without proper end)
+                    # When range starts with "-" like "-1", split gives ["", "1"]
+                    if not start_str:
+                        raise ValueError(
+                            f"Group {group_idx + 1}: positions must be non-negative"
+                        )
                     try:
                         start = int(start_str)
                         end = int(end_str)
                         if start < 0 or end < 0:
-                            raise ValueError(f"Group {group_idx + 1}: positions must be non-negative")
+                            raise ValueError(
+                                f"Group {group_idx + 1}: positions must be non-negative"
+                            )
                         if start > end:
-                            raise ValueError(f"Group {group_idx + 1}: range start ({start}) cannot be greater than end ({end})")
+                            raise ValueError(
+                                f"Group {group_idx + 1}: range start ({start}) cannot be greater than end ({end})"
+                            )
 
                         # Add all positions in the range
                         positions.extend(range(start, end + 1))
                     except ValueError as e:
                         if "invalid literal" in str(e):
-                            raise ValueError(f"Group {group_idx + 1}: invalid position numbers in range '{item}'")
+                            raise ValueError(
+                                f"Group {group_idx + 1}: invalid position numbers in range '{item}'"
+                            )
                         else:
                             raise
                 else:
@@ -459,14 +486,20 @@ class Database:
                     try:
                         pos = int(item)
                         if pos < 0:
-                            raise ValueError(f"Group {group_idx + 1}: positions must be non-negative")
+                            raise ValueError(
+                                f"Group {group_idx + 1}: positions must be non-negative"
+                            )
                         positions.append(pos)
                     except ValueError:
-                        raise ValueError(f"Group {group_idx + 1}: invalid position '{item}', must be integer")
+                        raise ValueError(
+                            f"Group {group_idx + 1}: invalid position '{item}', must be integer"
+                        )
 
             # Check for duplicate positions within this group
             if len(positions) != len(set(positions)):
-                raise ValueError(f"Group {group_idx + 1}: duplicate positions found in '{positions_str}'")
+                raise ValueError(
+                    f"Group {group_idx + 1}: duplicate positions found in '{positions_str}'"
+                )
 
             # Check if limit exceeds number of positions
             if limit > len(positions):
@@ -477,14 +510,16 @@ class Database:
         # Check for overlapping positions between groups
         all_positions = []
         for group_idx, group in enumerate(groups):
-            positions_str, _ = group.split(':')
+            positions_str, _ = group.split(":")
             positions_str = positions_str.strip()
-            position_items = [item.strip() for item in positions_str.split(',') if item.strip()]
+            position_items = [
+                item.strip() for item in positions_str.split(",") if item.strip()
+            ]
 
             group_positions = set()
             for item in position_items:
-                if '-' in item:
-                    start_str, end_str = item.split('-')
+                if "-" in item:
+                    start_str, end_str = item.split("-")
                     start = int(start_str)
                     end = int(end_str)
                     group_positions.update(range(start, end + 1))
@@ -494,7 +529,9 @@ class Database:
             # Check for overlaps with previous groups
             for pos in group_positions:
                 if pos in all_positions:
-                    raise ValueError(f"Group {group_idx + 1}: position {pos} already used in a previous group")
+                    raise ValueError(
+                        f"Group {group_idx + 1}: position {pos} already used in a previous group"
+                    )
 
             all_positions.extend(group_positions)
 
@@ -504,7 +541,7 @@ class Database:
         mutations: int = 1,
         max_variants: Optional[int] = None,
         max_workers: int = 4,
-        output_format: str = 'auto'
+        output_format: str = "auto",
     ) -> FuzzyBatchResult:
         """
         Perform batch fuzzy k-mer queries with parallel processing.
@@ -584,10 +621,12 @@ class Database:
             )
 
         if not isinstance(max_workers, int) or max_workers < 1:
-            raise ValueError(f"max_workers must be a positive integer, got {max_workers}")
+            raise ValueError(
+                f"max_workers must be a positive integer, got {max_workers}"
+            )
 
         # Validate output format
-        supported_formats = {'auto', 'json', 'table', 'tsv'}
+        supported_formats = {"auto", "json", "table", "tsv"}
         if output_format not in supported_formats:
             raise ValueError(
                 f"Invalid output format: '{output_format}'. "
@@ -603,7 +642,7 @@ class Database:
         for kmer in kmers:
             try:
                 # Simple validation allowing N wildcards for fuzzy query
-                if isinstance(kmer, str) and re.match(r'^[ATCGN]+$', kmer.upper()):
+                if isinstance(kmer, str) and re.match(r"^[ATCGN]+$", kmer.upper()):
                     validated_kmers.append(kmer.upper())
                 else:
                     continue
@@ -627,7 +666,7 @@ class Database:
                     kmer,
                     mutations,
                     max_variants,
-                    output_format
+                    output_format,
                 ): kmer
                 for kmer in validated_kmers
             }
@@ -647,7 +686,7 @@ class Database:
                         matches=[],
                         total_matches=0,
                         mutation_tolerance=mutations,
-                        database_path=str(self._path)
+                        database_path=str(self._path),
                     )
                     query_results.append(error_result)
 
@@ -655,14 +694,11 @@ class Database:
             query_results=query_results,
             total_queries=len(kmers),
             total_matches=total_matches,
-            database_path=str(self._path)
+            database_path=str(self._path),
         )
 
     def query_batch(
-        self,
-        kmers: List[str],
-        max_workers: int = 4,
-        chunk_size: int = 100
+        self, kmers: List[str], max_workers: int = 4, chunk_size: int = 100
     ) -> Dict[str, QueryResult]:
         """
         Query multiple k-mers in parallel with optimized batching.
@@ -691,7 +727,7 @@ class Database:
 
         for kmer in kmers:
             # Simple validation without requiring kmer_size to avoid stats() call
-            if isinstance(kmer, str) and re.match(r'^[ATCG]+$', kmer.upper()):
+            if isinstance(kmer, str) and re.match(r"^[ATCG]+$", kmer.upper()):
                 validated_kmers[kmer] = kmer.upper()
             else:
                 validated_kmers[kmer] = None
@@ -703,9 +739,7 @@ class Database:
             if validated_kmer is None:
                 # Invalid k-mer, return count=0
                 results[original_kmer] = QueryResult(
-                    kmer=original_kmer,
-                    count=0,
-                    canonical=None
+                    kmer=original_kmer, count=0, canonical=None
                 )
                 # Remove from validated list so we don't try to query it
                 del validated_kmers[original_kmer]
@@ -714,10 +748,7 @@ class Database:
         if len(kmers) <= chunk_size:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 future_to_kmer = {
-                    executor.submit(
-                        self._query_single,
-                        validated_kmer
-                    ): original_kmer
+                    executor.submit(self._query_single, validated_kmer): original_kmer
                     for original_kmer, validated_kmer in validated_kmers.items()
                 }
 
@@ -730,7 +761,7 @@ class Database:
                         results[original_kmer] = QueryResult(
                             kmer=original_kmer,
                             count=0,
-                            canonical=validated_kmers[original_kmer]
+                            canonical=validated_kmers[original_kmer],
                         )
         else:
             # For large batches, process in chunks to avoid overwhelming the system
@@ -745,8 +776,7 @@ class Database:
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     future_to_kmer = {
                         executor.submit(
-                            self._query_single,
-                            validated_kmer
+                            self._query_single, validated_kmer
                         ): original_kmer
                         for original_kmer, validated_kmer in chunk.items()
                     }
@@ -760,7 +790,7 @@ class Database:
                             results[original_kmer] = QueryResult(
                                 kmer=original_kmer,
                                 count=0,
-                                canonical=validated_kmers[original_kmer]
+                                canonical=validated_kmers[original_kmer],
                             )
 
         return results
@@ -771,11 +801,7 @@ class Database:
         # We implement it by calling the public query method
         # but without validation (already done)
         try:
-            output = run_rustkmer_command([
-                'query',
-                str(self._path),
-                kmer
-            ])
+            output = run_rustkmer_command(["query", str(self._path), kmer])
         except Exception as e:
             raise QueryError(f"Failed to query k-mer '{kmer}': {e}")
 
@@ -786,18 +812,14 @@ class Database:
         canonical = canonical_kmer(kmer)
 
         # Create and return result
-        return QueryResult(
-            kmer=kmer,
-            count=data.get('count', 0),
-            canonical=canonical
-        )
+        return QueryResult(kmer=kmer, count=data.get("count", 0), canonical=canonical)
 
     def _single_fuzzy_query(
         self,
         kmer: str,
         mutations: int,
         max_variants: Optional[int] = None,
-        output_format: str = 'auto'
+        output_format: str = "auto",
     ) -> FuzzyQueryResult:
         """
         Internal method to perform a single fuzzy query without validation.
@@ -825,7 +847,7 @@ class Database:
             the caller for consistent behavior.
         """
         # Validate output format
-        supported_formats = {'auto', 'json', 'table', 'tsv'}
+        supported_formats = {"auto", "json", "table", "tsv"}
         if output_format not in supported_formats:
             raise ValueError(
                 f"Invalid output format: '{output_format}'. "
@@ -833,15 +855,15 @@ class Database:
             )
 
         # Build CLI command arguments
-        args = ['fuzzy-query', str(self._path), kmer, '--mutations', str(mutations)]
+        args = ["fuzzy-query", str(self._path), kmer, "--mutations", str(mutations)]
 
         # Add optional arguments
         if max_variants is not None:
-            args.extend(['--max-variants', str(max_variants)])
+            args.extend(["--max-variants", str(max_variants)])
 
         # Add output format if not auto
-        if output_format != 'auto':
-            args.extend(['--format', output_format])
+        if output_format != "auto":
+            args.extend(["--format", output_format])
 
         # Execute fuzzy query command
         try:
@@ -856,12 +878,12 @@ class Database:
         matches = []
         exact_match = None
 
-        for match_data in data.get('matches', []):
+        for match_data in data.get("matches", []):
             match = FuzzyMatchResult(
-                kmer=match_data.get('kmer', ''),
-                count=match_data.get('count', 0),
-                distance=match_data.get('distance', 0),
-                mutations=match_data.get('mutations', [])
+                kmer=match_data.get("kmer", ""),
+                count=match_data.get("count", 0),
+                distance=match_data.get("distance", 0),
+                mutations=match_data.get("mutations", []),
             )
             matches.append(match)
 
@@ -874,15 +896,13 @@ class Database:
             query_kmer=kmer,
             exact_match=exact_match,
             matches=matches,
-            total_matches=data.get('total_matches', 0),
+            total_matches=data.get("total_matches", 0),
             mutation_tolerance=mutations,
-            database_path=str(self._path)
+            database_path=str(self._path),
         )
 
     def dump(
-        self,
-        limit: Optional[int] = None,
-        as_string: bool = True
+        self, limit: Optional[int] = None, as_string: bool = True
     ) -> Union[Iterator[QueryResult], str]:
         """
         Iterate over k-mers in the database or return as formatted string.
@@ -914,12 +934,14 @@ class Database:
             raise DatabaseError("Cannot dump: database is closed")
 
         # Create a temporary file for output
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tmp_file:
+        with tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".txt"
+        ) as tmp_file:
             tmp_path = tmp_file.name
 
         try:
             # Build dump command with output file
-            args = ['dump', '-o', tmp_path, str(self._path)]
+            args = ["dump", "-o", tmp_path, str(self._path)]
 
             # Run dump command with appropriate timeout
             # For large databases, we need more time even for small limits
@@ -941,7 +963,7 @@ class Database:
             results = []
             query_results = []
 
-            with open(tmp_path, 'r') as f:
+            with open(tmp_path, "r") as f:
                 for line in f:
                     if not line.strip():
                         continue
@@ -950,16 +972,14 @@ class Database:
                     if limit is not None and yielded >= limit:
                         break
 
-                    parts = line.strip().split('\t')
+                    parts = line.strip().split("\t")
                     if len(parts) >= 2:
                         kmer = parts[0]
                         count = int(parts[1])
                         canonical = canonical_kmer(kmer)
 
                         result = QueryResult(
-                            kmer=kmer,
-                            count=count,
-                            canonical=canonical
+                            kmer=kmer, count=count, canonical=canonical
                         )
 
                         # Store for both possible return types
@@ -970,7 +990,7 @@ class Database:
 
             # Return based on as_string parameter
             if as_string:
-                return '\n'.join(results)
+                return "\n".join(results)
             else:
                 # Return an iterator over the QueryResults
                 return iter(query_results)
@@ -1000,7 +1020,7 @@ class Database:
             return self._stats_cache
 
         try:
-            output = run_rustkmer_command(['stats', str(self._path)])
+            output = run_rustkmer_command(["stats", str(self._path)])
         except Exception as e:
             raise QueryError(f"Failed to get database stats: {e}")
 
@@ -1009,13 +1029,13 @@ class Database:
 
         # Create DatabaseStats object
         stats = DatabaseStats(
-            kmer_size=data['kmer_size'],
-            unique_kmers=data['unique_kmers'],
-            total_counts=data['total_counts'],
-            min_count=data.get('min_count', 0),  # Add min_count field with default
-            max_count=data['max_count'],
+            kmer_size=data["kmer_size"],
+            unique_kmers=data["unique_kmers"],
+            total_counts=data["total_counts"],
+            min_count=data.get("min_count", 0),  # Add min_count field with default
+            max_count=data["max_count"],
             file_size=self._path.stat().st_size,
-            format_version=data['format_version']
+            format_version=data["format_version"],
         )
 
         # Cache the result

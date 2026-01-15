@@ -7,8 +7,12 @@ from unittest.mock import patch
 from rustkmer.fuzzy_query import FuzzyMatchResult, FuzzyQueryResult, FuzzyBatchResult
 from rustkmer.database import Database
 from rustkmer.exceptions import (
-    InvalidMutationToleranceError, InvalidKmerError, QueryError,
-    DatabaseError, BatchQueryError, InvalidPositionMutationError
+    InvalidMutationToleranceError,
+    InvalidKmerError,
+    QueryError,
+    DatabaseError,
+    BatchQueryError,
+    InvalidPositionMutationError,
 )
 
 
@@ -18,12 +22,7 @@ class TestFuzzyMatchResult:
     def test_exact_match_creation(self):
         """Test creating a match result for an exact match."""
         # This will fail until FuzzyMatchResult is properly implemented
-        match = FuzzyMatchResult(
-            kmer="ATCGATC",
-            count=42,
-            distance=0,
-            mutations=[]
-        )
+        match = FuzzyMatchResult(kmer="ATCGATC", count=42, distance=0, mutations=[])
         assert match.kmer == "ATCGATC"
         assert match.count == 42
         assert match.distance == 0
@@ -33,10 +32,7 @@ class TestFuzzyMatchResult:
     def test_mutation_match_creation(self):
         """Test creating a match result with mutations."""
         match = FuzzyMatchResult(
-            kmer="ATCGATCA",
-            count=15,
-            distance=1,
-            mutations=["G->A at position 6"]
+            kmer="ATCGATCA", count=15, distance=1, mutations=["G->A at position 6"]
         )
         assert match.kmer == "ATCGATCA"
         assert match.count == 15
@@ -50,7 +46,7 @@ class TestFuzzyMatchResult:
             kmer="TTCGATCG",
             count=5,
             distance=2,
-            mutations=["A->T at position 0", "G->A at position 6"]
+            mutations=["A->T at position 0", "G->A at position 6"],
         )
         assert match.distance == 2
         assert len(match.mutations) == 2
@@ -58,112 +54,63 @@ class TestFuzzyMatchResult:
 
     def test_to_dict(self):
         """Test conversion to dictionary representation."""
-        match = FuzzyMatchResult(
-            kmer="ATCGATC",
-            count=42,
-            distance=0,
-            mutations=[]
-        )
-        expected = {
-            'kmer': "ATCGATC",
-            'count': 42,
-            'distance': 0,
-            'mutations': []
-        }
+        match = FuzzyMatchResult(kmer="ATCGATC", count=42, distance=0, mutations=[])
+        expected = {"kmer": "ATCGATC", "count": 42, "distance": 0, "mutations": []}
         assert match.to_dict() == expected
 
     def test_to_dict_with_mutations(self):
         """Test conversion to dictionary with mutations."""
         match = FuzzyMatchResult(
-            kmer="ATCGATCA",
-            count=15,
-            distance=1,
-            mutations=["G->A at position 6"]
+            kmer="ATCGATCA", count=15, distance=1, mutations=["G->A at position 6"]
         )
         expected = {
-            'kmer': "ATCGATCA",
-            'count': 15,
-            'distance': 1,
-            'mutations': ["G->A at position 6"]
+            "kmer": "ATCGATCA",
+            "count": 15,
+            "distance": 1,
+            "mutations": ["G->A at position 6"],
         }
         assert match.to_dict() == expected
 
     def test_to_json(self):
         """Test JSON serialization."""
-        match = FuzzyMatchResult(
-            kmer="ATCGATC",
-            count=42,
-            distance=0,
-            mutations=[]
-        )
+        match = FuzzyMatchResult(kmer="ATCGATC", count=42, distance=0, mutations=[])
         json_str = match.to_json()
         parsed = json.loads(json_str)
-        expected = {
-            'kmer': "ATCGATC",
-            'count': 42,
-            'distance': 0,
-            'mutations': []
-        }
+        expected = {"kmer": "ATCGATC", "count": 42, "distance": 0, "mutations": []}
         assert parsed == expected
 
     def test_to_json_with_mutations(self):
         """Test JSON serialization with mutations."""
         match = FuzzyMatchResult(
-            kmer="ATCGATCA",
-            count=15,
-            distance=1,
-            mutations=["G->A at position 6"]
+            kmer="ATCGATCA", count=15, distance=1, mutations=["G->A at position 6"]
         )
         json_str = match.to_json()
         parsed = json.loads(json_str)
         expected = {
-            'kmer': "ATCGATCA",
-            'count': 15,
-            'distance': 1,
-            'mutations': ["G->A at position 6"]
+            "kmer": "ATCGATCA",
+            "count": 15,
+            "distance": 1,
+            "mutations": ["G->A at position 6"],
         }
         assert parsed == expected
 
     def test_equality(self):
         """Test equality comparison between FuzzyMatchResult instances."""
-        match1 = FuzzyMatchResult(
-            kmer="ATCGATC",
-            count=42,
-            distance=0,
-            mutations=[]
-        )
-        match2 = FuzzyMatchResult(
-            kmer="ATCGATC",
-            count=42,
-            distance=0,
-            mutations=[]
-        )
+        match1 = FuzzyMatchResult(kmer="ATCGATC", count=42, distance=0, mutations=[])
+        match2 = FuzzyMatchResult(kmer="ATCGATC", count=42, distance=0, mutations=[])
         assert match1 == match2
 
     def test_inequality(self):
         """Test inequality comparison between FuzzyMatchResult instances."""
-        match1 = FuzzyMatchResult(
-            kmer="ATCGATC",
-            count=42,
-            distance=0,
-            mutations=[]
-        )
+        match1 = FuzzyMatchResult(kmer="ATCGATC", count=42, distance=0, mutations=[])
         match2 = FuzzyMatchResult(
-            kmer="ATCGATCA",
-            count=15,
-            distance=1,
-            mutations=["G->A at position 6"]
+            kmer="ATCGATCA", count=15, distance=1, mutations=["G->A at position 6"]
         )
         assert match1 != match2
 
     def test_repr(self):
         """Test string representation of FuzzyMatchResult."""
-        match = FuzzyMatchResult(
-            kmer="ATCGATC",
-            count=42,
-            distance=0,
-            mutations=[]
-        )
+        match = FuzzyMatchResult(kmer="ATCGATC", count=42, distance=0, mutations=[])
         repr_str = repr(match)
         assert "FuzzyMatchResult" in repr_str
         assert "ATCGATC" in repr_str
@@ -176,7 +123,7 @@ class TestFuzzyMatchResult:
             kmer="ATCGATC",
             count=1,
             distance=10,
-            mutations=[f"mutation {i}" for i in range(10)]
+            mutations=[f"mutation {i}" for i in range(10)],
         )
         assert match.distance == 10
         assert len(match.mutations) == 10
@@ -185,10 +132,7 @@ class TestFuzzyMatchResult:
     def test_zero_count(self):
         """Test creation with zero count."""
         match = FuzzyMatchResult(
-            kmer="ATCGATC",
-            count=0,
-            distance=1,
-            mutations=["A->T at position 0"]
+            kmer="ATCGATC", count=0, distance=1, mutations=["A->T at position 0"]
         )
         assert match.count == 0
         assert match.distance == 1
@@ -201,17 +145,11 @@ class TestFuzzyQueryResult:
     def test_result_with_exact_match(self):
         """Test creating a result with an exact match."""
         exact_match = FuzzyMatchResult(
-            kmer="ATCGATC",
-            count=100,
-            distance=0,
-            mutations=[]
+            kmer="ATCGATC", count=100, distance=0, mutations=[]
         )
         fuzzy_matches = [
             FuzzyMatchResult(
-                kmer="ATCGATCA",
-                count=20,
-                distance=1,
-                mutations=["G->A at position 6"]
+                kmer="ATCGATCA", count=20, distance=1, mutations=["G->A at position 6"]
             )
         ]
 
@@ -221,7 +159,7 @@ class TestFuzzyQueryResult:
             matches=[exact_match] + fuzzy_matches,
             total_matches=2,
             mutation_tolerance=1,
-            database_path="/path/to/db.rkdb"
+            database_path="/path/to/db.rkdb",
         )
 
         assert result.query_kmer == "ATCGATC"
@@ -234,17 +172,14 @@ class TestFuzzyQueryResult:
         """Test creating a result without an exact match."""
         fuzzy_matches = [
             FuzzyMatchResult(
-                kmer="ATCGATCA",
-                count=20,
-                distance=1,
-                mutations=["G->A at position 6"]
+                kmer="ATCGATCA", count=20, distance=1, mutations=["G->A at position 6"]
             ),
             FuzzyMatchResult(
                 kmer="TTCGATCG",
                 count=5,
                 distance=2,
-                mutations=["A->T at position 0", "G->A at position 6"]
-            )
+                mutations=["A->T at position 0", "G->A at position 6"],
+            ),
         ]
 
         result = FuzzyQueryResult(
@@ -253,7 +188,7 @@ class TestFuzzyQueryResult:
             matches=fuzzy_matches,
             total_matches=2,
             mutation_tolerance=2,
-            database_path="/path/to/db.rkdb"
+            database_path="/path/to/db.rkdb",
         )
 
         assert result.query_kmer == "ATCGATC"
@@ -267,7 +202,7 @@ class TestFuzzyQueryResult:
             FuzzyMatchResult("ATCGATCA", 20, 1, ["G->A"]),
             FuzzyMatchResult("ATCGATCC", 15, 1, ["G->C"]),
             FuzzyMatchResult("TTCGATCG", 5, 2, ["A->T", "G->A"]),
-            FuzzyMatchResult("ATCGATC", 100, 0, [])
+            FuzzyMatchResult("ATCGATC", 100, 0, []),
         ]
 
         result = FuzzyQueryResult(
@@ -276,7 +211,7 @@ class TestFuzzyQueryResult:
             matches=matches,
             total_matches=4,
             mutation_tolerance=2,
-            database_path="/path/to/db.rkdb"
+            database_path="/path/to/db.rkdb",
         )
 
         grouped = result.get_matches_by_distance()
@@ -291,7 +226,7 @@ class TestFuzzyQueryResult:
             FuzzyMatchResult("ATCGATCA", 20, 1, ["G->A"]),
             FuzzyMatchResult("ATCGATCC", 50, 1, ["G->C"]),
             FuzzyMatchResult("TTCGATCG", 5, 2, ["A->T", "G->A"]),
-            FuzzyMatchResult("ATCGATC", 100, 0, [])
+            FuzzyMatchResult("ATCGATC", 100, 0, []),
         ]
 
         result = FuzzyQueryResult(
@@ -300,7 +235,7 @@ class TestFuzzyQueryResult:
             matches=matches,
             total_matches=4,
             mutation_tolerance=2,
-            database_path="/path/to/db.rkdb"
+            database_path="/path/to/db.rkdb",
         )
 
         top_3 = result.get_top_matches(3)
@@ -313,7 +248,7 @@ class TestFuzzyQueryResult:
         """Test match_count property sums all counts."""
         matches = [
             FuzzyMatchResult("ATCGATCA", 20, 1, ["G->A"]),
-            FuzzyMatchResult("ATCGATC", 100, 0, [])
+            FuzzyMatchResult("ATCGATC", 100, 0, []),
         ]
 
         result = FuzzyQueryResult(
@@ -322,7 +257,7 @@ class TestFuzzyQueryResult:
             matches=matches,
             total_matches=2,
             mutation_tolerance=1,
-            database_path="/path/to/db.rkdb"
+            database_path="/path/to/db.rkdb",
         )
 
         assert result.match_count == 120  # 20 + 100
@@ -336,9 +271,7 @@ class TestSingleFuzzyQuery:
         """Set up test database path."""
         # Use one of the test databases that should exist
         cls.test_db = os.path.join(
-            os.path.dirname(__file__),
-            'test_data',
-            'tiny_test.rkdb'
+            os.path.dirname(__file__), "test_data", "tiny_test.rkdb"
         )
 
     def test_basic_fuzzy_query(self):
@@ -383,15 +316,15 @@ class TestSingleFuzzyQuery:
         """Test fuzzy query with different output formats."""
         with Database(self.test_db) as db:
             # Test JSON format
-            result_json = db.fuzzy_query("ATCGATC", mutations=1, output_format='json')
+            result_json = db.fuzzy_query("ATCGATC", mutations=1, output_format="json")
             assert isinstance(result_json, FuzzyQueryResult)
 
             # Test table format
-            result_table = db.fuzzy_query("ATCGATC", mutations=1, output_format='table')
+            result_table = db.fuzzy_query("ATCGATC", mutations=1, output_format="table")
             assert isinstance(result_table, FuzzyQueryResult)
 
             # Test TSV format
-            result_tsv = db.fuzzy_query("ATCGATC", mutations=1, output_format='tsv')
+            result_tsv = db.fuzzy_query("ATCGATC", mutations=1, output_format="tsv")
             assert isinstance(result_tsv, FuzzyQueryResult)
 
     def test_fuzzy_query_with_max_variants(self):
@@ -408,13 +341,13 @@ class TestSingleFuzzyQuery:
         with Database(self.test_db) as db:
             # Test invalid output format
             with pytest.raises(ValueError, match="Invalid output format: 'invalid'"):
-                db.fuzzy_query("ATCGATC", mutations=1, output_format='invalid')
+                db.fuzzy_query("ATCGATC", mutations=1, output_format="invalid")
 
             with pytest.raises(ValueError, match="Invalid output format: 'xml'"):
-                db.fuzzy_query("ATCGATC", mutations=1, output_format='xml')
+                db.fuzzy_query("ATCGATC", mutations=1, output_format="xml")
 
             with pytest.raises(ValueError, match="Invalid output format: 'csv'"):
-                db.fuzzy_query("ATCGATC", mutations=1, output_format='csv')
+                db.fuzzy_query("ATCGATC", mutations=1, output_format="csv")
 
     def test_invalid_kmer_raises_error(self):
         """Test that invalid k-mers raise appropriate errors."""
@@ -436,6 +369,7 @@ class TestSingleFuzzyQuery:
             assert result.database_path
             assert os.path.isfile(result.database_path)
 
+
 class TestMutationValidation:
     """Test cases for mutation tolerance validation."""
 
@@ -443,9 +377,7 @@ class TestMutationValidation:
     def setup_class(cls):
         """Set up test database path."""
         cls.test_db = os.path.join(
-            os.path.dirname(__file__),
-            'test_data',
-            'tiny_test.rkdb'
+            os.path.dirname(__file__), "test_data", "tiny_test.rkdb"
         )
 
     def test_negative_mutations(self):
@@ -492,9 +424,9 @@ class TestMutationValidation:
             with pytest.raises(InvalidKmerError):
                 db.fuzzy_query("ATBGATCG", mutations=1)
 
-            # Test lowercase (should be invalid)
-            with pytest.raises(InvalidKmerError):
-                db.fuzzy_query("atcgatcg", mutations=1)
+            # Test lowercase (should be valid - converted to uppercase)
+            result = db.fuzzy_query("atcgatcg", mutations=1)
+            assert result is not None
 
             # Test length mismatch (if k-mer size is known)
             # Note: This might not be testable without knowing the database k-mer size
@@ -509,9 +441,7 @@ class TestBatchErrorHandling:
     def setup_class(cls):
         """Set up test database path."""
         cls.test_db = os.path.join(
-            os.path.dirname(__file__),
-            'test_data',
-            'tiny_test.rkdb'
+            os.path.dirname(__file__), "test_data", "tiny_test.rkdb"
         )
 
     def test_batch_with_invalid_kmers(self):
@@ -574,6 +504,7 @@ class TestBatchErrorHandling:
         with Database(self.test_db) as db:
             # Should complete without timeout
             import time
+
             start_time = time.time()
 
             batch_result = db.fuzzy_query_batch(kmers, mutations=1, max_workers=4)
@@ -592,9 +523,7 @@ class TestBatchFuzzyQuery:
     def setup_class(cls):
         """Set up test database path."""
         cls.test_db = os.path.join(
-            os.path.dirname(__file__),
-            'test_data',
-            'tiny_test.rkdb'
+            os.path.dirname(__file__), "test_data", "tiny_test.rkdb"
         )
 
     def test_basic_batch_query(self):
@@ -666,13 +595,19 @@ class TestBatchFuzzyQuery:
         with Database(self.test_db) as db:
             # Test invalid output format in batch query
             with pytest.raises(ValueError, match="Invalid output format: 'invalid'"):
-                db.fuzzy_query_batch(["ATCGATC", "GCTAGCT"], mutations=1, output_format='invalid')
+                db.fuzzy_query_batch(
+                    ["ATCGATC", "GCTAGCT"], mutations=1, output_format="invalid"
+                )
 
             with pytest.raises(ValueError, match="Invalid output format: 'xml'"):
-                db.fuzzy_query_batch(["ATCGATC", "GCTAGCT"], mutations=1, output_format='xml')
+                db.fuzzy_query_batch(
+                    ["ATCGATC", "GCTAGCT"], mutations=1, output_format="xml"
+                )
 
             with pytest.raises(ValueError, match="Invalid output format: 'csv'"):
-                db.fuzzy_query_batch(["ATCGATC", "GCTAGCT"], mutations=1, output_format='csv')
+                db.fuzzy_query_batch(
+                    ["ATCGATC", "GCTAGCT"], mutations=1, output_format="csv"
+                )
 
 
 class TestFuzzyBatchResult:
@@ -688,7 +623,7 @@ class TestFuzzyBatchResult:
                 matches=[],
                 total_matches=0,
                 mutation_tolerance=1,
-                database_path="/path/to/db.rkdb"
+                database_path="/path/to/db.rkdb",
             ),
             FuzzyQueryResult(
                 query_kmer="GATCGAT",
@@ -696,15 +631,15 @@ class TestFuzzyBatchResult:
                 matches=[FuzzyMatchResult("GATCGAT", 10, 0, [])],
                 total_matches=1,
                 mutation_tolerance=1,
-                database_path="/path/to/db.rkdb"
-            )
+                database_path="/path/to/db.rkdb",
+            ),
         ]
 
         batch = FuzzyBatchResult(
             query_results=query_results,
             total_queries=2,
             total_matches=1,
-            database_path="/path/to/db.rkdb"
+            database_path="/path/to/db.rkdb",
         )
 
         assert batch.total_queries == 2
@@ -716,9 +651,13 @@ class TestFuzzyBatchResult:
         """Test counting queries with exact matches."""
         query_results = [
             FuzzyQueryResult("ATCGATC", None, [], 0, 1, "/path/db"),
-            FuzzyQueryResult("GATCGAT", FuzzyMatchResult("GATCGAT", 10, 0, []), [], 1, 1, "/path/db"),
+            FuzzyQueryResult(
+                "GATCGAT", FuzzyMatchResult("GATCGAT", 10, 0, []), [], 1, 1, "/path/db"
+            ),
             FuzzyQueryResult("TCGATCG", None, [], 0, 1, "/path/db"),
-            FuzzyQueryResult("CGATCGA", FuzzyMatchResult("CGATCGA", 5, 0, []), [], 1, 1, "/path/db")
+            FuzzyQueryResult(
+                "CGATCGA", FuzzyMatchResult("CGATCGA", 5, 0, []), [], 1, 1, "/path/db"
+            ),
         ]
 
         batch = FuzzyBatchResult(query_results, 4, 2, "/path/db")
@@ -728,9 +667,18 @@ class TestFuzzyBatchResult:
         """Test counting queries with any matches."""
         query_results = [
             FuzzyQueryResult("ATCGATC", None, [], 0, 1, "/path/db"),
-            FuzzyQueryResult("GATCGAT", FuzzyMatchResult("GATCGAT", 10, 0, []), [], 1, 1, "/path/db"),
-            FuzzyQueryResult("TCGATCG", None, [FuzzyMatchResult("TCGATTA", 3, 1, ["C->T"])], 1, 1, "/path/db"),
-            FuzzyQueryResult("CGATCGA", None, [], 0, 1, "/path/db")
+            FuzzyQueryResult(
+                "GATCGAT", FuzzyMatchResult("GATCGAT", 10, 0, []), [], 1, 1, "/path/db"
+            ),
+            FuzzyQueryResult(
+                "TCGATCG",
+                None,
+                [FuzzyMatchResult("TCGATTA", 3, 1, ["C->T"])],
+                1,
+                1,
+                "/path/db",
+            ),
+            FuzzyQueryResult("CGATCGA", None, [], 0, 1, "/path/db"),
         ]
 
         batch = FuzzyBatchResult(query_results, 4, 2, "/path/db")
@@ -740,8 +688,17 @@ class TestFuzzyBatchResult:
         """Test summary table generation."""
         query_results = [
             FuzzyQueryResult("ATCGATC", None, [], 0, 1, "/path/db"),
-            FuzzyQueryResult("GATCGAT", FuzzyMatchResult("GATCGAT", 10, 0, []), [], 1, 1, "/path/db"),
-            FuzzyQueryResult("TCGATCG", None, [FuzzyMatchResult("TCGATTA", 3, 1, ["C->T"])], 1, 1, "/path/db")
+            FuzzyQueryResult(
+                "GATCGAT", FuzzyMatchResult("GATCGAT", 10, 0, []), [], 1, 1, "/path/db"
+            ),
+            FuzzyQueryResult(
+                "TCGATCG",
+                None,
+                [FuzzyMatchResult("TCGATTA", 3, 1, ["C->T"])],
+                1,
+                1,
+                "/path/db",
+            ),
         ]
 
         batch = FuzzyBatchResult(query_results, 3, 2, "/path/db")
@@ -760,7 +717,7 @@ class TestFuzzyBatchResult:
                 matches=[],
                 total_matches=0,
                 mutation_tolerance=1,
-                database_path="/path/to/db.rkdb"
+                database_path="/path/to/db.rkdb",
             )
         ]
 
@@ -782,7 +739,9 @@ class TestFuzzyQueryExport:
         exact_match = FuzzyMatchResult("ATCGATC", 100, 0, [])
         fuzzy_matches = [
             FuzzyMatchResult("ATCGATT", 20, 1, ["C->T at position 6"]),
-            FuzzyMatchResult("ATCGAAC", 5, 2, ["G->A at position 4", "T->C at position 5"])
+            FuzzyMatchResult(
+                "ATCGAAC", 5, 2, ["G->A at position 4", "T->C at position 5"]
+            ),
         ]
 
         result = FuzzyQueryResult(
@@ -791,28 +750,28 @@ class TestFuzzyQueryExport:
             matches=[exact_match] + fuzzy_matches,
             total_matches=3,
             mutation_tolerance=2,
-            database_path="/path/to/db.rkdb"
+            database_path="/path/to/db.rkdb",
         )
 
         json_str = result.to_json()
         data = json.loads(json_str)
 
         # Verify structure
-        assert data['query_kmer'] == "ATCGATC"
-        assert data['total_matches'] == 3
-        assert data['mutation_tolerance'] == 2
-        assert data['database_path'] == "/path/to/db.rkdb"
+        assert data["query_kmer"] == "ATCGATC"
+        assert data["total_matches"] == 3
+        assert data["mutation_tolerance"] == 2
+        assert data["database_path"] == "/path/to/db.rkdb"
 
         # Verify exact match
-        assert data['exact_match'] is not None
-        assert data['exact_match']['kmer'] == "ATCGATC"
-        assert data['exact_match']['count'] == 100
-        assert data['exact_match']['distance'] == 0
+        assert data["exact_match"] is not None
+        assert data["exact_match"]["kmer"] == "ATCGATC"
+        assert data["exact_match"]["count"] == 100
+        assert data["exact_match"]["distance"] == 0
 
         # Verify fuzzy matches
-        assert len(data['matches']) == 3
-        assert data['matches'][1]['kmer'] == "ATCGATT"
-        assert data['matches'][1]['mutations'] == ["C->T at position 6"]
+        assert len(data["matches"]) == 3
+        assert data["matches"][1]["kmer"] == "ATCGATT"
+        assert data["matches"][1]["mutations"] == ["C->T at position 6"]
 
     def test_table_export_format(self):
         """Test table export format with row limiting."""
@@ -821,7 +780,7 @@ class TestFuzzyQueryExport:
             FuzzyMatchResult("ATCGATT", 20, 1, ["C->T"]),
             FuzzyMatchResult("ATCGAAC", 5, 2, ["G->A", "T->C"]),
             FuzzyMatchResult("TTCGATC", 15, 1, ["A->T"]),
-            FuzzyMatchResult("GATCGAT", 8, 2, ["A->G", "T->A"])
+            FuzzyMatchResult("GATCGAT", 8, 2, ["A->G", "T->A"]),
         ]
 
         result = FuzzyQueryResult(
@@ -830,20 +789,22 @@ class TestFuzzyQueryExport:
             matches=matches,
             total_matches=5,
             mutation_tolerance=2,
-            database_path="/path/to/db.rkdb"
+            database_path="/path/to/db.rkdb",
         )
 
         # Test without limit
         table_all = result.to_table()
-        lines = table_all.split('\n')
+        lines = table_all.split("\n")
         assert len(lines) > 5  # Should have header + all matches
         assert "ATCGATC" in table_all
 
         # Test with limit
         table_limited = result.to_table(max_rows=3)
-        lines_limited = table_limited.split('\n')
+        lines_limited = table_limited.split("\n")
         # Count actual match lines (not header/footer lines)
-        match_lines = [l for l in lines_limited if l.startswith(('A', 'T', 'G', 'C')) and '\t' in l]
+        match_lines = [
+            l for l in lines_limited if l.startswith(("A", "T", "G", "C")) and "\t" in l
+        ]
         assert len(match_lines) <= 3
 
     def test_tsv_export_format(self):
@@ -853,11 +814,11 @@ class TestFuzzyQueryExport:
         from rustkmer.stats import DatabaseStats
 
         # Mock the run_rustkmer_command to return TSV output
-        with patch('rustkmer.database.run_rustkmer_command') as mock_run:
+        with patch("rustkmer.database.run_rustkmer_command") as mock_run:
             mock_run.return_value = "kmer\tcount\tdistance\tmutations\nATCGATC\t100\t0\t\nATCGATT\t20\t1\tC->T"
 
             # Mock the stats to set kmer_size
-            with patch.object(Database, 'stats') as mock_stats:
+            with patch.object(Database, "stats") as mock_stats:
                 mock_stats.return_value = DatabaseStats(
                     kmer_size=7,
                     unique_kmers=1000,
@@ -865,11 +826,17 @@ class TestFuzzyQueryExport:
                     min_count=1,
                     max_count=100,
                     file_size=1024,
-                    format_version="1.0"
+                    format_version="1.0",
                 )
 
-                with Database(os.path.join(os.path.dirname(__file__), 'test_data', 'tiny_test.rkdb')) as db:
-                    tsv_result = db.fuzzy_query("ATCGATC", mutations=1, output_format='tsv')
+                with Database(
+                    os.path.join(
+                        os.path.dirname(__file__), "test_data", "tiny_test.rkdb"
+                    )
+                ) as db:
+                    tsv_result = db.fuzzy_query(
+                        "ATCGATC", mutations=1, output_format="tsv"
+                    )
                     assert isinstance(tsv_result, FuzzyQueryResult)
                     assert tsv_result.query_kmer == "ATCGATC"
                     assert tsv_result.total_matches == 2
@@ -881,8 +848,10 @@ class TestFuzzyQueryExport:
             FuzzyMatchResult("ATCGATC", 100, 0, []),
             FuzzyMatchResult("TTCGATC", 15, 1, ["A->T at position 0"]),
             FuzzyMatchResult("ATCGATT", 20, 1, ["C->T at position 6"]),
-            FuzzyMatchResult("ATCGAAC", 5, 2, ["G->A at position 4", "T->C at position 5"]),
-            FuzzyMatchResult("GTCGATC", 8, 1, ["A->G at position 0"])
+            FuzzyMatchResult(
+                "ATCGAAC", 5, 2, ["G->A at position 4", "T->C at position 5"]
+            ),
+            FuzzyMatchResult("GTCGATC", 8, 1, ["A->G at position 0"]),
         ]
 
         result = FuzzyQueryResult(
@@ -891,7 +860,7 @@ class TestFuzzyQueryExport:
             matches=matches,
             total_matches=5,
             mutation_tolerance=2,
-            database_path="/path/to/db.rkdb"
+            database_path="/path/to/db.rkdb",
         )
 
         # Test grouping by distance
@@ -915,19 +884,13 @@ class TestPositionMutations:
     def setup_class(cls):
         """Set up test database path."""
         cls.test_db = os.path.join(
-            os.path.dirname(__file__),
-            'test_data',
-            'tiny_test.rkdb'
+            os.path.dirname(__file__), "test_data", "tiny_test.rkdb"
         )
 
     def test_single_position_mutation(self):
         """Test basic single position mutation constraint."""
         with Database(self.test_db) as db:
-            result = db.fuzzy_query(
-                "ATCGATC",
-                mutations=2,
-                position_mutations="3:1"
-            )
+            result = db.fuzzy_query("ATCGATC", mutations=2, position_mutations="3:1")
 
             # Verify result structure
             assert isinstance(result, FuzzyQueryResult)
@@ -938,8 +901,8 @@ class TestPositionMutations:
             # Verify position mutation config
             assert result.position_mutations_config is not None
             assert len(result.position_mutation_groups) == 1
-            assert result.position_mutation_groups[0]['positions'] == [3]
-            assert result.position_mutation_groups[0]['max_mutations'] == 1
+            assert result.position_mutation_groups[0]["positions"] == [3]
+            assert result.position_mutation_groups[0]["max_mutations"] == 1
 
             # Verify positions used
             assert result.get_mutation_positions_used() == [3]
@@ -948,40 +911,32 @@ class TestPositionMutations:
         """Test multiple positions in a single group."""
         with Database(self.test_db) as db:
             result = db.fuzzy_query(
-                "ATCGATC",
-                mutations=2,
-                position_mutations="3,4,5:2"
+                "ATCGATC", mutations=2, position_mutations="3,4,5:2"
             )
 
             assert result.has_position_mutations == True
             assert len(result.position_mutation_groups) == 1
-            assert result.position_mutation_groups[0]['positions'] == [3, 4, 5]
-            assert result.position_mutation_groups[0]['max_mutations'] == 2
+            assert result.position_mutation_groups[0]["positions"] == [3, 4, 5]
+            assert result.position_mutation_groups[0]["max_mutations"] == 2
             assert result.get_mutation_positions_used() == [3, 4, 5]
 
     def test_range_notation(self):
         """Test range notation for positions."""
         with Database(self.test_db) as db:
-            result = db.fuzzy_query(
-                "ATCGATC",
-                mutations=2,
-                position_mutations="3-5:1"
-            )
+            result = db.fuzzy_query("ATCGATC", mutations=2, position_mutations="3-5:1")
 
             assert result.has_position_mutations == True
             assert len(result.position_mutation_groups) == 1
             # Range 3-5 should include positions 3, 4, 5
-            assert result.position_mutation_groups[0]['positions'] == [3, 4, 5]
-            assert result.position_mutation_groups[0]['max_mutations'] == 1
+            assert result.position_mutation_groups[0]["positions"] == [3, 4, 5]
+            assert result.position_mutation_groups[0]["max_mutations"] == 1
             assert result.get_mutation_positions_used() == [3, 4, 5]
 
     def test_multiple_groups(self):
         """Test multiple independent position groups."""
         with Database(self.test_db) as db:
             result = db.fuzzy_query(
-                "ATCGATCG",
-                mutations=3,
-                position_mutations="3,4:1;6,7:2"
+                "ATCGATCG", mutations=3, position_mutations="3,4:1;6,7:2"
             )
 
             assert result.has_position_mutations == True
@@ -989,13 +944,13 @@ class TestPositionMutations:
 
             # First group
             group1 = result.position_mutation_groups[0]
-            assert set(group1['positions']) == {3, 4}
-            assert group1['max_mutations'] == 1
+            assert set(group1["positions"]) == {3, 4}
+            assert group1["max_mutations"] == 1
 
             # Second group
             group2 = result.position_mutation_groups[1]
-            assert set(group2['positions']) == {6, 7}
-            assert group2['max_mutations'] == 2
+            assert set(group2["positions"]) == {6, 7}
+            assert group2["max_mutations"] == 2
 
             # All positions should be included
             all_positions = result.get_mutation_positions_used()
@@ -1021,22 +976,19 @@ class TestPositionMutations:
 
     def test_position_mutations_with_output_formats(self):
         """Test position mutations with different output formats."""
-        test_formats = ['json', 'table', 'tsv']
+        test_formats = ["json", "table", "tsv"]
 
         for fmt in test_formats:
             with Database(self.test_db) as db:
                 result = db.fuzzy_query(
-                    "ATCGATC",
-                    mutations=1,
-                    position_mutations="3:1",
-                    output_format=fmt
+                    "ATCGATC", mutations=1, position_mutations="3:1", output_format=fmt
                 )
 
                 # Position mutations configuration is only available in JSON format
                 # When user explicitly chooses table/TSV, we respect their choice and config is not available
-                if fmt == 'json':
+                if fmt == "json":
                     assert result.has_position_mutations == True
-                    assert result.position_mutation_groups[0]['positions'] == [3]
+                    assert result.position_mutation_groups[0]["positions"] == [3]
                 else:
                     # For table/TSV formats, position mutations are used but config is not captured
                     # The query still works but position_mutations_config will be None
@@ -1049,10 +1001,7 @@ class TestPositionMutations:
         """Test position mutations combined with max_variants."""
         with Database(self.test_db) as db:
             result = db.fuzzy_query(
-                "ATCGATC",
-                mutations=2,
-                position_mutations="3,4:1",
-                max_variants=50
+                "ATCGATC", mutations=2, position_mutations="3,4:1", max_variants=50
             )
 
             assert result.has_position_mutations == True
@@ -1062,9 +1011,9 @@ class TestPositionMutations:
         """Test FuzzyQueryResult position mutation helper methods."""
         # Create a result with position mutations
         position_config = {
-            'groups': [
-                {'positions': [3, 4, 5], 'max_mutations': 2},
-                {'positions': [7, 8], 'max_mutations': 1}
+            "groups": [
+                {"positions": [3, 4, 5], "max_mutations": 2},
+                {"positions": [7, 8], "max_mutations": 1},
             ]
         }
 
@@ -1075,7 +1024,7 @@ class TestPositionMutations:
             total_matches=0,
             mutation_tolerance=2,
             database_path="/path/to/db.rkdb",
-            position_mutations_config=position_config
+            position_mutations_config=position_config,
         )
 
         # Test helper methods
@@ -1089,11 +1038,7 @@ class TestPositionMutations:
 
     def test_fuzzy_query_result_to_dict_with_positions(self):
         """Test FuzzyQueryResult.to_dict() includes position mutations."""
-        position_config = {
-            'groups': [
-                {'positions': [3, 4], 'max_mutations': 1}
-            ]
-        }
+        position_config = {"groups": [{"positions": [3, 4], "max_mutations": 1}]}
 
         result = FuzzyQueryResult(
             query_kmer="ATCGATC",
@@ -1102,18 +1047,18 @@ class TestPositionMutations:
             total_matches=0,
             mutation_tolerance=1,
             database_path="/path/to/db.rkdb",
-            position_mutations_config=position_config
+            position_mutations_config=position_config,
         )
 
         result_dict = result.to_dict()
-        assert 'position_mutations_config' in result_dict
-        assert result_dict['position_mutations_config'] == position_config
+        assert "position_mutations_config" in result_dict
+        assert result_dict["position_mutations_config"] == position_config
 
         # Test JSON serialization
         json_str = result.to_json()
         data = json.loads(json_str)
-        assert 'position_mutations_config' in data
-        assert data['position_mutations_config'] == position_config
+        assert "position_mutations_config" in data
+        assert data["position_mutations_config"] == position_config
 
 
 class TestPositionMutationValidation:
@@ -1123,44 +1068,59 @@ class TestPositionMutationValidation:
     def setup_class(cls):
         """Set up test database path."""
         cls.test_db = os.path.join(
-            os.path.dirname(__file__),
-            'test_data',
-            'tiny_test.rkdb'
+            os.path.dirname(__file__), "test_data", "tiny_test.rkdb"
         )
 
     def test_empty_position_mutations(self):
         """Test empty position mutations string."""
         with Database(self.test_db) as db:
-            with pytest.raises(InvalidPositionMutationError, match="position_mutations cannot be empty"):
+            with pytest.raises(
+                InvalidPositionMutationError, match="position_mutations cannot be empty"
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="")
 
-            with pytest.raises(InvalidPositionMutationError, match="position_mutations cannot be empty"):
+            with pytest.raises(
+                InvalidPositionMutationError, match="position_mutations cannot be empty"
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="   ")
 
     def test_missing_colon_separator(self):
         """Test position mutations without colon separator."""
         with Database(self.test_db) as db:
-            with pytest.raises(InvalidPositionMutationError, match="must contain exactly one ':' separator"):
+            with pytest.raises(
+                InvalidPositionMutationError,
+                match="must contain exactly one ':' separator",
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="3,4,5")
 
-            with pytest.raises(InvalidPositionMutationError, match="must contain exactly one ':' separator"):
+            with pytest.raises(
+                InvalidPositionMutationError,
+                match="must contain exactly one ':' separator",
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="3,4,5:2:3")
 
     def test_invalid_mutation_limit(self):
         """Test invalid mutation limit values."""
         with Database(self.test_db) as db:
             # Non-integer limit
-            with pytest.raises(InvalidPositionMutationError, match="invalid mutation limit"):
+            with pytest.raises(
+                InvalidPositionMutationError, match="invalid mutation limit"
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="3,4,5:abc")
 
             # Negative limit
-            with pytest.raises(InvalidPositionMutationError, match="mutation limit must be non-negative"):
+            with pytest.raises(
+                InvalidPositionMutationError,
+                match="mutation limit must be non-negative",
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="3,4,5:-2")
 
     def test_empty_positions(self):
         """Test empty positions in group."""
         with Database(self.test_db) as db:
-            with pytest.raises(InvalidPositionMutationError, match="positions cannot be empty"):
+            with pytest.raises(
+                InvalidPositionMutationError, match="positions cannot be empty"
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations=":2")
 
     def test_invalid_position_format(self):
@@ -1171,99 +1131,117 @@ class TestPositionMutationValidation:
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="abc:1")
 
             # Invalid range format
-            with pytest.raises(InvalidPositionMutationError, match="invalid range format"):
+            with pytest.raises(
+                InvalidPositionMutationError, match="invalid range format"
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="3-4-5:1")
 
     def test_negative_positions(self):
         """Test negative position numbers."""
         with Database(self.test_db) as db:
-            with pytest.raises(InvalidPositionMutationError, match="positions must be non-negative"):
+            with pytest.raises(
+                InvalidPositionMutationError, match="positions must be non-negative"
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="-1:1")
 
-            with pytest.raises(InvalidPositionMutationError, match="positions must be non-negative"):
+            with pytest.raises(
+                InvalidPositionMutationError, match="positions must be non-negative"
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="3,-4:1")
 
     def test_invalid_range_bounds(self):
         """Test invalid range start/end values."""
         with Database(self.test_db) as db:
             # Start > end
-            with pytest.raises(InvalidPositionMutationError, match="range start .* cannot be greater than end"):
+            with pytest.raises(
+                InvalidPositionMutationError,
+                match="range start .* cannot be greater than end",
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="5-3:1")
 
     def test_duplicate_positions_in_group(self):
         """Test duplicate positions within a group."""
         with Database(self.test_db) as db:
-            with pytest.raises(InvalidPositionMutationError, match="duplicate positions found"):
+            with pytest.raises(
+                InvalidPositionMutationError, match="duplicate positions found"
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="3,3,4:2")
 
     def test_limit_exceeds_position_count(self):
         """Test mutation limit exceeds number of positions."""
         with Database(self.test_db) as db:
-            with pytest.raises(InvalidPositionMutationError, match="mutation limit .* cannot exceed number of positions"):
+            with pytest.raises(
+                InvalidPositionMutationError,
+                match="mutation limit .* cannot exceed number of positions",
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="3,4,5:5")
 
     def test_overlapping_position_groups(self):
         """Test overlapping positions between groups."""
         with Database(self.test_db) as db:
-            with pytest.raises(InvalidPositionMutationError, match="already used in a previous group"):
+            with pytest.raises(
+                InvalidPositionMutationError, match="already used in a previous group"
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="3,4:1;4,5:2")
 
     def test_no_valid_groups(self):
         """Test position mutations with no valid groups."""
         with Database(self.test_db) as db:
-            with pytest.raises(InvalidPositionMutationError, match="No valid groups found"):
+            with pytest.raises(
+                InvalidPositionMutationError, match="No valid groups found"
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations="; ;")
 
     def test_non_string_position_mutations(self):
         """Test non-string position mutations parameter."""
         with Database(self.test_db) as db:
-            with pytest.raises(InvalidPositionMutationError, match="position_mutations must be a string"):
+            with pytest.raises(
+                InvalidPositionMutationError,
+                match="position_mutations must be a string",
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations=123)
 
-            with pytest.raises(InvalidPositionMutationError, match="position_mutations must be a string"):
+            with pytest.raises(
+                InvalidPositionMutationError,
+                match="position_mutations must be a string",
+            ):
                 db.fuzzy_query("ATCGATC", mutations=1, position_mutations=["3,4:1"])
 
     def test_complex_valid_position_mutations(self):
         """Test complex but valid position mutations."""
         with Database(self.test_db) as db:
-            # This should work without error
+            # This should work without error - use valid mutation limits and non-overlapping positions
+            # For k=7 database, valid positions are 0-6
             result = db.fuzzy_query(
-                "ATCGATCGATCGATCG",
+                "ATCGATC",
                 mutations=3,
-                position_mutations="2,3,4:2;10-12:1;15:2"
+                position_mutations="2,3,4:2;5,6:1",
             )
 
             assert result.has_position_mutations == True
-            assert len(result.position_mutation_groups) == 3
+            assert len(result.position_mutation_groups) == 2
 
             # First group: positions 2,3,4 with max 2 mutations
             group1 = result.position_mutation_groups[0]
-            assert set(group1['positions']) == {2, 3, 4}
-            assert group1['max_mutations'] == 2
+            assert set(group1["positions"]) == {2, 3, 4}
+            assert group1["max_mutations"] == 2
 
-            # Second group: range 10-12 should be positions 10,11,12 with max 1
+            # Second group: positions 5,6 with max 1
             group2 = result.position_mutation_groups[1]
-            assert set(group2['positions']) == {10, 11, 12}
-            assert group2['max_mutations'] == 1
-
-            # Third group: single position 15 with max 2
-            group3 = result.position_mutation_groups[2]
-            assert group3['positions'] == [15]
-            assert group3['max_mutations'] == 2
+            assert set(group2["positions"]) == {5, 6}
+            assert group2["max_mutations"] == 1
 
     def test_whitespace_handling(self):
         """Test whitespace handling in position mutations."""
         with Database(self.test_db) as db:
             # This should work - extra whitespace should be ignored
             result = db.fuzzy_query(
-                "ATCGATC",
-                mutations=1,
-                position_mutations=" 3 , 4 , 5 : 2 "
+                "ATCGATC", mutations=1, position_mutations=" 3 , 4 , 5 : 2 "
             )
 
             assert result.has_position_mutations == True
-            assert result.position_mutation_groups[0]['positions'] == [3, 4, 5]
-            assert result.position_mutation_groups[0]['max_mutations'] == 2
+            assert result.position_mutation_groups[0]["positions"] == [3, 4, 5]
+            assert result.position_mutation_groups[0]["max_mutations"] == 2
 
 
 class TestPositionMutationIntegration:
@@ -1273,9 +1251,7 @@ class TestPositionMutationIntegration:
     def setup_class(cls):
         """Set up test database path."""
         cls.test_db = os.path.join(
-            os.path.dirname(__file__),
-            'test_data',
-            'tiny_test.rkdb'
+            os.path.dirname(__file__), "test_data", "tiny_test.rkdb"
         )
 
     def test_position_vs_global_mutation_comparison(self):
@@ -1287,9 +1263,7 @@ class TestPositionMutationIntegration:
 
             # Query with position mutations (should be <= global)
             position_result = db.fuzzy_query(
-                "ATCGATC",
-                mutations=2,
-                position_mutations="3:1"
+                "ATCGATC", mutations=2, position_mutations="3:1"
             )
             position_matches = position_result.total_matches
 
@@ -1303,7 +1277,7 @@ class TestPositionMutationIntegration:
             result = db.fuzzy_query(
                 "ATCGATC",
                 mutations=1,
-                position_mutations="0:1"  # Only allow mutation at first position
+                position_mutations="0:1",  # Only allow mutation at first position
             )
 
             # Should still find exact matches if they exist
@@ -1311,22 +1285,27 @@ class TestPositionMutationIntegration:
             assert isinstance(result, FuzzyQueryResult)
             assert result.has_position_mutations == True
 
-    @patch('rustkmer.database.run_rustkmer_command')
+    @patch("rustkmer.database.run_rustkmer_command")
     def test_mocked_position_mutation_query(self, mock_run):
         """Test position mutation query with mocked CLI output."""
         # Mock CLI output for position mutations
+        # Note: parse_fuzzy_query_output expects position_mutations in query_metadata.query_params
         mock_run.return_value = """{
-  "query_params": {
-    "query_string": "ATCGATC",
-    "kmer_size": 7,
-    "mutation_tolerance": 1,
-    "position_mutations": {
-      "groups": [
-        {
-          "positions": [3, 4],
-          "max_mutations": 1
-        }
-      ]
+  "query_kmer": "ATCGATC",
+  "mutation_tolerance": 1,
+  "query_metadata": {
+    "query_params": {
+      "query_string": "ATCGATC",
+      "kmer_size": 7,
+      "mutation_tolerance": 1,
+      "position_mutations": {
+        "groups": [
+          {
+            "positions": [3, 4],
+            "max_mutations": 1
+          }
+        ]
+      }
     }
   },
   "total_matches": 2,
@@ -1349,7 +1328,7 @@ class TestPositionMutationIntegration:
 
         from rustkmer.stats import DatabaseStats
 
-        with patch.object(Database, 'stats') as mock_stats:
+        with patch.object(Database, "stats") as mock_stats:
             mock_stats.return_value = DatabaseStats(
                 kmer_size=7,
                 unique_kmers=1000,
@@ -1357,7 +1336,7 @@ class TestPositionMutationIntegration:
                 min_count=1,
                 max_count=100,
                 file_size=1024,
-                format_version="1.0"
+                format_version="1.0",
             )
 
             with Database(self.test_db) as db:
@@ -1365,12 +1344,12 @@ class TestPositionMutationIntegration:
                     "ATCGATC",
                     mutations=1,
                     position_mutations="3,4:1",
-                    output_format='json'
+                    output_format="json",
                 )
 
                 assert result.has_position_mutations == True
                 assert len(result.position_mutation_groups) == 1
-                assert result.position_mutation_groups[0]['positions'] == [3, 4]
-                assert result.position_mutation_groups[0]['max_mutations'] == 1
+                assert result.position_mutation_groups[0]["positions"] == [3, 4]
+                assert result.position_mutation_groups[0]["max_mutations"] == 1
                 assert result.total_matches == 2
                 assert len(result.matches) == 2

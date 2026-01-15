@@ -729,12 +729,10 @@ rustkmer merge -o merged.rkdb chunk_*.rkdb
 
 **A**: 交叉验证方法：
 ```bash
-# 与jellyfish比较
-jellyfish count -m 21 -s 2G -o output.jf input.fa
-jellyfish query output.jf ATGCGATGCTAGCGCTAGCTA
-
-# 与rustkmer比较
+# 使用rustkmer创建数据库
 rustkmer count -k 21 --sort -o output.rkdb input.fa
+
+# 查询验证
 rustkmer query output.rkdb ATGCGATGCTAGCGCTAGCTA
 ```
 

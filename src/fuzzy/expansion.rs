@@ -53,7 +53,8 @@ pub fn generate_query_expansion(query: &crate::fuzzy::FuzzyQuery) -> FuzzyResult
     let start_time = Instant::now();
     let mut concrete_kmers = Vec::new();
     let (normalized_query, expansion_method) = if query.query_string.len() != query.kmer_size {
-        let variants = normalization::generate_normalized_variants(&query.query_string, query.kmer_size)?;
+        let variants =
+            normalization::generate_normalized_variants(&query.query_string, query.kmer_size)?;
         (
             variants,
             ExpansionMethod::LengthNormalization {
@@ -84,7 +85,7 @@ pub fn generate_query_expansion(query: &crate::fuzzy::FuzzyQuery) -> FuzzyResult
                 concrete,
                 query.mutation_tolerance,
                 query.position_mutations.as_ref(),
-                query.max_variants
+                query.max_variants,
             )?;
             mutation_variants.extend(variants);
         }
@@ -173,7 +174,8 @@ pub fn validate_expansion_params(
     // Check combinatorial explosion potential
     if let Some(max_variants) = max_variants {
         let wildcard_count = 0; // TODO: Calculate from query
-        let estimated_variants = estimate_variant_count(wildcard_count, query_length, mutation_tolerance);
+        let estimated_variants =
+            estimate_variant_count(wildcard_count, query_length, mutation_tolerance);
 
         if estimated_variants > max_variants {
             return Err(FuzzyError::TooManyVariants {

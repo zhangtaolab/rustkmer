@@ -4,12 +4,12 @@
 //! for RustKmer against Jellyfish across multiple dimensions.
 
 use crate::error::ProcessingResult;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
-use std::fs;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Benchmark configuration and execution
 pub struct BenchmarkRunner {
@@ -26,7 +26,6 @@ pub struct BenchmarkConfig {
     pub iterations: usize,
     pub format: String,
     pub visualize: bool,
-    pub compare_jellyfish: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -50,7 +49,7 @@ pub struct BenchmarkSummary {
     pub total_execution_time: f64,
     pub tools_compared: Vec<String>,
     pub kmer_sizes_tested: Vec<usize>,
-    pub rustkmer_vs_jellyfish: Option<HashMap<String, f64>>,
+    pub performance_metrics: Option<HashMap<String, f64>>,
 }
 
 impl BenchmarkRunner {
@@ -146,9 +145,10 @@ impl BenchmarkRunner {
             for entry in fs::read_dir(fasta_dir)? {
                 let entry = entry?;
                 let path = entry.path();
-                if path.extension().is_some_and(|ext| {
-                    ext == "fa" || ext == "fasta" || ext == "fna"
-                }) {
+                if path
+                    .extension()
+                    .is_some_and(|ext| ext == "fa" || ext == "fasta" || ext == "fna")
+                {
                     test_files.push(path);
                 }
             }
@@ -159,14 +159,16 @@ impl BenchmarkRunner {
         if fastq_dir.exists() {
             let mut fastq_count = 0;
             for entry in fs::read_dir(fastq_dir)? {
-                if fastq_count >= 2 {  // Limit to 2 FASTQ files for reasonable runtime
+                if fastq_count >= 2 {
+                    // Limit to 2 FASTQ files for reasonable runtime
                     break;
                 }
                 let entry = entry?;
                 let path = entry.path();
-                if path.extension().is_some_and(|ext| {
-                    ext == "fq" || ext == "fastq"
-                }) {
+                if path
+                    .extension()
+                    .is_some_and(|ext| ext == "fq" || ext == "fastq")
+                {
                     test_files.push(path);
                     fastq_count += 1;
                 }
@@ -184,7 +186,8 @@ impl BenchmarkRunner {
 
         // Use the first file for query benchmarks
         if let Some(test_file) = test_files.first() {
-            let file_stem = test_file.file_stem()
+            let file_stem = test_file
+                .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("unknown");
 
@@ -195,7 +198,11 @@ impl BenchmarkRunner {
                     databases.push(rkdb_path);
                 } else {
                     // Create database for benchmarking
-                    println!("Creating database for k={}: {}", kmer_size, test_file.display());
+                    println!(
+                        "Creating database for k={}: {}",
+                        kmer_size,
+                        test_file.display()
+                    );
                     self.create_rustkmer_database(test_file, kmer_size, &rkdb_path)?;
                     databases.push(rkdb_path);
                 }
@@ -214,21 +221,27 @@ impl BenchmarkRunner {
     ) -> ProcessingResult<()> {
         let output = Command::new("cargo")
             .args([
-                "run", "--release", "--",
+                "run",
+                "--release",
+                "--",
                 "count",
-                "-k", &kmer_size.to_string(),
-                "-t", "4",
+                "-k",
+                &kmer_size.to_string(),
+                "-t",
+                "4",
                 "--canonical",
                 "--sort",
-                "-o", output_file.to_str().unwrap(),
+                "-o",
+                output_file.to_str().unwrap(),
                 input_file.to_str().unwrap(),
             ])
             .output()?;
 
         if !output.status.success() {
-            return Err(crate::error::ProcessingError::io_error(
-                format!("Failed to create database: {}", String::from_utf8_lossy(&output.stderr)),
-            ));
+            return Err(crate::error::ProcessingError::io_error(format!(
+                "Failed to create database: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
         }
 
         Ok(())
@@ -241,17 +254,15 @@ impl BenchmarkRunner {
         kmer_size: usize,
         results: &mut Vec<BenchmarkResult>,
     ) -> ProcessingResult<()> {
-        println!("Benchmarking database creation: {} (k={})", file_path.display(), kmer_size);
+        println!(
+            "Benchmarking database creation: {} (k={})",
+            file_path.display(),
+            kmer_size
+        );
 
         // Benchmark RustKmer
         let rustkmer_result = self.benchmark_rustkmer_creation(file_path, kmer_size)?;
         results.push(rustkmer_result);
-
-        // Benchmark Jellyfish if comparison requested
-        if self.config.compare_jellyfish {
-            let jellyfish_result = self.benchmark_jellyfish_creation(file_path, kmer_size)?;
-            results.push(jellyfish_result);
-        }
 
         Ok(())
     }
@@ -262,21 +273,30 @@ impl BenchmarkRunner {
         file_path: &Path,
         kmer_size: usize,
     ) -> ProcessingResult<BenchmarkResult> {
-        let output_file = self.output_dir.join("databases")
-            .join(format!("benchmark_rkdb_{}_k{}",
-                file_path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown"),
-                kmer_size));
+        let output_file = self.output_dir.join("databases").join(format!(
+            "benchmark_rkdb_{}_k{}",
+            file_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown"),
+            kmer_size
+        ));
 
         let start_time = Instant::now();
         let output = Command::new("cargo")
             .args([
-                "run", "--release", "--",
+                "run",
+                "--release",
+                "--",
                 "count",
-                "-k", &kmer_size.to_string(),
-                "-t", "4",
+                "-k",
+                &kmer_size.to_string(),
+                "-t",
+                "4",
                 "--canonical",
                 "--sort",
-                "-o", output_file.to_str().unwrap(),
+                "-o",
+                output_file.to_str().unwrap(),
                 file_path.to_str().unwrap(),
             ])
             .output()?;
@@ -290,52 +310,6 @@ impl BenchmarkRunner {
             file_path: file_path.to_string_lossy().to_string(),
             execution_time_seconds: execution_time,
             memory_usage_mb: None, // TODO: Add memory profiling
-            success: output.status.success(),
-            error_message: if !output.status.success() {
-                Some(String::from_utf8_lossy(&output.stderr).to_string())
-            } else {
-                None
-            },
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-        })
-    }
-
-    /// Benchmark Jellyfish database creation
-    fn benchmark_jellyfish_creation(
-        &self,
-        file_path: &Path,
-        kmer_size: usize,
-    ) -> ProcessingResult<BenchmarkResult> {
-        let output_file = self.output_dir.join("databases")
-            .join(format!("benchmark_jf_{}_k{}",
-                file_path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown"),
-                kmer_size));
-
-        let start_time = Instant::now();
-        let output = Command::new("jellyfish")
-            .args([
-                "count",
-                "-m", &kmer_size.to_string(),
-                "-s", "100M",
-                "-t", "4",
-                "-C",
-                "-o", output_file.to_str().unwrap(),
-                file_path.to_str().unwrap(),
-            ])
-            .output()?;
-
-        let execution_time = start_time.elapsed().as_secs_f64();
-
-        Ok(BenchmarkResult {
-            test_name: "database_creation".to_string(),
-            tool: "jellyfish".to_string(),
-            kmer_size,
-            file_path: file_path.to_string_lossy().to_string(),
-            execution_time_seconds: execution_time,
-            memory_usage_mb: None,
             success: output.status.success(),
             error_message: if !output.status.success() {
                 Some(String::from_utf8_lossy(&output.stderr).to_string())
@@ -387,11 +361,14 @@ impl BenchmarkRunner {
             let start_time = Instant::now();
             let output = Command::new("cargo")
                 .args([
-                    "run", "--release", "--",
+                    "run",
+                    "--release",
+                    "--",
                     "query",
                     database.to_str().unwrap(),
                     query,
-                    "--format", "json",
+                    "--format",
+                    "json",
                     "--quiet",
                 ])
                 .output()?;
@@ -433,12 +410,16 @@ impl BenchmarkRunner {
             let start_time = Instant::now();
             let output = Command::new("cargo")
                 .args([
-                    "run", "--release", "--",
+                    "run",
+                    "--release",
+                    "--",
                     "fuzzy-query",
                     database.to_str().unwrap(),
                     query,
-                    "--mutations", "1",
-                    "--format", "json",
+                    "--mutations",
+                    "1",
+                    "--format",
+                    "json",
                     "--quiet",
                 ])
                 .output()?;
@@ -542,37 +523,34 @@ impl BenchmarkRunner {
     }
 
     /// Generate summary statistics
-    fn generate_summary(&self, results: &[BenchmarkResult], total_time: Duration) -> BenchmarkSummary {
+    fn generate_summary(
+        &self,
+        results: &[BenchmarkResult],
+        total_time: Duration,
+    ) -> BenchmarkSummary {
         let total_tests = results.len();
         let successful_tests = results.iter().filter(|r| r.success).count();
         let failed_tests = total_tests - successful_tests;
 
-        let tools: std::collections::HashSet<String> = results.iter()
-            .map(|r| r.tool.clone())
-            .collect();
-        let kmer_sizes: std::collections::HashSet<usize> = results.iter()
-            .map(|r| r.kmer_size)
-            .collect();
+        let tools: std::collections::HashSet<String> =
+            results.iter().map(|r| r.tool.clone()).collect();
+        let kmer_sizes: std::collections::HashSet<usize> =
+            results.iter().map(|r| r.kmer_size).collect();
 
-        // Calculate tool comparisons
-        let mut rustkmer_vs_jellyfish = HashMap::new();
+        // Calculate performance metrics
+        let mut performance_metrics = HashMap::new();
 
         for &kmer_size in &self.kmer_sizes {
-            let rustkmer_times: Vec<f64> = results.iter()
+            let rustkmer_times: Vec<f64> = results
+                .iter()
                 .filter(|r| r.tool == "rustkmer" && r.kmer_size == kmer_size && r.success)
                 .map(|r| r.execution_time_seconds)
                 .collect();
 
-            let jellyfish_times: Vec<f64> = results.iter()
-                .filter(|r| r.tool == "jellyfish" && r.kmer_size == kmer_size && r.success)
-                .map(|r| r.execution_time_seconds)
-                .collect();
-
-            if !rustkmer_times.is_empty() && !jellyfish_times.is_empty() {
+            // Calculate average execution time for each k-mer size
+            if !rustkmer_times.is_empty() {
                 let rustkmer_avg = rustkmer_times.iter().sum::<f64>() / rustkmer_times.len() as f64;
-                let jellyfish_avg = jellyfish_times.iter().sum::<f64>() / jellyfish_times.len() as f64;
-                let speedup = jellyfish_avg / rustkmer_avg;
-                rustkmer_vs_jellyfish.insert(format!("k{}_speedup", kmer_size), speedup);
+                performance_metrics.insert(format!("k{}_avg_time", kmer_size), rustkmer_avg);
             }
         }
 
@@ -583,39 +561,68 @@ impl BenchmarkRunner {
             total_execution_time: total_time.as_secs_f64(),
             tools_compared: tools.into_iter().collect(),
             kmer_sizes_tested: kmer_sizes.into_iter().collect(),
-            rustkmer_vs_jellyfish: if rustkmer_vs_jellyfish.is_empty() { None } else { Some(rustkmer_vs_jellyfish) },
+            performance_metrics: if performance_metrics.is_empty() {
+                None
+            } else {
+                Some(performance_metrics)
+            },
         }
     }
 
     /// Save results to files
-    fn save_results(&self, results: &[BenchmarkResult], summary: &BenchmarkSummary) -> ProcessingResult<()> {
-
+    fn save_results(
+        &self,
+        results: &[BenchmarkResult],
+        summary: &BenchmarkSummary,
+    ) -> ProcessingResult<()> {
         // Save detailed results
-        let results_file = self.output_dir.join("results").join("benchmark_results.json");
-        let results_json = serde_json::to_string_pretty(results)
-            .map_err(|e| crate::error::ProcessingError::io_error(format!("JSON serialization failed: {}", e)))?;
+        let results_file = self
+            .output_dir
+            .join("results")
+            .join("benchmark_results.json");
+        let results_json = serde_json::to_string_pretty(results).map_err(|e| {
+            crate::error::ProcessingError::io_error(format!("JSON serialization failed: {}", e))
+        })?;
         fs::write(&results_file, results_json)?;
 
         // Save summary
-        let summary_file = self.output_dir.join("results").join("benchmark_summary.json");
-        let summary_json = serde_json::to_string_pretty(summary)
-            .map_err(|e| crate::error::ProcessingError::io_error(format!("JSON serialization failed: {}", e)))?;
+        let summary_file = self
+            .output_dir
+            .join("results")
+            .join("benchmark_summary.json");
+        let summary_json = serde_json::to_string_pretty(summary).map_err(|e| {
+            crate::error::ProcessingError::io_error(format!("JSON serialization failed: {}", e))
+        })?;
         fs::write(&summary_file, summary_json)?;
 
         // Save CSV if requested
         if self.config.format == "csv" {
-            let csv_file = self.output_dir.join("results").join("benchmark_results.csv");
-            let mut wtr = csv::Writer::from_path(csv_file)
-                .map_err(|e| crate::error::ProcessingError::io_error(format!("CSV writer creation failed: {}", e)))?;
+            let csv_file = self
+                .output_dir
+                .join("results")
+                .join("benchmark_results.csv");
+            let mut wtr = csv::Writer::from_path(csv_file).map_err(|e| {
+                crate::error::ProcessingError::io_error(format!(
+                    "CSV writer creation failed: {}",
+                    e
+                ))
+            })?;
             // Write headers
             wtr.write_record(BenchmarkResult::csv_headers())
-                .map_err(|e| crate::error::ProcessingError::io_error(format!("CSV header write failed: {}", e)))?;
+                .map_err(|e| {
+                    crate::error::ProcessingError::io_error(format!(
+                        "CSV header write failed: {}",
+                        e
+                    ))
+                })?;
             for result in results {
-                wtr.serialize(result)
-                    .map_err(|e| crate::error::ProcessingError::io_error(format!("CSV row write failed: {}", e)))?;
+                wtr.serialize(result).map_err(|e| {
+                    crate::error::ProcessingError::io_error(format!("CSV row write failed: {}", e))
+                })?;
             }
-            wtr.flush()
-                .map_err(|e| crate::error::ProcessingError::io_error(format!("CSV flush failed: {}", e)))?;
+            wtr.flush().map_err(|e| {
+                crate::error::ProcessingError::io_error(format!("CSV flush failed: {}", e))
+            })?;
         }
 
         Ok(())
@@ -640,12 +647,10 @@ impl BenchmarkRunner {
         println!("Tools: {}", summary.tools_compared.join(", "));
         println!("K-mer Sizes: {:?}", summary.kmer_sizes_tested);
 
-        if let Some(comparisons) = &summary.rustkmer_vs_jellyfish {
-            println!("\n📊 RustKmer vs Jellyfish Performance:");
-            for (metric, value) in comparisons {
-                if metric.contains("speedup") {
-                    println!("  {}: {:.2}x", metric, value);
-                }
+        if let Some(metrics) = &summary.performance_metrics {
+            println!("\n📊 Performance Metrics:");
+            for (metric, value) in metrics {
+                println!("  {}: {:.4}", metric, value);
             }
         }
 
@@ -671,7 +676,6 @@ impl BenchmarkResult {
     }
 }
 
-
 /// Execute benchmark command
 pub fn execute_benchmark(args: &crate::cli::args::Commands) -> ProcessingResult<()> {
     if let crate::cli::args::Commands::Benchmark {
@@ -683,7 +687,6 @@ pub fn execute_benchmark(args: &crate::cli::args::Commands) -> ProcessingResult<
         iterations,
         format,
         visualize,
-        compare_jellyfish,
     } = args
     {
         let config = BenchmarkConfig {
@@ -692,7 +695,6 @@ pub fn execute_benchmark(args: &crate::cli::args::Commands) -> ProcessingResult<
             iterations: *iterations,
             format: format.clone(),
             visualize: *visualize,
-            compare_jellyfish: *compare_jellyfish,
         };
 
         let runner = BenchmarkRunner::new(data_dir, output_dir, kmer_sizes, config);

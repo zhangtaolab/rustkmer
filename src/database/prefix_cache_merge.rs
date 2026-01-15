@@ -28,35 +28,45 @@ pub struct ExternalSortMerger {
 }
 
 impl ExternalSortMerger {
-    pub fn new(input_files: Vec<PathBuf>, temp_dir: PathBuf, merge_buffer_mb: usize, num_threads: usize, merge_mode: String, keep_intermediate: bool) -> ProcessingResult<Self> {
+    pub fn new(
+        input_files: Vec<PathBuf>,
+        temp_dir: PathBuf,
+        merge_buffer_mb: usize,
+        num_threads: usize,
+        merge_mode: String,
+        keep_intermediate: bool,
+    ) -> ProcessingResult<Self> {
         let num_buckets = 1 << 8;
-        
+
         let reference_db = RKDatabase::from_file_path(&input_files[0])?;
         let kmer_size = reference_db.header().kmer_size as usize;
-        
+
         let mut canonical_modes = Vec::new();
         let mut kmer_sizes = Vec::new();
-        
+
         for path in input_files.iter() {
             let db = RKDatabase::from_file_path(path)?;
             canonical_modes.push(db.header().canonical);
             kmer_sizes.push(db.header().kmer_size as usize);
         }
-        
+
         if kmer_sizes.iter().any(|&k| k != kmer_sizes[0]) {
-            return Err(crate::error::ProcessingError::new(
-                &format!("K-mer size mismatch: found sizes {:?}", kmer_sizes)
-            ));
+            return Err(crate::error::ProcessingError::new(&format!(
+                "K-mer size mismatch: found sizes {:?}",
+                kmer_sizes
+            )));
         }
-        
+
         let mut has_canonical = false;
         for &mode in &canonical_modes {
-            if mode { has_canonical = true; }
+            if mode {
+                has_canonical = true;
+            }
         }
-        
+
         let final_canonical = has_canonical;
         let total_kmers = reference_db.header().total_kmers;
-        
+
         Ok(Self {
             prefix_bits: 8,
             num_buckets,
@@ -75,67 +85,76 @@ impl ExternalSortMerger {
 
     pub fn external_sort_merge(&mut self, output_path: &Path) -> ProcessingResult<()> {
         let total_start = Instant::now();
-        
+
         println!("\n🚀 开始外部排序合并");
         println!("   输入文件: {} 个", self.input_files.len());
         println!("   总k-mers: {} M", self.total_kmers / 1_000_000);
         println!("   Canonical模式: {}", self.canonical);
         println!("   前缀桶数量: {}", self.num_buckets);
-        
+
         let phase1_start = Instant::now();
         self.split_files_by_prefix()?;
         let phase1_time = phase1_start.elapsed();
-        
+
         let phase2_start = Instant::now();
         self.merge_prefix_buckets()?;
         let phase2_time = phase2_start.elapsed();
-        
+
         let phase3_start = Instant::now();
         self.concatenate_final_output(output_path)?;
         let phase3_time = phase3_start.elapsed();
-        
+
         let total_time = total_start.elapsed();
-        
+
         println!("\n📊 合并完成!");
         println!("   总耗时: {:.1}s", total_time.as_secs_f64());
         println!("   阶段1 (分桶): {:.1}s", phase1_time.as_secs_f64());
         println!("   阶段2 (合并): {:.1}s", phase2_time.as_secs_f64());
         println!("   阶段3 (拼接): {:.1}s", phase3_time.as_secs_f64());
         println!("   输出文件: {:?}", output_path);
-        
+
         Ok(())
     }
-    
+
     fn split_files_by_prefix(&mut self) -> ProcessingResult<()> {
         println!("\n📦 阶段1 - 数据分桶 (按前4个碱基分配)");
-        
+
         let num_files = self.input_files.len();
         println!("   输入文件数: {}", num_files);
-        
+
         let num_workers = current_num_threads();
         println!("   使用 {} 个工作线程并行分桶", num_workers.min(num_files));
-        
+
         let start_time = Instant::now();
-        
-        let temp_files: Vec<Vec<PathBuf>> = (0..num_files).map(|file_idx| {
-            (0..self.num_buckets).map(|prefix| {
-                let dna = Self::prefix_to_dna(prefix);
-                self.temp_dir.join(format!("ext_sort_{}_file_{:03}.tmp", dna, file_idx))
-            }).collect()
-        }).collect();
-        
+
+        let temp_files: Vec<Vec<PathBuf>> = (0..num_files)
+            .map(|file_idx| {
+                (0..self.num_buckets)
+                    .map(|prefix| {
+                        let dna = Self::prefix_to_dna(prefix);
+                        self.temp_dir
+                            .join(format!("ext_sort_{}_file_{:03}.tmp", dna, file_idx))
+                    })
+                    .collect()
+            })
+            .collect();
+
         println!("");
-        
+
         const BATCH_SIZE: usize = 10_000;
         let mut total_kmers = 0u64;
-        
+
         for (file_idx, input_path) in self.input_files.iter().enumerate() {
-            let file_name = input_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let file_name = input_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             let mut file_kmers = 0u64;
-            
+
             let mut bucket_buffers: Vec<Vec<u8>> = vec![Vec::new(); self.num_buckets];
             let stream_iter = crate::database::DatabaseStreamIterator::new(input_path, 500_000)?;
-            
+
             for chunk_result in stream_iter {
                 let chunk = chunk_result?;
                 for entry in chunk {
@@ -144,14 +163,14 @@ impl ExternalSortMerger {
                     } else {
                         entry.kmer
                     };
-                    
+
                     let prefix = self.get_prefix_4mer(processed_kmer);
-                    
+
                     if prefix < self.num_buckets {
                         bucket_buffers[prefix].extend_from_slice(&entry.kmer.to_le_bytes());
                         bucket_buffers[prefix].extend_from_slice(&entry.count.to_le_bytes());
                         file_kmers += 1;
-                        
+
                         if bucket_buffers[prefix].len() >= BATCH_SIZE * 20 {
                             let temp_file_path = &temp_files[file_idx][prefix];
                             Self::write_buffer_sync(temp_file_path, &bucket_buffers[prefix])?;
@@ -160,7 +179,7 @@ impl ExternalSortMerger {
                     }
                 }
             }
-            
+
             for prefix in 0..self.num_buckets {
                 if !bucket_buffers[prefix].is_empty() {
                     let temp_file_path = &temp_files[file_idx][prefix];
@@ -168,27 +187,40 @@ impl ExternalSortMerger {
                     bucket_buffers[prefix].clear();
                 }
             }
-            
+
             total_kmers += file_kmers;
             let file_elapsed = start_time.elapsed();
             let speed = if file_elapsed.as_secs_f64() > 0.0 {
                 file_kmers as f64 / file_elapsed.as_secs_f64() / 1_000_000.0
-            } else { 0.0 };
-            
-            println!("   ✓ {}: {} M k-mers @ {:.1} M/s", file_name, file_kmers / 1_000_000, speed);
+            } else {
+                0.0
+            };
+
+            println!(
+                "   ✓ {}: {} M k-mers @ {:.1} M/s",
+                file_name,
+                file_kmers / 1_000_000,
+                speed
+            );
         }
-        
+
         let phase_time = start_time.elapsed();
         let speed = if phase_time.as_secs_f64() > 0.0 {
             total_kmers as f64 / phase_time.as_secs_f64() / 1_000_000.0
-        } else { 0.0 };
-        
-        println!("   ✅ 分桶完成: {} M k-mers @ {:.1} M/s (耗时 {:.1}s)", 
-                 total_kmers / 1_000_000, speed, phase_time.as_secs_f64());
-        
+        } else {
+            0.0
+        };
+
+        println!(
+            "   ✅ 分桶完成: {} M k-mers @ {:.1} M/s (耗时 {:.1}s)",
+            total_kmers / 1_000_000,
+            speed,
+            phase_time.as_secs_f64()
+        );
+
         Ok(())
     }
-    
+
     fn write_buffer_sync(file_path: &Path, data: &[u8]) -> ProcessingResult<()> {
         use std::fs::OpenOptions;
         let mut file = OpenOptions::new()
@@ -198,20 +230,23 @@ impl ExternalSortMerger {
         file.write_all(data)?;
         Ok(())
     }
-    
+
     fn merge_prefix_buckets(&mut self) -> ProcessingResult<()> {
         println!("\n🔄 阶段2 - 前缀桶合并");
 
         let start_time = Instant::now();
 
         let mut non_empty_prefixes = Vec::new();
-        let mut prefix_file_map: std::collections::HashMap<usize, Vec<(PathBuf, u64)>> = std::collections::HashMap::new();
+        let mut prefix_file_map: std::collections::HashMap<usize, Vec<(PathBuf, u64)>> =
+            std::collections::HashMap::new();
 
         for prefix in 0..self.num_buckets {
             let mut prefix_files = Vec::new();
             for file_idx in 0..self.input_files.len() {
                 let dna = Self::prefix_to_dna(prefix);
-                let temp_file_path = self.temp_dir.join(format!("ext_sort_{}_file_{:03}.tmp", dna, file_idx));
+                let temp_file_path = self
+                    .temp_dir
+                    .join(format!("ext_sort_{}_file_{:03}.tmp", dna, file_idx));
                 if temp_file_path.exists() {
                     if let Ok(metadata) = std::fs::metadata(&temp_file_path) {
                         if metadata.len() > 0 {
@@ -245,8 +280,12 @@ impl ExternalSortMerger {
             .map(|prefix| {
                 let completed = completed_count.clone();
                 let temp_dir = temp_dir_arc.clone();
-                let prefix_files = prefix_file_map_arc.get(&prefix).expect("Prefix not found in map").clone();
-                let files_to_delete: Vec<PathBuf> = prefix_files.iter().map(|(p, _)| p.clone()).collect();
+                let prefix_files = prefix_file_map_arc
+                    .get(&prefix)
+                    .expect("Prefix not found in map")
+                    .clone();
+                let files_to_delete: Vec<PathBuf> =
+                    prefix_files.iter().map(|(p, _)| p.clone()).collect();
                 let dna = Self::prefix_to_dna(prefix);
                 let output_file = temp_dir.join(format!("ext_sort_{}_merged.tmp", dna));
                 let merge_mode = merge_mode_arc.as_str();
@@ -274,12 +313,19 @@ impl ExternalSortMerger {
 
                 let done = completed.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
                 if result.is_ok() {
-                    eprintln!("   ✅ 处理完毕: {} | 进度: {}/{} ({:.1}%)",
-                             dna, done, non_empty_count,
-                             done as f64 / non_empty_count as f64 * 100.0);
+                    eprintln!(
+                        "   ✅ 处理完毕: {} | 进度: {}/{} ({:.1}%)",
+                        dna,
+                        done,
+                        non_empty_count,
+                        done as f64 / non_empty_count as f64 * 100.0
+                    );
                 } else {
-                    eprintln!("   ❌ 处理失败: {} | 错误: {}",
-                             dna, result.as_ref().err().unwrap());
+                    eprintln!(
+                        "   ❌ 处理失败: {} | 错误: {}",
+                        dna,
+                        result.as_ref().err().unwrap()
+                    );
                 }
 
                 if done % 10 == 0 || done == non_empty_count {
@@ -287,11 +333,17 @@ impl ExternalSortMerger {
                     let eta = if done > 0 && elapsed.as_secs_f64() > 0.0 {
                         let per_prefix = elapsed.as_secs_f64() / done as f64;
                         (non_empty_count - done) as f64 * per_prefix
-                    } else { 0.0 };
-                    eprintln!("   📊 汇总: {}/{} ({:.1}%) 已用 {:.1}s 预计剩余 {:.0}s   \r",
-                             done, non_empty_count,
-                             done as f64 / non_empty_count as f64 * 100.0,
-                             elapsed.as_secs_f64(), eta);
+                    } else {
+                        0.0
+                    };
+                    eprintln!(
+                        "   📊 汇总: {}/{} ({:.1}%) 已用 {:.1}s 预计剩余 {:.0}s   \r",
+                        done,
+                        non_empty_count,
+                        done as f64 / non_empty_count as f64 * 100.0,
+                        elapsed.as_secs_f64(),
+                        eta
+                    );
                     let _ = std::io::stdout().flush();
                 }
 
@@ -306,7 +358,9 @@ impl ExternalSortMerger {
         let parallel_time = start_parallel.elapsed();
         let speed_per_prefix = if non_empty_count > 0 {
             parallel_time.as_secs_f64() / non_empty_count as f64
-        } else { 0.0 };
+        } else {
+            0.0
+        };
 
         let mut error_count = 0;
         for result in results {
@@ -317,37 +371,52 @@ impl ExternalSortMerger {
         }
 
         if error_count == 0 {
-            println!("   ✅ 合并完成: {} 个前缀桶 (耗时 {:.1}s, 每桶 {:.2}s)",
-                     non_empty_count, phase_time.as_secs_f64(), speed_per_prefix);
+            println!(
+                "   ✅ 合并完成: {} 个前缀桶 (耗时 {:.1}s, 每桶 {:.2}s)",
+                non_empty_count,
+                phase_time.as_secs_f64(),
+                speed_per_prefix
+            );
         } else {
-            println!("   ⚠️ 合并完成: {} 个前缀桶, {} 个错误 (耗时 {:.1}s)",
-                     non_empty_count - error_count, error_count, phase_time.as_secs_f64());
+            println!(
+                "   ⚠️ 合并完成: {} 个前缀桶, {} 个错误 (耗时 {:.1}s)",
+                non_empty_count - error_count,
+                error_count,
+                phase_time.as_secs_f64()
+            );
         }
 
         Ok(())
     }
 
-    fn merge_single_prefix_hashmap(files: Vec<(PathBuf, u64)>, output_path: &Path) -> Result<(), anyhow::Error> {
+    fn merge_single_prefix_hashmap(
+        files: Vec<(PathBuf, u64)>,
+        output_path: &Path,
+    ) -> Result<(), anyhow::Error> {
         use std::collections::HashMap;
         use std::io::BufReader;
 
         println!("   使用内存合并模式");
-        
+
         // 计算总大小
         let total_size: u64 = files.iter().map(|(_, s)| *s).sum();
         let total_kmers = total_size / 20;
-        
+
         println!("   输入文件: {} 个", files.len());
-        println!("   总数据量: {:.1} MB ({} k-mers)", total_size as f64 / 1024.0 / 1024.0, total_kmers);
-        
+        println!(
+            "   总数据量: {:.1} MB ({} k-mers)",
+            total_size as f64 / 1024.0 / 1024.0,
+            total_kmers
+        );
+
         // 检查可用内存
         if let Ok(mem_info) = sys_info::mem_info() {
             let avail_mem_mb = mem_info.avail as f64 / 1024.0 / 1024.0;
             let required_mem_mb = total_size as f64 / 1024.0 / 1024.0 * 3.0; // 考虑HashMap开销
-            
+
             println!("   可用内存: {:.1} MB", avail_mem_mb);
             println!("   预估需要: {:.1} MB", required_mem_mb);
-            
+
             if required_mem_mb > avail_mem_mb {
                 println!("   ⚠️  警告: 预估内存需求超过可用内存！");
                 println!("   建议: 使用 --merge-mode streaming 模式");
@@ -362,69 +431,83 @@ impl ExternalSortMerger {
 
         for (idx, (file_path, file_size)) in files.iter().enumerate() {
             let file_start = std::time::Instant::now();
-            
+
             // 检查内存使用
             if idx > 0 && idx % 5 == 0 {
                 if let Ok(mem_info) = sys_info::mem_info() {
-                    println!("   进度: {}/{} | 已处理 {} M k-mers | 可用内存: {:.1} MB",
-                             idx, files.len(),
-                             processed_kmers / 1_000_000,
-                             mem_info.avail as f64 / 1024.0 / 1024.0);
+                    println!(
+                        "   进度: {}/{} | 已处理 {} M k-mers | 可用内存: {:.1} MB",
+                        idx,
+                        files.len(),
+                        processed_kmers / 1_000_000,
+                        mem_info.avail as f64 / 1024.0 / 1024.0
+                    );
                 }
             }
-            
+
             let file = File::open(file_path)
                 .map_err(|e| anyhow::anyhow!("无法打开文件 {}: {}", file_path.display(), e))?;
-            
+
             let mut reader = BufReader::with_capacity(1_000_000, file);
             let mut buffer = Vec::new();
-            
-            reader.read_to_end(&mut buffer)
+
+            reader
+                .read_to_end(&mut buffer)
                 .map_err(|e| anyhow::anyhow!("读取文件 {} 失败: {}", file_path.display(), e))?;
-            
+
             let mut offset = 0usize;
             while offset + 20 <= buffer.len() {
                 let kmer = u128::from_le_bytes(buffer[offset..offset + 16].try_into().unwrap());
-                let count = u32::from_le_bytes(buffer[offset + 16..offset + 20].try_into().unwrap());
+                let count =
+                    u32::from_le_bytes(buffer[offset + 16..offset + 20].try_into().unwrap());
                 *kmer_counts.entry(kmer).or_insert(0) += count;
                 offset += 20;
                 processed_kmers += 1;
             }
-            
+
             let file_elapsed = file_start.elapsed();
             let speed = if file_elapsed.as_secs_f64() > 0.0 {
                 (*file_size as f64 / 1024.0 / 1024.0) / file_elapsed.as_secs_f64()
-            } else { 0.0 };
-            
-            println!("   ✓ 文件 {}: {:.1} MB @ {:.1} MB/s",
-                     idx + 1, *file_size as f64 / 1024.0 / 1024.0, speed);
+            } else {
+                0.0
+            };
+
+            println!(
+                "   ✓ 文件 {}: {:.1} MB @ {:.1} MB/s",
+                idx + 1,
+                *file_size as f64 / 1024.0 / 1024.0,
+                speed
+            );
         }
 
         // 检查最终内存使用
         if let Ok(mem_info) = sys_info::mem_info() {
-            println!("   合并完成: {} 个唯一k-mers | 可用内存: {:.1} MB",
-                     kmer_counts.len(),
-                     mem_info.avail as f64 / 1024.0 / 1024.0);
+            println!(
+                "   合并完成: {} 个唯一k-mers | 可用内存: {:.1} MB",
+                kmer_counts.len(),
+                mem_info.avail as f64 / 1024.0 / 1024.0
+            );
         }
 
         println!("   开始排序...");
         let sort_start = std::time::Instant::now();
-        
+
         let mut sorted_kmers: Vec<(u128, u32)> = kmer_counts.into_iter().collect();
         sorted_kmers.sort_by_key(|(k, _)| *k);
-        
+
         let sort_time = sort_start.elapsed();
         println!("   排序完成: 耗时 {:.1}s", sort_time.as_secs_f64());
 
         println!("   写入输出文件...");
         let mut output_file = File::create(output_path)
             .map_err(|e| anyhow::anyhow!("无法创建输出文件 {}: {}", output_path.display(), e))?;
-        
+
         for (kmer, count) in &sorted_kmers {
             output_file.write_all(&kmer.to_le_bytes())?;
             output_file.write_all(&count.to_le_bytes())?;
         }
-        output_file.sync_all()
+        output_file
+            .sync_all()
             .map_err(|e| anyhow::anyhow!("无法同步文件 {}: {}", output_path.display(), e))?;
 
         let total_time = start_time.elapsed();
@@ -433,7 +516,10 @@ impl ExternalSortMerger {
         Ok(())
     }
 
-    fn merge_single_prefix_streaming(files: Vec<(PathBuf, u64)>, output_path: &Path) -> Result<(), anyhow::Error> {
+    fn merge_single_prefix_streaming(
+        files: Vec<(PathBuf, u64)>,
+        output_path: &Path,
+    ) -> Result<(), anyhow::Error> {
         use std::cmp::Ordering;
         use std::collections::BinaryHeap;
 
@@ -564,7 +650,9 @@ impl ExternalSortMerger {
         Ok(entries)
     }
 
-    fn read_batch_from_file_sync(file_state: &mut (std::io::BufReader<File>, Vec<u8>, Vec<KmerEntry>)) -> ProcessingResult<Vec<KmerEntry>> {
+    fn read_batch_from_file_sync(
+        file_state: &mut (std::io::BufReader<File>, Vec<u8>, Vec<KmerEntry>),
+    ) -> ProcessingResult<Vec<KmerEntry>> {
         const BATCH_BYTES: u64 = 4_000_000;
         let (reader, data, _) = &mut *file_state;
         data.clear();
@@ -595,25 +683,27 @@ impl ExternalSortMerger {
 
         Ok(entries)
     }
-    
+
     fn get_prefix_4mer(&self, kmer: u128) -> usize {
         let prefix_bits = kmer & 0xFF;
         prefix_bits as usize
     }
-    
+
     fn concatenate_final_output(&self, output_path: &Path) -> ProcessingResult<()> {
         use std::io::{BufWriter, Write};
-        
+
         println!("\n📦 阶段3 - 最终拼接 (使用RKDB标准格式)");
 
         let start_time = Instant::now();
-        
+
         // 监控内存使用
         if let Ok(mem_info) = sys_info::mem_info() {
-            println!("   当前内存使用: {:.1} GB / {:.1} GB (可用 {:.1} GB)", 
-                     (mem_info.total - mem_info.avail) as f64 / 1024.0 / 1024.0 / 1024.0,
-                     mem_info.total as f64 / 1024.0 / 1024.0 / 1024.0,
-                     mem_info.avail as f64 / 1024.0 / 1024.0 / 1024.0);
+            println!(
+                "   当前内存使用: {:.1} GB / {:.1} GB (可用 {:.1} GB)",
+                (mem_info.total - mem_info.avail) as f64 / 1024.0 / 1024.0 / 1024.0,
+                mem_info.total as f64 / 1024.0 / 1024.0 / 1024.0,
+                mem_info.avail as f64 / 1024.0 / 1024.0 / 1024.0
+            );
         }
 
         let temp_data_file = self.temp_dir.join("ext_sort_final_data.tmp");
@@ -647,16 +737,19 @@ impl ExternalSortMerger {
                 if !self.keep_intermediate {
                     let _ = std::fs::remove_file(&prefix_file);
                 }
-                
+
                 // 每处理一个文件后报告进度和内存
                 let processed = prefix + 1;
                 if processed % 16 == 0 || processed == self.num_buckets {
                     if let Ok(mem_info) = sys_info::mem_info() {
-                        println!("   进度: {}/{} | 数据: {:.1} MB | k-mers: {} M | 可用内存: {:.1} MB",
-                                 processed, self.num_buckets,
-                                 data_size as f64 / 1024.0 / 1024.0,
-                                 total_kmers_in_files / 1_000_000,
-                                 mem_info.avail as f64 / 1024.0 / 1024.0);
+                        println!(
+                            "   进度: {}/{} | 数据: {:.1} MB | k-mers: {} M | 可用内存: {:.1} MB",
+                            processed,
+                            self.num_buckets,
+                            data_size as f64 / 1024.0 / 1024.0,
+                            total_kmers_in_files / 1_000_000,
+                            mem_info.avail as f64 / 1024.0 / 1024.0
+                        );
                     }
                 }
             }
@@ -665,23 +758,32 @@ impl ExternalSortMerger {
         drop(temp_file);
 
         let total_kmers = data_size / 20;
-        
-        println!("   开始写入RKDB格式，总计 {} M 个k-mers...", total_kmers / 1_000_000);
-        println!("   从各文件统计: {} M 个k-mers", total_kmers_in_files / 1_000_000);
-        
+
+        println!(
+            "   开始写入RKDB格式，总计 {} M 个k-mers...",
+            total_kmers / 1_000_000
+        );
+        println!(
+            "   从各文件统计: {} M 个k-mers",
+            total_kmers_in_files / 1_000_000
+        );
+
         // 检查是否有重复
         if total_kmers != total_kmers_in_files {
             println!("   ⚠️  警告: 数据大小不一致！可能有重复或丢失");
         }
-        
+
         // 监控内存使用
         if let Ok(mem_info) = sys_info::mem_info() {
-            println!("   当前可用内存: {:.1} GB", mem_info.avail as f64 / 1024.0 / 1024.0 / 1024.0);
+            println!(
+                "   当前可用内存: {:.1} GB",
+                mem_info.avail as f64 / 1024.0 / 1024.0 / 1024.0
+            );
         }
 
         // 使用流式处理而不是一次性加载所有数据
         let mut file = File::open(&temp_data_file)?;
-        
+
         // 创建 RKDatabase header (data_offset 在 header 之后，通常是 42 字节)
         let header = crate::database::format::DatabaseHeader {
             magic: *b"RKDB",
@@ -691,23 +793,23 @@ impl ExternalSortMerger {
             sorted: true,
             total_kmers,
             unique_kmers: total_kmers,
-            data_offset: 42,  // header size
-            file_size: 42 + data_size,  // header + data
-            index_offset: 0,  // no index for now
+            data_offset: 42,           // header size
+            file_size: 42 + data_size, // header + data
+            index_offset: 0,           // no index for now
         };
-        
+
         // 创建输出文件
         let output = File::create(output_path)?;
         let mut writer = BufWriter::with_capacity(10_000_000, output);
-        
+
         // 写入 header
         header.write_to(&mut writer)?;
-        
+
         // 流式读取和写入 k-mer 数据
         let mut buffer = vec![0u8; 20 * 100_000]; // 每次 100k k-mers
         let mut processed_kmers = 0u64;
         let mut last_report = std::time::Instant::now();
-        
+
         loop {
             match file.read(&mut buffer) {
                 Ok(0) => break,
@@ -715,47 +817,56 @@ impl ExternalSortMerger {
                     let num_kmers = n / 20;
                     processed_kmers += num_kmers as u64;
                     writer.write_all(&buffer[..n])?;
-                    
+
                     // 每 100 万 k-mers 报告进度
                     if processed_kmers % 1_000_000 == 0 || last_report.elapsed().as_secs() >= 5 {
                         if let Ok(mem_info) = sys_info::mem_info() {
-                            println!("   进度: {} M / {} M k-mers | 可用内存: {:.1} MB",
-                                     processed_kmers / 1_000_000, total_kmers / 1_000_000,
-                                     mem_info.avail as f64 / 1024.0 / 1024.0);
+                            println!(
+                                "   进度: {} M / {} M k-mers | 可用内存: {:.1} MB",
+                                processed_kmers / 1_000_000,
+                                total_kmers / 1_000_000,
+                                mem_info.avail as f64 / 1024.0 / 1024.0
+                            );
                         }
                         last_report = std::time::Instant::now();
                     }
                 }
                 Err(e) => {
-                    return Err(crate::error::ProcessingError::new(&format!("读取数据失败: {}", e)));
+                    return Err(crate::error::ProcessingError::new(&format!(
+                        "读取数据失败: {}",
+                        e
+                    )));
                 }
             }
         }
-        
+
         writer.flush()?;
         drop(writer);
-        
+
         // 写入 metadata - 使用 create_metadata 函数
         use crate::core::metadata::create_metadata;
         use std::time::SystemTime;
-        
+
         let now = SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        
+
         let mut metadata = create_metadata(
             self.kmer_size,
             self.canonical,
-            self.input_files.iter().filter_map(|p| p.to_str().map(String::from)).collect()
+            self.input_files
+                .iter()
+                .filter_map(|p| p.to_str().map(String::from))
+                .collect(),
         );
-        
+
         // 更新统计信息
         metadata.total_kmers = total_kmers;
         metadata.unique_kmers = total_kmers;
         metadata.created_at = now;
         metadata.modified_at = now;
-        
+
         // 写入 metadata
         let metadata_path = output_path.with_extension("json");
         let metadata_json = serde_json::to_string_pretty(&metadata)
@@ -764,8 +875,11 @@ impl ExternalSortMerger {
             .map_err(|e| crate::error::ProcessingError::new(&format!("写入元数据失败: {}", e)))?;
 
         let phase_time = start_time.elapsed();
-        println!("   ✅ 拼接完成: {} M 个k-mers (耗时 {:.1}s)",
-                 total_kmers / 1_000_000, phase_time.as_secs_f64());
+        println!(
+            "   ✅ 拼接完成: {} M 个k-mers (耗时 {:.1}s)",
+            total_kmers / 1_000_000,
+            phase_time.as_secs_f64()
+        );
 
         if !self.keep_intermediate {
             let _ = std::fs::remove_file(&temp_data_file);
@@ -789,22 +903,22 @@ impl ExternalSortMerger {
         }
         dna.chars().rev().collect()
     }
-    
+
     fn read_entries_from_file(&self, path: &Path) -> ProcessingResult<Vec<KmerEntry>> {
         let mut file = File::open(path)?;
         let mut data = Vec::new();
         file.read_to_end(&mut data)?;
-        
+
         let mut entries = Vec::new();
         let mut offset = 0;
-        
+
         while offset + 20 <= data.len() {
             let kmer = u128::from_le_bytes(data[offset..offset + 16].try_into().unwrap());
             let count = u32::from_le_bytes(data[offset + 16..offset + 20].try_into().unwrap());
             entries.push(KmerEntry::new(kmer, count));
             offset += 20;
         }
-        
+
         Ok(entries)
     }
 }
@@ -818,16 +932,23 @@ mod tests {
     fn test_external_sort_merger_creation() {
         let temp_dir = tempfile::tempdir().unwrap();
         let input_files = vec![PathBuf::from("test1.rkdb"), PathBuf::from("test2.rkdb")];
-        let result = ExternalSortMerger::new(input_files, temp_dir.path().to_path_buf(), 1024, 0, "auto".to_string(), false);
+        let result = ExternalSortMerger::new(
+            input_files,
+            temp_dir.path().to_path_buf(),
+            1024,
+            0,
+            "auto".to_string(),
+            false,
+        );
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_merger_structure() {
         let temp_dir = tempfile::tempdir().unwrap();
         assert!(temp_dir.path().exists());
     }
-    
+
     #[test]
     fn test_prefix_extraction_values() {
         let kmer_size = 57;

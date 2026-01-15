@@ -4,11 +4,11 @@
 //! enabled/disabled at compile time using the "profiling" feature flag.
 
 #[cfg(feature = "profiling")]
-use std::time::{Duration, Instant};
+use serde::{Deserialize, Serialize};
 #[cfg(feature = "profiling")]
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "profiling")]
-use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
 
 /// Performance monitoring configuration
 #[cfg(feature = "profiling")]
@@ -168,7 +168,10 @@ impl PerformanceTimer {
 
     /// Create a new performance timer with metrics collector
     pub fn with_collector(operation_name: String, collector: Arc<Mutex<MetricsCollector>>) -> Self {
-        log::debug!("Starting performance timer for: {} (with collection)", operation_name);
+        log::debug!(
+            "Starting performance timer for: {} (with collection)",
+            operation_name
+        );
         Self {
             start_time: Instant::now(),
             operation_name,
@@ -179,7 +182,11 @@ impl PerformanceTimer {
     /// Finish timing and record the duration
     pub fn finish(self) -> Duration {
         let duration = self.start_time.elapsed();
-        log::debug!("Operation '{}' completed in {:?}", self.operation_name, duration);
+        log::debug!(
+            "Operation '{}' completed in {:?}",
+            self.operation_name,
+            duration
+        );
 
         if let Some(collector) = self.metrics_collector {
             let mut collector = collector.lock().unwrap();
@@ -199,7 +206,11 @@ impl PerformanceTimer {
 impl Drop for PerformanceTimer {
     fn drop(&mut self) {
         let elapsed = self.elapsed();
-        log::debug!("Performance timer for '{}' dropped after {:?}", self.operation_name, elapsed);
+        log::debug!(
+            "Performance timer for '{}' dropped after {:?}",
+            self.operation_name,
+            elapsed
+        );
 
         if let Some(collector) = &self.metrics_collector {
             let mut collector = collector.lock().unwrap();
@@ -234,7 +245,10 @@ impl MetricsCollector {
             return;
         }
 
-        let timings = self.active_timers.entry(operation.clone()).or_insert_with(Vec::new);
+        let timings = self
+            .active_timers
+            .entry(operation.clone())
+            .or_insert_with(Vec::new);
         timings.push(duration);
 
         // Maintain maximum sample limit
@@ -300,12 +314,21 @@ impl MetricsCollector {
     }
 
     pub fn log_summary(&self) {
-        log::info!("Performance Summary - {} samples recorded", self.total_samples);
+        log::info!(
+            "Performance Summary - {} samples recorded",
+            self.total_samples
+        );
 
         for (operation, timings) in &self.active_timings {
             if let Some(stats) = self.get_operation_stats(operation) {
-                log::info!("  {}: {} ops, avg {:?}, min {:?}, max {:?}",
-                          operation, stats.count, stats.average, stats.min, stats.max);
+                log::info!(
+                    "  {}: {} ops, avg {:?}, min {:?}, max {:?}",
+                    operation,
+                    stats.count,
+                    stats.average,
+                    stats.min,
+                    stats.max
+                );
             }
         }
     }
@@ -328,15 +351,18 @@ pub struct OperationStats {
 
 /// Global metrics collector instance
 #[cfg(feature = "profiling")]
-static GLOBAL_COLLECTOR: std::sync::OnceLock<Arc<Mutex<MetricsCollector>>> = std::sync::OnceLock::new();
+static GLOBAL_COLLECTOR: std::sync::OnceLock<Arc<Mutex<MetricsCollector>>> =
+    std::sync::OnceLock::new();
 
 /// Get the global metrics collector
 #[cfg(feature = "profiling")]
 pub fn get_global_collector() -> Arc<Mutex<MetricsCollector>> {
-    GLOBAL_COLLECTOR.get_or_init(|| {
-        let config = MonitoringConfig::default();
-        Arc::new(Mutex::new(MetricsCollector::new(config)))
-    }).clone()
+    GLOBAL_COLLECTOR
+        .get_or_init(|| {
+            let config = MonitoringConfig::default();
+            Arc::new(Mutex::new(MetricsCollector::new(config)))
+        })
+        .clone()
 }
 
 /// Initialize global performance monitoring
@@ -361,8 +387,11 @@ pub fn record_metric(operation: &str, metric_name: &str, value: f64) {
     let mut collector = collector.lock().unwrap();
 
     // Find existing operation metrics or create new one
-    if let Some(op_metrics) = collector.operations.iter_mut()
-        .find(|op| op.operation_name == operation) {
+    if let Some(op_metrics) = collector
+        .operations
+        .iter_mut()
+        .find(|op| op.operation_name == operation)
+    {
         op_metrics.add_custom_metric(format!("{}.{}", operation, metric_name), value);
     } else {
         let mut new_metrics = OperationMetrics::new(operation.to_string());
@@ -408,7 +437,6 @@ impl PerformanceTimer {
         std::time::Duration::default()
     }
 }
-
 
 #[cfg(not(feature = "profiling"))]
 pub fn start_timer(_operation: &str) -> PerformanceTimer {

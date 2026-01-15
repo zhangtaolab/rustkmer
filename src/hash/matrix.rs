@@ -1,12 +1,12 @@
 //! Matrix hash function for k-mer hashing
 //!
-//! Provides efficient binary matrix multiplication for k-mer hash computation,
-//! based on the approach used in jellyfish for optimal distribution.
+//! Provides efficient binary matrix multiplication for k-mer hash computation
+//! for optimal distribution and collision resistance.
 
 /// Simple matrix hash function for k-mers
 ///
 /// This is a placeholder implementation that will be expanded with
-/// more sophisticated matrix operations based on jellyfish's approach.
+/// more sophisticated matrix operations.
 #[derive(Debug, Clone)]
 pub struct MatrixHashFunction {
     /// Matrix size (usually kmer_length * 2)

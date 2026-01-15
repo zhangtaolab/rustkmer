@@ -14,7 +14,7 @@ pub fn execute_dump(args: &Args) -> ProcessingResult<()> {
     match &args.command {
         crate::cli::args::Commands::Dump { database, output } => {
             dump_database(database, output.as_deref())
-        },
+        }
         _ => Err(KmerError::ProcessingError("Invalid command for execute_dump".to_string()).into()),
     }
 }
@@ -38,8 +38,9 @@ fn dump_database(database_path: &str, output_path: Option<&str>) -> ProcessingRe
         DatabaseFormat::Bincode => dump_bincode_database(path, output_path)?,
         DatabaseFormat::Unknown => {
             return Err(KmerError::ProcessingError(
-                "Unknown database format. Supported formats: RKDB, bincode".to_string()
-            ).into());
+                "Unknown database format. Supported formats: RKDB, bincode".to_string(),
+            )
+            .into());
         }
     }
 
@@ -66,8 +67,7 @@ fn detect_database_format(path: &Path) -> ProcessingResult<DatabaseFormat> {
     use std::fs::File;
     use std::io::{BufReader, Read};
 
-    let file = File::open(path)
-        .map_err(KmerError::Io)?;
+    let file = File::open(path).map_err(KmerError::Io)?;
 
     let mut reader = BufReader::new(file);
     let mut header_bytes = [0u8; 4];
@@ -89,17 +89,18 @@ fn dump_rkdb_database(path: &Path, output_path: Option<&str>) -> ProcessingResul
     use std::fs::File;
     use std::io::{BufReader, BufWriter};
 
-    let file = File::open(path)
-        .map_err(KmerError::Io)?;
+    let file = File::open(path).map_err(KmerError::Io)?;
 
     let mut reader = BufReader::new(file);
 
     // Read RKDB header
-    let header = DatabaseHeader::read_from(&mut reader)
-        .map_err(|e| KmerError::ProcessingError(format!("Failed to read database header: {}", e)))?;
+    let header = DatabaseHeader::read_from(&mut reader).map_err(|e| {
+        KmerError::ProcessingError(format!("Failed to read database header: {}", e))
+    })?;
 
     // Validate header
-    header.validate()
+    header
+        .validate()
         .map_err(|e| KmerError::ProcessingError(format!("Invalid database header: {}", e)))?;
 
     eprintln!("Database info:");
@@ -111,10 +112,11 @@ fn dump_rkdb_database(path: &Path, output_path: Option<&str>) -> ProcessingResul
 
     // Create output writer
     let writer: Box<dyn Write> = if let Some(output_path) = output_path {
-        let file = std::fs::File::create(output_path)
-            .map_err(|e| KmerError::FileWriteError(format!("Failed to create output file: {}", e)))?;
+        let file = std::fs::File::create(output_path).map_err(|e| {
+            KmerError::FileWriteError(format!("Failed to create output file: {}", e))
+        })?;
         Box::new(BufWriter::new(file))
-      } else {
+    } else {
         Box::new(BufWriter::new(std::io::stdout()))
     };
 
@@ -159,8 +161,9 @@ fn dump_rkdb_database(path: &Path, output_path: Option<&str>) -> ProcessingResul
                     decode_kmer_to_sequence(entry.kmer as u64, header.kmer_size as usize)
                 };
 
-                writeln!(writer, "{}\t{}", sequence, entry.count)
-                    .map_err(|e| KmerError::FileWriteError(format!("Failed to write k-mer entry: {}", e)))?;
+                writeln!(writer, "{}\t{}", sequence, entry.count).map_err(|e| {
+                    KmerError::FileWriteError(format!("Failed to write k-mer entry: {}", e))
+                })?;
 
                 processed += 1;
 
@@ -168,16 +171,18 @@ fn dump_rkdb_database(path: &Path, output_path: Option<&str>) -> ProcessingResul
                 if processed.is_multiple_of(100_000) {
                     eprintln!("Processed {} k-mers...", processed);
                 }
-            },
+            }
             Err(e) => {
                 // EOF or read error - expected at end of file
                 if processed > 0 {
                     eprintln!("Reached end of file at {} k-mers", processed);
                     break;
                 } else {
-                    return Err(KmerError::ProcessingError(
-                        format!("Failed to read k-mer entry at position {}: {}", processed, e)
-                    ).into());
+                    return Err(KmerError::ProcessingError(format!(
+                        "Failed to read k-mer entry at position {}: {}",
+                        processed, e
+                    ))
+                    .into());
                 }
             }
         }
@@ -192,16 +197,16 @@ fn dump_bincode_database(path: &Path, output_path: Option<&str>) -> ProcessingRe
     use std::fs::File;
     use std::io::BufReader;
 
-    let file = File::open(path)
-        .map_err(KmerError::Io)?;
+    let file = File::open(path).map_err(KmerError::Io)?;
 
     let mut reader = BufReader::new(file);
 
     // Try to deserialize as bincode (kmer_length, kmers) tuple
-    let bincode_data: (usize, Vec<(u64, u32)>) = bincode::deserialize_from(&mut reader)
-        .map_err(|_| {
+    let bincode_data: (usize, Vec<(u64, u32)>) =
+        bincode::deserialize_from(&mut reader).map_err(|_| {
             KmerError::ProcessingError(
-                "Failed to parse as bincode format. This might not be a valid rustkmer database.".to_string()
+                "Failed to parse as bincode format. This might not be a valid rustkmer database."
+                    .to_string(),
             )
         })?;
 
@@ -214,8 +219,9 @@ fn dump_bincode_database(path: &Path, output_path: Option<&str>) -> ProcessingRe
 
     // Create output writer
     let writer: Box<dyn Write> = if let Some(out_path) = output_path {
-        let file = std::fs::File::create(out_path)
-            .map_err(|e| KmerError::FileWriteError(format!("Failed to create output file: {}", e)))?;
+        let file = std::fs::File::create(out_path).map_err(|e| {
+            KmerError::FileWriteError(format!("Failed to create output file: {}", e))
+        })?;
         Box::new(BufWriter::new(file))
     } else {
         Box::new(BufWriter::new(std::io::stdout()))
@@ -234,8 +240,9 @@ fn dump_bincode_database(path: &Path, output_path: Option<&str>) -> ProcessingRe
     let kmer_count = kmers.len();
     for (kmer, count) in kmers {
         let sequence = decode_kmer_to_sequence(kmer, kmer_length);
-        writeln!(writer, "{}\t{}", sequence, count)
-            .map_err(|e| KmerError::FileWriteError(format!("Failed to write k-mer entry: {}", e)))?;
+        writeln!(writer, "{}\t{}", sequence, count).map_err(|e| {
+            KmerError::FileWriteError(format!("Failed to write k-mer entry: {}", e))
+        })?;
     }
 
     eprintln!("Successfully dumped {} k-mers", kmer_count);

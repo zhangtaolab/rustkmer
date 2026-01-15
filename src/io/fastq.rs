@@ -58,16 +58,12 @@ impl CompressedFileReader for DefaultCompressedFileReader {
     fn open_compressed(path: &Path) -> ProcessingResult<(Box<dyn io::BufRead>, CompressionType)> {
         let compression_type = CompressionType::from_path(path);
 
-        let file = std::fs::File::open(path)
-            .map_err(|e| ProcessingError::with_context(
-                format!("Failed to open file: {:?}", path),
-                e,
-            ))?;
+        let file = std::fs::File::open(path).map_err(|e| {
+            ProcessingError::with_context(format!("Failed to open file: {:?}", path), e)
+        })?;
 
         let reader: Box<dyn io::BufRead> = match compression_type {
-            CompressionType::None => {
-                Box::new(io::BufReader::new(file))
-            }
+            CompressionType::None => Box::new(io::BufReader::new(file)),
             CompressionType::Gzip => {
                 let decoder = flate2::read::GzDecoder::new(file);
                 Box::new(io::BufReader::new(decoder))
@@ -133,20 +129,33 @@ impl FastqProcessor {
     where
         F: FnMut(&Record) -> ProcessingResult<()>,
     {
-        let (reader, compression_type) = DefaultCompressedFileReader::open_compressed(Path::new(&self.file_path))
-            .map_err(|e| ProcessingError::with_context(
-                format!("Failed to open FASTQ file: {} ({})", self.file_path, self.compression_type.name()),
+        let (reader, compression_type) = DefaultCompressedFileReader::open_compressed(Path::new(
+            &self.file_path,
+        ))
+        .map_err(|e| {
+            ProcessingError::with_context(
+                format!(
+                    "Failed to open FASTQ file: {} ({})",
+                    self.file_path,
+                    self.compression_type.name()
+                ),
                 e,
-            ))?;
+            )
+        })?;
 
         let fastq_reader = Reader::new(reader);
 
         for record_result in fastq_reader.records() {
-            let record = record_result
-                .map_err(|e| ProcessingError::with_context(
-                    format!("Error reading FASTQ record from file: {} ({})", &self.file_path, compression_type.name()),
-                    e
-                ))?;
+            let record = record_result.map_err(|e| {
+                ProcessingError::with_context(
+                    format!(
+                        "Error reading FASTQ record from file: {} ({})",
+                        &self.file_path,
+                        compression_type.name()
+                    ),
+                    e,
+                )
+            })?;
 
             if let Err(e) = processor(&record) {
                 eprintln!("Error processing record {}: {}", record.id(), e);
@@ -165,16 +174,28 @@ impl FastqProcessor {
     ///
     /// # Returns
     /// Processing result
-    pub fn process_file_with_progress<F, G>(&self, mut processor: F, mut progress_callback: Option<G>) -> ProcessingResult<()>
+    pub fn process_file_with_progress<F, G>(
+        &self,
+        mut processor: F,
+        mut progress_callback: Option<G>,
+    ) -> ProcessingResult<()>
     where
         F: FnMut(&Record) -> ProcessingResult<()>,
         G: FnMut(usize, Option<u64>) -> ProcessingResult<()>,
     {
-        let (reader, compression_type) = DefaultCompressedFileReader::open_compressed(Path::new(&self.file_path))
-            .map_err(|e| ProcessingError::with_context(
-                format!("Failed to open FASTQ file: {} ({})", self.file_path, self.compression_type.name()),
+        let (reader, compression_type) = DefaultCompressedFileReader::open_compressed(Path::new(
+            &self.file_path,
+        ))
+        .map_err(|e| {
+            ProcessingError::with_context(
+                format!(
+                    "Failed to open FASTQ file: {} ({})",
+                    self.file_path,
+                    self.compression_type.name()
+                ),
                 e,
-            ))?;
+            )
+        })?;
 
         let fastq_reader = Reader::new(reader);
         let mut record_count = 0;
@@ -187,11 +208,16 @@ impl FastqProcessor {
         };
 
         for record_result in fastq_reader.records() {
-            let record = record_result
-                .map_err(|e| ProcessingError::with_context(
-                    format!("Error reading FASTQ record from file: {} ({})", &self.file_path, compression_type.name()),
-                    e
-                ))?;
+            let record = record_result.map_err(|e| {
+                ProcessingError::with_context(
+                    format!(
+                        "Error reading FASTQ record from file: {} ({})",
+                        &self.file_path,
+                        compression_type.name()
+                    ),
+                    e,
+                )
+            })?;
 
             if let Err(e) = processor(&record) {
                 eprintln!("Error processing record {}: {}", record.id(), e);
@@ -239,11 +265,12 @@ impl FastqProcessor {
 
     /// Get file size
     pub fn file_size(&self) -> ProcessingResult<u64> {
-        let metadata = std::fs::metadata(&self.file_path)
-            .map_err(|e| ProcessingError::with_context(
+        let metadata = std::fs::metadata(&self.file_path).map_err(|e| {
+            ProcessingError::with_context(
                 format!("Failed to get file metadata: {}", self.file_path),
                 e,
-            ))?;
+            )
+        })?;
 
         Ok(metadata.len())
     }
@@ -293,21 +320,31 @@ pub fn validate_fastq_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
     let compression_type = CompressionType::from_path(path);
 
     // Try to read the first few records to validate format
-    let (reader, _) = DefaultCompressedFileReader::open_compressed(path)
-        .map_err(|e| ProcessingError::with_context(
-            format!("Failed to open FASTQ file: {:?} ({})", path, compression_type.name()),
+    let (reader, _) = DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
+        ProcessingError::with_context(
+            format!(
+                "Failed to open FASTQ file: {:?} ({})",
+                path,
+                compression_type.name()
+            ),
             e,
-        ))?;
+        )
+    })?;
 
     let reader = Reader::new(reader);
     let mut record_count = 0;
 
     for record_result in reader.records() {
-        let record = record_result
-            .map_err(|e| ProcessingError::with_context(
-                format!("Error reading FASTQ record during validation: {:?} ({})", &path, compression_type.name()),
-                e
-            ))?;
+        let record = record_result.map_err(|e| {
+            ProcessingError::with_context(
+                format!(
+                    "Error reading FASTQ record during validation: {:?} ({})",
+                    &path,
+                    compression_type.name()
+                ),
+                e,
+            )
+        })?;
 
         record_count += 1;
 
@@ -321,7 +358,10 @@ pub fn validate_fastq_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
         }
 
         if record.qual().len() != record.seq().len() {
-            eprintln!("Warning: Record {} has mismatched sequence/quality length", record_count);
+            eprintln!(
+                "Warning: Record {} has mismatched sequence/quality length",
+                record_count
+            );
         }
 
         // Stop after reading a few records for validation
@@ -331,9 +371,7 @@ pub fn validate_fastq_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
     }
 
     if record_count == 0 {
-        return Err(ProcessingError::new(
-            "No valid FASTQ records found in file"
-        ));
+        return Err(ProcessingError::new("No valid FASTQ records found in file"));
     }
 
     Ok(())
@@ -350,11 +388,16 @@ pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> 
     let path = file_path.as_ref();
     let compression_type = CompressionType::from_path(path);
 
-    let (reader, _) = DefaultCompressedFileReader::open_compressed(path)
-        .map_err(|e| ProcessingError::with_context(
-            format!("Failed to open FASTQ file: {:?} ({})", path, compression_type.name()),
+    let (reader, _) = DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
+        ProcessingError::with_context(
+            format!(
+                "Failed to open FASTQ file: {:?} ({})",
+                path,
+                compression_type.name()
+            ),
             e,
-        ))?;
+        )
+    })?;
 
     let reader = Reader::new(reader);
     let mut count = 0;
@@ -376,23 +419,17 @@ pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> 
 pub fn total_sequence_length<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> {
     let path = file_path.as_ref();
 
-    let file = io::BufReader::new(
-        std::fs::File::open(path)
-            .map_err(|e| ProcessingError::with_context(
-                format!("Failed to open FASTQ file: {:?}", path),
-                e,
-            ))?,
-    );
+    let file = io::BufReader::new(std::fs::File::open(path).map_err(|e| {
+        ProcessingError::with_context(format!("Failed to open FASTQ file: {:?}", path), e)
+    })?);
 
     let reader = Reader::new(file);
     let mut total_length = 0;
 
     for record_result in reader.records() {
-        let record = record_result
-            .map_err(|e| ProcessingError::with_context(
-                format!("Error reading FASTQ record: {:?}", path),
-                e
-            ))?;
+        let record = record_result.map_err(|e| {
+            ProcessingError::with_context(format!("Error reading FASTQ record: {:?}", path), e)
+        })?;
         total_length += record.seq().len();
     }
 
@@ -409,24 +446,24 @@ pub fn total_sequence_length<P: AsRef<Path>>(file_path: P) -> ProcessingResult<u
 pub fn average_quality<P: AsRef<Path>>(file_path: P) -> ProcessingResult<f64> {
     let path = file_path.as_ref();
 
-    let file = io::BufReader::new(
-        std::fs::File::open(path)
-            .map_err(|e| ProcessingError::with_context(
-                format!("Failed to open FASTQ file: {:?}", path),
-                e,
-            ))?,
-    );
+    let file = io::BufReader::new(std::fs::File::open(path).map_err(|e| {
+        ProcessingError::with_context(format!("Failed to open FASTQ file: {:?}", path), e)
+    })?);
 
     let reader = Reader::new(file);
     let mut total_quality = 0u64;
     let mut total_positions = 0u64;
 
     for record_result in reader.records() {
-        let record = record_result
-            .map_err(|e| ProcessingError::with_context(
-                format!("Error reading FASTQ record for quality calculation: {:?}", path),
-                e
-            ))?;
+        let record = record_result.map_err(|e| {
+            ProcessingError::with_context(
+                format!(
+                    "Error reading FASTQ record for quality calculation: {:?}",
+                    path
+                ),
+                e,
+            )
+        })?;
 
         for &qual in record.qual() {
             total_quality += qual as u64;
@@ -435,7 +472,9 @@ pub fn average_quality<P: AsRef<Path>>(file_path: P) -> ProcessingResult<f64> {
     }
 
     if total_positions == 0 {
-        return Err(ProcessingError::new("No sequences found for quality calculation"));
+        return Err(ProcessingError::new(
+            "No sequences found for quality calculation",
+        ));
     }
 
     Ok(total_quality as f64 / total_positions as f64)
@@ -457,7 +496,9 @@ mod tests {
     #[test]
     fn test_read_all_sequences() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"@seq1\nATGCATGC\n+\nIIIIIIII\n@seq2\nGCTAGCTA\n+\nHHHHHHHHH\n").unwrap();
+        temp_file
+            .write_all(b"@seq1\nATGCATGC\n+\nIIIIIIII\n@seq2\nGCTAGCTA\n+\nHHHHHHHHH\n")
+            .unwrap();
 
         let processor = FastqProcessor::new(temp_file.path());
         let sequences = processor.read_all().unwrap();
@@ -474,7 +515,9 @@ mod tests {
     #[test]
     fn test_validate_fastq_file() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"@valid_seq\nATGC\n+\nIIII\n@another_seq\nGCTA\n+\nHHHH\n").unwrap();
+        temp_file
+            .write_all(b"@valid_seq\nATGC\n+\nIIII\n@another_seq\nGCTA\n+\nHHHH\n")
+            .unwrap();
 
         assert!(validate_fastq_file(temp_file.path()).is_ok());
     }
@@ -491,7 +534,9 @@ mod tests {
     #[test]
     fn test_count_sequences() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"@seq1\nATGC\n+\nIIII\n@seq2\nGCTA\n+\nHHHH\n@seq3\nATGCGAT\n+\nJJJJJJJ\n").unwrap();
+        temp_file
+            .write_all(b"@seq1\nATGC\n+\nIIII\n@seq2\nGCTA\n+\nHHHH\n@seq3\nATGCGAT\n+\nJJJJJJJ\n")
+            .unwrap();
 
         let count = count_sequences(temp_file.path()).unwrap();
         assert_eq!(count, 3);
@@ -500,7 +545,9 @@ mod tests {
     #[test]
     fn test_total_sequence_length() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"@seq1\nATGCATGC\n+\nIIIIIIII\n@seq2\nGCTAGCTA\n+\nHHHHHHHH\n").unwrap();
+        temp_file
+            .write_all(b"@seq1\nATGCATGC\n+\nIIIIIIII\n@seq2\nGCTAGCTA\n+\nHHHHHHHH\n")
+            .unwrap();
 
         let total_length = total_sequence_length(temp_file.path()).unwrap();
         assert_eq!(total_length, 16); // 8 + 8
@@ -509,7 +556,9 @@ mod tests {
     #[test]
     fn test_average_quality() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"@seq1\nATGC\n+\nIIII\n@seq2\nGCTA\n+\nHHHH\n").unwrap();
+        temp_file
+            .write_all(b"@seq1\nATGC\n+\nIIII\n@seq2\nGCTA\n+\nHHHH\n")
+            .unwrap();
 
         let avg_quality = average_quality(temp_file.path()).unwrap();
         // Average of raw ASCII values: I=73, H=72
@@ -520,7 +569,9 @@ mod tests {
     #[test]
     fn test_filter_by_quality() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b"@seq1\nATGC\n+\nIIII\n@seq2\nGCTA\n+\nHHHH\n@seq3\nNNNN\n+\nDDDD\n").unwrap();
+        temp_file
+            .write_all(b"@seq1\nATGC\n+\nIIII\n@seq2\nGCTA\n+\nHHHH\n@seq3\nNNNN\n+\nDDDD\n")
+            .unwrap();
 
         let processor = FastqProcessor::new(temp_file.path());
         let filtered = processor.filter_by_quality(70).unwrap();

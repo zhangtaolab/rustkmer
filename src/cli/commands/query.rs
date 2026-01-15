@@ -3,13 +3,13 @@
 //! Implements k-mer querying functionality with support for individual k-mers,
 //! multiple k-mers, sequence files, and interactive mode.
 
-use std::io::{self, Write, BufRead};
+use std::io::{self, BufRead, Write};
 use std::path::Path;
 
 use crate::cli::args::Args;
-use crate::database::{DatabaseQuery, format::DatabaseHeader};
+use crate::database::{format::DatabaseHeader, DatabaseQuery};
 use crate::error::{KmerError, ProcessingResult};
-use crate::io::fasta::{FastaProcessor, validate_fasta_file};
+use crate::io::fasta::{validate_fasta_file, FastaProcessor};
 
 /// Execute the query command
 pub fn execute_query(args: &Args) -> ProcessingResult<()> {
@@ -27,21 +27,26 @@ pub fn execute_query(args: &Args) -> ProcessingResult<()> {
             // Validate input parameters
             if kmers.is_empty() && sequence.is_none() && batch.is_none() && !interactive {
                 return Err(KmerError::ProcessingError(
-                    "Must specify k-mers, sequence file, batch file, or interactive mode".to_string()
-                ).into());
+                    "Must specify k-mers, sequence file, batch file, or interactive mode"
+                        .to_string(),
+                )
+                .into());
             }
 
             // Determine preload strategy
-            let preload = *load || (!*no_load && (*interactive || sequence.is_some() || batch.is_some()));
+            let preload =
+                *load || (!*no_load && (*interactive || sequence.is_some() || batch.is_some()));
 
             // Open database
-            let mut db_query = DatabaseQuery::open(database, preload)
-                .map_err(|e| KmerError::ProcessingError(format!("Failed to open database: {}", e)))?;
+            let mut db_query = DatabaseQuery::open(database, preload).map_err(|e| {
+                KmerError::ProcessingError(format!("Failed to open database: {}", e))
+            })?;
 
             // Output setup
             let mut writer: Box<dyn Write> = if let Some(output_file) = output {
-                let file = std::fs::File::create(output_file)
-                    .map_err(|e| KmerError::FileWriteError(format!("Failed to create output file: {}", e)))?;
+                let file = std::fs::File::create(output_file).map_err(|e| {
+                    KmerError::FileWriteError(format!("Failed to create output file: {}", e))
+                })?;
                 Box::new(std::io::BufWriter::new(file))
             } else {
                 Box::new(std::io::stdout())
@@ -63,8 +68,10 @@ pub fn execute_query(args: &Args) -> ProcessingResult<()> {
             }
 
             Ok(())
-        },
-        _ => Err(KmerError::ProcessingError("Invalid command for execute_query".to_string()).into()),
+        }
+        _ => {
+            Err(KmerError::ProcessingError("Invalid command for execute_query".to_string()).into())
+        }
     }
 }
 
@@ -75,7 +82,11 @@ fn handle_kmer_queries(
     kmers: &[String],
     db_info: &DatabaseHeader,
 ) -> ProcessingResult<()> {
-    eprintln!("Querying {} k-mers from database (k={})...", kmers.len(), db_info.kmer_size);
+    eprintln!(
+        "Querying {} k-mers from database (k={})...",
+        kmers.len(),
+        db_info.kmer_size
+    );
 
     let results = db_query.query_multiple(kmers)?;
 
@@ -84,10 +95,11 @@ fn handle_kmer_queries(
             writeln!(writer, "{}\t{}", kmer, count)
                 .map_err(|e| KmerError::FileWriteError(format!("Failed to write result: {}", e)))?;
         } else {
-            // For jellyfish compatibility, show invalid k-mer error instead of 0 count
+            // Show invalid k-mer error instead of 0 count
             if kmer.len() != db_info.kmer_size as usize {
-                writeln!(writer, "Invalid mer '{}'", kmer)
-                    .map_err(|e| KmerError::FileWriteError(format!("Failed to write error: {}", e)))?;
+                writeln!(writer, "Invalid mer '{}'", kmer).map_err(|e| {
+                    KmerError::FileWriteError(format!("Failed to write error: {}", e))
+                })?;
             }
         }
     }
@@ -112,11 +124,10 @@ fn handle_batch_query(
     }
 
     // Read k-mers from file
-    let file = std::fs::File::open(path)
-        .map_err(|e| KmerError::FileFormatError {
-            file: batch_file.to_string(),
-            reason: format!("Failed to open batch file: {}", e)
-        })?;
+    let file = std::fs::File::open(path).map_err(|e| KmerError::FileFormatError {
+        file: batch_file.to_string(),
+        reason: format!("Failed to open batch file: {}", e),
+    })?;
     let reader = std::io::BufReader::new(file);
 
     let mut kmer_list = Vec::new();
@@ -126,7 +137,7 @@ fn handle_batch_query(
         line_num += 1;
         let line = line.map_err(|e| KmerError::FileFormatError {
             file: batch_file.to_string(),
-            reason: format!("Error reading line {}: {}", line_num, e)
+            reason: format!("Error reading line {}: {}", line_num, e),
         })?;
         let trimmed = line.trim();
 
@@ -137,7 +148,10 @@ fn handle_batch_query(
 
         // Validate k-mer format
         if !trimmed.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G')) {
-            eprintln!("Warning: Invalid k-mer '{}' at line {}, skipping", trimmed, line_num);
+            eprintln!(
+                "Warning: Invalid k-mer '{}' at line {}, skipping",
+                trimmed, line_num
+            );
             continue;
         }
 
@@ -161,18 +175,21 @@ fn handle_batch_query(
 
         for (kmer, count) in results {
             total_queries += 1;
-            
+
             // Always output the k-mer with its count (0 if not found)
             writeln!(writer, "{}\t{}", kmer, count)
                 .map_err(|e| KmerError::FileWriteError(format!("Failed to write result: {}", e)))?;
-            
+
             if count > 0 {
                 found_kmers += 1;
             }
         }
     }
 
-    eprintln!("Processed {} k-mers, found {} with non-zero counts", total_queries, found_kmers);
+    eprintln!(
+        "Processed {} k-mers, found {} with non-zero counts",
+        total_queries, found_kmers
+    );
     Ok(())
 }
 
@@ -219,7 +236,7 @@ fn handle_sequence_query(
                     found_kmers += 1;
                 }
             } else {
-                // For jellyfish compatibility, show k-mer with 0 count
+                // Show k-mer with 0 count
                 writeln!(writer, "{}\t0", kmer_seq)?;
             }
         }
@@ -227,7 +244,10 @@ fn handle_sequence_query(
         Ok(())
     })?;
 
-    eprintln!("Processed {} k-mers, found {} with non-zero counts", total_queries, found_kmers);
+    eprintln!(
+        "Processed {} k-mers, found {} with non-zero counts",
+        total_queries, found_kmers
+    );
     Ok(())
 }
 
@@ -244,8 +264,8 @@ fn handle_interactive_mode(
     let lines = stdin.lock().lines();
 
     for line in lines {
-        let line = line
-            .map_err(|e| KmerError::ProcessingError(format!("Failed to read input: {}", e)))?;
+        let line =
+            line.map_err(|e| KmerError::ProcessingError(format!("Failed to read input: {}", e)))?;
 
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -259,14 +279,14 @@ fn handle_interactive_mode(
             match db_query.query_kmer(kmer_str) {
                 Ok(Some(count)) => {
                     writeln!(writer, "{}\t{}", kmer_str, count)?;
-                },
+                }
                 Ok(None) => {
                     if kmer_str.len() != db_info.kmer_size as usize {
                         writeln!(writer, "Invalid mer '{}'", kmer_str)?;
                     } else {
                         writeln!(writer, "{}\t0", kmer_str)?;
                     }
-                },
+                }
                 Err(e) => {
                     writeln!(writer, "Error querying '{}': {}", kmer_str, e)?;
                 }
@@ -281,7 +301,15 @@ fn handle_interactive_mode(
 /// Validate query parameters
 pub fn validate_query_args(args: &Args) -> Result<(), Vec<String>> {
     match &args.command {
-        crate::cli::args::Commands::Query { database, kmers, sequence, interactive, load, no_load, .. } => {
+        crate::cli::args::Commands::Query {
+            database,
+            kmers,
+            sequence,
+            interactive,
+            load,
+            no_load,
+            ..
+        } => {
             let mut errors = Vec::new();
 
             // Check if database file exists
@@ -309,7 +337,10 @@ pub fn validate_query_args(args: &Args) -> Result<(), Vec<String>> {
             for (i, kmer) in kmers.iter().enumerate() {
                 if kmer.is_empty() {
                     errors.push(format!("Empty k-mer at position {}", i + 1));
-                } else if !kmer.chars().all(|c| matches!(c, 'A' | 'T' | 'G' | 'C' | 'a' | 't' | 'g' | 'c')) {
+                } else if !kmer
+                    .chars()
+                    .all(|c| matches!(c, 'A' | 'T' | 'G' | 'C' | 'a' | 't' | 'g' | 'c'))
+                {
                     errors.push(format!("Invalid characters in k-mer '{}'", kmer));
                 }
             }
@@ -319,7 +350,7 @@ pub fn validate_query_args(args: &Args) -> Result<(), Vec<String>> {
             } else {
                 Err(errors)
             }
-        },
+        }
         _ => Ok(()),
     }
 }
@@ -327,7 +358,7 @@ pub fn validate_query_args(args: &Args) -> Result<(), Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::args::{Commands, Args};
+    use crate::cli::args::{Args, Commands};
     use std::io::Write;
 
     // Helper function to create a temporary database file

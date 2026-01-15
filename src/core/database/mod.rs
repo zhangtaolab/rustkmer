@@ -4,6 +4,6 @@ pub mod persistence;
 
 // Re-export commonly used types
 pub use persistence::{
-    PersistenceConfig, PersistenceError, save_kmer_database, load_kmer_database,
-    merge_databases, validate_checksums,
+    load_kmer_database, merge_databases, save_kmer_database, validate_checksums, PersistenceConfig,
+    PersistenceError,
 };

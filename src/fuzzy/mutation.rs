@@ -3,10 +3,10 @@
 //! This module implements mutation tolerance by generating k-mer variants
 //! within a specified Hamming distance from the original query.
 
-use crate::fuzzy::{constants, FuzzyError, FuzzyResult};
 use crate::fuzzy::query::PositionMutationConfig;
-use std::collections::HashSet;
+use crate::fuzzy::{constants, FuzzyError, FuzzyResult};
 use itertools::Itertools;
+use std::collections::HashSet;
 
 /// Nucleotide bases for mutations
 const NUCLEOTIDES: [char; 4] = ['A', 'T', 'C', 'G'];
@@ -32,7 +32,11 @@ const NUCLEOTIDES: [char; 4] = ['A', 'T', 'C', 'G'];
 /// assert!(variants.len() > 13); // Original + single mutations
 /// assert!(variants.contains(&"ATGCGATGCTAGCG".to_string())); // Original
 /// ```
-pub fn generate_mutation_variants(sequence: &str, mutation_distance: usize, max_variants: Option<usize>) -> FuzzyResult<Vec<String>> {
+pub fn generate_mutation_variants(
+    sequence: &str,
+    mutation_distance: usize,
+    max_variants: Option<usize>,
+) -> FuzzyResult<Vec<String>> {
     if sequence.is_empty() {
         return Ok(vec![]);
     }
@@ -40,9 +44,10 @@ pub fn generate_mutation_variants(sequence: &str, mutation_distance: usize, max_
     // Validate mutation distance
     let max_distance = (sequence.len() as f64 * constants::MAX_MUTATION_RATIO) as usize;
     if mutation_distance > max_distance {
-        return Err(FuzzyError::InvalidParameters(
-            format!("Mutation distance too large (max: {})", max_distance),
-        ));
+        return Err(FuzzyError::InvalidParameters(format!(
+            "Mutation distance too large (max: {})",
+            max_distance
+        )));
     }
 
     // Estimate total variants to check combinatorial explosion
@@ -174,16 +179,21 @@ pub fn find_mutation_matches(
 ///
 /// # Returns
 /// Vector of mutation variants (including original sequence)
-pub fn generate_mutation_variants_iterative(sequence: &str, mutation_distance: usize, max_variants: Option<usize>) -> FuzzyResult<Vec<String>> {
+pub fn generate_mutation_variants_iterative(
+    sequence: &str,
+    mutation_distance: usize,
+    max_variants: Option<usize>,
+) -> FuzzyResult<Vec<String>> {
     if sequence.is_empty() {
         return Ok(vec![]);
     }
 
     let max_distance = (sequence.len() as f64 * constants::MAX_MUTATION_RATIO) as usize;
     if mutation_distance > max_distance {
-        return Err(FuzzyError::InvalidParameters(
-            format!("Mutation distance too large (max: {})", max_distance),
-        ));
+        return Err(FuzzyError::InvalidParameters(format!(
+            "Mutation distance too large (max: {})",
+            max_distance
+        )));
     }
 
     let mut variants = HashSet::new();
@@ -276,7 +286,11 @@ pub fn would_exceed_mutation_limit(
 }
 
 /// Validate mutation tolerance parameters
-pub fn validate_mutation_params(sequence: &str, mutation_distance: usize, max_variants: Option<usize>) -> FuzzyResult<()> {
+pub fn validate_mutation_params(
+    sequence: &str,
+    mutation_distance: usize,
+    max_variants: Option<usize>,
+) -> FuzzyResult<()> {
     // Validate sequence
     if !sequence.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G')) {
         return Err(FuzzyError::InvalidQuery(
@@ -287,9 +301,10 @@ pub fn validate_mutation_params(sequence: &str, mutation_distance: usize, max_va
     // Validate mutation distance
     let max_distance = (sequence.len() as f64 * constants::MAX_MUTATION_RATIO) as usize;
     if mutation_distance > max_distance {
-        return Err(FuzzyError::InvalidParameters(
-            format!("Mutation distance too large (max: {})", max_distance),
-        ));
+        return Err(FuzzyError::InvalidParameters(format!(
+            "Mutation distance too large (max: {})",
+            max_distance
+        )));
     }
 
     // Check combinatorial explosion
@@ -349,7 +364,8 @@ pub fn generate_multi_group_mutation_variants(
     variants.insert(sequence.to_string());
 
     // Collect all mutable positions from all groups
-    let all_mutable_positions: Vec<usize> = position_config.groups
+    let all_mutable_positions: Vec<usize> = position_config
+        .groups
         .iter()
         .flat_map(|group| group.positions.iter())
         .copied()
@@ -465,7 +481,8 @@ pub fn estimate_position_constrained_variants(
     mutation_distance: usize,
     position_config: &PositionMutationConfig,
 ) -> usize {
-    let mutable_positions: usize = position_config.groups
+    let mutable_positions: usize = position_config
+        .groups
         .iter()
         .map(|group| group.positions.len())
         .sum();
@@ -529,9 +546,9 @@ mod tests {
         assert_eq!(hamming_distance("ATGCG", "ATGCG"), 0);
         assert_eq!(hamming_distance("ATGCG", "TTGCG"), 1);
         assert_eq!(hamming_distance("ATGCG", "TTGCC"), 2);
-        assert_eq!(hamming_distance("ATGCG", "TTGCA"), 2);  // Fixed: should be 2, not 3
-        assert_eq!(hamming_distance("ATGCG", "ATAGC"), 3);  // New test case with distance 3
-        // Additional test case to verify correct behavior
+        assert_eq!(hamming_distance("ATGCG", "TTGCA"), 2); // Fixed: should be 2, not 3
+        assert_eq!(hamming_distance("ATGCG", "ATAGC"), 3); // New test case with distance 3
+                                                           // Additional test case to verify correct behavior
         assert_eq!(hamming_distance("AAAAA", "TTTTT"), 5);
     }
 
@@ -558,15 +575,18 @@ mod tests {
 
         // Should contain all single mutations
         let expected_single_mutations = [
-            "AAGCG", "ACGCG", "AGGCG", "ATACG", "ATCCG", "ATGAG",
-            "ATGCA", "ATGCC", "ATGCT", "ATGGG", "ATGTG", "ATTCG", 
-            "CTGCG", "GTGCG", "TTGCG"
+            "AAGCG", "ACGCG", "AGGCG", "ATACG", "ATCCG", "ATGAG", "ATGCA", "ATGCC", "ATGCT",
+            "ATGGG", "ATGTG", "ATTCG", "CTGCG", "GTGCG", "TTGCG",
         ];
 
         for expected in &expected_single_mutations {
-            assert!(variants.contains(&expected.to_string()), "Expected variant {} not found", expected);
+            assert!(
+                variants.contains(&expected.to_string()),
+                "Expected variant {} not found",
+                expected
+            );
         }
-        
+
         // Verify we have the right number of variants (1 original + 15 single mutations)
         assert_eq!(variants.len(), 16);
     }
@@ -699,12 +719,8 @@ mod tests {
     #[test]
     fn test_generate_multi_group_mutation_variants() {
         let config = PositionMutationConfig::parse("3,4,5:2").unwrap();
-        let variants = generate_multi_group_mutation_variants(
-            "ATCGATCG",
-            &config,
-            Some(2),
-            None,
-        ).unwrap();
+        let variants =
+            generate_multi_group_mutation_variants("ATCGATCG", &config, Some(2), None).unwrap();
 
         // Should have original sequence + variants
         assert!(variants.len() > 1);
@@ -734,20 +750,11 @@ mod tests {
     fn test_generate_hybrid_mutation_variants() {
         // Test with position constraints
         let config = PositionMutationConfig::parse("3,4:1").unwrap();
-        let variants_constrained = generate_hybrid_mutation_variants(
-            "ATCGATCG",
-            1,
-            Some(&config),
-            None,
-        ).unwrap();
+        let variants_constrained =
+            generate_hybrid_mutation_variants("ATCGATCG", 1, Some(&config), None).unwrap();
 
         // Test without position constraints (traditional)
-        let variants_global = generate_hybrid_mutation_variants(
-            "ATCGATCG",
-            1,
-            None,
-            None,
-        ).unwrap();
+        let variants_global = generate_hybrid_mutation_variants("ATCGATCG", 1, None, None).unwrap();
 
         // Constrained should have fewer variants
         assert!(variants_constrained.len() <= variants_global.len());
@@ -771,7 +778,7 @@ mod tests {
         assert_eq!(config.groups.len(), 1);
         assert_eq!(config.groups[0].positions, vec![2, 3, 4]);
         assert_eq!(config.groups[0].max_mutations, 1);
-        
+
         // Test mixed range and individual positions "1,3-5,7:2"
         let config = PositionMutationConfig::parse("1,3-5,7:2").unwrap();
         assert_eq!(config.groups.len(), 1);
@@ -784,13 +791,13 @@ mod tests {
         // Test complex scenario with multiple groups and ranges
         let config = PositionMutationConfig::parse("1,3-5:2;6:1;8-10:3").unwrap();
         assert_eq!(config.groups.len(), 3);
-        
+
         assert_eq!(config.groups[0].positions, vec![1, 3, 4, 5]);
         assert_eq!(config.groups[0].max_mutations, 2);
-        
+
         assert_eq!(config.groups[1].positions, vec![6]);
         assert_eq!(config.groups[1].max_mutations, 1);
-        
+
         assert_eq!(config.groups[2].positions, vec![8, 9, 10]);
         assert_eq!(config.groups[2].max_mutations, 3);
     }
@@ -801,16 +808,16 @@ mod tests {
         let config = PositionMutationConfig::parse("0:1").unwrap();
         assert_eq!(config.groups[0].positions, vec![0]);
         assert!(config.validate(5).is_ok());
-        
+
         // Test last valid position
         let config = PositionMutationConfig::parse("4:1").unwrap();
         assert_eq!(config.groups[0].positions, vec![4]);
         assert!(config.validate(5).is_ok());
-        
+
         // Test out of bounds position
         let config = PositionMutationConfig::parse("5:1").unwrap();
         assert!(config.validate(5).is_err());
-        
+
         // Test zero mutations allowed
         let config = PositionMutationConfig::parse("1,2:0").unwrap();
         assert_eq!(config.groups[0].max_mutations, 0);
@@ -823,12 +830,12 @@ mod tests {
         let config = PositionMutationConfig::parse("1,2,3:1;2,4:1").unwrap();
         // This should fail validation due to position 2 being used in both groups
         assert!(config.validate(10).is_err());
-        
+
         // Test invalid format
         assert!(PositionMutationConfig::parse("1,2:").is_err());
         assert!(PositionMutationConfig::parse("1,2").is_err());
         assert!(PositionMutationConfig::parse(":1").is_err());
-        
+
         // Test invalid number formats
         assert!(PositionMutationConfig::parse("1,2:abc").is_err());
         assert!(PositionMutationConfig::parse("1,2x:1").is_err());

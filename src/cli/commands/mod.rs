@@ -2,11 +2,11 @@
 //!
 //! Contains the implementation of all rustkmer subcommands.
 
+pub mod args;
 pub mod count;
-pub mod query;
 pub mod dump;
 pub mod fuzzy;
 pub mod merge;
-pub mod stats;
 pub mod prefix;
-pub mod args;
+pub mod query;
+pub mod stats;

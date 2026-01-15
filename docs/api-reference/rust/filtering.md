@@ -6,7 +6,7 @@
 
 K-mer count filtering functionality
 Provides filtering structures and logic for k-mer count thresholds.
-Implements jellyfish-compatible -L/-U parameter behavior.
+Standard -L/-U parameter behavior for count filtering.
 
 ## API Reference
 

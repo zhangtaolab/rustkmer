@@ -1,10 +1,10 @@
 //! Temporary file management utilities for testing
 
+use rustkmer::database::format::RKDatabase;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::{NamedTempFile, TempDir};
 use thiserror::Error;
-use rustkmer::database::format::RKDatabase;
 
 /// Result type for temporary file operations
 pub type TempFileResult<T> = Result<T, TempFileError>;
@@ -33,8 +33,9 @@ pub struct TempFileManager {
 impl TempFileManager {
     /// Create a new temporary file manager with a dedicated temporary directory
     pub fn new() -> TempFileResult<Self> {
-        let temp_dir = TempDir::new()
-            .map_err(|e| TempFileError::CreationFailed(format!("Failed to create temp dir: {}", e)))?;
+        let temp_dir = TempDir::new().map_err(|e| {
+            TempFileError::CreationFailed(format!("Failed to create temp dir: {}", e))
+        })?;
 
         Ok(Self {
             _temp_dir: Some(temp_dir),
@@ -52,8 +53,9 @@ impl TempFileManager {
 
     /// Create a temporary file with the given content
     pub fn create_temp_file(&mut self, content: &[u8], extension: &str) -> TempFileResult<PathBuf> {
-        let temp_file = NamedTempFile::with_suffix(extension)
-            .map_err(|e| TempFileError::CreationFailed(format!("Failed to create temp file: {}", e)))?;
+        let temp_file = NamedTempFile::with_suffix(extension).map_err(|e| {
+            TempFileError::CreationFailed(format!("Failed to create temp file: {}", e))
+        })?;
 
         let path = temp_file.path().to_path_buf();
 
@@ -68,12 +70,20 @@ impl TempFileManager {
             TempFileError::CreationFailed(format!("Failed to keep temp file: {}", e))
         })?;
 
-        self.files.push(path.clone());
+        // Only track files if we have a dedicated temp directory (not system temp)
+        // When using system temp, the file is kept via temp_file.keep()
+        if self._temp_dir.is_some() {
+            self.files.push(path.clone());
+        }
         Ok(path)
     }
 
     /// Create a temporary file with text content
-    pub fn create_temp_text_file(&mut self, content: &str, extension: &str) -> TempFileResult<PathBuf> {
+    pub fn create_temp_text_file(
+        &mut self,
+        content: &str,
+        extension: &str,
+    ) -> TempFileResult<PathBuf> {
         self.create_temp_file(content.as_bytes(), extension)
     }
 
@@ -88,7 +98,10 @@ impl TempFileManager {
     }
 
     /// Create a temporary FASTQ file
-    pub fn create_temp_fastq(&mut self, reads: &[(String, String, String)]) -> TempFileResult<PathBuf> {
+    pub fn create_temp_fastq(
+        &mut self,
+        reads: &[(String, String, String)],
+    ) -> TempFileResult<PathBuf> {
         let mut fastq_content = String::new();
         for (header, sequence, quality) in reads {
             fastq_content.push_str(&format!("@{}\n{}\n+\n{}\n", header, sequence, quality));
@@ -160,8 +173,9 @@ impl TempFileManager {
     pub fn cleanup(&mut self) -> TempFileResult<()> {
         for path in &self.files {
             if path.exists() {
-                fs::remove_file(path)
-                    .map_err(|e| TempFileError::CreationFailed(format!("Failed to remove temp file: {}", e)))?;
+                fs::remove_file(path).map_err(|e| {
+                    TempFileError::CreationFailed(format!("Failed to remove temp file: {}", e))
+                })?;
             }
         }
         self.files.clear();
@@ -178,8 +192,9 @@ impl Drop for TempFileManager {
 
 /// Convenience function to create a temporary directory
 pub fn create_temp_dir() -> TempFileResult<TempDir> {
-    TempDir::new()
-        .map_err(|e| TempFileError::CreationFailed(format!("Failed to create temp directory: {}", e)))
+    TempDir::new().map_err(|e| {
+        TempFileError::CreationFailed(format!("Failed to create temp directory: {}", e))
+    })
 }
 
 /// Convenience function to create a temporary file with content
@@ -189,7 +204,10 @@ pub fn create_temp_file_with_content(content: &[u8], suffix: &str) -> TempFileRe
 }
 
 /// Convenience function to create multiple temporary files
-pub fn create_multiple_temp_files(contents: &[&[u8]], suffix: &str) -> TempFileResult<Vec<PathBuf>> {
+pub fn create_multiple_temp_files(
+    contents: &[&[u8]],
+    suffix: &str,
+) -> TempFileResult<Vec<PathBuf>> {
     let mut manager = TempFileManager::new_with_system_temp();
     let mut paths = Vec::new();
 
@@ -300,7 +318,8 @@ mod tests {
 
     #[test]
     fn test_multiple_files() {
-        let mut manager = TempFileManager::new_with_system_temp();
+        // Use dedicated temp dir for tracking
+        let mut manager = TempFileManager::new().unwrap();
 
         let path1 = manager.create_temp_text_file("Content 1", ".txt").unwrap();
         let path2 = manager.create_temp_text_file("Content 2", ".txt").unwrap();
@@ -315,7 +334,8 @@ mod tests {
 
     #[test]
     fn test_cleanup() {
-        let mut manager = TempFileManager::new_with_system_temp();
+        // Use dedicated temp dir for proper cleanup tracking
+        let mut manager = TempFileManager::new().unwrap();
         let path = manager.create_temp_text_file("Test", ".txt").unwrap();
 
         assert!(manager.file_exists(&path));
@@ -335,7 +355,11 @@ mod tests {
 
     #[test]
     fn test_create_multiple_temp_files() {
-        let contents = vec!["content1".as_bytes(), "content2".as_bytes(), "content3".as_bytes()];
+        let contents = vec![
+            "content1".as_bytes(),
+            "content2".as_bytes(),
+            "content3".as_bytes(),
+        ];
         let paths = create_multiple_temp_files(&contents, ".txt").unwrap();
 
         assert_eq!(paths.len(), 3);

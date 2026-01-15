@@ -152,11 +152,13 @@ pub fn count_extractable_kmers(sequence: &str, kmer_size: usize) -> usize {
 /// String with quality statistics
 pub fn analyze_sequence_quality(sequence: &str) -> String {
     let total_len = sequence.len();
-    let valid_bases = sequence.chars()
+    let valid_bases = sequence
+        .chars()
         .filter(|ch| matches!(ch.to_ascii_uppercase(), 'A' | 'C' | 'G' | 'T'))
         .count();
     let invalid_bases = total_len - valid_bases;
-    let ambiguous_count = sequence.chars()
+    let ambiguous_count = sequence
+        .chars()
         .filter(|ch| ch.eq_ignore_ascii_case(&'N'))
         .count();
 
@@ -298,7 +300,7 @@ mod tests {
         assert_eq!(count_extractable_kmers(sequence, 3), 5); // 7 - 3 + 1 = 5
 
         let sequence_with_amb = "ATGNCGAT"; // 8 chars, k=3, skip kmers with 'N'
-        // Valid: ATG, CGA, GAT (skip TGN, GNC, NCG)
+                                            // Valid: ATG, CGA, GAT (skip TGN, GNC, NCG)
         assert_eq!(count_extractable_kmers(sequence_with_amb, 3), 3);
     }
 

@@ -68,11 +68,7 @@ pub struct MergeArgs {
     pub input: Vec<PathBuf>,
 
     /// Output database file
-    #[arg(
-        short = 'o',
-        long,
-        help = "Output merged database file"
-    )]
+    #[arg(short = 'o', long, help = "Output merged database file")]
     pub output: PathBuf,
 
     /// Temporary directory for merge operations
@@ -83,27 +79,15 @@ pub struct MergeArgs {
     pub temp_dir: Option<PathBuf>,
 
     /// Enable verbose output
-    #[arg(
-        short = 'v',
-        long,
-        help = "Enable verbose output"
-    )]
+    #[arg(short = 'v', long, help = "Enable verbose output")]
     pub verbose: bool,
 
     /// Suppress non-error output
-    #[arg(
-        short = 'q',
-        long,
-        help = "Suppress non-error output"
-    )]
+    #[arg(short = 'q', long, help = "Suppress non-error output")]
     pub quiet: bool,
 
-  
     /// Keep intermediate files (for debugging)
-    #[arg(
-        long,
-        help = "Keep intermediate files (for debugging)"
-    )]
+    #[arg(long, help = "Keep intermediate files (for debugging)")]
     pub keep_intermediate: bool,
 
     /// Check compatibility of databases without merging
@@ -159,7 +143,9 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
 
     // Validate input
     if args.input.len() < 2 {
-        return Err(anyhow::anyhow!("At least 2 input databases are required for merging"));
+        return Err(anyhow::anyhow!(
+            "At least 2 input databases are required for merging"
+        ));
     }
 
     if !args.quiet {
@@ -191,8 +177,11 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
             let db = match RKDatabase::from_file_path(db_path) {
                 Ok(db) => db,
                 Err(e) => {
-                    return Err(anyhow::anyhow!("Failed to load database '{}': {}",
-                                           db_path.display(), e));
+                    return Err(anyhow::anyhow!(
+                        "Failed to load database '{}': {}",
+                        db_path.display(),
+                        e
+                    ));
                 }
             };
 
@@ -206,9 +195,16 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
 
                 // Add recovery suggestions
                 error_msg.push_str("\n\nRecovery suggestions:");
-                error_msg.push_str(&format!("\n  • Create a new database with k-mer size {}", ref_kmer_size));
-                error_msg.push_str("\n  • Use 'rustkmer stats' to verify database parameters before merging");
-                error_msg.push_str("\n  • Use 'rustkmer count --k <size>' to create compatible databases");
+                error_msg.push_str(&format!(
+                    "\n  • Create a new database with k-mer size {}",
+                    ref_kmer_size
+                ));
+                error_msg.push_str(
+                    "\n  • Use 'rustkmer stats' to verify database parameters before merging",
+                );
+                error_msg.push_str(
+                    "\n  • Use 'rustkmer count --k <size>' to create compatible databases",
+                );
 
                 return Err(anyhow::anyhow!("{}", error_msg));
             }
@@ -223,9 +219,14 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
 
                 // Add recovery suggestions
                 error_msg.push_str("\n\nRecovery suggestions:");
-                error_msg.push_str(&format!("\n  • Create a new database with canonical mode {}", ref_canonical));
+                error_msg.push_str(&format!(
+                    "\n  • Create a new database with canonical mode {}",
+                    ref_canonical
+                ));
                 error_msg.push_str("\n  • Use 'rustkmer count --canonical' or 'rustkmer count --no-canonical' as needed");
-                error_msg.push_str("\n  • Verify all databases use the same canonical mode before merging");
+                error_msg.push_str(
+                    "\n  • Verify all databases use the same canonical mode before merging",
+                );
 
                 return Err(anyhow::anyhow!("{}", error_msg));
             }
@@ -241,8 +242,11 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
         let db = match RKDatabase::from_file_path(db_path) {
             Ok(db) => db,
             Err(e) => {
-                return Err(anyhow::anyhow!("Failed to load database '{}': {}",
-                                       db_path.display(), e));
+                return Err(anyhow::anyhow!(
+                    "Failed to load database '{}': {}",
+                    db_path.display(),
+                    e
+                ));
             }
         };
 
@@ -256,8 +260,13 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
 
             // Add recovery suggestions
             error_msg.push_str("\n\nRecovery suggestions:");
-            error_msg.push_str(&format!("\n  • Create a new database with k-mer size {}", ref_kmer_size));
-            error_msg.push_str("\n  • Use 'rustkmer stats' to verify database parameters before merging");
+            error_msg.push_str(&format!(
+                "\n  • Create a new database with k-mer size {}",
+                ref_kmer_size
+            ));
+            error_msg.push_str(
+                "\n  • Use 'rustkmer stats' to verify database parameters before merging",
+            );
 
             return Err(anyhow::anyhow!(error_msg));
         }
@@ -279,7 +288,9 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
                     if ref_canonical { "enabled" } else { "disabled" }
                 ));
                 error_msg.push_str("\n  • Use 'rustkmer count --canonical' or 'rustkmer count --no-canonical' as needed");
-                error_msg.push_str("\n  • Verify all databases use the same canonical mode before merging");
+                error_msg.push_str(
+                    "\n  • Verify all databases use the same canonical mode before merging",
+                );
 
                 return Err(anyhow::anyhow!("{}", error_msg));
             }
@@ -302,17 +313,26 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
             Ok(memory_bytes) => {
                 config.max_memory_usage = memory_bytes;
                 if args.verbose {
-                    eprintln!("Using custom memory limit: {} bytes ({:.2} GB)",
-                             memory_bytes, memory_bytes as f64 / 1_000_000_000.0);
+                    eprintln!(
+                        "Using custom memory limit: {} bytes ({:.2} GB)",
+                        memory_bytes,
+                        memory_bytes as f64 / 1_000_000_000.0
+                    );
                 }
             }
             Err(e) => {
-                return Err(anyhow::anyhow!("Invalid memory limit '{}': {}", max_memory_str, e));
+                return Err(anyhow::anyhow!(
+                    "Invalid memory limit '{}': {}",
+                    max_memory_str,
+                    e
+                ));
             }
         }
     } else if args.verbose {
-        eprintln!("Using default memory limit: {:.2} GB",
-                 config.max_memory_usage as f64 / 1_000_000_000.0);
+        eprintln!(
+            "Using default memory limit: {:.2} GB",
+            config.max_memory_usage as f64 / 1_000_000_000.0
+        );
     }
 
     config.verbose = args.verbose;
@@ -357,15 +377,21 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
             let db = match RKDatabase::from_file_path(db_path) {
                 Ok(db) => db,
                 Err(e) => {
-                    return Err(anyhow::anyhow!("Failed to load database '{}': {}",
-                                           db_path.display(), e));
+                    return Err(anyhow::anyhow!(
+                        "Failed to load database '{}': {}",
+                        db_path.display(),
+                        e
+                    ));
                 }
             };
             databases.push(db);
         }
 
         // Use the enhanced compatibility validation
-        match RKDatabase::validate_compatibility_verbose(&databases.iter().collect::<Vec<_>>(), args.verbose) {
+        match RKDatabase::validate_compatibility_verbose(
+            &databases.iter().collect::<Vec<_>>(),
+            args.verbose,
+        ) {
             Ok((total_kmers, _)) => {
                 if !args.quiet {
                     eprintln!("✓ All {} databases are compatible!", args.input.len());
@@ -375,8 +401,14 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
                     if args.verbose {
                         for (i, db) in databases.iter().enumerate() {
                             let info = db.header();
-                            eprintln!("  Database {}: k={}, canonical={}, sorted={}, kmers={}",
-                                     i + 1, info.kmer_size, info.canonical, info.sorted, db.total_kmers());
+                            eprintln!(
+                                "  Database {}: k={}, canonical={}, sorted={}, kmers={}",
+                                i + 1,
+                                info.kmer_size,
+                                info.canonical,
+                                info.sorted,
+                                db.total_kmers()
+                            );
                         }
                     }
                 }
@@ -420,7 +452,6 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,20 +465,12 @@ mod tests {
         let output_path = temp_dir.path().join("merged.rkdb");
 
         // Create test databases
-        let db1 = RKDatabase::from_kmer_pairs(
-            vec![(0x1234, 10), (0x5678, 20)],
-            31,
-            false,
-            true
-        ).unwrap();
+        let db1 =
+            RKDatabase::from_kmer_pairs(vec![(0x1234, 10), (0x5678, 20)], 31, false, true).unwrap();
         db1.to_file_path(&db1_path).unwrap();
 
-        let db2 = RKDatabase::from_kmer_pairs(
-            vec![(0x1234, 5), (0x9ABC, 15)],
-            31,
-            false,
-            true
-        ).unwrap();
+        let db2 =
+            RKDatabase::from_kmer_pairs(vec![(0x1234, 5), (0x9ABC, 15)], 31, false, true).unwrap();
         db2.to_file_path(&db2_path).unwrap();
 
         let args = MergeArgs {
@@ -489,20 +512,12 @@ mod tests {
         let output_path = temp_dir.path().join("merged.rkdb");
 
         // Create test databases
-        let db1 = RKDatabase::from_kmer_pairs(
-            vec![(0x1234, 10), (0x5678, 20)],
-            31,
-            false,
-            true
-        ).unwrap();
+        let db1 =
+            RKDatabase::from_kmer_pairs(vec![(0x1234, 10), (0x5678, 20)], 31, false, true).unwrap();
         db1.to_file_path(&db1_path).unwrap();
 
-        let db2 = RKDatabase::from_kmer_pairs(
-            vec![(0x1234, 5), (0x9ABC, 15)],
-            31,
-            false,
-            true
-        ).unwrap();
+        let db2 =
+            RKDatabase::from_kmer_pairs(vec![(0x1234, 5), (0x9ABC, 15)], 31, false, true).unwrap();
         db2.to_file_path(&db2_path).unwrap();
 
         // Test merge with custom config
@@ -558,7 +573,8 @@ fn parse_memory_size(size_str: &str) -> Result<usize, String> {
         (size_str.as_str(), "")
     };
 
-    let number: usize = number_str.parse()
+    let number: usize = number_str
+        .parse()
         .map_err(|_| format!("Invalid number: {}", number_str))?;
 
     let bytes = match unit {
@@ -576,7 +592,8 @@ fn parse_memory_size(size_str: &str) -> Result<usize, String> {
         return Err("Memory size too small (minimum 1KB)".to_string());
     }
 
-    if bytes > 1024 * 1024 * 1024 * 1024 { // 1TB
+    if bytes > 1024 * 1024 * 1024 * 1024 {
+        // 1TB
         return Err("Memory size too large (maximum 1TB)".to_string());
     }
 

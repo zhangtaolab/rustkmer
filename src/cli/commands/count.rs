@@ -7,14 +7,14 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::cli::args::Args;
+use crate::database::format::{DatabaseHeader, DATABASE_MAGIC, DATABASE_VERSION};
 use crate::error::{KmerError, ProcessingResult};
 use crate::hash::table::KmerCounter;
-use crate::io::fasta::{FastaProcessor, validate_fasta_file};
-use crate::io::fastq::{FastqProcessor, validate_fastq_file};
-use crate::io::discovery::{FileDiscovery, DiscoveryConfig};
-use crate::kmer::encoding::{encode_kmer_bytes_u128};
+use crate::io::discovery::{DiscoveryConfig, FileDiscovery};
+use crate::io::fasta::{validate_fasta_file, FastaProcessor};
+use crate::io::fastq::{validate_fastq_file, FastqProcessor};
 use crate::kmer::canonical::canonical_kmer_u128;
-use crate::database::format::{DatabaseHeader, DATABASE_MAGIC, DATABASE_VERSION};
+use crate::kmer::encoding::encode_kmer_bytes_u128;
 
 /// Execute the count command
 pub fn execute_count(args: &Args) -> ProcessingResult<()> {
@@ -44,18 +44,16 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             }
 
             // Determine if we should sort the output
-            let should_sort = if *no_sort {
-                false
-            } else {
-                *sort
-            };
+            let should_sort = if *no_sort { false } else { *sort };
 
             // Validate filtering parameters
             if let Err(errors) = args.command.validate_filtering() {
                 for error in errors {
                     eprintln!("Error: {}", error);
                 }
-                return Err(KmerError::ProcessingError("Invalid filtering parameters".to_string()).into());
+                return Err(
+                    KmerError::ProcessingError("Invalid filtering parameters".to_string()).into(),
+                );
             }
 
             // Validate input parameters
@@ -63,15 +61,13 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 for error in errors {
                     eprintln!("Error: {}", error);
                 }
-                return Err(KmerError::ProcessingError("Invalid input parameters".to_string()).into());
+                return Err(
+                    KmerError::ProcessingError("Invalid input parameters".to_string()).into(),
+                );
             }
 
             // Determine recursive mode
-            let is_recursive = if *no_recursive {
-                false
-            } else {
-                *recursive
-            };
+            let is_recursive = if *no_recursive { false } else { *recursive };
 
             // Handle directory mode vs file list mode
             let files_to_process = if let Some(dir_path) = directory {
@@ -83,11 +79,18 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 let discovery = FileDiscovery::new(config);
 
                 let dir_path_obj = Path::new(dir_path);
-                let discovered_files = discovery.discover(dir_path_obj)
-                    .map_err(|e| KmerError::ProcessingError(format!("Failed to discover files in directory: {}", e)))?;
+                let discovered_files = discovery.discover(dir_path_obj).map_err(|e| {
+                    KmerError::ProcessingError(format!(
+                        "Failed to discover files in directory: {}",
+                        e
+                    ))
+                })?;
 
                 // For now, use all discovered files (default behavior)
-                discovered_files.iter().map(|file_info| file_info.path.clone()).collect::<Vec<_>>()
+                discovered_files
+                    .iter()
+                    .map(|file_info| file_info.path.clone())
+                    .collect::<Vec<_>>()
             } else {
                 // File list mode: use provided input files
                 input.iter().map(|s| Path::new(s).to_path_buf()).collect()
@@ -116,10 +119,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
 
             // Create k-mer counter
             let counter = Arc::new(KmerCounter::new(
-                *k,
-                *canonical,
-                *size,
-                1, // num_threads: fixed to 1 for sequential processing
+                *k, *canonical, *size, 1, // num_threads: fixed to 1 for sequential processing
             )?);
 
             let start_time = Instant::now();
@@ -127,7 +127,12 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             // Process each file
             for (file_idx, file_path_obj) in files_to_process.iter().enumerate() {
                 if !*quiet {
-                    eprintln!("Processing file {}/{}: {}", file_idx + 1, files_to_process.len(), file_path_obj.display());
+                    eprintln!(
+                        "Processing file {}/{}: {}",
+                        file_idx + 1,
+                        files_to_process.len(),
+                        file_path_obj.display()
+                    );
                 }
 
                 // Determine file format and process
@@ -136,8 +141,11 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                     let file_str = path.to_string_lossy().to_ascii_lowercase();
 
                     // Check for compressed files first
-                    if file_str.ends_with(".fa.gz") || file_str.ends_with(".fasta.gz") ||
-                       file_str.ends_with(".fna.gz") || file_str.ends_with(".ffn.gz") {
+                    if file_str.ends_with(".fa.gz")
+                        || file_str.ends_with(".fasta.gz")
+                        || file_str.ends_with(".fna.gz")
+                        || file_str.ends_with(".ffn.gz")
+                    {
                         return Some("fasta");
                     }
                     if file_str.ends_with(".fq.gz") || file_str.ends_with(".fastq.gz") {
@@ -145,7 +153,8 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                     }
 
                     // Check for uncompressed files
-                    let extension = path.extension()
+                    let extension = path
+                        .extension()
                         .and_then(|ext| ext.to_str())
                         .map(|s| s.to_ascii_lowercase());
 
@@ -163,8 +172,16 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
 
                         // Process FASTA file
                         let processor = FastaProcessor::new(file_path_obj);
-                        process_fasta_file(&processor, &counter, *k, *canonical, *quiet, *verbose, *show_warnings)
-                    },
+                        process_fasta_file(
+                            &processor,
+                            &counter,
+                            *k,
+                            *canonical,
+                            *quiet,
+                            *verbose,
+                            *show_warnings,
+                        )
+                    }
                     Some("fastq") => {
                         // Validate FASTQ file
                         validate_fastq_file(file_path_obj)?;
@@ -172,29 +189,60 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                         // Process FASTQ file
                         let processor = FastqProcessor::new(file_path_obj);
                         if *verbose {
-                            eprintln!("  FASTQ file detected (compression: {})", processor.compression_type().name());
+                            eprintln!(
+                                "  FASTQ file detected (compression: {})",
+                                processor.compression_type().name()
+                            );
                         }
-                        process_fastq_file(&processor, &counter, *k, *canonical, *quiet, *verbose, *show_warnings)
-                    },
+                        process_fastq_file(
+                            &processor,
+                            &counter,
+                            *k,
+                            *canonical,
+                            *quiet,
+                            *verbose,
+                            *show_warnings,
+                        )
+                    }
                     _ => {
                         // Try to auto-detect format
                         let file_path_str = file_path_obj.to_string_lossy();
-                        if file_path_str.to_ascii_lowercase().contains("fastq") ||
-                           file_path_str.to_ascii_lowercase().contains("fq") {
+                        if file_path_str.to_ascii_lowercase().contains("fastq")
+                            || file_path_str.to_ascii_lowercase().contains("fq")
+                        {
                             let processor = FastqProcessor::new(file_path_obj);
-                            process_fastq_file(&processor, &counter, *k, *canonical, *quiet, *verbose, *show_warnings)
+                            process_fastq_file(
+                                &processor,
+                                &counter,
+                                *k,
+                                *canonical,
+                                *quiet,
+                                *verbose,
+                                *show_warnings,
+                            )
                         } else {
                             // Default to FASTA
                             let processor = FastaProcessor::new(file_path_obj);
-                            process_fasta_file(&processor, &counter, *k, *canonical, *quiet, *verbose, *show_warnings)
+                            process_fasta_file(
+                                &processor,
+                                &counter,
+                                *k,
+                                *canonical,
+                                *quiet,
+                                *verbose,
+                                *show_warnings,
+                            )
                         }
                     }
                 };
 
                 if let Err(e) = result {
                     return Err(KmerError::ProcessingError(format!(
-                        "Failed to process file {}: {}", file_path_obj.display(), e
-                    )).into());
+                        "Failed to process file {}: {}",
+                        file_path_obj.display(),
+                        e
+                    ))
+                    .into());
                 }
 
                 if !*quiet {
@@ -216,10 +264,10 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 match format.as_str() {
                     "text" => {
                         output_text_format(&counter, output_path, *quiet, should_sort, &filter)?;
-                    },
+                    }
                     "binary" | _ => {
                         output_binary_format(&counter, output_path, *quiet, should_sort, &filter)?;
-                    },
+                    }
                 }
             }
 
@@ -233,11 +281,20 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 eprintln!("Unique k-mers: {}", final_stats.unique_kmers);
 
                 // Report filtering statistics if filtering was applied
-                if filter.as_ref().is_some_and(|f| f.min_count.is_some() || f.max_count.is_some()) {
-                    eprintln!("K-mers kept after filtering: {}", filtering_stats.kept_after);
+                if filter
+                    .as_ref()
+                    .is_some_and(|f| f.min_count.is_some() || f.max_count.is_some())
+                {
+                    eprintln!(
+                        "K-mers kept after filtering: {}",
+                        filtering_stats.kept_after
+                    );
                     eprintln!("K-mers filtered out: {}", filtering_stats.filtered_out);
                     if filtering_stats.unique_before > 0 {
-                        eprintln!("Filtering retention: {:.1}%", filtering_stats.kept_percentage());
+                        eprintln!(
+                            "Filtering retention: {:.1}%",
+                            filtering_stats.kept_percentage()
+                        );
                     }
                 }
 
@@ -249,8 +306,10 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             }
 
             Ok(())
-        },
-        _ => Err(KmerError::ProcessingError("Invalid command for execute_count".to_string()).into()),
+        }
+        _ => {
+            Err(KmerError::ProcessingError("Invalid command for execute_count".to_string()).into())
+        }
     }
 }
 
@@ -394,8 +453,9 @@ fn output_text_format(
     for (idx, (kmer, count)) in kmers.into_iter().enumerate() {
         // Decode k-mer back to sequence
         let sequence = decode_kmer(kmer, counter.get_kmer_length());
-        writeln!(writer, "{}\t{}", sequence, count)
-            .map_err(|e| KmerError::FileWriteError(format!("Failed to write k-mer {}: {}", idx, e)))?;
+        writeln!(writer, "{}\t{}", sequence, count).map_err(|e| {
+            KmerError::FileWriteError(format!("Failed to write k-mer {}: {}", idx, e))
+        })?;
 
         if !quiet && (idx + 1) % 100000 == 0 {
             eprintln!("Written {}/{} k-mers", idx + 1, total);
@@ -449,17 +509,21 @@ fn output_binary_format(
         data_offset: 42, // Fixed header size for RKDB format
         index_offset: 0,
         canonical: counter.canonical_mode(),
-        unique_kmers: kmer_count as u64,  // Same as total_kmers for now
-        file_size: 42 + (kmer_count as u64 * 12),  // Header + k-mer entries (8+4 bytes each)
+        unique_kmers: kmer_count as u64, // Same as total_kmers for now
+        file_size: 42 + (kmer_count as u64 * 12), // Header + k-mer entries (8+4 bytes each)
     };
 
     if !quiet {
-        eprintln!("DEBUG: Writing header with data_offset: {}", header.data_offset);
+        eprintln!(
+            "DEBUG: Writing header with data_offset: {}",
+            header.data_offset
+        );
     }
 
     // Write header
-    header.write_to(&mut writer)
-        .map_err(|e| KmerError::FileWriteError(format!("Failed to write database header: {}", e)))?;
+    header.write_to(&mut writer).map_err(|e| {
+        KmerError::FileWriteError(format!("Failed to write database header: {}", e))
+    })?;
 
     // Write k-mer entries
     for (kmer, count) in kmers {

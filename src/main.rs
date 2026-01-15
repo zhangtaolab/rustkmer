@@ -45,7 +45,19 @@ fn main() -> anyhow::Result<()> {
         rustkmer::cli::args::Commands::Dump { .. } => {
             rustkmer::cli::commands::dump::execute_dump(&args)?;
         }
-        rustkmer::cli::args::Commands::FuzzyQuery { database, query, mutations, max_variants, batch_size, format, output, verbose, quiet, profile, position_mutations } => {
+        rustkmer::cli::args::Commands::FuzzyQuery {
+            database,
+            query,
+            mutations,
+            max_variants,
+            batch_size,
+            format,
+            output,
+            verbose,
+            quiet,
+            profile,
+            position_mutations,
+        } => {
             let args = rustkmer::cli::commands::fuzzy::FuzzyQueryArgs {
                 database: database.into(),
                 query,
@@ -61,7 +73,20 @@ fn main() -> anyhow::Result<()> {
             };
             rustkmer::cli::commands::fuzzy::execute_fuzzy_query(&args)?;
         }
-        rustkmer::cli::args::Commands::FuzzyQueryBatch { database, sequence, default_mutations, default_max_variants, batch_size, format, output, verbose, quiet, progress, fail_fast, include_headers } => {
+        rustkmer::cli::args::Commands::FuzzyQueryBatch {
+            database,
+            sequence,
+            default_mutations,
+            default_max_variants,
+            batch_size,
+            format,
+            output,
+            verbose,
+            quiet,
+            progress,
+            fail_fast,
+            include_headers,
+        } => {
             let args = rustkmer::cli::commands::fuzzy::FuzzyQueryBatchArgs {
                 database: database.into(),
                 query_file: sequence.into(),
@@ -78,7 +103,20 @@ fn main() -> anyhow::Result<()> {
             };
             rustkmer::cli::commands::fuzzy::execute_fuzzy_query_batch(&args)?;
         }
-        rustkmer::cli::args::Commands::Merge { input, output, temp_dir, verbose, quiet, keep_intermediate, check_compatibility, max_memory, use_prefix_cache, batch_size, num_threads, merge_mode } => {
+        rustkmer::cli::args::Commands::Merge {
+            input,
+            output,
+            temp_dir,
+            verbose,
+            quiet,
+            keep_intermediate,
+            check_compatibility,
+            max_memory,
+            use_prefix_cache,
+            batch_size,
+            num_threads,
+            merge_mode,
+        } => {
             let args = rustkmer::cli::commands::merge::MergeArgs {
                 input,
                 output,

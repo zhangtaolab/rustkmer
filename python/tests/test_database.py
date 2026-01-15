@@ -5,7 +5,12 @@ from pathlib import Path
 from rustkmer.database import Database
 from rustkmer.query import QueryResult
 from rustkmer.stats import DatabaseStats
-from rustkmer.exceptions import DatabaseError, InvalidKmerError, QueryError
+from rustkmer.exceptions import (
+    DatabaseError,
+    InvalidDatabaseError,
+    InvalidKmerError,
+    QueryError,
+)
 
 from .utils import get_test_kmers, reverse_complement
 
@@ -29,8 +34,8 @@ class TestDatabaseInitialization:
         """Test database property access."""
         db = Database(sample_database)
         # Basic properties should be accessible
-        assert hasattr(db, 'path')
-        assert hasattr(db, 'kmer_size')
+        assert hasattr(db, "path")
+        assert hasattr(db, "kmer_size")
         assert db.is_loaded
 
     def test_close_and_reopen(self, sample_database):
@@ -49,13 +54,16 @@ class TestDatabaseInitialization:
 class TestSingleQuery:
     """Test single k-mer query functionality."""
 
-    @pytest.mark.parametrize("kmer", [
-        "AAAAAAA",  # All A
-        "CCCCCCC",  # All C
-        "GGGGGGG",  # All G
-        "TTTTTTT",  # All T
-        "ATCGATCG",  # Mixed (8-mer, will fail validation)
-    ])
+    @pytest.mark.parametrize(
+        "kmer",
+        [
+            "AAAAAAA",  # All A
+            "CCCCCCC",  # All C
+            "GGGGGGG",  # All G
+            "TTTTTTT",  # All T
+            "ATCGATCG",  # Mixed (8-mer, will fail validation)
+        ],
+    )
     def test_valid_kmer_query(self, sample_database, kmer):
         """Test querying valid k-mers."""
         db = Database(sample_database)
@@ -67,8 +75,8 @@ class TestSingleQuery:
             result = db.query(kmer)
 
         assert isinstance(result, QueryResult)
-        assert hasattr(result, 'count')
-        assert hasattr(result, 'canonical')
+        assert hasattr(result, "count")
+        assert hasattr(result, "canonical")
         assert isinstance(result.count, int)
         assert result.count >= 0
 
@@ -90,19 +98,24 @@ class TestSingleQuery:
         """Test querying a k-mer that likely doesn't exist."""
         db = Database(sample_database)
         # Use a k-mer unlikely to exist
-        result = db.query("NNNNNNN", validate_strict=False)  # Invalid character should return 0
+        result = db.query(
+            "NNNNNNN", validate_strict=False
+        )  # Invalid character should return 0
 
         assert isinstance(result, QueryResult)
         assert result.count == 0
 
-    @pytest.mark.parametrize("invalid_kmer", [
-        "ATCGX",      # Invalid character
-        "ATCG",       # Wrong length for k=7
-        "toolongkkkkkkkkkkkkkkk",  # Too long
-        "",           # Empty
-        None,         # None
-        123,          # Not a string
-    ])
+    @pytest.mark.parametrize(
+        "invalid_kmer",
+        [
+            "ATCGX",  # Invalid character
+            "ATCG",  # Wrong length for k=7
+            "toolongkkkkkkkkkkkkkkk",  # Too long
+            "",  # Empty
+            None,  # None
+            123,  # Not a string
+        ],
+    )
     def test_invalid_kmer_query(self, sample_database, invalid_kmer):
         """Test querying invalid k-mers."""
         db = Database(sample_database)
@@ -207,11 +220,11 @@ class TestDatabaseStats:
         stats = db.stats()
 
         assert isinstance(stats, DatabaseStats)
-        assert hasattr(stats, 'kmer_size')
-        assert hasattr(stats, 'unique_kmers')
-        assert hasattr(stats, 'total_counts')
-        assert hasattr(stats, 'min_count')
-        assert hasattr(stats, 'max_count')
+        assert hasattr(stats, "kmer_size")
+        assert hasattr(stats, "unique_kmers")
+        assert hasattr(stats, "total_counts")
+        assert hasattr(stats, "min_count")
+        assert hasattr(stats, "max_count")
 
     def test_stats_values_are_reasonable(self, sample_database):
         """Test that statistics values are reasonable."""
@@ -265,14 +278,14 @@ class TestDatabaseDump:
         assert len(dump_data) > 0
 
         # Should contain k-mer data
-        lines = dump_data.strip().split('\n')
+        lines = dump_data.strip().split("\n")
         assert len(lines) > 0
 
         # Each line should have tab-separated values
         for line in lines[:10]:  # Check first 10 lines
             if line.strip():
-                assert '\t' in line
-                parts = line.split('\t')
+                assert "\t" in line
+                parts = line.split("\t")
                 assert len(parts) >= 2
                 # Second part should be a count
                 try:
@@ -352,12 +365,15 @@ class TestDatabaseWithContextManager:
         assert not db.is_loaded
 
 
-@pytest.mark.parametrize("db_file", [
-    "tiny_test.rkdb",
-    "small_test.rkdb",
-    pytest.param("medium_test.rkdb", marks=pytest.mark.slow),
-    pytest.param("large_test.rkdb", marks=pytest.mark.slow),
-])
+@pytest.mark.parametrize(
+    "db_file",
+    [
+        "tiny_test.rkdb",
+        "small_test.rkdb",
+        pytest.param("medium_test.rkdb", marks=pytest.mark.slow),
+        pytest.param("large_test.rkdb", marks=pytest.mark.slow),
+    ],
+)
 class TestMultipleDatabases:
     """Test Database class with different database files."""
 
@@ -406,10 +422,9 @@ class TestDatabaseErrorPaths:
         db_dir = tmp_path / "fake_db"
         db_dir.mkdir()
 
-        # When trying to get stats on a directory, it should fail
-        db = Database(str(db_dir), validate=False)
-        with pytest.raises(Exception):
-            db.stats()  # This should fail when trying to treat directory as database
+        # Construction should fail when path is a directory, not a file
+        with pytest.raises(InvalidDatabaseError):
+            Database(str(db_dir), validate=False)
 
     def test_load_database_without_validation(self, sample_database):
         """Test loading database without validation."""
@@ -420,17 +435,13 @@ class TestDatabaseErrorPaths:
         stats = db.stats()
         assert stats.kmer_size > 0
 
-    def test_kmer_size_lazy_loading(self, sample_database):
-        """Test that kmer_size property triggers lazy loading."""
+    def test_kmer_size_immediate_loading(self, sample_database):
+        """Test that kmer_size property is immediately available after construction."""
         db = Database(sample_database, validate=False)
 
-        # Initially not loaded
-        assert not db.is_loaded
-
-        # Access kmer_size should trigger loading
-        kmer_size = db.kmer_size
+        # Database should be loaded immediately after construction
         assert db.is_loaded
-        assert kmer_size > 0
+        assert db.kmer_size > 0
 
     def test_query_batch_threadpool_exceptions(self, sample_database):
         """Test batch query handling of thread pool exceptions."""
@@ -458,7 +469,7 @@ class TestDatabaseErrorPaths:
         dump_iter = db.dump(as_string=False)
 
         # Should be an iterator
-        assert hasattr(dump_iter, '__iter__')
+        assert hasattr(dump_iter, "__iter__")
 
         # Should be able to iterate
         count = 0
@@ -479,7 +490,9 @@ class TestDatabaseErrorPaths:
         with pytest.raises(DatabaseError, match="Cannot query: database is closed"):
             db.query("AAAAAAA")
 
-        with pytest.raises(DatabaseError, match="Cannot query batch: database is closed"):
+        with pytest.raises(
+            DatabaseError, match="Cannot query batch: database is closed"
+        ):
             db.query_batch(["AAAAAAA", "CCCCCCC"])
 
         with pytest.raises(DatabaseError, match="Cannot dump: database is closed"):

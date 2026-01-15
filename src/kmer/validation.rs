@@ -3,9 +3,9 @@
 //! This module provides comprehensive validation for u128 k-mer encoding
 //! supporting all k-mer lengths from 1 to 64 bases.
 
-use crate::kmer::encoding::{encode_kmer_u128, decode_kmer_u128, reverse_complement_u128};
-use crate::kmer::canonical::canonical_kmer_u128;
 use crate::error::KmerError;
+use crate::kmer::canonical::canonical_kmer_u128;
+use crate::kmer::encoding::{decode_kmer_u128, encode_kmer_u128, reverse_complement_u128};
 
 /// Maximum k-mer size supported by u128 encoding
 pub const MAX_KMER_SIZE: usize = 64;
@@ -167,7 +167,10 @@ impl ValidationReport {
         println!("=== u128 Encoding Validation Report ===");
         println!("Max k-mer length supported: {}", self.max_kmer_length);
         println!("Total lengths tested: {}", self.total_lengths_tested);
-        println!("Total sequences tested: {}", self.summary.total_sequences_tested);
+        println!(
+            "Total sequences tested: {}",
+            self.summary.total_sequences_tested
+        );
         println!("Total failures: {}", self.summary.total_failures);
 
         if self.summary.all_passed {
@@ -177,7 +180,11 @@ impl ValidationReport {
 
             for result in &self.results {
                 if !result.all_passed {
-                    println!("  k={} ({} failed tests):", result.kmer_length, result.failed_tests.len());
+                    println!(
+                        "  k={} ({} failed tests):",
+                        result.kmer_length,
+                        result.failed_tests.len()
+                    );
                     for failure in &result.failed_tests {
                         println!("    - {}", failure);
                     }

@@ -3,10 +3,9 @@
 //! This module provides functionality for discovering sequence files in directories,
 //! with support for recursive traversal, file type filtering, and metadata collection.
 
-use std::path::{Path, PathBuf};
-use walkdir::{WalkDir, DirEntry};
 use crate::error::KmerError;
-
+use std::path::{Path, PathBuf};
+use walkdir::{DirEntry, WalkDir};
 
 /// File type enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -48,15 +47,15 @@ impl FileInfo {
     /// Create file info from a directory entry
     pub fn from_entry(entry: &DirEntry) -> Result<Self, KmerError> {
         let path = entry.path();
-        let metadata = entry.metadata()
-            .map_err(|e| KmerError::Io(e.into()))?;
+        let metadata = entry.metadata().map_err(|e| KmerError::Io(e.into()))?;
 
         if !metadata.is_file() {
             return Err(KmerError::ProcessingError("Path is not a file".to_string()));
         }
 
         let size = metadata.len();
-        let file_name = path.file_name()
+        let file_name = path
+            .file_name()
             .and_then(|name| name.to_str())
             .ok_or_else(|| KmerError::ProcessingError("Invalid file name".to_string()))?;
 
@@ -65,17 +64,21 @@ impl FileInfo {
             if let Some(ext) = Path::new(stem).extension().and_then(|e| e.to_str()) {
                 (ext.to_string(), true)
             } else {
-                return Err(KmerError::ProcessingError("Invalid compressed file extension".to_string()));
+                return Err(KmerError::ProcessingError(
+                    "Invalid compressed file extension".to_string(),
+                ));
             }
         } else {
-            let ext = path.extension()
+            let ext = path
+                .extension()
                 .and_then(|e| e.to_str())
                 .ok_or_else(|| KmerError::ProcessingError("Missing file extension".to_string()))?;
             (ext.to_string(), false)
         };
 
-        let file_type = FileType::from_extension(&extension)
-            .ok_or_else(|| KmerError::ProcessingError(format!("Unsupported file type: {}", extension)))?;
+        let file_type = FileType::from_extension(&extension).ok_or_else(|| {
+            KmerError::ProcessingError(format!("Unsupported file type: {}", extension))
+        })?;
 
         Ok(FileInfo {
             path: path.to_path_buf(),
@@ -88,7 +91,9 @@ impl FileInfo {
 
     /// Get display name (file name with size)
     pub fn display_name(&self) -> String {
-        let name = self.path.file_name()
+        let name = self
+            .path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("invalid_name");
 
@@ -147,11 +152,17 @@ impl FileDiscovery {
     /// Discover files in a directory
     pub fn discover(&self, directory: &Path) -> Result<Vec<FileInfo>, KmerError> {
         if !directory.exists() {
-            return Err(KmerError::FileNotFound(format!("Directory does not exist: {}", directory.display())));
+            return Err(KmerError::FileNotFound(format!(
+                "Directory does not exist: {}",
+                directory.display()
+            )));
         }
 
         if !directory.is_dir() {
-            return Err(KmerError::InvalidArgument(format!("Path is not a directory: {}", directory.display())));
+            return Err(KmerError::InvalidArgument(format!(
+                "Path is not a directory: {}",
+                directory.display()
+            )));
         }
 
         let mut walkdir = WalkDir::new(directory);
@@ -171,9 +182,7 @@ impl FileDiscovery {
         let mut file_counts = std::collections::HashMap::new();
 
         for entry in walkdir.into_iter() {
-            let entry = entry.map_err(|e| {
-                KmerError::Io(e.into())
-            })?;
+            let entry = entry.map_err(|e| KmerError::Io(e.into()))?;
 
             // Skip directories and hidden files
             if !entry.file_type().is_file() {
@@ -215,14 +224,23 @@ impl FileDiscovery {
         // Sort files by path for consistent ordering
         files.sort_by(|a, b| a.path.cmp(&b.path));
 
-        println!("[INFO] Found {} files in {}:", files.len(), directory.display());
+        println!(
+            "[INFO] Found {} files in {}:",
+            files.len(),
+            directory.display()
+        );
         for (file_type, count) in file_counts {
             let type_name = match file_type {
                 FileType::Fasta => "FASTA",
                 FileType::Fastq => "FASTQ",
             };
             let extensions: Vec<&str> = file_type.extensions().to_vec();
-            println!("  • {} {} files ({})", count, type_name, extensions.join(", "));
+            println!(
+                "  • {} {} files ({})",
+                count,
+                type_name,
+                extensions.join(", ")
+            );
         }
 
         if total_size > 0 {

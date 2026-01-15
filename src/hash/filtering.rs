@@ -1,11 +1,10 @@
 //! K-mer count filtering functionality
 //!
 //! Provides filtering structures and logic for k-mer count thresholds.
-//! Implements jellyfish-compatible -L/-U parameter behavior.
+//! Implements standard -L/-U parameter behavior for count filtering.
 
 /// Filtering criteria for k-mer counts based on occurrence frequency
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CountFilter {
     /// Minimum count threshold (inclusive)
     /// k-mers with count < min_count will be filtered out
@@ -28,7 +27,10 @@ impl CountFilter {
     /// # Returns
     /// New CountFilter instance
     pub fn new(min_count: Option<u64>, max_count: Option<u64>) -> Self {
-        Self { min_count, max_count }
+        Self {
+            min_count,
+            max_count,
+        }
     }
 
     /// Check if a count passes this filter
@@ -56,7 +58,6 @@ impl CountFilter {
         true
     }
 }
-
 
 /// Configuration for count filtering with validation state
 #[derive(Debug, Clone)]
@@ -175,7 +176,12 @@ impl FilteringResult {
     ///
     /// # Returns
     /// New FilteringResult instance
-    pub fn new(total_before: u64, unique_before: u64, kept_after: u64, filter: CountFilter) -> Self {
+    pub fn new(
+        total_before: u64,
+        unique_before: u64,
+        kept_after: u64,
+        filter: CountFilter,
+    ) -> Self {
         let filtered_out = unique_before.saturating_sub(kept_after);
 
         Self {

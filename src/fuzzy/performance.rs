@@ -179,12 +179,18 @@ impl PerformanceMonitor {
             self.query_tracker.successful_queries += 1;
         }
 
-        self.query_tracker.fastest_query_ms = self.query_tracker.fastest_query_ms.min(query_time_ms);
-        self.query_tracker.slowest_query_ms = self.query_tracker.slowest_query_ms.max(query_time_ms);
+        self.query_tracker.fastest_query_ms =
+            self.query_tracker.fastest_query_ms.min(query_time_ms);
+        self.query_tracker.slowest_query_ms =
+            self.query_tracker.slowest_query_ms.max(query_time_ms);
     }
 
     /// Generate comprehensive performance metrics
-    pub fn generate_metrics(&self, variant_count: usize, result_count: usize) -> PerformanceMetrics {
+    pub fn generate_metrics(
+        &self,
+        variant_count: usize,
+        result_count: usize,
+    ) -> PerformanceMetrics {
         let total_elapsed = self.start_time.elapsed().as_millis() as u64;
 
         // Calculate variant generation metrics
@@ -243,7 +249,7 @@ impl PerformanceMonitor {
         let memory_usage = MemoryUsageMetrics {
             peak_memory_mb: self.memory_tracker.peak_memory_mb,
             variants_memory_mb: (variant_count as f64 * 13.0) / 1024.0 / 1024.0, // Rough estimate
-            results_memory_mb: (result_count as f64 * 32.0) / 1024.0 / 1024.0, // Rough estimate
+            results_memory_mb: (result_count as f64 * 32.0) / 1024.0 / 1024.0,   // Rough estimate
             memory_efficiency: if self.memory_tracker.peak_memory_mb > 0.0 {
                 result_count as f64 / self.memory_tracker.peak_memory_mb
             } else {

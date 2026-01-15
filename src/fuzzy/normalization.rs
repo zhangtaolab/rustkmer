@@ -125,7 +125,10 @@ pub fn validate_normalization_params(query: &str, kmer_size: usize) -> FuzzyResu
     }
 
     // Validate query characters
-    if !query.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G' | 'N')) {
+    if !query
+        .chars()
+        .all(|c| matches!(c, 'A' | 'T' | 'C' | 'G' | 'N'))
+    {
         return Err(FuzzyError::InvalidQuery(
             "Query contains invalid characters (only A,T,C,G,N allowed)".to_string(),
         ));
@@ -152,7 +155,11 @@ pub fn estimate_normalization_variants(query: &str, kmer_size: usize) -> usize {
 }
 
 /// Check if normalization would exceed variant limits
-pub fn would_exceed_normalization_limit(query: &str, kmer_size: usize, max_variants: usize) -> bool {
+pub fn would_exceed_normalization_limit(
+    query: &str,
+    kmer_size: usize,
+    max_variants: usize,
+) -> bool {
     estimate_normalization_variants(query, kmer_size) > max_variants
 }
 

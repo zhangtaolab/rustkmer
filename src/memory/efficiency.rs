@@ -4,13 +4,13 @@
 //! targeting <10% overhead over CLI baseline through memory mapping, pagination,
 //! and streaming interfaces.
 
+use crate::error::{ProcessingError, ProcessingResult};
+use memmap2::{Mmap, MmapMut, MmapOptions};
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use parking_lot::RwLock;
-use memmap2::{Mmap, MmapOptions, MmapMut};
-use crate::error::{ProcessingResult, ProcessingError};
 
 /// Threshold for switching to memory-mapped access (100MB)
 pub const MMAP_THRESHOLD: u64 = 100 * 1024 * 1024;
@@ -194,10 +194,13 @@ impl MemoryManager {
         // Track mapped file
         {
             let mut mapped = self.mapped_files.write();
-            mapped.insert(path.to_path_buf(), MmapInfo {
-                size: file_size,
-                created_at: std::time::Instant::now(),
-            });
+            mapped.insert(
+                path.to_path_buf(),
+                MmapInfo {
+                    size: file_size,
+                    created_at: std::time::Instant::now(),
+                },
+            );
         }
 
         Ok(mmap)
@@ -323,18 +326,33 @@ impl MemoryEfficiencyReport {
     /// Print a formatted report
     pub fn print(&self) {
         println!("=== Memory Efficiency Report ===");
-        println!("Memory limit: {} MB", self.config.memory_limit / 1024 / 1024);
-        println!("Memory map threshold: {} MB", self.config.mmap_threshold / 1024 / 1024);
+        println!(
+            "Memory limit: {} MB",
+            self.config.memory_limit / 1024 / 1024
+        );
+        println!(
+            "Memory map threshold: {} MB",
+            self.config.mmap_threshold / 1024 / 1024
+        );
         println!("Page size: {}", self.config.page_size);
         println!("Adaptive mode: {}", self.config.adaptive);
         println!();
 
         println!("Current Usage:");
-        println!("  Total memory: {} MB", self.current_stats.total_used / 1024 / 1024);
-        println!("  Mapped memory: {} MB", self.current_stats.mapped_size / 1024 / 1024);
+        println!(
+            "  Total memory: {} MB",
+            self.current_stats.total_used / 1024 / 1024
+        );
+        println!(
+            "  Mapped memory: {} MB",
+            self.current_stats.mapped_size / 1024 / 1024
+        );
         println!("  Mapped files: {}", self.current_stats.mapped_files);
         println!("  Active pages: {}", self.current_stats.active_pages);
-        println!("  Peak usage: {} MB", self.current_stats.peak_usage / 1024 / 1024);
+        println!(
+            "  Peak usage: {} MB",
+            self.current_stats.peak_usage / 1024 / 1024
+        );
         println!();
 
         println!("Efficiency Metrics:");
@@ -432,7 +450,7 @@ mod tests {
         let mut stats = MemoryStats::new();
 
         stats.total_used = 1024 * 1024; // 1MB
-        stats.mapped_size = 800 * 1024;  // 800KB
+        stats.mapped_size = 800 * 1024; // 800KB
 
         stats.update_peak(2 * 1024 * 1024); // 2MB
 
@@ -465,8 +483,7 @@ mod tests {
 
     #[test]
     fn test_memory_manager_mmap_decision() {
-        let config = MemoryConfig::new()
-            .with_mmap_threshold(50 * 1024 * 1024); // 50MB
+        let config = MemoryConfig::new().with_mmap_threshold(50 * 1024 * 1024); // 50MB
 
         let manager = MemoryManager::new(config);
 

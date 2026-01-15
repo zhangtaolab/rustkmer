@@ -253,19 +253,6 @@ cargo bench
 rustkmer --run-benchmarks
 ```
 
-### 与Jellyfish对比
-
-```bash
-# 如果已安装jellyfish
-# 使用相同数据比较结果
-jellyfish count -m 1G -s 100M -C -k 21 -o jf_counts.jf test.fasta
-rustkmer count -k 21 -m 1G --canonical -o rk_counts.rkdb test.fasta
-
-# 比较查询结果
-jellyfish query jf_counts.jf ATGCGATGCTAGCGCTAGCTAG
-rustkmer query rk_counts.rkdb ATGCGATGCTAGCGCTAGCTAG
-```
-
 ### 系统集成测试
 
 ```bash

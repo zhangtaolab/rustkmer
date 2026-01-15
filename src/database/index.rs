@@ -3,11 +3,11 @@
 //! Provides functionality for creating and managing indexes for
 //! fast k-mer lookup in rustkmer databases.
 
-use std::io::Write;
 use std::collections::HashMap;
+use std::io::Write;
 
-use crate::error::ProcessingResult;
 use super::format::KmerEntry;
+use crate::error::ProcessingResult;
 
 /// Index for fast k-mer lookup
 #[derive(Debug)]
@@ -191,11 +191,13 @@ impl DatabaseStatistics {
 
     /// Write statistics to a file
     pub fn write_to_file<P: AsRef<std::path::Path>>(&self, path: P) -> ProcessingResult<()> {
-        let mut file = std::fs::File::create(path)
-            .map_err(|e| crate::error::KmerError::FileWriteError(format!("Failed to create stats file: {}", e)))?;
+        let mut file = std::fs::File::create(path).map_err(|e| {
+            crate::error::KmerError::FileWriteError(format!("Failed to create stats file: {}", e))
+        })?;
 
-        file.write_all(self.format().as_bytes())
-            .map_err(|e| crate::error::KmerError::FileWriteError(format!("Failed to write stats: {}", e)))?;
+        file.write_all(self.format().as_bytes()).map_err(|e| {
+            crate::error::KmerError::FileWriteError(format!("Failed to write stats: {}", e))
+        })?;
 
         Ok(())
     }

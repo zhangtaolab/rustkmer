@@ -1,26 +1,24 @@
 //! Core functionality modules for RustKmer
 
-pub mod monitoring;
-pub mod metadata;
 pub mod database;
+pub mod metadata;
+pub mod monitoring;
 
 // Re-export commonly used types
 pub use monitoring::{
-    MonitoringConfig, OperationMetrics, PerformanceTimer,
-    initialize_monitoring, start_timer, record_metric
+    initialize_monitoring, record_metric, start_timer, MonitoringConfig, OperationMetrics,
+    PerformanceTimer,
 };
 
 #[cfg(feature = "profiling")]
-pub use monitoring::{
-    MetricsCollector, time_operation, if_profiling
-};
+pub use monitoring::{if_profiling, time_operation, MetricsCollector};
 
 pub use metadata::{
-    DatabaseMetadata, MetadataSchema, MetadataError,
-    create_metadata, save_metadata, load_metadata, validate_metadata
+    create_metadata, load_metadata, save_metadata, validate_metadata, DatabaseMetadata,
+    MetadataError, MetadataSchema,
 };
 
 pub use database::{
-    PersistenceConfig, PersistenceError, save_kmer_database, load_kmer_database,
-    merge_databases, validate_checksums,
+    load_kmer_database, merge_databases, save_kmer_database, validate_checksums, PersistenceConfig,
+    PersistenceError,
 };

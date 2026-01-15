@@ -5,8 +5,8 @@
 ## Overview
 
 Matrix hash function for k-mer hashing
-Provides efficient binary matrix multiplication for k-mer hash computation,
-based on the approach used in jellyfish for optimal distribution.
+Provides efficient binary matrix multiplication for k-mer hash computation
+for optimal distribution and collision resistance.
 
 ## API Reference
 

@@ -3,10 +3,10 @@
 //! Provides concurrent hash table implementation for efficient k-mer counting
 //! with support for overflow storage and memory optimization.
 
-pub mod table;
-pub mod overflow;
-pub mod matrix;
 pub mod filtering;
+pub mod matrix;
+pub mod overflow;
+pub mod table;
 
-pub use table::KmerCounter;
 pub use filtering::{CountFilter, CountFilterConfig, FilteringResult};
+pub use table::KmerCounter;

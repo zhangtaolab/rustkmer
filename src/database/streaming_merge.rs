@@ -5,10 +5,10 @@
 
 use crate::database::format::{DatabaseHeader, KmerEntry, DATABASE_MAGIC, DATABASE_VERSION};
 use crate::error::ProcessingError;
-use std::collections::BinaryHeap;
 use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Write, Seek, SeekFrom};
+use std::io::{BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -22,13 +22,19 @@ pub struct DatabaseStreamIterator {
 
 impl DatabaseStreamIterator {
     pub fn new(path: &Path, chunk_size: usize) -> Result<Self, ProcessingError> {
-        let file = File::open(path)
-            .map_err(|e| ProcessingError::io_error(format!("Failed to open database '{}': {}", path.display(), e)))?;
+        let file = File::open(path).map_err(|e| {
+            ProcessingError::io_error(format!(
+                "Failed to open database '{}': {}",
+                path.display(),
+                e
+            ))
+        })?;
 
         let mut reader = BufReader::new(file);
 
-        let header = DatabaseHeader::read_from(&mut reader)
-            .map_err(|e| ProcessingError::io_error(format!("Failed to read database header: {}", e)))?;
+        let header = DatabaseHeader::read_from(&mut reader).map_err(|e| {
+            ProcessingError::io_error(format!("Failed to read database header: {}", e))
+        })?;
 
         let actual_data_offset = if header.data_offset < 40 {
             42
@@ -38,8 +44,11 @@ impl DatabaseStreamIterator {
             header.data_offset
         };
 
-        reader.seek(SeekFrom::Start(actual_data_offset))
-            .map_err(|e| ProcessingError::io_error(format!("Failed to seek to data section: {}", e)))?;
+        reader
+            .seek(SeekFrom::Start(actual_data_offset))
+            .map_err(|e| {
+                ProcessingError::io_error(format!("Failed to seek to data section: {}", e))
+            })?;
 
         Ok(Self {
             reader,
@@ -79,7 +88,12 @@ impl Iterator for DatabaseStreamIterator {
         for _ in 0..to_read {
             match KmerEntry::read_from(&mut self.reader) {
                 Ok(entry) => chunk.push(entry),
-                Err(e) => return Some(Err(ProcessingError::io_error(format!("Failed to read k-mer entry: {}", e)))),
+                Err(e) => {
+                    return Some(Err(ProcessingError::io_error(format!(
+                        "Failed to read k-mer entry: {}",
+                        e
+                    ))))
+                }
             }
         }
 
@@ -123,8 +137,13 @@ impl TempFileManager {
         let file_name = format!("{}_{}.chunk", self.prefix, timestamp);
         let file_path = self.temp_dir.join(&file_name);
 
-        let file = File::create(&file_path)
-            .map_err(|e| ProcessingError::io_error(format!("Failed to create temp file '{}': {}", file_path.display(), e)))?;
+        let file = File::create(&file_path).map_err(|e| {
+            ProcessingError::io_error(format!(
+                "Failed to create temp file '{}': {}",
+                file_path.display(),
+                e
+            ))
+        })?;
 
         let writer = BufWriter::new(file);
         self.files.push(file_path.clone());
@@ -230,10 +249,12 @@ impl ExternalMerger {
 
             let write_start = Instant::now();
             for entry in &chunk {
-                entry.write_to(&mut writer)
-                    .map_err(|e| ProcessingError::io_error(format!("Failed to write chunk: {}", e)))?;
+                entry.write_to(&mut writer).map_err(|e| {
+                    ProcessingError::io_error(format!("Failed to write chunk: {}", e))
+                })?;
             }
-            writer.flush()
+            writer
+                .flush()
                 .map_err(|e| ProcessingError::io_error(format!("Failed to flush chunk: {}", e)))?;
             self.merge_stats.write_time += write_start.elapsed();
 
@@ -261,8 +282,13 @@ impl ExternalMerger {
         let mut heap: BinaryHeap<MergeItem> = BinaryHeap::new();
 
         for (file_index, file_path) in self.temp_files.iter().enumerate() {
-            let file = File::open(file_path)
-                .map_err(|e| ProcessingError::io_error(format!("Failed to open chunk file '{}': {}", file_path.display(), e)))?;
+            let file = File::open(file_path).map_err(|e| {
+                ProcessingError::io_error(format!(
+                    "Failed to open chunk file '{}': {}",
+                    file_path.display(),
+                    e
+                ))
+            })?;
 
             let mut reader = BufReader::new(file);
             let first_entry = KmerEntry::read_from(&mut reader);
@@ -280,7 +306,11 @@ impl ExternalMerger {
 
         self.merge_stats.merge_time += start_time.elapsed();
 
-        Ok(StreamingMergeIterator::new(heap, file_readers, self.temp_files.clone()))
+        Ok(StreamingMergeIterator::new(
+            heap,
+            file_readers,
+            self.temp_files.clone(),
+        ))
     }
 
     pub fn stats(&self) -> &StreamingMergeStats {
@@ -298,7 +328,11 @@ pub struct StreamingMergeIterator {
 }
 
 impl StreamingMergeIterator {
-    pub fn new(heap: BinaryHeap<MergeItem>, file_readers: Vec<BufReader<File>>, temp_files: Vec<PathBuf>) -> Self {
+    pub fn new(
+        heap: BinaryHeap<MergeItem>,
+        file_readers: Vec<BufReader<File>>,
+        temp_files: Vec<PathBuf>,
+    ) -> Self {
         Self {
             heap,
             file_readers,
@@ -363,11 +397,15 @@ impl Drop for StreamingMergeIterator {
     fn drop(&mut self) {
         // Close all file readers first
         self.file_readers.clear();
-        
+
         // Clean up temporary files
         for temp_file in &self._temp_files {
             if let Err(e) = std::fs::remove_file(temp_file) {
-                eprintln!("Warning: Failed to remove temporary file {}: {}", temp_file.display(), e);
+                eprintln!(
+                    "Warning: Failed to remove temporary file {}: {}",
+                    temp_file.display(),
+                    e
+                );
             }
         }
     }
@@ -394,7 +432,8 @@ mod tests {
             31,
             false,
             false,
-        ).unwrap();
+        )
+        .unwrap();
         db.to_file_path(&db_path).unwrap();
 
         let mut iter = DatabaseStreamIterator::new(&db_path, 2).unwrap();
@@ -437,7 +476,8 @@ mod tests {
             31,
             false,
             false,
-        ).unwrap();
+        )
+        .unwrap();
         db1.to_file_path(&db1_path).unwrap();
 
         let mut merger = ExternalMerger::new(2, temp_dir.path().to_path_buf());

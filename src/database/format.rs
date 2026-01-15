@@ -3,9 +3,9 @@
 //! Defines the binary format for storing k-mer databases with
 //! efficient random access and compatibility with rustkmer tools.
 
-use std::io::{Read, Write, Result as IoResult};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::io::{Read, Result as IoResult, Write};
 
 /// Magic number for rustkmer database files
 pub const DATABASE_MAGIC: &[u8; 4] = b"RKDB";
@@ -101,7 +101,7 @@ impl DatabaseHeader {
         writer.write_u8(0)?; // padding
         writer.write_u8(0)?; // padding
         writer.write_u8(0)?; // padding
-        // Write actual data
+                             // Write actual data
         writer.write_u64::<LittleEndian>(self.data_offset)?;
         writer.write_u64::<LittleEndian>(self.index_offset)?;
 
@@ -116,7 +116,7 @@ impl DatabaseHeader {
         if magic != *DATABASE_MAGIC {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "Invalid database magic number"
+                "Invalid database magic number",
             ));
         }
 
@@ -124,7 +124,7 @@ impl DatabaseHeader {
         if version != DATABASE_VERSION {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Unsupported database version: {}", version)
+                format!("Unsupported database version: {}", version),
             ));
         }
 
@@ -159,8 +159,8 @@ impl DatabaseHeader {
             data_offset,
             index_offset,
             canonical,
-            unique_kmers: total_kmers,  // Default to total_kmers for older format compatibility
-            file_size: 0,  // Unknown until full file is read
+            unique_kmers: total_kmers, // Default to total_kmers for older format compatibility
+            file_size: 0,              // Unknown until full file is read
         })
     }
 
@@ -280,30 +280,40 @@ impl RKDatabase {
         use std::io::{BufReader, Seek, SeekFrom};
 
         let file_path = path.to_path_buf();
-        let file = File::open(path)
-            .map_err(|e| crate::error::ProcessingError::io_error(e.to_string()))?;
+        let file =
+            File::open(path).map_err(|e| crate::error::ProcessingError::io_error(e.to_string()))?;
 
         let mut reader = BufReader::new(file);
         let header = DatabaseHeader::read_from(&mut reader)?;
 
         // Fix for incorrect data_offset in header (same logic as DatabaseQuery)
         let actual_data_offset = if header.data_offset < 40 {
-            42  // Use correct offset when header value is too small
+            42 // Use correct offset when header value is too small
         } else if header.data_offset > 1000 {
-            42  // Use correct offset when header value is too large
+            42 // Use correct offset when header value is too large
         } else {
             header.data_offset
         };
 
         // Seek to data section
-        reader.seek(SeekFrom::Start(actual_data_offset))
-            .map_err(|e| crate::error::ProcessingError::io_error(format!("Failed to seek to data section: {}", e)))?;
+        reader
+            .seek(SeekFrom::Start(actual_data_offset))
+            .map_err(|e| {
+                crate::error::ProcessingError::io_error(format!(
+                    "Failed to seek to data section: {}",
+                    e
+                ))
+            })?;
 
         // Load k-mer entries
         let mut entries = Vec::with_capacity(header.total_kmers as usize);
         for _ in 0..header.total_kmers {
-            let entry = KmerEntry::read_from(&mut reader)
-                .map_err(|e| crate::error::ProcessingError::io_error(format!("Failed to read k-mer entry: {}", e)))?;
+            let entry = KmerEntry::read_from(&mut reader).map_err(|e| {
+                crate::error::ProcessingError::io_error(format!(
+                    "Failed to read k-mer entry: {}",
+                    e
+                ))
+            })?;
             entries.push(entry);
         }
 
@@ -347,7 +357,10 @@ impl RKDatabase {
     }
 
     /// Write database to a writer
-    pub fn write_to<W: std::io::Write>(&self, writer: &mut W) -> crate::error::ProcessingResult<()> {
+    pub fn write_to<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> crate::error::ProcessingResult<()> {
         self.header.write_to(writer)?;
 
         // Write k-mer entries
@@ -496,18 +509,20 @@ impl RKDatabase {
     /// - Any input file cannot be read
     /// - Databases have incompatible k-mer sizes or canonical modes
     /// - Memory is insufficient for the operation
-    pub fn validate_compatibility(databases: &[&RKDatabase]) -> crate::error::ProcessingResult<(usize, bool)> {
+    pub fn validate_compatibility(
+        databases: &[&RKDatabase],
+    ) -> crate::error::ProcessingResult<(usize, bool)> {
         Self::validate_compatibility_verbose(databases, false)
     }
 
     /// Validate compatibility with optional verbose reporting
     pub fn validate_compatibility_verbose(
         databases: &[&RKDatabase],
-        verbose: bool
+        verbose: bool,
     ) -> crate::error::ProcessingResult<(usize, bool)> {
         if databases.is_empty() {
             return Err(crate::error::ProcessingError::new(
-                "At least one database is required for validation"
+                "At least one database is required for validation",
             ));
         }
 
@@ -517,45 +532,82 @@ impl RKDatabase {
 
         if verbose {
             eprintln!("Validating compatibility for {} databases", databases.len());
-            eprintln!("  Reference database: k-mer size={}, canonical={}", kmer_size, canonical);
+            eprintln!(
+                "  Reference database: k-mer size={}, canonical={}",
+                kmer_size, canonical
+            );
         }
 
         // Validate all databases have the same k-mer size and canonical mode
         for (i, db) in databases.iter().enumerate().skip(1) {
             if db.kmer_size() != kmer_size {
-                let mut msg = format!("Database {} has k-mer size {}, expected {}",
-                           i + 1, db.kmer_size(), kmer_size);
+                let mut msg = format!(
+                    "Database {} has k-mer size {}, expected {}",
+                    i + 1,
+                    db.kmer_size(),
+                    kmer_size
+                );
 
                 if verbose {
-                    msg.push_str(&format!("\n  Database 1: k-mer size={}, canonical={}, k-mers={}",
-                        kmer_size, canonical, first_db.header().total_kmers));
-                    msg.push_str(&format!("\n  Database {}: k-mer size={}, canonical={}, k-mers={}",
-                        i + 1, db.kmer_size(), db.is_canonical(), db.header().total_kmers));
+                    msg.push_str(&format!(
+                        "\n  Database 1: k-mer size={}, canonical={}, k-mers={}",
+                        kmer_size,
+                        canonical,
+                        first_db.header().total_kmers
+                    ));
+                    msg.push_str(&format!(
+                        "\n  Database {}: k-mer size={}, canonical={}, k-mers={}",
+                        i + 1,
+                        db.kmer_size(),
+                        db.is_canonical(),
+                        db.header().total_kmers
+                    ));
                     msg.push_str("\n  Hint: All databases must have the same k-mer size to merge");
                 }
 
                 return Err(crate::error::ProcessingError::new(msg));
             }
             if db.is_canonical() != canonical {
-                let mut msg = format!("Database {} has canonical mode {}, expected {}",
-                           i + 1, db.is_canonical(), canonical);
+                let mut msg = format!(
+                    "Database {} has canonical mode {}, expected {}",
+                    i + 1,
+                    db.is_canonical(),
+                    canonical
+                );
 
                 if verbose {
-                    msg.push_str(&format!("\n  Database 1: k-mer size={}, canonical={}, k-mers={}",
-                        kmer_size, canonical, first_db.header().total_kmers));
-                    msg.push_str(&format!("\n  Database {}: k-mer size={}, canonical={}, k-mers={}",
-                        i + 1, db.kmer_size(), db.is_canonical(), db.header().total_kmers));
-                    msg.push_str("\n  Hint: All databases must have the same canonical mode to merge");
+                    msg.push_str(&format!(
+                        "\n  Database 1: k-mer size={}, canonical={}, k-mers={}",
+                        kmer_size,
+                        canonical,
+                        first_db.header().total_kmers
+                    ));
+                    msg.push_str(&format!(
+                        "\n  Database {}: k-mer size={}, canonical={}, k-mers={}",
+                        i + 1,
+                        db.kmer_size(),
+                        db.is_canonical(),
+                        db.header().total_kmers
+                    ));
+                    msg.push_str(
+                        "\n  Hint: All databases must have the same canonical mode to merge",
+                    );
                     msg.push_str("\n  Canonical mode merges reverse complements together");
-                    msg.push_str("\n  Note: Use --use-prefix-cache for flexible canonical mode merging");
+                    msg.push_str(
+                        "\n  Note: Use --use-prefix-cache for flexible canonical mode merging",
+                    );
                 }
 
                 return Err(crate::error::ProcessingError::new(msg));
             }
 
             if verbose {
-                eprintln!("  Database {}: compatible (k-mer size={}, canonical={})",
-                    i + 1, db.kmer_size(), db.is_canonical());
+                eprintln!(
+                    "  Database {}: compatible (k-mer size={}, canonical={})",
+                    i + 1,
+                    db.kmer_size(),
+                    db.is_canonical()
+                );
             }
         }
 
@@ -586,8 +638,10 @@ impl RKDatabase {
         // Use prefix cache merge if enabled
         if config.use_prefix_cache {
             if config.verbose {
-                eprintln!("DEBUG: Using prefix cache merge for {} k-mers (estimated {} bytes)",
-                         total_kmers, estimated_memory);
+                eprintln!(
+                    "DEBUG: Using prefix cache merge for {} k-mers (estimated {} bytes)",
+                    total_kmers, estimated_memory
+                );
             }
             return Self::merge_databases_prefix_cache(input_paths, config);
         }
@@ -597,14 +651,18 @@ impl RKDatabase {
 
         if use_streaming {
             if config.verbose {
-                eprintln!("DEBUG: Using streaming merge for {} k-mers (estimated {} bytes)",
-                         total_kmers, estimated_memory);
+                eprintln!(
+                    "DEBUG: Using streaming merge for {} k-mers (estimated {} bytes)",
+                    total_kmers, estimated_memory
+                );
             }
             Self::merge_databases_streaming(input_paths, config)
         } else {
             if config.verbose {
-                eprintln!("DEBUG: Using in-memory merge for {} k-mers (estimated {} bytes)",
-                         total_kmers, estimated_memory);
+                eprintln!(
+                    "DEBUG: Using in-memory merge for {} k-mers (estimated {} bytes)",
+                    total_kmers, estimated_memory
+                );
             }
             Self::merge_databases_inmemory(input_paths, config)
         }
@@ -632,9 +690,9 @@ impl RKDatabase {
         input_paths: &[std::path::PathBuf],
         config: &crate::database::MergeConfig,
     ) -> crate::error::ProcessingResult<Self> {
-        use std::time::Instant;
-        use crate::database::streaming_merge::ExternalMerger;
         use crate::database::format::RKDatabase;
+        use crate::database::streaming_merge::ExternalMerger;
+        use std::time::Instant;
 
         if config.verbose {
             eprintln!("Using streaming merge for large datasets");
@@ -688,8 +746,8 @@ impl RKDatabase {
         input_paths: &[std::path::PathBuf],
         config: &crate::database::MergeConfig,
     ) -> crate::error::ProcessingResult<Self> {
-        use hashbrown::HashMap as HashMapBrown;
         use hashbrown::hash_map::DefaultHashBuilder;
+        use hashbrown::HashMap as HashMapBrown;
         use indicatif::{ProgressBar, ProgressStyle};
         use std::time::Instant;
 
@@ -697,7 +755,7 @@ impl RKDatabase {
 
         if input_paths.is_empty() {
             return Err(crate::error::ProcessingError::new(
-                "At least one input database is required"
+                "At least one input database is required",
             ));
         }
 
@@ -738,7 +796,10 @@ impl RKDatabase {
         }
 
         // Validate compatibility across all databases with verbose output if enabled
-        let (kmer_size_val, canonical_val) = Self::validate_compatibility_verbose(&databases.iter().collect::<Vec<_>>(), config.verbose)?;
+        let (kmer_size_val, canonical_val) = Self::validate_compatibility_verbose(
+            &databases.iter().collect::<Vec<_>>(),
+            config.verbose,
+        )?;
 
         // Set the validated values
         kmer_size = Some(kmer_size_val);
@@ -829,14 +890,14 @@ impl RKDatabase {
         input_paths: &[std::path::PathBuf],
         config: &crate::database::MergeConfig,
     ) -> crate::error::ProcessingResult<Self> {
-        use std::time::Instant;
         use crate::database::prefix_cache_merge::ExternalSortMerger;
+        use std::time::Instant;
 
         let start_time = Instant::now();
 
         if input_paths.is_empty() {
             return Err(crate::error::ProcessingError::new(
-                "At least one input database is required"
+                "At least one input database is required",
             ));
         }
 
@@ -850,13 +911,14 @@ impl RKDatabase {
 
         // Create external sort merger
         let merge_buffer_mb = (config.max_memory_usage / 1024 / 1024) as usize; // Convert bytes to MB
-        
+
         // Validate for external sort merge (allow mixed canonical modes)
-        let (_kmer_size, _final_canonical) = Self::validate_compatibility_external_sort(&db_refs_slice, config.verbose)?;
-        
+        let (_kmer_size, _final_canonical) =
+            Self::validate_compatibility_external_sort(&db_refs_slice, config.verbose)?;
+
         let mut merger = ExternalSortMerger::new(
-            input_paths.to_vec(), 
-            config.temp_dir.clone(), 
+            input_paths.to_vec(),
+            config.temp_dir.clone(),
             merge_buffer_mb.max(1024), // At least 1GB buffer
             config.num_threads,
             config.merge_mode.clone(),
@@ -866,47 +928,60 @@ impl RKDatabase {
         // Create temporary output path
         let temp_output = config.temp_dir.join("external_sort_merge_output.tmp");
         merger.external_sort_merge(&temp_output)?;
-        
+
         let _elapsed = start_time.elapsed();
-        
+
         // Read the merged result
         let result_db = Self::from_file_path(&temp_output)?;
-        
+
         Ok(result_db)
     }
-    
+
     /// Validate compatibility for external sort merge (allows mixed canonical modes)
     fn validate_compatibility_external_sort(
         db_refs: &[&Self],
-        verbose: bool
+        verbose: bool,
     ) -> crate::error::ProcessingResult<(u8, bool)> {
         let first_db = db_refs[0];
         let kmer_size = first_db.kmer_size();
         let canonical = first_db.is_canonical();
-        
+
         if verbose {
             eprintln!("Validating databases for external sort merge...");
         }
 
         let mut has_canonical = false;
         let mut has_non_canonical = false;
-        
+
         for (i, db) in db_refs.iter().enumerate() {
             if db.kmer_size() != kmer_size {
-                let mut msg = format!("Database {} has k-mer size {}, expected {}",
-                           i + 1, db.kmer_size(), kmer_size);
+                let mut msg = format!(
+                    "Database {} has k-mer size {}, expected {}",
+                    i + 1,
+                    db.kmer_size(),
+                    kmer_size
+                );
 
                 if verbose {
-                    msg.push_str(&format!("\n  Database 1: k-mer size={}, canonical={}, k-mers={}",
-                        kmer_size, canonical, first_db.header().total_kmers));
-                    msg.push_str(&format!("\n  Database {}: k-mer size={}, canonical={}, k-mers={}",
-                        i + 1, db.kmer_size(), db.is_canonical(), db.header().total_kmers));
+                    msg.push_str(&format!(
+                        "\n  Database 1: k-mer size={}, canonical={}, k-mers={}",
+                        kmer_size,
+                        canonical,
+                        first_db.header().total_kmers
+                    ));
+                    msg.push_str(&format!(
+                        "\n  Database {}: k-mer size={}, canonical={}, k-mers={}",
+                        i + 1,
+                        db.kmer_size(),
+                        db.is_canonical(),
+                        db.header().total_kmers
+                    ));
                     msg.push_str("\n  Hint: All databases must have the same k-mer size to merge");
                 }
 
                 return Err(crate::error::ProcessingError::new(msg));
             }
-            
+
             if db.is_canonical() {
                 has_canonical = true;
             } else {
@@ -914,28 +989,32 @@ impl RKDatabase {
             }
 
             if verbose {
-                eprintln!("  Database {}: compatible (k-mer size={}, canonical={})",
-                    i + 1, db.kmer_size(), db.is_canonical());
+                eprintln!(
+                    "  Database {}: compatible (k-mer size={}, canonical={})",
+                    i + 1,
+                    db.kmer_size(),
+                    db.is_canonical()
+                );
             }
         }
-        
+
         let final_canonical = has_canonical;
-        
+
         if verbose {
             if has_canonical && has_non_canonical {
                 eprintln!("  Mixed canonical modes detected - converting all to canonical mode");
             }
             eprintln!("  Final merge mode: canonical={}", final_canonical);
         }
-        
+
         Ok((kmer_size.try_into().unwrap(), final_canonical))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::memory::{constraints, MemoryMonitor};
     use super::*;
-    use super::super::memory::{MemoryMonitor, constraints};
     use tempfile::tempdir;
 
     #[test]
@@ -945,15 +1024,17 @@ mod tests {
             vec![(0x1234, 10), (0x5678, 20), (0x9ABC, 30)],
             31,
             false,
-            true
-        ).unwrap();
+            true,
+        )
+        .unwrap();
 
         let db2 = RKDatabase::from_kmer_pairs(
             vec![(0x1234, 5), (0xDEF0, 15), (0x9ABC, 25)],
             31,
             false,
-            true
-        ).unwrap();
+            true,
+        )
+        .unwrap();
 
         // Create temporary files
         let temp_dir = tempdir().unwrap();
@@ -999,8 +1080,10 @@ mod tests {
         assert_eq!(kmer_map.get(&0xDEF0), Some(&15));
 
         // Basic memory sanity check
-        assert!(monitor.peak_usage() < constraints::SMALL.max_usage,
-               "Memory usage should be within small constraint");
+        assert!(
+            monitor.peak_usage() < constraints::SMALL.max_usage,
+            "Memory usage should be within small constraint"
+        );
     }
 
     #[test]
@@ -1013,15 +1096,17 @@ mod tests {
             vec![(0x0010, 10), (0x0020, 20), (0x0030, 30)],
             31,
             false,
-            true
-        ).unwrap();
+            true,
+        )
+        .unwrap();
 
         let db2 = RKDatabase::from_kmer_pairs(
             vec![(0x0010, 5), (0x0040, 15), (0x0030, 25)],
             31,
             false,
-            true
-        ).unwrap();
+            true,
+        )
+        .unwrap();
 
         db1.to_file_path(&db1_path).unwrap();
         db2.to_file_path(&db2_path).unwrap();
@@ -1098,17 +1183,15 @@ mod tests {
         fn test_validate_compatibility_empty() {
             let result = RKDatabase::validate_compatibility(&[]);
             assert!(result.is_err());
-            assert!(result.unwrap_err().to_string().contains("At least one database is required"));
+            assert!(result
+                .unwrap_err()
+                .to_string()
+                .contains("At least one database is required"));
         }
 
         #[test]
         fn test_validate_compatibility_single() {
-            let db = RKDatabase::from_kmer_pairs(
-                vec![(0x1234, 10)],
-                31,
-                false,
-                true
-            ).unwrap();
+            let db = RKDatabase::from_kmer_pairs(vec![(0x1234, 10)], 31, false, true).unwrap();
 
             let result = RKDatabase::validate_compatibility(&[&db]);
             assert!(result.is_ok());
@@ -1119,19 +1202,9 @@ mod tests {
 
         #[test]
         fn test_validate_compatibility_matching() {
-            let db1 = RKDatabase::from_kmer_pairs(
-                vec![(0x1234, 10)],
-                31,
-                false,
-                true
-            ).unwrap();
+            let db1 = RKDatabase::from_kmer_pairs(vec![(0x1234, 10)], 31, false, true).unwrap();
 
-            let db2 = RKDatabase::from_kmer_pairs(
-                vec![(0x5678, 20)],
-                31,
-                false,
-                true
-            ).unwrap();
+            let db2 = RKDatabase::from_kmer_pairs(vec![(0x5678, 20)], 31, false, true).unwrap();
 
             let result = RKDatabase::validate_compatibility(&[&db1, &db2]);
             assert!(result.is_ok());
@@ -1142,19 +1215,15 @@ mod tests {
 
         #[test]
         fn test_validate_compatibility_kmer_size_mismatch() {
-            let db1 = RKDatabase::from_kmer_pairs(
-                vec![(0x1234, 10)],
-                31,
-                false,
-                true
-            ).unwrap();
+            let db1 = RKDatabase::from_kmer_pairs(vec![(0x1234, 10)], 31, false, true).unwrap();
 
             let db2 = RKDatabase::from_kmer_pairs(
                 vec![(0x5678, 20)],
-                51,  // Different k-mer size
+                51, // Different k-mer size
                 false,
-                true
-            ).unwrap();
+                true,
+            )
+            .unwrap();
 
             let result = RKDatabase::validate_compatibility(&[&db1, &db2]);
             assert!(result.is_err());
@@ -1169,16 +1238,18 @@ mod tests {
             let db1 = RKDatabase::from_kmer_pairs(
                 vec![(0x1234, 10)],
                 31,
-                true,   // canonical
-                true
-            ).unwrap();
+                true, // canonical
+                true,
+            )
+            .unwrap();
 
             let db2 = RKDatabase::from_kmer_pairs(
                 vec![(0x5678, 20)],
                 31,
-                false,  // non-canonical
-                true
-            ).unwrap();
+                false, // non-canonical
+                true,
+            )
+            .unwrap();
 
             let result = RKDatabase::validate_compatibility(&[&db1, &db2]);
             assert!(result.is_err());
@@ -1190,26 +1261,23 @@ mod tests {
 
         #[test]
         fn test_validate_compatibility_multiple_mismatch() {
-            let db1 = RKDatabase::from_kmer_pairs(
-                vec![(0x1234, 10)],
-                31,
-                true,
-                true
-            ).unwrap();
+            let db1 = RKDatabase::from_kmer_pairs(vec![(0x1234, 10)], 31, true, true).unwrap();
 
             let db2 = RKDatabase::from_kmer_pairs(
                 vec![(0x5678, 20)],
-                51,  // Different k-mer size
+                51, // Different k-mer size
                 true,
-                true
-            ).unwrap();
+                true,
+            )
+            .unwrap();
 
             let db3 = RKDatabase::from_kmer_pairs(
                 vec![(0x9ABC, 30)],
                 31,
-                false,  // Different canonical mode
-                true
-            ).unwrap();
+                false, // Different canonical mode
+                true,
+            )
+            .unwrap();
 
             // Should fail on k-mer size mismatch first (database 2)
             let result = RKDatabase::validate_compatibility(&[&db1, &db2, &db3]);

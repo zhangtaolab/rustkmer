@@ -4,16 +4,16 @@
 //! the u128 implementation produces identical results to the u64 implementation
 //! for comparable inputs.
 
-pub mod utils;
 pub mod generators;
+pub mod utils;
 // Note: The following modules were declared but the files don't exist:
 // - test_small_k
 // - test_ambiguous
 // - test_canonical
 // - test_full_pipeline
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Statistics from processing
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

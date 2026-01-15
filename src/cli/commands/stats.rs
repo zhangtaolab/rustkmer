@@ -4,7 +4,7 @@
 //! comprehensive statistics about RKDB databases.
 
 use crate::cli::args::Args;
-use crate::database::stats::{StatsConfiguration, OutputFormat, StatsError, Result};
+use crate::database::stats::{OutputFormat, Result, StatsConfiguration, StatsError};
 use anyhow::Context;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -50,8 +50,7 @@ pub fn execute_stats(args: &Args) -> anyhow::Result<()> {
             .with_context(|| format!("Failed to calculate statistics for {}", database))?;
 
         // Output results
-        output_results(&stats, &config)
-            .with_context(|| "Failed to output statistics")?;
+        output_results(&stats, &config).with_context(|| "Failed to output statistics")?;
 
         let elapsed = start_time.elapsed();
         // TODO: Add quiet flag to Args if needed
@@ -68,8 +67,8 @@ fn calculate_statistics(
     database_path: &str,
     config: StatsConfiguration,
 ) -> Result<crate::database::stats::DatabaseStatistics> {
-    use std::io::{Seek, SeekFrom, BufReader};
     use std::fs::File;
+    use std::io::{BufReader, Seek, SeekFrom};
     use std::path::PathBuf;
 
     let start_time = std::time::Instant::now();
@@ -85,15 +84,15 @@ fn calculate_statistics(
     let mut file = BufReader::new(file);
 
     // Read and validate header
-    let header = crate::database::format::DatabaseHeader::read_from(&mut file)
-        .map_err(|e| StatsError::InvalidFormat {
-            reason: format!("Failed to read database header: {}", e)
-        })?;
+    let header = crate::database::format::DatabaseHeader::read_from(&mut file).map_err(|e| {
+        StatsError::InvalidFormat {
+            reason: format!("Failed to read database header: {}", e),
+        }
+    })?;
 
-    header.validate()
-        .map_err(|e| StatsError::InvalidFormat {
-            reason: format!("Invalid database header: {}", e)
-        })?;
+    header.validate().map_err(|e| StatsError::InvalidFormat {
+        reason: format!("Invalid database header: {}", e),
+    })?;
 
     // Check if database is empty
     if header.total_kmers == 0 {
@@ -105,9 +104,9 @@ fn calculate_statistics(
 
     // Fix for incorrect data_offset in header (same as in query.rs)
     let actual_data_offset = if header.data_offset < 40 {
-        42  // Use correct offset when header value is too small
+        42 // Use correct offset when header value is too small
     } else if header.data_offset > 1000 {
-        42  // Use correct offset when header value is too large
+        42 // Use correct offset when header value is too large
     } else {
         header.data_offset
     };
@@ -154,11 +153,13 @@ fn output_results(
 
     if config.split_output {
         // Validate that freq_output_path is provided when split_output is true
-        let freq_path = config.freq_output_path.as_ref().ok_or_else(|| {
-            StatsError::InvalidFormat {
-                reason: "Frequency output path is required when using split output".to_string(),
-            }
-        })?;
+        let freq_path =
+            config
+                .freq_output_path
+                .as_ref()
+                .ok_or_else(|| StatsError::InvalidFormat {
+                    reason: "Frequency output path is required when using split output".to_string(),
+                })?;
 
         // Output basic statistics
         let writer: Box<dyn std::io::Write> = match &config.output_path {
@@ -213,7 +214,6 @@ fn output_text<W: std::io::Write>(
     mut writer: W,
     stats: &crate::database::stats::DatabaseStatistics,
 ) -> Result<()> {
-
     writeln!(writer, "Database Statistics")?;
     writeln!(writer, "===================")?;
     writeln!(writer, "Database: {:?}", stats.database_file)?;
@@ -286,7 +286,11 @@ fn output_csv<W: std::io::Write>(
         &stats.median_count.to_string(),
         &stats.processing_time.as_millis().to_string(),
         &stats.memory_peak_bytes.to_string(),
-        if stats.frequency_distribution.is_some() { "true" } else { "false" },
+        if stats.frequency_distribution.is_some() {
+            "true"
+        } else {
+            "false"
+        },
     ])?;
 
     // Note: Frequency distribution is too large for standard CSV format
@@ -336,7 +340,11 @@ fn output_tsv<W: std::io::Write>(
         &stats.median_count.to_string(),
         &stats.processing_time.as_millis().to_string(),
         &stats.memory_peak_bytes.to_string(),
-        if stats.frequency_distribution.is_some() { "true" } else { "false" },
+        if stats.frequency_distribution.is_some() {
+            "true"
+        } else {
+            "false"
+        },
     ])?;
 
     // Note: Frequency distribution is too large for standard TSV format

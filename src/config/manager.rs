@@ -3,14 +3,14 @@
 //! Provides comprehensive configuration management for RustKmer with file-based storage,
 //! environment variable integration, and per-operation override mechanisms.
 
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
-use std::fs::{File};
+use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
-use anyhow::{Context, Result};
 
 /// Default configuration file name
 pub const DEFAULT_CONFIG_FILE: &str = ".rustkmerrc";
@@ -140,7 +140,7 @@ impl Default for GlobalConfig {
 impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
-            memory_limit: Some(1024 * 1024 * 1024), // 1GB
+            memory_limit: Some(1024 * 1024 * 1024),  // 1GB
             mmap_threshold: Some(100 * 1024 * 1024), // 100MB
             page_size: Some(10000),
             adaptive: Some(true),
@@ -233,7 +233,9 @@ impl ConfigManager {
 
         // Check system-wide config directory
         if let Ok(config_dir) = env::var("XDG_CONFIG_HOME") {
-            let system_config = PathBuf::from(config_dir).join("rustkmer").join(DEFAULT_CONFIG_FILE);
+            let system_config = PathBuf::from(config_dir)
+                .join("rustkmer")
+                .join(DEFAULT_CONFIG_FILE);
             if system_config.exists() {
                 return Some(system_config);
             }
@@ -271,8 +273,7 @@ impl ConfigManager {
             .with_context(|| "Failed to read config file content")?;
 
         // Parse TOML
-        toml::from_str(&content)
-            .with_context(|| "Failed to parse TOML configuration")
+        toml::from_str(&content).with_context(|| "Failed to parse TOML configuration")
     }
 
     /// Save configuration to file
@@ -282,8 +283,9 @@ impl ConfigManager {
             let content = toml::to_string_pretty(&*config)
                 .with_context(|| "Failed to serialize configuration to TOML")?;
 
-            let mut file = File::create(config_file)
-                .with_context(|| format!("Failed to create config file: {}", config_file.display()))?;
+            let mut file = File::create(config_file).with_context(|| {
+                format!("Failed to create config file: {}", config_file.display())
+            })?;
 
             file.write_all(content.as_bytes())
                 .with_context(|| "Failed to write config file")?;
@@ -414,7 +416,9 @@ impl ConfigManager {
 
         OperationConfig {
             memory: overrides.memory.or(Some(global_config.memory.clone())),
-            kmer_counting: overrides.kmer_counting.or(Some(global_config.kmer_counting.clone())),
+            kmer_counting: overrides
+                .kmer_counting
+                .or(Some(global_config.kmer_counting.clone())),
             output: overrides.output.or(Some(global_config.output.clone())),
         }
     }
@@ -557,10 +561,14 @@ impl ConfigReport {
         }
 
         println!("\nCurrent configuration:");
-        println!("  Memory limit: {:?} MB",
-                 self.config.memory.memory_limit.map(|x| x / 1024 / 1024));
-        println!("  Memory mapping threshold: {:?} MB",
-                 self.config.memory.mmap_threshold.map(|x| x / 1024 / 1024));
+        println!(
+            "  Memory limit: {:?} MB",
+            self.config.memory.memory_limit.map(|x| x / 1024 / 1024)
+        );
+        println!(
+            "  Memory mapping threshold: {:?} MB",
+            self.config.memory.mmap_threshold.map(|x| x / 1024 / 1024)
+        );
         println!("  Default k: {:?}", self.config.kmer_counting.default_k);
         println!("  Canonical: {:?}", self.config.kmer_counting.canonical);
         println!("  Threads: {:?}", self.config.kmer_counting.threads);
@@ -585,8 +593,8 @@ impl ConfigReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_default_config() {
@@ -689,7 +697,10 @@ level = "info"
 
         let op_config = manager.create_operation_config(overrides);
 
-        assert_eq!(op_config.memory.unwrap().memory_limit, Some(2048 * 1024 * 1024));
+        assert_eq!(
+            op_config.memory.unwrap().memory_limit,
+            Some(2048 * 1024 * 1024)
+        );
         assert_eq!(op_config.kmer_counting.unwrap().default_k, Some(33));
         assert_eq!(op_config.output.unwrap().format, Some("csv".to_string()));
     }

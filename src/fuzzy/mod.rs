@@ -20,17 +20,20 @@
 //! let results = engine.execute_query(&query)?;
 //! ```
 
-pub mod wildcard;
+pub mod expansion;
 pub mod mutation;
 pub mod normalization;
-pub mod expansion;
 pub mod performance;
 pub mod query;
+pub mod wildcard;
 
 // Re-export main types for convenience
-pub use query::{FuzzyQuery, FuzzyQueryEngine, FuzzyQueryResult, FuzzyQueryResultData, KmerMatch, MatchType, QueryMetadata, QueryStatus};
-pub use expansion::{QueryExpansion, ExpansionMethod};
-pub use performance::{PerformanceMetrics, VariantGenerationMetrics, DatabaseQueryMetrics};
+pub use expansion::{ExpansionMethod, QueryExpansion};
+pub use performance::{DatabaseQueryMetrics, PerformanceMetrics, VariantGenerationMetrics};
+pub use query::{
+    FuzzyQuery, FuzzyQueryEngine, FuzzyQueryResult, FuzzyQueryResultData, KmerMatch, MatchType,
+    QueryMetadata, QueryStatus,
+};
 
 use thiserror::Error;
 
@@ -41,16 +44,10 @@ pub enum FuzzyError {
     InvalidQuery(String),
 
     #[error("Too many variants generated: {actual} (limit: {limit})")]
-    TooManyVariants {
-        actual: usize,
-        limit: usize,
-    },
+    TooManyVariants { actual: usize, limit: usize },
 
     #[error("Memory limit exceeded: {usage_mb}MB (limit: {limit_mb}MB)")]
-    MemoryLimitExceeded {
-        usage_mb: f64,
-        limit_mb: f64,
-    },
+    MemoryLimitExceeded { usage_mb: f64, limit_mb: f64 },
 
     #[error("Database error: {0}")]
     DatabaseError(String),

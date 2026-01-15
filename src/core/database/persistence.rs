@@ -1,14 +1,16 @@
 //! Database persistence utilities for KmerCounter database saving and loading
 
-use crate::core::metadata::{DatabaseMetadata, create_metadata, save_metadata, load_metadata, validate_metadata};
+use crate::core::metadata::{
+    create_metadata, load_metadata, save_metadata, validate_metadata, DatabaseMetadata,
+};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self, Write, BufWriter, BufReader, Read, BufRead};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::Path;
 // use std::time::{SystemTime, UNIX_EPOCH}; // Unused imports
-use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use sha2::{Sha256, Digest};
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// Error types for database persistence operations
@@ -86,7 +88,12 @@ pub fn save_kmer_database(
 
     // Save binary k-mer data
     let (data_size_bytes, actual_data_size) = if config.compression_enabled {
-        save_kmer_data_compressed(kmer_counts, &data_file_path_compressed, config.buffer_size, config.compression_level)?
+        save_kmer_data_compressed(
+            kmer_counts,
+            &data_file_path_compressed,
+            config.buffer_size,
+            config.compression_level,
+        )?
     } else {
         save_kmer_data_uncompressed(kmer_counts, &data_file_path, config.buffer_size)?
     };
@@ -219,10 +226,11 @@ pub fn load_kmer_database(
 
     // Validate against metadata
     if kmer_counts.len() != metadata.unique_kmers as usize {
-        return Err(PersistenceError::InvalidFormat(
-            format!("K-mer count mismatch: metadata reports {}, loaded {}",
-                   metadata.unique_kmers, kmer_counts.len())
-        ));
+        return Err(PersistenceError::InvalidFormat(format!(
+            "K-mer count mismatch: metadata reports {}, loaded {}",
+            metadata.unique_kmers,
+            kmer_counts.len()
+        )));
     }
 
     Ok((kmer_counts, metadata))
@@ -316,7 +324,10 @@ fn generate_checksums(files: &[(&str, &Path)]) -> Result<Vec<(String, String)>, 
 }
 
 /// Save checksums to checksums.txt file
-fn save_checksums(database_path: &Path, checksums: &[(String, String)]) -> Result<(), PersistenceError> {
+fn save_checksums(
+    database_path: &Path,
+    checksums: &[(String, String)],
+) -> Result<(), PersistenceError> {
     let checksums_path = database_path.join("checksums.txt");
     let mut file = fs::File::create(checksums_path)?;
 
@@ -401,14 +412,22 @@ pub fn merge_databases(
     metadata1.update_timestamp();
 
     // Merge source files
-    metadata1.source_files.extend(metadata2.source_files.clone());
+    metadata1
+        .source_files
+        .extend(metadata2.source_files.clone());
 
     // Create output directory
     fs::create_dir_all(output_path)?;
 
     // Save merged database
-    save_kmer_database(&counts1, output_path, metadata1.kmer_size, metadata1.canonical,
-                      metadata1.source_files.clone(), config.clone())?;
+    save_kmer_database(
+        &counts1,
+        output_path,
+        metadata1.kmer_size,
+        metadata1.canonical,
+        metadata1.source_files.clone(),
+        config.clone(),
+    )?;
 
     Ok(metadata1)
 }
@@ -431,7 +450,15 @@ mod tests {
         let config = PersistenceConfig::default();
 
         // Save database
-        save_kmer_database(&kmer_counts, &db_path, 4, false, vec!["test.fa".to_string()], config.clone()).unwrap();
+        save_kmer_database(
+            &kmer_counts,
+            &db_path,
+            4,
+            false,
+            vec!["test.fa".to_string()],
+            config.clone(),
+        )
+        .unwrap();
 
         // Load database
         let (loaded_counts, metadata) = load_kmer_database(&db_path, &config).unwrap();
@@ -468,17 +495,40 @@ mod tests {
 
         // Save compressed
         let compressed_path = dir.path().join("compressed");
-        save_kmer_database(&kmer_counts, &compressed_path, 8, true, vec![], compressed_config).unwrap();
+        save_kmer_database(
+            &kmer_counts,
+            &compressed_path,
+            8,
+            true,
+            vec![],
+            compressed_config,
+        )
+        .unwrap();
 
         // Save uncompressed
         let uncompressed_path = dir.path().join("uncompressed");
-        save_kmer_database(&kmer_counts, &uncompressed_path, 8, true, vec![], uncompressed_config).unwrap();
+        save_kmer_database(
+            &kmer_counts,
+            &uncompressed_path,
+            8,
+            true,
+            vec![],
+            uncompressed_config,
+        )
+        .unwrap();
 
         // Compare sizes
-        let compressed_size = fs::metadata(compressed_path.join("data.rkdb.gz")).unwrap().len();
-        let uncompressed_size = fs::metadata(uncompressed_path.join("data.rkdb")).unwrap().len();
+        let compressed_size = fs::metadata(compressed_path.join("data.rkdb.gz"))
+            .unwrap()
+            .len();
+        let uncompressed_size = fs::metadata(uncompressed_path.join("data.rkdb"))
+            .unwrap()
+            .len();
 
-        assert!(compressed_size < uncompressed_size, "Compression should reduce file size");
+        assert!(
+            compressed_size < uncompressed_size,
+            "Compression should reduce file size"
+        );
     }
 
     #[test]
@@ -494,23 +544,40 @@ mod tests {
         let mut counts1 = HashMap::new();
         counts1.insert("ATGC".to_string(), 10);
         counts1.insert("CGAT".to_string(), 5);
-        save_kmer_database(&counts1, &db1_path, 4, false, vec!["db1.fa".to_string()], config.clone()).unwrap();
+        save_kmer_database(
+            &counts1,
+            &db1_path,
+            4,
+            false,
+            vec!["db1.fa".to_string()],
+            config.clone(),
+        )
+        .unwrap();
 
         // Create second database with overlapping k-mers
         let mut counts2 = HashMap::new();
-        counts2.insert("ATGC".to_string(), 3);  // Overlapping with db1
-        counts2.insert("GCTA".to_string(), 7);  // New k-mer
-        save_kmer_database(&counts2, &db2_path, 4, false, vec!["db2.fa".to_string()], config.clone()).unwrap();
+        counts2.insert("ATGC".to_string(), 3); // Overlapping with db1
+        counts2.insert("GCTA".to_string(), 7); // New k-mer
+        save_kmer_database(
+            &counts2,
+            &db2_path,
+            4,
+            false,
+            vec!["db2.fa".to_string()],
+            config.clone(),
+        )
+        .unwrap();
 
         // Merge databases
         let merged_metadata = merge_databases(&db1_path, &db2_path, &output_path, &config).unwrap();
 
         // Verify merged result
-        let (merged_counts, _) = load_kmer_database(&output_path, &PersistenceConfig::default()).unwrap();
+        let (merged_counts, _) =
+            load_kmer_database(&output_path, &PersistenceConfig::default()).unwrap();
 
         assert_eq!(merged_counts.get("ATGC"), Some(&13)); // 10 + 3
-        assert_eq!(merged_counts.get("CGAT"), Some(&5));  // From db1 only
-        assert_eq!(merged_counts.get("GCTA"), Some(&7));  // From db2 only
-        assert_eq!(merged_metadata.source_files.len(), 2);  // Both source files
+        assert_eq!(merged_counts.get("CGAT"), Some(&5)); // From db1 only
+        assert_eq!(merged_counts.get("GCTA"), Some(&7)); // From db2 only
+        assert_eq!(merged_metadata.source_files.len(), 2); // Both source files
     }
 }

@@ -6,6 +6,6 @@
 pub mod efficiency;
 
 pub use efficiency::{
-    MemoryConfig, MemoryManager, MemoryStats, MemoryEfficiencyReport,
-    PageIterator, MMAP_THRESHOLD, DEFAULT_MEMORY_LIMIT, DEFAULT_PAGE_SIZE,
+    MemoryConfig, MemoryEfficiencyReport, MemoryManager, MemoryStats, PageIterator,
+    DEFAULT_MEMORY_LIMIT, DEFAULT_PAGE_SIZE, MMAP_THRESHOLD,
 };

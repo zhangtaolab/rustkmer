@@ -161,7 +161,7 @@ impl Default for MemoryLimits {
     fn default() -> Self {
         Self {
             max_memory_bytes: 8 * 1024 * 1024 * 1024, // 8GB
-            buffer_size: 1024 * 1024, // 1MB
+            buffer_size: 1024 * 1024,                 // 1MB
             use_mmap: true,
         }
     }
@@ -333,26 +333,34 @@ impl DatabaseMetadata {
     /// Validate the metadata structure
     pub fn validate(&self) -> Result<(), MetadataError> {
         if self.version.is_empty() {
-            return Err(MetadataError::InvalidMetadata("Version cannot be empty".to_string()));
+            return Err(MetadataError::InvalidMetadata(
+                "Version cannot be empty".to_string(),
+            ));
         }
 
         if self.kmer_size == 0 {
-            return Err(MetadataError::InvalidMetadata("k-mer size must be > 0".to_string()));
+            return Err(MetadataError::InvalidMetadata(
+                "k-mer size must be > 0".to_string(),
+            ));
         }
 
         if self.kmer_size > 127 {
-            return Err(MetadataError::InvalidMetadata("k-mer size must be <= 127".to_string()));
+            return Err(MetadataError::InvalidMetadata(
+                "k-mer size must be <= 127".to_string(),
+            ));
         }
 
         if self.total_kmers < self.unique_kmers {
             return Err(MetadataError::InvalidMetadata(
-                "Total k-mers cannot be less than unique k-mers".to_string()
+                "Total k-mers cannot be less than unique k-mers".to_string(),
             ));
         }
 
         // Validate format info
         if self.format.format_name.is_empty() {
-            return Err(MetadataError::InvalidMetadata("Format name cannot be empty".to_string()));
+            return Err(MetadataError::InvalidMetadata(
+                "Format name cannot be empty".to_string(),
+            ));
         }
 
         Ok(())
@@ -361,7 +369,7 @@ impl DatabaseMetadata {
     /// Generate checksum for the metadata
     pub fn generate_checksum(&self) -> Result<String, MetadataError> {
         let json_str = serde_json::to_string(self)?;
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(json_str.as_bytes());
         Ok(format!("{:x}", hasher.finalize()))
@@ -549,7 +557,11 @@ mod tests {
 
     #[test]
     fn test_metadata_serialization() {
-        let metadata = create_metadata(31, false, vec!["test1.fq".to_string(), "test2.fq".to_string()]);
+        let metadata = create_metadata(
+            31,
+            false,
+            vec!["test1.fq".to_string(), "test2.fq".to_string()],
+        );
 
         let json_str = serde_json::to_string(&metadata).unwrap();
         let deserialized: DatabaseMetadata = serde_json::from_str(&json_str).unwrap();

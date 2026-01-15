@@ -4,11 +4,11 @@
 //! for RKDB databases including k-mer counts, frequency distributions,
 //! and statistical measures.
 
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
-use serde::{Serialize, Deserialize};
 use thiserror::Error;
-use std::collections::HashMap;
 
 /// Statistics for a k-mer database
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -253,7 +253,11 @@ impl StreamingStatsProcessor {
             sorted,
             total_kmers: self.total_kmers,
             unique_kmers: self.unique_kmers,
-            min_count: if self.unique_kmers > 0 { self.min_count } else { 0 },
+            min_count: if self.unique_kmers > 0 {
+                self.min_count
+            } else {
+                0
+            },
             max_count: self.max_count,
             mean_count: self.mean(),
             median_count: self.median(),

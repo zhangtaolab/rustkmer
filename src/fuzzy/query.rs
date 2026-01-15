@@ -4,7 +4,7 @@
 //! against k-mer databases.
 
 use crate::database::format::RKDatabase;
-use crate::fuzzy::{constants, expansion, PerformanceMetrics, FuzzyError, FuzzyResult};
+use crate::fuzzy::{constants, expansion, FuzzyError, FuzzyResult, PerformanceMetrics};
 pub type FuzzyQueryResult<T> = Result<T, crate::fuzzy::FuzzyError>;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -46,58 +46,66 @@ impl PositionMutationConfig {
                 continue;
             }
 
-            let (positions_str, limit_str) = group_str
-                .split_once(':')
-                .ok_or_else(|| FuzzyError::InvalidParameters(
-                    format!("Invalid group format '{}', expected 'positions:limit'", group_str)
-                ))?;
+            let (positions_str, limit_str) = group_str.split_once(':').ok_or_else(|| {
+                FuzzyError::InvalidParameters(format!(
+                    "Invalid group format '{}', expected 'positions:limit'",
+                    group_str
+                ))
+            })?;
 
             let mut positions = Vec::new();
-            
+
             for s in positions_str.split(',') {
                 let trimmed = s.trim();
                 if trimmed.is_empty() {
-                    return Err(FuzzyError::InvalidParameters(
-                        format!("Group '{}': empty position specified", group_str)
-                    ));
+                    return Err(FuzzyError::InvalidParameters(format!(
+                        "Group '{}': empty position specified",
+                        group_str
+                    )));
                 }
 
                 // Check if it's a range like "4-7"
                 if let Some((start_str, end_str)) = trimmed.split_once('-') {
-                    if let (Ok(start), Ok(end)) = (start_str.parse::<usize>(), end_str.parse::<usize>()) {
+                    if let (Ok(start), Ok(end)) =
+                        (start_str.parse::<usize>(), end_str.parse::<usize>())
+                    {
                         if start <= end {
                             positions.extend(start..=end);
                             continue;
                         }
                     }
                     // Invalid range format
-                    return Err(FuzzyError::InvalidParameters(
-                        format!("Group '{}': invalid range format '{}'", group_str, trimmed)
-                    ));
+                    return Err(FuzzyError::InvalidParameters(format!(
+                        "Group '{}': invalid range format '{}'",
+                        group_str, trimmed
+                    )));
                 }
 
                 // Single position parsing
                 if let Ok(pos) = trimmed.parse::<usize>() {
                     positions.push(pos);
                 } else {
-                    return Err(FuzzyError::InvalidParameters(
-                        format!("Group '{}': invalid position '{}'", group_str, trimmed)
-                    ));
+                    return Err(FuzzyError::InvalidParameters(format!(
+                        "Group '{}': invalid position '{}'",
+                        group_str, trimmed
+                    )));
                 }
             }
 
             // Validate that we have at least one position
             if positions.is_empty() {
-                return Err(FuzzyError::InvalidParameters(
-                    format!("Group '{}': no valid positions specified", group_str)
-                ));
+                return Err(FuzzyError::InvalidParameters(format!(
+                    "Group '{}': no valid positions specified",
+                    group_str
+                )));
             }
 
-            let max_mutations: usize = limit_str.trim()
-                .parse()
-                .map_err(|_| FuzzyError::InvalidParameters(
-                    format!("Invalid mutation limit '{}'", limit_str.trim())
-                ))?;
+            let max_mutations: usize = limit_str.trim().parse().map_err(|_| {
+                FuzzyError::InvalidParameters(format!(
+                    "Invalid mutation limit '{}'",
+                    limit_str.trim()
+                ))
+            })?;
 
             config.groups.push(PositionMutationGroup {
                 positions,
@@ -117,28 +125,34 @@ impl PositionMutationConfig {
             // Validate positions are within bounds
             for &pos in &group.positions {
                 if pos >= sequence_length {
-                    return Err(FuzzyError::InvalidParameters(
-                        format!("Group {}: Position {} exceeds sequence length {} (valid: 0-{})",
-                               idx, pos, sequence_length, sequence_length - 1)
-                    ));
+                    return Err(FuzzyError::InvalidParameters(format!(
+                        "Group {}: Position {} exceeds sequence length {} (valid: 0-{})",
+                        idx,
+                        pos,
+                        sequence_length,
+                        sequence_length - 1
+                    )));
                 }
             }
 
             // Check for overlap with previous groups
             for &pos in &group.positions {
                 if !all_positions.insert(pos) {
-                    return Err(FuzzyError::InvalidParameters(
-                        format!("Group {}: Position {} already used in another group", idx, pos)
-                    ));
+                    return Err(FuzzyError::InvalidParameters(format!(
+                        "Group {}: Position {} already used in another group",
+                        idx, pos
+                    )));
                 }
             }
 
             // Validate mutation limit
             if group.max_mutations > group.positions.len() {
-                return Err(FuzzyError::InvalidParameters(
-                    format!("Group {}: Max mutations ({}) cannot exceed number of positions ({})",
-                           idx, group.max_mutations, group.positions.len())
-                ));
+                return Err(FuzzyError::InvalidParameters(format!(
+                    "Group {}: Max mutations ({}) cannot exceed number of positions ({})",
+                    idx,
+                    group.max_mutations,
+                    group.positions.len()
+                )));
             }
         }
 
@@ -229,7 +243,11 @@ impl FuzzyQuery {
     /// Validate the query parameters
     pub fn validate(&self) -> FuzzyResult<()> {
         // Validate query string characters
-        if !self.query_string.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G' | 'N')) {
+        if !self
+            .query_string
+            .chars()
+            .all(|c| matches!(c, 'A' | 'T' | 'C' | 'G' | 'N'))
+        {
             return Err(FuzzyError::InvalidQuery(
                 "Query contains invalid characters (only A,T,C,G,N allowed)".to_string(),
             ));
@@ -237,7 +255,9 @@ impl FuzzyQuery {
 
         // Validate query string length
         if self.query_string.is_empty() {
-            return Err(FuzzyError::InvalidQuery("Query string cannot be empty".to_string()));
+            return Err(FuzzyError::InvalidQuery(
+                "Query string cannot be empty".to_string(),
+            ));
         }
 
         if self.query_string.len() > 1000 {
@@ -248,12 +268,16 @@ impl FuzzyQuery {
 
         // Validate k-mer size
         if self.kmer_size == 0 {
-            return Err(FuzzyError::InvalidParameters("k-mer size must be > 0".to_string()));
+            return Err(FuzzyError::InvalidParameters(
+                "k-mer size must be > 0".to_string(),
+            ));
         }
 
         // Validate mutation tolerance (only if not using position mutations)
-        if self.position_mutations.is_none() &&
-           self.mutation_tolerance > (self.kmer_size as f64 * constants::MAX_MUTATION_RATIO) as usize {
+        if self.position_mutations.is_none()
+            && self.mutation_tolerance
+                > (self.kmer_size as f64 * constants::MAX_MUTATION_RATIO) as usize
+        {
             return Err(FuzzyError::InvalidParameters(
                 "Mutation tolerance too high (max k/2)".to_string(),
             ));
@@ -261,7 +285,9 @@ impl FuzzyQuery {
 
         // Validate batch size
         if self.batch_size == 0 {
-            return Err(FuzzyError::InvalidParameters("Batch size must be > 0".to_string()));
+            return Err(FuzzyError::InvalidParameters(
+                "Batch size must be > 0".to_string(),
+            ));
         }
 
         // Validate position mutations if specified
@@ -422,7 +448,10 @@ impl FuzzyQueryEngine {
     }
 
     /// Execute multiple queries in batch
-    pub fn execute_batch(&self, queries: &[FuzzyQuery]) -> FuzzyQueryResult<Vec<FuzzyQueryResultData>> {
+    pub fn execute_batch(
+        &self,
+        queries: &[FuzzyQuery],
+    ) -> FuzzyQueryResult<Vec<FuzzyQueryResultData>> {
         let mut results = Vec::with_capacity(queries.len());
 
         for query in queries {
@@ -468,14 +497,17 @@ impl FuzzyQueryEngine {
 
     /// Get reverse complement of a DNA sequence
     fn reverse_complement(&self, seq: &str) -> String {
-        seq.chars().rev().map(|c| match c {
-            'A' => 'T',
-            'T' => 'A',
-            'C' => 'G',
-            'G' => 'C',
-            'N' => 'N',
-            _ => c,
-        }).collect()
+        seq.chars()
+            .rev()
+            .map(|c| match c {
+                'A' => 'T',
+                'T' => 'A',
+                'C' => 'G',
+                'G' => 'C',
+                'N' => 'N',
+                _ => c,
+            })
+            .collect()
     }
 }
 

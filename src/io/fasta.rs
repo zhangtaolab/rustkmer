@@ -41,22 +41,22 @@ impl FastaProcessor {
     where
         F: FnMut(&Record) -> ProcessingResult<()>,
     {
-        let file = io::BufReader::new(
-            std::fs::File::open(&self.file_path)
-                .map_err(|e| ProcessingError::with_context(
-                    format!("Failed to open FASTA file: {}", self.file_path),
-                    e,
-                ))?,
-        );
+        let file = io::BufReader::new(std::fs::File::open(&self.file_path).map_err(|e| {
+            ProcessingError::with_context(
+                format!("Failed to open FASTA file: {}", self.file_path),
+                e,
+            )
+        })?);
 
         let reader = Reader::new(file);
 
         for record_result in reader.records() {
-            let record = record_result
-                .map_err(|e| ProcessingError::with_context(
+            let record = record_result.map_err(|e| {
+                ProcessingError::with_context(
                     format!("Error reading FASTA record from file: {}", &self.file_path),
-                    e
-                ))?;
+                    e,
+                )
+            })?;
 
             if let Err(e) = processor(&record) {
                 eprintln!("Error processing record {}: {}", record.id(), e);
@@ -94,11 +94,12 @@ impl FastaProcessor {
 
     /// Get file size
     pub fn file_size(&self) -> ProcessingResult<u64> {
-        let metadata = std::fs::metadata(&self.file_path)
-            .map_err(|e| ProcessingError::with_context(
+        let metadata = std::fs::metadata(&self.file_path).map_err(|e| {
+            ProcessingError::with_context(
                 format!("Failed to get file metadata: {}", self.file_path),
                 e,
-            ))?;
+            )
+        })?;
 
         Ok(metadata.len())
     }
@@ -122,23 +123,23 @@ pub fn validate_fasta_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
     }
 
     // Try to read the first few records to validate format
-    let file = io::BufReader::new(
-        std::fs::File::open(path)
-            .map_err(|e| ProcessingError::with_context(
-                format!("Failed to open FASTA file: {:?}", path),
-                e,
-            ))?,
-    );
+    let file = io::BufReader::new(std::fs::File::open(path).map_err(|e| {
+        ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
+    })?);
 
     let reader = Reader::new(file);
     let mut record_count = 0;
 
     for record_result in reader.records() {
-        let record = record_result
-            .map_err(|e| ProcessingError::with_context(
-                format!("Error reading FASTA record during validation: {:?}", file_path.as_ref()),
-                e
-            ))?;
+        let record = record_result.map_err(|e| {
+            ProcessingError::with_context(
+                format!(
+                    "Error reading FASTA record during validation: {:?}",
+                    file_path.as_ref()
+                ),
+                e,
+            )
+        })?;
 
         record_count += 1;
 
@@ -158,9 +159,7 @@ pub fn validate_fasta_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
     }
 
     if record_count == 0 {
-        return Err(ProcessingError::new(
-            "No valid FASTA records found in file"
-        ));
+        return Err(ProcessingError::new("No valid FASTA records found in file"));
     }
 
     Ok(())
@@ -176,13 +175,9 @@ pub fn validate_fasta_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
 pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> {
     let path = file_path.as_ref();
 
-    let file = io::BufReader::new(
-        std::fs::File::open(path)
-            .map_err(|e| ProcessingError::with_context(
-                format!("Failed to open FASTA file: {:?}", path),
-                e,
-            ))?,
-    );
+    let file = io::BufReader::new(std::fs::File::open(path).map_err(|e| {
+        ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
+    })?);
 
     let reader = Reader::new(file);
     let mut count = 0;
@@ -204,23 +199,17 @@ pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> 
 pub fn total_sequence_length<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> {
     let path = file_path.as_ref();
 
-    let file = io::BufReader::new(
-        std::fs::File::open(path)
-            .map_err(|e| ProcessingError::with_context(
-                format!("Failed to open FASTA file: {:?}", path),
-                e,
-            ))?,
-    );
+    let file = io::BufReader::new(std::fs::File::open(path).map_err(|e| {
+        ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
+    })?);
 
     let reader = Reader::new(file);
     let mut total_length = 0;
 
     for record_result in reader.records() {
-        let record = record_result
-            .map_err(|e| ProcessingError::with_context(
-                format!("Error reading FASTA record: {:?}", path),
-                e
-            ))?;
+        let record = record_result.map_err(|e| {
+            ProcessingError::with_context(format!("Error reading FASTA record: {:?}", path), e)
+        })?;
         total_length += record.seq().len();
     }
 
@@ -243,7 +232,9 @@ mod tests {
     #[test]
     fn test_read_all_sequences() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b">seq1\nATGCATGC\n>seq2\nGCTAGCTA\n").unwrap();
+        temp_file
+            .write_all(b">seq1\nATGCATGC\n>seq2\nGCTAGCTA\n")
+            .unwrap();
 
         let processor = FastaProcessor::new(temp_file.path());
         let sequences = processor.read_all().unwrap();
@@ -258,7 +249,9 @@ mod tests {
     #[test]
     fn test_validate_fasta_file() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b">valid_seq\nATGC\n>another_seq\nGCTA\n").unwrap();
+        temp_file
+            .write_all(b">valid_seq\nATGC\n>another_seq\nGCTA\n")
+            .unwrap();
 
         assert!(validate_fasta_file(temp_file.path()).is_ok());
     }
@@ -275,7 +268,9 @@ mod tests {
     #[test]
     fn test_count_sequences() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b">seq1\nATGC\n>seq2\nGCTA\n>seq3\nATGCGAT\n").unwrap();
+        temp_file
+            .write_all(b">seq1\nATGC\n>seq2\nGCTA\n>seq3\nATGCGAT\n")
+            .unwrap();
 
         let count = count_sequences(temp_file.path()).unwrap();
         assert_eq!(count, 3);
@@ -284,7 +279,9 @@ mod tests {
     #[test]
     fn test_total_sequence_length() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        temp_file.write_all(b">seq1\nATGCATGC\n>seq2\nGCTAGCTA\n").unwrap();
+        temp_file
+            .write_all(b">seq1\nATGCATGC\n>seq2\nGCTAGCTA\n")
+            .unwrap();
 
         let total_length = total_sequence_length(temp_file.path()).unwrap();
         assert_eq!(total_length, 16); // 8 + 8

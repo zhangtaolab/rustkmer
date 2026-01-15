@@ -61,10 +61,12 @@ pub fn encode_kmer_bytes(sequence: &[u8]) -> Result<u64, KmerError> {
             b'C' => C,
             b'G' => G,
             b'T' => T,
-            _ => return Err(KmerError::InvalidCharacter {
-                pos: i,
-                char: char::from(byte)
-            }),
+            _ => {
+                return Err(KmerError::InvalidCharacter {
+                    pos: i,
+                    char: char::from(byte),
+                })
+            }
         };
 
         // Shift to make room for 2 bits, then add the base
@@ -166,9 +168,9 @@ pub fn reverse_complement(encoded: u64, length: usize) -> u64 {
 /// # Returns
 /// `true` if valid, `false` if contains invalid characters
 pub fn validate_sequence(sequence: &str) -> bool {
-    sequence.chars().all(|ch| {
-        matches!(ch.to_ascii_uppercase(), 'A' | 'C' | 'G' | 'T')
-    })
+    sequence
+        .chars()
+        .all(|ch| matches!(ch.to_ascii_uppercase(), 'A' | 'C' | 'G' | 'T'))
 }
 
 /// Check if a sequence contains ambiguous bases (N)
@@ -179,9 +181,9 @@ pub fn validate_sequence(sequence: &str) -> bool {
 /// # Returns
 /// `true` if contains ambiguous bases, `false` if all valid
 pub fn has_ambiguous_bases(sequence: &str) -> bool {
-    !sequence.chars().all(|ch| {
-        matches!(ch.to_ascii_uppercase(), 'A' | 'C' | 'G' | 'T')
-    })
+    !sequence
+        .chars()
+        .all(|ch| matches!(ch.to_ascii_uppercase(), 'A' | 'C' | 'G' | 'T'))
 }
 
 // ========== U128 ENCODING FUNCTIONS ==========
@@ -316,7 +318,6 @@ pub fn decode_kmer_u64(encoded: u64, length: usize) -> String {
     decode_kmer(encoded, length)
 }
 
-
 /// Get the reverse complement of a packed u128 k-mer
 ///
 /// # Arguments
@@ -350,7 +351,6 @@ pub fn reverse_complement_u128(encoded: u128, length: usize) -> u128 {
 
     rc
 }
-
 
 #[cfg(test)]
 mod tests {

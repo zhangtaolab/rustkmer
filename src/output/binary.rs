@@ -2,9 +2,9 @@
 //!
 //! Provides efficient binary serialization of k-mer counting results.
 
-use std::io::Write;
 use crate::error::{ProcessingError, ProcessingResult};
 use crate::hash::table::CounterStats;
+use std::io::Write;
 
 /// Binary format header
 #[derive(Debug, Clone)]
@@ -65,17 +65,18 @@ impl BinaryHeader {
 
         let version = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
         if version != 1 {
-            return Err(ProcessingError::new(format!("Unsupported version: {}", version)));
+            return Err(ProcessingError::new(format!(
+                "Unsupported version: {}",
+                version
+            )));
         }
 
         let kmer_length = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
         let unique_kmers = u64::from_le_bytes([
-            bytes[12], bytes[13], bytes[14], bytes[15],
-            bytes[16], bytes[17], bytes[18], bytes[19],
+            bytes[12], bytes[13], bytes[14], bytes[15], bytes[16], bytes[17], bytes[18], bytes[19],
         ]);
         let total_kmers = u64::from_le_bytes([
-            bytes[20], bytes[21], bytes[22], bytes[23],
-            bytes[24], bytes[25], bytes[26], bytes[27],
+            bytes[20], bytes[21], bytes[22], bytes[23], bytes[24], bytes[25], bytes[26], bytes[27],
         ]);
         let canonical_mode = bytes[28];
         let reserved = [bytes[29], bytes[30], bytes[31], 0, 0, 0, 0];
@@ -108,14 +109,17 @@ pub fn write_binary_format<W: Write>(
 ) -> ProcessingResult<()> {
     // Write header
     let header = BinaryHeader::new(stats);
-    writer.write_all(&header.to_bytes())
+    writer
+        .write_all(&header.to_bytes())
         .map_err(|e| ProcessingError::with_context("Failed to write header", e))?;
 
     // Write k-mer counts
     for (kmer, count) in kmer_counts {
-        writer.write_all(&kmer.to_le_bytes())
+        writer
+            .write_all(&kmer.to_le_bytes())
             .map_err(|e| ProcessingError::with_context("Failed to write k-mer", e))?;
-        writer.write_all(&count.to_le_bytes())
+        writer
+            .write_all(&count.to_le_bytes())
             .map_err(|e| ProcessingError::with_context("Failed to write count", e))?;
     }
 

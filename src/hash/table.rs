@@ -3,11 +3,11 @@
 //! Provides a thread-safe hash table implementation optimized for k-mer counting
 //! with minimal contention and efficient memory usage.
 
-use std::collections::HashMap;
 use parking_lot::RwLock as ParkingLotRwLock;
+use std::collections::HashMap;
 
-use crate::error::{KmerError, ProcessingError, ProcessingResult};
 use super::filtering::{CountFilter, FilteringResult};
+use crate::error::{KmerError, ProcessingError, ProcessingResult};
 
 /// Thread-safe k-mer counter with concurrent operations
 #[derive(Debug)]
@@ -37,7 +37,12 @@ impl KmerCounter {
     ///
     /// # Returns
     /// New KmerCounter instance
-    pub fn new(kmer_length: usize, canonical_mode: bool, initial_capacity: usize, _num_threads: usize) -> ProcessingResult<Self> {
+    pub fn new(
+        kmer_length: usize,
+        canonical_mode: bool,
+        initial_capacity: usize,
+        _num_threads: usize,
+    ) -> ProcessingResult<Self> {
         if !(1..=64).contains(&kmer_length) {
             return Err(KmerError::InvalidKmerSize(kmer_length as u32).into());
         }
@@ -60,22 +65,25 @@ impl KmerCounter {
     /// # Returns
     /// Result indicating success or error
     pub fn increment(&self, kmer_encoded: u128) -> ProcessingResult<()> {
-        self.total_kmers.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.total_kmers
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut table = self.table.write();
 
         match table.get_mut(&kmer_encoded) {
             Some(count) => {
                 if *count == self.max_count {
-                    return Err(ProcessingError::new(
-                        format!("K-mer count overflow reached maximum value {}", self.max_count)
-                    ));
+                    return Err(ProcessingError::new(format!(
+                        "K-mer count overflow reached maximum value {}",
+                        self.max_count
+                    )));
                 }
                 *count += 1;
             }
             None => {
                 table.insert(kmer_encoded, 1);
-                self.unique_kmers.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.unique_kmers
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
         }
 
@@ -130,7 +138,8 @@ impl KmerCounter {
     /// Vector of (kmer_encoded, count) pairs within the specified range
     pub fn filter_by_count(&self, min_count: u32, max_count: u32) -> Vec<(u128, u32)> {
         let table = self.table.read();
-        table.iter()
+        table
+            .iter()
             .filter(|&(_, &count)| count >= min_count && count <= max_count)
             .map(|(&k, &v)| (k, v))
             .collect()
@@ -147,7 +156,8 @@ impl KmerCounter {
         let all_kmers = self.get_all_counts();
 
         match filter {
-            Some(f) => all_kmers.into_iter()
+            Some(f) => all_kmers
+                .into_iter()
                 .filter(|(_, count)| {
                     let count_u64 = *count as u64;
                     f.passes(count_u64)
@@ -171,7 +181,8 @@ impl KmerCounter {
 
         match filter {
             Some(f) => {
-                let kept_after = all_kmers.iter()
+                let kept_after = all_kmers
+                    .iter()
                     .filter(|(_, count)| {
                         let count_u64 = *count as u64;
                         f.passes(count_u64)
@@ -180,7 +191,12 @@ impl KmerCounter {
 
                 FilteringResult::new(total_before, unique_before, kept_after, f.clone())
             }
-            None => FilteringResult::new(total_before, unique_before, unique_before, CountFilter::default()),
+            None => FilteringResult::new(
+                total_before,
+                unique_before,
+                unique_before,
+                CountFilter::default(),
+            ),
         }
     }
 
@@ -208,8 +224,10 @@ impl KmerCounter {
     pub fn reset(&self) {
         let mut table = self.table.write();
         table.clear();
-        self.total_kmers.store(0, std::sync::atomic::Ordering::Relaxed);
-        self.unique_kmers.store(0, std::sync::atomic::Ordering::Relaxed);
+        self.total_kmers
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+        self.unique_kmers
+            .store(0, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Get current memory usage estimate
@@ -257,15 +275,15 @@ impl KmerCounter {
     /// Result indicating success or error
     pub fn merge(&self, other: &KmerCounter) -> ProcessingResult<()> {
         if self.kmer_length != other.kmer_length {
-            return Err(ProcessingError::new(
-                format!("Cannot merge counters with different k-mer lengths: {} vs {}",
-                    self.kmer_length, other.kmer_length)
-            ));
+            return Err(ProcessingError::new(format!(
+                "Cannot merge counters with different k-mer lengths: {} vs {}",
+                self.kmer_length, other.kmer_length
+            )));
         }
 
         if self.canonical_mode != other.canonical_mode {
             return Err(ProcessingError::new(
-                "Cannot merge counters with different canonical modes"
+                "Cannot merge counters with different canonical modes",
             ));
         }
 
@@ -289,14 +307,10 @@ impl KmerCounter {
         }
 
         // Update statistics
-        self.total_kmers.fetch_add(
-            other.total_kmers(),
-            std::sync::atomic::Ordering::Relaxed
-        );
-        self.unique_kmers.fetch_add(
-            merged_unique,
-            std::sync::atomic::Ordering::Relaxed
-        );
+        self.total_kmers
+            .fetch_add(other.total_kmers(), std::sync::atomic::Ordering::Relaxed);
+        self.unique_kmers
+            .fetch_add(merged_unique, std::sync::atomic::Ordering::Relaxed);
 
         Ok(())
     }

@@ -123,19 +123,24 @@ impl MemoryConstraint {
 
     /// Check if the current usage exceeds the constraint
     pub fn is_exceeded(&self, current_usage: usize, input_size: usize) -> bool {
-        let allowed = self.max_usage.max((input_size as f64 * self.relative_to_input) as usize);
+        let allowed = self
+            .max_usage
+            .max((input_size as f64 * self.relative_to_input) as usize);
         current_usage > allowed
     }
 
     /// Check if the current usage is near the warning threshold
     pub fn is_near_warning(&self, current_usage: usize, input_size: usize) -> bool {
-        let allowed = self.max_usage.max((input_size as f64 * self.relative_to_input) as usize);
+        let allowed = self
+            .max_usage
+            .max((input_size as f64 * self.relative_to_input) as usize);
         current_usage > (allowed as f64 * self.warning_threshold) as usize
     }
 
     /// Get the maximum allowed usage for a given input size
     pub fn max_allowed(&self, input_size: usize) -> usize {
-        self.max_usage.max((input_size as f64 * self.relative_to_input) as usize)
+        self.max_usage
+            .max((input_size as f64 * self.relative_to_input) as usize)
     }
 }
 
@@ -145,29 +150,34 @@ pub mod constraints {
 
     /// Small test memory constraint (100MB or 10x input)
     pub const SMALL: MemoryConstraint = MemoryConstraint {
-        max_usage: 100 * 1024 * 1024,     // 100 MB
-        relative_to_input: 10.0,        // 10x input size
-        warning_threshold: 0.8,          // 80% of limit
+        max_usage: 100 * 1024 * 1024, // 100 MB
+        relative_to_input: 10.0,      // 10x input size
+        warning_threshold: 0.8,       // 80% of limit
     };
 
     /// Medium test memory constraint (500MB or 5x input)
     pub const MEDIUM: MemoryConstraint = MemoryConstraint {
-        max_usage: 500 * 1024 * 1024,    // 500 MB
-        relative_to_input: 5.0,         // 5x input size
-        warning_threshold: 0.8,          // 80% of limit
+        max_usage: 500 * 1024 * 1024, // 500 MB
+        relative_to_input: 5.0,       // 5x input size
+        warning_threshold: 0.8,       // 80% of limit
     };
 
     /// Large test memory constraint (2GB or 3x input)
     pub const LARGE: MemoryConstraint = MemoryConstraint {
         max_usage: 2 * 1024 * 1024 * 1024, // 2 GB
-        relative_to_input: 3.0,         // 3x input size
-        warning_threshold: 0.9,          // 90% of limit
+        relative_to_input: 3.0,            // 3x input size
+        warning_threshold: 0.9,            // 90% of limit
     };
 }
 
 /// Format bytes in human readable format
 pub fn format_bytes(bytes: usize) -> String {
-    const UNITS: &[(&str, u64)] = &[("B", 1), ("KB", 1024), ("MB", 1_048_576), ("GB", 1_073_741_824)];
+    const UNITS: &[(&str, u64)] = &[
+        ("B", 1),
+        ("KB", 1024),
+        ("MB", 1_048_576),
+        ("GB", 1_073_741_824),
+    ];
 
     for (i, &(unit, size)) in UNITS.iter().enumerate() {
         if bytes < (size * 1024) as usize || i == UNITS.len() - 1 {

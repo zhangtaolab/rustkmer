@@ -4,7 +4,7 @@
 //! supporting wildcard expansion, length normalization, and mutation tolerance.
 
 use crate::database::format::RKDatabase;
-use crate::fuzzy::{FuzzyQuery, FuzzyQueryEngine, query::PositionMutationConfig};
+use crate::fuzzy::{query::PositionMutationConfig, FuzzyQuery, FuzzyQueryEngine};
 use anyhow::Result;
 use clap::Args;
 use serde_json;
@@ -151,7 +151,10 @@ pub struct FuzzyQueryBatchArgs {
     pub fail_fast: bool,
 
     /// Include header row in CSV/TSV output
-    #[arg(long = "include-headers", help = "Include header row in CSV/TSV output")]
+    #[arg(
+        long = "include-headers",
+        help = "Include header row in CSV/TSV output"
+    )]
     pub include_headers: bool,
 }
 
@@ -334,25 +337,38 @@ fn load_queries_from_file(file_path: &PathBuf) -> Result<Vec<String>> {
 }
 
 /// Output fuzzy query result
-fn output_fuzzy_result(result: &crate::fuzzy::FuzzyQueryResultData, args: &FuzzyQueryArgs) -> Result<()> {
+fn output_fuzzy_result(
+    result: &crate::fuzzy::FuzzyQueryResultData,
+    args: &FuzzyQueryArgs,
+) -> Result<()> {
     match args.format.as_str() {
         "table" => output_table_format(result, args),
         "json" => output_json_format(result, args),
         "tsv" => output_tsv_format(result, args),
         "csv" => output_csv_format(result, args),
-        _ => Err(anyhow::anyhow!("Unsupported output format: {}", args.format)),
+        _ => Err(anyhow::anyhow!(
+            "Unsupported output format: {}",
+            args.format
+        )),
     }
 }
 
 /// Output in table format
-fn output_table_format(result: &crate::fuzzy::FuzzyQueryResultData, args: &FuzzyQueryArgs) -> Result<()> {
+fn output_table_format(
+    result: &crate::fuzzy::FuzzyQueryResultData,
+    args: &FuzzyQueryArgs,
+) -> Result<()> {
     let mut writer: Box<dyn Write> = if let Some(output_path) = &args.output {
         Box::new(std::fs::File::create(output_path)?)
     } else {
         Box::new(io::stdout())
     };
 
-    writeln!(writer, "Query: {}", result.query_metadata.query_params.query_string)?;
+    writeln!(
+        writer,
+        "Query: {}",
+        result.query_metadata.query_params.query_string
+    )?;
     writeln!(
         writer,
         "Mutations: {}",
@@ -364,7 +380,11 @@ fn output_table_format(result: &crate::fuzzy::FuzzyQueryResultData, args: &Fuzzy
         result.query_metadata.variants_generated
     )?;
     writeln!(writer, "Total Matches: {}", result.total_count)?;
-    writeln!(writer, "Query Time: {}ms", result.query_metadata.query_time_ms)?;
+    writeln!(
+        writer,
+        "Query Time: {}ms",
+        result.query_metadata.query_time_ms
+    )?;
     writeln!(writer)?;
 
     if result.individual_matches.is_empty() {
@@ -393,7 +413,10 @@ fn output_table_format(result: &crate::fuzzy::FuzzyQueryResultData, args: &Fuzzy
 }
 
 /// Output in JSON format
-fn output_json_format(result: &crate::fuzzy::FuzzyQueryResultData, args: &FuzzyQueryArgs) -> Result<()> {
+fn output_json_format(
+    result: &crate::fuzzy::FuzzyQueryResultData,
+    args: &FuzzyQueryArgs,
+) -> Result<()> {
     let json = serde_json::to_string_pretty(result)?;
 
     if let Some(output_path) = &args.output {
@@ -406,7 +429,10 @@ fn output_json_format(result: &crate::fuzzy::FuzzyQueryResultData, args: &FuzzyQ
 }
 
 /// Output in TSV format
-fn output_tsv_format(result: &crate::fuzzy::FuzzyQueryResultData, args: &FuzzyQueryArgs) -> Result<()> {
+fn output_tsv_format(
+    result: &crate::fuzzy::FuzzyQueryResultData,
+    args: &FuzzyQueryArgs,
+) -> Result<()> {
     let mut writer: Box<dyn Write> = if let Some(output_path) = &args.output {
         Box::new(std::fs::File::create(output_path)?)
     } else {
@@ -428,7 +454,10 @@ fn output_tsv_format(result: &crate::fuzzy::FuzzyQueryResultData, args: &FuzzyQu
 }
 
 /// Output in CSV format
-fn output_csv_format(result: &crate::fuzzy::FuzzyQueryResultData, args: &FuzzyQueryArgs) -> Result<()> {
+fn output_csv_format(
+    result: &crate::fuzzy::FuzzyQueryResultData,
+    args: &FuzzyQueryArgs,
+) -> Result<()> {
     let mut writer: Box<dyn Write> = if let Some(output_path) = &args.output {
         Box::new(std::fs::File::create(output_path)?)
     } else {
@@ -453,18 +482,27 @@ fn output_csv_format(result: &crate::fuzzy::FuzzyQueryResultData, args: &FuzzyQu
 }
 
 /// Output batch results
-fn output_batch_results(results: &[(String, crate::fuzzy::FuzzyQueryResultData)], args: &FuzzyQueryBatchArgs) -> Result<()> {
+fn output_batch_results(
+    results: &[(String, crate::fuzzy::FuzzyQueryResultData)],
+    args: &FuzzyQueryBatchArgs,
+) -> Result<()> {
     match args.format.as_str() {
         "json" => output_batch_json(results, args),
         "table" => output_batch_table(results, args),
         "tsv" => output_batch_tsv(results, args),
         "csv" => output_batch_csv(results, args),
-        _ => Err(anyhow::anyhow!("Unsupported output format: {}", args.format)),
+        _ => Err(anyhow::anyhow!(
+            "Unsupported output format: {}",
+            args.format
+        )),
     }
 }
 
 /// Output batch results in JSON format
-fn output_batch_json(results: &[(String, crate::fuzzy::FuzzyQueryResultData)], args: &FuzzyQueryBatchArgs) -> Result<()> {
+fn output_batch_json(
+    results: &[(String, crate::fuzzy::FuzzyQueryResultData)],
+    args: &FuzzyQueryBatchArgs,
+) -> Result<()> {
     let batch_metadata = serde_json::json!({
         "total_queries": results.len(),
         "processed_queries": results.len(),
@@ -494,7 +532,10 @@ fn output_batch_json(results: &[(String, crate::fuzzy::FuzzyQueryResultData)], a
 }
 
 /// Output batch results in table format
-fn output_batch_table(results: &[(String, crate::fuzzy::FuzzyQueryResultData)], args: &FuzzyQueryBatchArgs) -> Result<()> {
+fn output_batch_table(
+    results: &[(String, crate::fuzzy::FuzzyQueryResultData)],
+    args: &FuzzyQueryBatchArgs,
+) -> Result<()> {
     let mut writer: Box<dyn Write> = if let Some(output_path) = &args.output {
         Box::new(std::fs::File::create(output_path)?)
     } else {
@@ -506,16 +547,29 @@ fn output_batch_table(results: &[(String, crate::fuzzy::FuzzyQueryResultData)], 
     writeln!(writer, "Processed: {}", results.len())?;
     writeln!(writer)?;
 
-    writeln!(writer, "┌─────┬─────────────────────┬───────┬───────┬──────────┬──────────┬─────────┐")?;
-    writeln!(writer, "│ #   │ Query               │ Vars  │ Mut   │ Matches  │ Time(ms) │ Status  │")?;
-    writeln!(writer, "├─────┼─────────────────────┼───────┼───────┼──────────┼──────────┼─────────┤")?;
+    writeln!(
+        writer,
+        "┌─────┬─────────────────────┬───────┬───────┬──────────┬──────────┬─────────┐"
+    )?;
+    writeln!(
+        writer,
+        "│ #   │ Query               │ Vars  │ Mut   │ Matches  │ Time(ms) │ Status  │"
+    )?;
+    writeln!(
+        writer,
+        "├─────┼─────────────────────┼───────┼───────┼──────────┼──────────┼─────────┤"
+    )?;
 
     for (i, (query, result)) in results.iter().enumerate() {
         writeln!(
             writer,
             "│ {:<3} │ {:<19} │ {:<5} │ {:<5} │ {:<8} │ {:<8} │ {:<7} │",
             i + 1,
-            if query.len() > 19 { &query[..16] } else { query },
+            if query.len() > 19 {
+                &query[..16]
+            } else {
+                query
+            },
             result.query_metadata.variants_generated,
             result.query_metadata.query_params.mutation_tolerance,
             result.total_count,
@@ -524,13 +578,19 @@ fn output_batch_table(results: &[(String, crate::fuzzy::FuzzyQueryResultData)], 
         )?;
     }
 
-    writeln!(writer, "└─────┴─────────────────────┴───────┴───────┴──────────┴──────────┴─────────┘")?;
+    writeln!(
+        writer,
+        "└─────┴─────────────────────┴───────┴───────┴──────────┴──────────┴─────────┘"
+    )?;
 
     Ok(())
 }
 
 /// Output batch results in TSV format
-fn output_batch_tsv(results: &[(String, crate::fuzzy::FuzzyQueryResultData)], args: &FuzzyQueryBatchArgs) -> Result<()> {
+fn output_batch_tsv(
+    results: &[(String, crate::fuzzy::FuzzyQueryResultData)],
+    args: &FuzzyQueryBatchArgs,
+) -> Result<()> {
     let mut writer: Box<dyn Write> = if let Some(output_path) = &args.output {
         Box::new(std::fs::File::create(output_path)?)
     } else {
@@ -559,7 +619,10 @@ fn output_batch_tsv(results: &[(String, crate::fuzzy::FuzzyQueryResultData)], ar
 }
 
 /// Output batch results in CSV format
-fn output_batch_csv(results: &[(String, crate::fuzzy::FuzzyQueryResultData)], args: &FuzzyQueryBatchArgs) -> Result<()> {
+fn output_batch_csv(
+    results: &[(String, crate::fuzzy::FuzzyQueryResultData)],
+    args: &FuzzyQueryBatchArgs,
+) -> Result<()> {
     let mut writer: Box<dyn Write> = if let Some(output_path) = &args.output {
         Box::new(std::fs::File::create(output_path)?)
     } else {
@@ -567,7 +630,10 @@ fn output_batch_csv(results: &[(String, crate::fuzzy::FuzzyQueryResultData)], ar
     };
 
     if args.include_headers {
-        writeln!(writer, "query_id,query_string,variants_generated,mutations,total_matches,query_time_ms,status")?;
+        writeln!(
+            writer,
+            "query_id,query_string,variants_generated,mutations,total_matches,query_time_ms,status"
+        )?;
     }
 
     for (i, (query, result)) in results.iter().enumerate() {
@@ -597,9 +663,19 @@ fn output_performance_profile(
 
     eprintln!("\n=== Performance Profile ===");
     eprintln!("Total Query Time: {}ms", total_time);
-    eprintln!("├─ Variant Generation: {}ms", total_time - result.query_metadata.query_time_ms);
-    eprintln!("├─ Database Queries: {}ms", result.query_metadata.query_time_ms);
-    eprintln!("│  ├─ Avg per query: {:.1}ms", result.query_metadata.query_time_ms as f64 / result.query_metadata.variants_generated as f64);
+    eprintln!(
+        "├─ Variant Generation: {}ms",
+        total_time - result.query_metadata.query_time_ms
+    );
+    eprintln!(
+        "├─ Database Queries: {}ms",
+        result.query_metadata.query_time_ms
+    );
+    eprintln!(
+        "│  ├─ Avg per query: {:.1}ms",
+        result.query_metadata.query_time_ms as f64
+            / result.query_metadata.variants_generated as f64
+    );
     eprintln!("│  └─ Cache hits: N/A"); // TODO: Implement cache tracking
     eprintln!("└─ Result Aggregation: {}ms", 0); // TODO: Measure aggregation time
 
