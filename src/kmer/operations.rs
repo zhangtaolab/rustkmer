@@ -21,7 +21,7 @@ use crate::kmer::encoding::{encode_kmer, has_ambiguous_bases};
 /// use rustkmer::kmer::operations::extract_kmers;
 ///
 /// let kmers = extract_kmers("ATGCGAT", 3).unwrap();
-/// assert_eq!(kmers.len(), 6); // "ATG", "TGC", "GCG", "CGA", "GAT", "ATG"
+/// assert_eq!(kmers.len(), 5); // "ATG", "TGC", "GCG", "CGA", "GAT" (5 sliding windows)
 /// ```
 pub fn extract_kmers(sequence: &str, kmer_size: usize) -> Result<Vec<u64>, KmerError> {
     if kmer_size == 0 {

@@ -34,11 +34,11 @@ fn dump_database(database_path: &str, output_path: Option<&str>) -> ProcessingRe
     eprintln!("Dumping database: {}", database_path);
 
     match format {
-        DatabaseFormat::RKDB => dump_rkdb_database(path, output_path)?,
+        DatabaseFormat::Rkdb => dump_rkdb_database(path, output_path)?,
         DatabaseFormat::Bincode => dump_bincode_database(path, output_path)?,
         DatabaseFormat::Unknown => {
             return Err(KmerError::ProcessingError(
-                "Unknown database format. Supported formats: RKDB, bincode".to_string(),
+                "Unknown database format. Supported formats: Rkdb, bincode".to_string(),
             )
             .into());
         }
@@ -56,7 +56,7 @@ fn dump_database(database_path: &str, output_path: Option<&str>) -> ProcessingRe
 /// Database format types
 #[derive(Debug, Clone, PartialEq)]
 enum DatabaseFormat {
-    RKDB,
+    Rkdb,
     Bincode,
     #[allow(dead_code)]
     Unknown,
@@ -73,10 +73,8 @@ fn detect_database_format(path: &Path) -> ProcessingResult<DatabaseFormat> {
     let mut header_bytes = [0u8; 4];
 
     // Try to read first 4 bytes to detect magic number
-    if reader.read_exact(&mut header_bytes).is_ok() {
-        if header_bytes == *DATABASE_MAGIC {
-            return Ok(DatabaseFormat::RKDB);
-        }
+    if reader.read_exact(&mut header_bytes).is_ok() && header_bytes == *DATABASE_MAGIC {
+        return Ok(DatabaseFormat::Rkdb);
     }
 
     // If not RKDB, try to detect as bincode by attempting to deserialize

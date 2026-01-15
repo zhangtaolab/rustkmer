@@ -25,9 +25,10 @@ fn run_stats_command(args: &[&str]) -> (String, i32) {
 }
 
 /// Helper to create a test database
-fn create_test_database(name: &str, sequences: &[&str], k: usize) -> String {
-    let fasta_path = format!("/tmp/{}_{}.fa", name, k);
-    let rkdb_path = format!("/tmp/{}_{}.rkdb", name, k);
+fn create_test_database(name: &str, sequences: &[&str], k: usize) -> std::path::PathBuf {
+    let temp_dir = std::env::temp_dir();
+    let fasta_path = temp_dir.join(format!("{}_{}.fa", name, k));
+    let rkdb_path = temp_dir.join(format!("{}_{}.rkdb", name, k));
 
     // Create FASTA file
     let mut fasta_content = String::new();
@@ -38,12 +39,23 @@ fn create_test_database(name: &str, sequences: &[&str], k: usize) -> String {
 
     // Create database
     let output = Command::new("./target/debug/rustkmer")
-        .args(&["count", "-k", &k.to_string(), "-i", &fasta_path, "-o", &rkdb_path])
+        .args(&[
+            "count",
+            "-k",
+            &k.to_string(),
+            "-i",
+            fasta_path.to_str().unwrap(),
+            "-o",
+            rkdb_path.to_str().unwrap(),
+        ])
         .output()
         .expect("Failed to create test database");
 
     if !output.status.success() {
-        panic!("Failed to create test database: {}", String::from_utf8_lossy(&output.stderr));
+        panic!(
+            "Failed to create test database: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     // Clean up FASTA file
@@ -57,18 +69,22 @@ fn test_stats_basic_functionality() {
     let rkdb_path = create_test_database(
         "stats_basic",
         &[
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", // 30-mers, all A's
-            "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", // 30-mers, all C's
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", // Duplicate
-            "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", // Duplicate
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",   // 30-mers, all A's
+            "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",   // 30-mers, all C's
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",   // Duplicate
+            "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",   // Duplicate
             "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG", // 30-mers, all G's
         ],
         30,
     );
 
-    let (output, exit_code) = run_stats_command(&["stats", &rkdb_path]);
+    let (output, exit_code) = run_stats_command(&["stats", rkdb_path.to_str().unwrap()]);
 
-    assert_eq!(exit_code, 0, "Stats command failed with output:\n{}", output);
+    assert_eq!(
+        exit_code, 0,
+        "Stats command failed with output:\n{}",
+        output
+    );
 
     // Check that key statistics are present
     assert!(output.contains("Database Statistics"));
@@ -80,7 +96,7 @@ fn test_stats_basic_functionality() {
     assert!(output.contains("Mean count:"));
 
     // Clean up
-    fs::remove_file(&rkdb_path).unwrap();
+    fs::remove_file(rkdb_path.to_str().unwrap()).unwrap();
 }
 
 #[test]
@@ -96,9 +112,14 @@ fn test_stats_detailed_output() {
         30,
     );
 
-    let (output, exit_code) = run_stats_command(&["stats", "--detailed", &rkdb_path]);
+    let (output, exit_code) =
+        run_stats_command(&["stats", "--detailed", rkdb_path.to_str().unwrap()]);
 
-    assert_eq!(exit_code, 0, "Stats command failed with output:\n{}", output);
+    assert_eq!(
+        exit_code, 0,
+        "Stats command failed with output:\n{}",
+        output
+    );
 
     // Check that frequency distribution is present
     assert!(output.contains("Frequency Distribution:"));
@@ -107,16 +128,21 @@ fn test_stats_detailed_output() {
     assert!(output.contains("6\t2")); // Two k-mers with count 6
 
     // Clean up
-    fs::remove_file(&rkdb_path).unwrap();
+    fs::remove_file(rkdb_path.to_str().unwrap()).unwrap();
 }
 
 #[test]
 fn test_stats_json_output() {
     let rkdb_path = create_test_database("stats_json", &["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"], 30);
 
-    let (output, exit_code) = run_stats_command(&["stats", "--format", "json", &rkdb_path]);
+    let (output, exit_code) =
+        run_stats_command(&["stats", "--format", "json", rkdb_path.to_str().unwrap()]);
 
-    assert_eq!(exit_code, 0, "Stats command failed with output:\n{}", output);
+    assert_eq!(
+        exit_code, 0,
+        "Stats command failed with output:\n{}",
+        output
+    );
 
     // Parse as JSON
     let json: serde_json::Value = serde_json::from_str(&output).expect("Invalid JSON output");
@@ -133,16 +159,21 @@ fn test_stats_json_output() {
     assert!(json.get("processing_time").is_some());
 
     // Clean up
-    fs::remove_file(&rkdb_path).unwrap();
+    fs::remove_file(rkdb_path.to_str().unwrap()).unwrap();
 }
 
 #[test]
 fn test_stats_csv_output() {
     let rkdb_path = create_test_database("stats_csv", &["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"], 30);
 
-    let (output, exit_code) = run_stats_command(&["stats", "--format", "csv", &rkdb_path]);
+    let (output, exit_code) =
+        run_stats_command(&["stats", "--format", "csv", rkdb_path.to_str().unwrap()]);
 
-    assert_eq!(exit_code, 0, "Stats command failed with output:\n{}", output);
+    assert_eq!(
+        exit_code, 0,
+        "Stats command failed with output:\n{}",
+        output
+    );
 
     // Check CSV header
     assert!(output.contains("database_file"));
@@ -152,31 +183,42 @@ fn test_stats_csv_output() {
     assert!(output.contains("processing_time"));
 
     // Clean up
-    fs::remove_file(&rkdb_path).unwrap();
+    fs::remove_file(rkdb_path.to_str().unwrap()).unwrap();
 }
 
 #[test]
 fn test_stats_tsv_output() {
     let rkdb_path = create_test_database("stats_tsv", &["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"], 30);
 
-    let (output, exit_code) = run_stats_command(&["stats", "--format", "tsv", &rkdb_path]);
+    let (output, exit_code) =
+        run_stats_command(&["stats", "--format", "tsv", rkdb_path.to_str().unwrap()]);
 
-    assert_eq!(exit_code, 0, "Stats command failed with output:\n{}", output);
+    assert_eq!(
+        exit_code, 0,
+        "Stats command failed with output:\n{}",
+        output
+    );
 
     // TSV should have tabs, not commas
     assert!(!output.contains(","));
     assert!(output.contains("\t"));
 
     // Clean up
-    fs::remove_file(&rkdb_path).unwrap();
+    fs::remove_file(rkdb_path.to_str().unwrap()).unwrap();
 }
 
 #[test]
 fn test_stats_output_to_file() {
     let rkdb_path = create_test_database("stats_file", &["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"], 30);
-    let output_path = "/tmp/stats_output.txt";
+    let temp_dir = std::env::temp_dir();
+    let output_path = temp_dir.join("stats_output.txt");
 
-    let (_output, exit_code) = run_stats_command(&["stats", "-o", output_path, &rkdb_path]);
+    let (_output, exit_code) = run_stats_command(&[
+        "stats",
+        "-o",
+        output_path.to_str().unwrap(),
+        rkdb_path.to_str().unwrap(),
+    ]);
 
     assert_eq!(exit_code, 0, "Stats command failed");
 
@@ -186,7 +228,7 @@ fn test_stats_output_to_file() {
     assert!(file_content.contains("Database Statistics"));
 
     // Clean up
-    fs::remove_file(&rkdb_path).unwrap();
+    fs::remove_file(rkdb_path.to_str().unwrap()).unwrap();
     fs::remove_file(output_path).unwrap();
 }
 
@@ -194,17 +236,25 @@ fn test_stats_output_to_file() {
 fn test_stats_nonexistent_file() {
     let (_output, exit_code) = run_stats_command(&["stats", "/nonexistent/database.rkdb"]);
 
-    assert_ne!(exit_code, 0, "Expected non-zero exit code for nonexistent file");
+    assert_ne!(
+        exit_code, 0,
+        "Expected non-zero exit code for nonexistent file"
+    );
 }
 
 #[test]
 fn test_stats_invalid_format() {
-    let rkdb_path = create_test_database("stats_invalid", &["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"], 30);
+    let rkdb_path =
+        create_test_database("stats_invalid", &["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"], 30);
 
-    let (_output, exit_code) = run_stats_command(&["stats", "--format", "invalid", &rkdb_path]);
+    let (_output, exit_code) =
+        run_stats_command(&["stats", "--format", "invalid", rkdb_path.to_str().unwrap()]);
 
-    assert_ne!(exit_code, 0, "Expected non-zero exit code for invalid format");
+    assert_ne!(
+        exit_code, 0,
+        "Expected non-zero exit code for invalid format"
+    );
 
     // Clean up
-    fs::remove_file(&rkdb_path).unwrap();
+    fs::remove_file(rkdb_path.to_str().unwrap()).unwrap();
 }

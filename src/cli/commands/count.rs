@@ -265,7 +265,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                     "text" => {
                         output_text_format(&counter, output_path, *quiet, should_sort, &filter)?;
                     }
-                    "binary" | _ => {
+                    _ => {
                         output_binary_format(&counter, output_path, *quiet, should_sort, &filter)?;
                     }
                 }

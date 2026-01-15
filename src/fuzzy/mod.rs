@@ -15,9 +15,11 @@
 //! ```rust
 //! use rustkmer::fuzzy::{FuzzyQuery, FuzzyQueryEngine};
 //!
+//! // Create a fuzzy query with wildcard support
 //! let query = FuzzyQuery::new("ATGCGATGCTAGCN", 13, 0);
-//! let engine = FuzzyQueryEngine::new(database)?;
-//! let results = engine.execute_query(&query)?;
+//! // FuzzyQueryEngine requires a valid database path
+//! // let engine = FuzzyQueryEngine::new("/path/to/database")?;
+//! // let results = engine.execute_query(&query)?;
 //! ```
 
 pub mod expansion;

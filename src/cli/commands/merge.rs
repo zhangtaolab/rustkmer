@@ -272,28 +272,25 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
         }
 
         // Only check canonical mode if not using prefix cache
-        if !args.use_prefix_cache {
-            if db.is_canonical() != ref_canonical {
-                let mut error_msg = format!(
-                    "Database '{}' has canonical mode {}, expected {}",
-                    db_path.display(),
-                    db.is_canonical(),
-                    ref_canonical
-                );
+        if !args.use_prefix_cache && db.is_canonical() != ref_canonical {
+            let mut error_msg = format!(
+                "Database '{}' has canonical mode {}, expected {}",
+                db_path.display(),
+                db.is_canonical(),
+                ref_canonical
+            );
 
-                // Add recovery suggestions
-                error_msg.push_str("\n\nRecovery suggestions:");
-                error_msg.push_str(&format!(
-                    "\n  • Create a new database with canonical mode {}",
-                    if ref_canonical { "enabled" } else { "disabled" }
-                ));
-                error_msg.push_str("\n  • Use 'rustkmer count --canonical' or 'rustkmer count --no-canonical' as needed");
-                error_msg.push_str(
-                    "\n  • Verify all databases use the same canonical mode before merging",
-                );
+            // Add recovery suggestions
+            error_msg.push_str("\n\nRecovery suggestions:");
+            error_msg.push_str(&format!(
+                "\n  • Create a new database with canonical mode {}",
+                if ref_canonical { "enabled" } else { "disabled" }
+            ));
+            error_msg.push_str("\n  • Use 'rustkmer count --canonical' or 'rustkmer count --no-canonical' as needed");
+            error_msg
+                .push_str("\n  • Verify all databases use the same canonical mode before merging");
 
-                return Err(anyhow::anyhow!("{}", error_msg));
-            }
+            return Err(anyhow::anyhow!("{}", error_msg));
         }
 
         if args.verbose {

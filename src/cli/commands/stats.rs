@@ -103,10 +103,8 @@ fn calculate_statistics(
     let mut processor = crate::database::stats::StreamingStatsProcessor::new(config.clone());
 
     // Fix for incorrect data_offset in header (same as in query.rs)
-    let actual_data_offset = if header.data_offset < 40 {
-        42 // Use correct offset when header value is too small
-    } else if header.data_offset > 1000 {
-        42 // Use correct offset when header value is too large
+    let actual_data_offset = if header.data_offset < 40 || header.data_offset > 1000 {
+        42 // Use correct offset when header value is out of valid range
     } else {
         header.data_offset
     };

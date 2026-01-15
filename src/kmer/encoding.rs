@@ -30,8 +30,9 @@ pub const MAX_KMER_SIZE_IN_U128: usize = 64;
 /// use rustkmer::kmer::encoding::encode_kmer;
 ///
 /// let encoded = encode_kmer("ATGC").unwrap();
-/// // ATGC -> 00110110 (A=00, T=11, G=10, C=01)
-/// assert_eq!(encoded, 0b00110110);
+/// // ATGC -> 00111001 (A=00, T=11, G=10, C=01)
+/// // Step by step: A(00)->0, T(11)->3, G(10)->14, C(01)->57
+/// assert_eq!(encoded, 57);
 /// ```
 pub fn encode_kmer(sequence: &str) -> Result<u64, KmerError> {
     encode_kmer_bytes(sequence.as_bytes())
@@ -204,8 +205,8 @@ pub fn has_ambiguous_bases(sequence: &str) -> bool {
 /// use rustkmer::kmer::encoding::encode_kmer_u128;
 ///
 /// let encoded = encode_kmer_u128("ATGC").unwrap();
-/// // ATGC -> 00110110 (A=00, T=11, G=10, C=01)
-/// assert_eq!(encoded, 0b00110110);
+/// // ATGC -> 00111001 (A=00, T=11, G=10, C=01)
+/// assert_eq!(encoded, 57);
 /// ```
 pub fn encode_kmer_u128(sequence: &str) -> Result<u128, KmerError> {
     encode_kmer_bytes_u128(sequence.as_bytes())

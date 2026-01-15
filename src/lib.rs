@@ -7,14 +7,12 @@
 //!
 //! # Examples
 //!
-//! ```rust
-//! use rustkmer::{KmerCounter, Config};
+//! ```rust,ignore
+//! use rustkmer::KmerCounter;
 //!
-//! let config = Config::new(31)  // 31-mers
-//!     .canonical(true);         // Count canonical k-mers
-//!
-//! let mut counter = KmerCounter::new(config);
-//! counter.process_file("genome.fa")?;
+//! // Create a k-mer counter for 21-mers
+//! let counter = KmerCounter::new(21, true, 1000000, 4).unwrap();
+//! counter.count_file("genome.fa")?;
 //! let counts = counter.get_all_counts();
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
