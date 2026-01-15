@@ -934,7 +934,7 @@ impl PyDatabase {
 
         for pattern_str in patterns {
             let result = pyo3::Python::with_gil(|py| {
-                let pattern_py = pyo3::types::PyString::new_bound(py, &pattern_str);
+                let pattern_py = pyo3::types::PyString::new(py, &pattern_str);
                 self.query_hybrid(&pattern_py)
                     .map_err(|e| pyo3::PyErr::from(e))
             })?;
