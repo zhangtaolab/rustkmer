@@ -5,6 +5,7 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+#[allow(unused_imports)]
 use pyo3::types::{PyList, PyString};
 
 /// Validate k-mer sequence for Python API

@@ -63,8 +63,8 @@ class TestQueryConsistency:
         rc_kmer = reverse_complement(kmer)
 
         # API results
-        api_result1 = db.query(kmer, validate_strict=False)
-        api_result2 = db.query(rc_kmer, validate_strict=False)
+        api_result1 = db.query(kmer, validate=False)
+        api_result2 = db.query(rc_kmer, validate=False)
 
         # CLI results
         cli_result1 = cli_comparator.run_cli_query(str(db_path), kmer)
@@ -94,7 +94,7 @@ class TestQueryConsistency:
         kmer = "NNNNNNN"  # Invalid character
 
         # API result
-        api_result = db.query(kmer, validate_strict=False)
+        api_result = db.query(kmer, validate=False)
 
         # CLI result
         cli_result = cli_comparator.run_cli_query(str(db_path), kmer)

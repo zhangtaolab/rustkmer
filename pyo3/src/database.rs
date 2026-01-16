@@ -564,8 +564,6 @@ impl PyDatabase {
         }
     }
 
-
-
     /// Get memory usage information
     fn get_memory_usage(&self) -> HashMap<String, String> {
         let mut usage = HashMap::new();
@@ -1101,9 +1099,12 @@ impl PyDatabase {
             }
         }
 
-        // Create Python list from results
-        let py_list = PyList::new(py, results);
-        Ok(py_list?.into_py(py))
+        // Create Python list from results manually
+        let py_list = PyList::empty(py);
+        for result in results {
+            py_list.append(Py::new(py, result)?)?;
+        }
+        Ok(py_list.unbind())
     }
 
     /// Merge multiple databases into a single output database
