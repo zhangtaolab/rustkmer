@@ -28,13 +28,13 @@ use crate::fuzzy_query::PyFuzzyResult;
 #[derive(Clone, PartialEq)]
 pub enum LoadMode {
     /// Preload all k-mers into memory (fastest queries, higher memory usage)
-    #[pyo3(name = "preload")]
+    #[pyo3(name = "Preload")]
     Preload,
     /// Use memory-mapped file access (balanced memory/performance)
-    #[pyo3(name = "mmap")]
+    #[pyo3(name = "MemoryMapped")]
     MemoryMapped,
     /// Lazy loading - load k-mers on-demand (lowest memory, slower queries)
-    #[pyo3(name = "lazy")]
+    #[pyo3(name = "Lazy")]
     Lazy,
 }
 
