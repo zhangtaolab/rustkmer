@@ -1,6 +1,6 @@
 [package]
 name = "rustkmer-pyo3"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["RustKmer Team <team@rustkmer.org>"]
 description = "High-performance PyO3 Python bindings for rustkmer k-mer library"
@@ -10,7 +10,7 @@ keywords = ["bioinformatics", "genomics", "kmer", "pypy3", "native-extension"]
 categories = ["science", "development-tools"]
 
 [lib]
-name = "rustkmer_pyo3"
+name = "pyrustkmer"
 crate-type = ["cdylib"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -65,4 +65,4 @@ debug = true
 # Maturin configuration
 features = ["extension-module"]
 python-source = "."
-module-name = "rustkmer_pyo3"
+module-name = "pyrustkmer"

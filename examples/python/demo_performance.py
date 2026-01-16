@@ -4,7 +4,7 @@ PyO3 Performance Demo
 Demonstrates PyO3 query performance with real genomic data
 """
 
-import rustkmer_pyo3
+import pyrustkmer
 import time
 
 print("⚡ PyO3 Performance Demo")
@@ -22,7 +22,7 @@ try:
     load_times = []
     for i in range(3):
         start_time = time.time()
-        db = rustkmer_pyo3.PyDatabase(db_path, rustkmer_pyo3.LoadMode.Preload)
+        db = pyrustkmer.PyDatabase(db_path, pyrustkmer.LoadMode.Preload)
         load_time = time.time() - start_time
         load_times.append(load_time)
         print(f"   Load {i + 1}: {load_time:.1f}s")
@@ -37,7 +37,7 @@ try:
     # Test 2: Query Performance with Different Patterns
     print("\n🧬 Testing Query Performance...")
 
-    fuzzy = rustkmer_pyo3.PyFuzzyQuery(db)
+    fuzzy = pyrustkmer.PyFuzzyQuery(db)
 
     test_patterns = [
         ("AAAAAAAAAAAAAAAAAAA", "All A"),

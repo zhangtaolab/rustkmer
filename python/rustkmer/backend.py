@@ -336,11 +336,11 @@ class PyO3Backend(DatabaseBackend):
             ValueError: If database file is invalid.
         """
         try:
-            import rustkmer_pyo3
+            import pyrustkmer
         except ImportError as e:
             raise ImportError(
-                "PyO3 backend requires 'rustkmer_pyo3' package. "
-                "Install it with: pip install rustkmer-pyo3"
+                "PyO3 backend requires 'pyrustkmer' package. "
+                "Install it with: pip install pyrustkmer"
             ) from e
 
         # Set default load mode if not specified
@@ -348,10 +348,10 @@ class PyO3Backend(DatabaseBackend):
             load_mode = LoadMode.PRELOAD
 
         # Convert LoadMode enum to PyO3 LoadMode
-        pyo3_load_mode = getattr(rustkmer_pyo3.LoadMode, load_mode.value.capitalize())
+        pyo3_load_mode = getattr(pyrustkmer.LoadMode, load_mode.value.capitalize())
 
         # Create PyO3 database
-        self._db = rustkmer_pyo3.PyDatabase(str(path), pyo3_load_mode)
+        self._db = pyrustkmer.PyDatabase(str(path), pyo3_load_mode)
 
     @property
     def path(self) -> str:
@@ -447,10 +447,10 @@ class PyO3Backend(DatabaseBackend):
 
         Delegates to PyO3 fuzzy query functionality and converts result.
         """
-        import rustkmer_pyo3
+        import pyrustkmer
 
         # Create fuzzy query object
-        fuzzy_query = rustkmer_pyo3.PyFuzzyQuery(self._db)
+        fuzzy_query = pyrustkmer.PyFuzzyQuery(self._db)
 
         # Perform fuzzy query
         # Note: PyO3's fuzzy query interface may differ slightly

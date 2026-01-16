@@ -4,7 +4,7 @@ PyO3 Fuzzy Query Demo
 Demonstrates N-wildcard pattern matching with real genomic data
 """
 
-import rustkmer_pyo3
+import pyrustkmer
 import time
 
 print("🧬 PyO3 Fuzzy Query Demo")
@@ -19,7 +19,7 @@ try:
     # Load the genomic database
     print("🔄 Loading 17.3GB genomic database...")
     start_time = time.time()
-    db = rustkmer_pyo3.PyDatabase(db_path, rustkmer_pyo3.LoadMode.Preload)
+    db = pyrustkmer.PyDatabase(db_path, pyrustkmer.LoadMode.Preload)
     load_time = time.time() - start_time
 
     # Get database stats
@@ -29,14 +29,14 @@ try:
 
     # Create fuzzy query engine
     print("\n🎯 Creating fuzzy query engine...")
-    fuzzy = rustkmer_pyo3.PyFuzzyQuery(db)
+    fuzzy = pyrustkmer.PyFuzzyQuery(db)
 
     # Test patterns - using 19-mers to match the database
     patterns = [
         "AAAAAAAAAAAAAAAAAAA",  # All A sequence
         "TTTTTTTTTTTTTTTTTTT",  # All T sequence
         "GCCCGNNNNNNNNNNNGCC",  # N-wildcard pattern (corrected to 19 chars)
-        "AAAAAANNNAAAAAAAAAA"
+        "AAAAAANNNAAAAAAAAAA",
     ]
 
     print(f"\n🧬 Testing fuzzy queries:")

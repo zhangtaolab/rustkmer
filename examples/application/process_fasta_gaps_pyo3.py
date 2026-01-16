@@ -30,9 +30,9 @@ from tqdm import tqdm
 
 # Import PyO3 unified interface
 try:
-    import rustkmer_pyo3 as rustkmer
+    import pyrustkmer as rustkmer
 except ImportError:
-    print("Error: rustkmer_pyo3 module not available. Please install PyO3 bindings.")
+    print("Error: pyrustkmer module not available. Please install PyO3 bindings.")
     sys.exit(1)
 
 # Import functions from PyO3 gap filling module
@@ -43,7 +43,7 @@ try:
         polish_all_gap_regions,
         apply_all_polish_results,
         get_kmer_count_zero,
-        get_kmer_list
+        get_kmer_list,
     )
 except ImportError as e:
     print(f"Warning: Could not import gap_filling_pyo3 functions: {e}")
@@ -52,11 +52,18 @@ except ImportError as e:
 
 class FastaGapProcessorPyO3:
     """Process FASTA files to fill gaps in DNA sequences using PyO3 unified interface"""
-    
-    def __init__(self, database_path, kmer_size=19, max_n_per_region=11, top_n=1000, load_mode=rustkmer.LoadMode.Preload):
+
+    def __init__(
+        self,
+        database_path,
+        kmer_size=19,
+        max_n_per_region=11,
+        top_n=1000,
+        load_mode=rustkmer.LoadMode.Preload,
+    ):
         """
         Initialize the gap processor with PyO3 unified interface
-        
+
         Args:
             database_path: Path to k-mer database file
             kmer_size: Size of k-mers to use (default: 19)
@@ -72,23 +79,23 @@ class FastaGapProcessorPyO3:
         except Exception as e:
             print(f"❌ PyO3统一接口数据库初始化失败 {database_path}: {e}")
             sys.exit(1)
-        
+
         self.kmer_size = kmer_size
         self.max_n_per_region = max_n_per_region
         self.top_n = top_n
-        
+
         # Statistics tracking
         self.stats = {
-            'total_sequences': 0,
-            'processed_sequences': 0,  # 进行填充处理的序列
-            'skipped_no_gaps': 0,      # 跳过的序列（无内部gap）
-            'too_many_end_n': 0,       # 开头或结尾超过3个N的序列
-            'no_n_sequences': 0,       # 没有N的序列
-            'total_gaps_filled': 0,
-            'successful_fills': 0,
-            'memory_usage': {}  # PyO3内存使用统计
+            "total_sequences": 0,
+            "processed_sequences": 0,  # 进行填充处理的序列
+            "skipped_no_gaps": 0,  # 跳过的序列（无内部gap）
+            "too_many_end_n": 0,  # 开头或结尾超过3个N的序列
+            "no_n_sequences": 0,  # 没有N的序列
+            "total_gaps_filled": 0,
+            "successful_fills": 0,
+            "memory_usage": {},  # PyO3内存使用统计
         }
-    
+
     def get_database_info(self):
         """Get database information using PyO3 unified interface"""
         try:
@@ -96,84 +103,80 @@ class FastaGapProcessorPyO3:
             stats = self.db.get_stats()
             memory_info = self.db.get_memory_usage()
             db_info = self.db.database_info()
-            
-            return {
-                'stats': stats,
-                'memory': memory_info,
-                'info': db_info
-            }
+
+            return {"stats": stats, "memory": memory_info, "info": db_info}
         except Exception as e:
             print(f"⚠️ 获取数据库信息时出错: {e}")
             return None
-    
+
     def classify_sequence(self, sequence):
         """
         Classify sequence for processing decision
-        
+
         Rules:
         - Sequences with >3 N's at start or end: "too_many_end_n"
-        - Sequences with no N's: "no_n"  
+        - Sequences with no N's: "no_n"
         - Sequences with internal gaps: "process"
         - Sequences with only small end N's (<=3): "skip"
-        
+
         Args:
             sequence: DNA sequence string
-            
+
         Returns:
             str: Classification category
         """
         # Count leading and trailing N's
         leading_n_count = 0
         for char in sequence:
-            if char == 'N':
+            if char == "N":
                 leading_n_count += 1
             else:
                 break
-        
+
         trailing_n_count = 0
         for char in reversed(sequence):
-            if char == 'N':
+            if char == "N":
                 trailing_n_count += 1
             else:
                 break
-        
+
         # Check if sequence has no N's at all
-        if 'N' not in sequence:
+        if "N" not in sequence:
             return "no_n"
-        
+
         # Check if too many leading or trailing N's (>3)
         if leading_n_count > 3 or trailing_n_count > 3:
             return "too_many_end_n"
-        
+
         # Get N regions for internal gap check
         n_regions = get_consecutive_N_regions(sequence)
-        
+
         if not n_regions:
             return "no_n"
-        
+
         # Check if any N region is internal (not at sequence ends)
         sequence_length = len(sequence)
-        
+
         for region in n_regions:
             # If region is not at start or end, it's an internal gap
-            if region['nstart'] > 0 and region['nend'] < sequence_length - 1:
+            if region["nstart"] > 0 and region["nend"] < sequence_length - 1:
                 return "process"
-        
+
         # All N regions are at ends (but <=3 each)
         return "skip"
 
     def should_process_sequence(self, sequence):
         """
         Determine if a sequence should be processed (has internal gaps)
-        
+
         Args:
             sequence: DNA sequence string
-            
+
         Returns:
             bool: True if sequence should be processed
         """
         return self.classify_sequence(sequence) == "process"
-    
+
     def fill_gaps_in_sequence(self, sequence):
         """
         Fill gaps in a single sequence using the gap filling algorithm with PyO3 unified interface.
@@ -198,26 +201,27 @@ class FastaGapProcessorPyO3:
             if not reduced_regions:
                 # No gaps to fill after reduction
                 return sequence, {
-                    'gaps_processed': 0,
-                    'gaps_filled': 0,
-                    'zero_count_kmers': get_kmer_count_zero(sequence, self.kmer_size, self.db)
+                    "gaps_processed": 0,
+                    "gaps_filled": 0,
+                    "zero_count_kmers": get_kmer_count_zero(
+                        sequence, self.kmer_size, self.db
+                    ),
                 }
 
             # Process all gap regions using PyO3 unified interface
             all_results = polish_all_gap_regions(
-                reduced_sequence,
-                reduced_regions,
-                self.kmer_size,
-                self.db,
-                self.top_n
+                reduced_sequence, reduced_regions, self.kmer_size, self.db, self.top_n
             )
 
             # Apply all polish results to get filled sequence
             filled_sequence = apply_all_polish_results(reduced_sequence, all_results)
 
             # Count successful fills
-            successful_fills = sum(1 for result in all_results.values()
-                                 if result['best_result'] is not None)
+            successful_fills = sum(
+                1
+                for result in all_results.values()
+                if result["best_result"] is not None
+            )
 
             # Calculate zero-count k-mers in final sequence
             zero_count = get_kmer_count_zero(filled_sequence, self.kmer_size, self.db)
@@ -231,18 +235,18 @@ class FastaGapProcessorPyO3:
             filled_sequence_final = filled_sequence
 
             return filled_sequence_final, {
-                'gaps_processed': original_gaps,
-                'gaps_filled': successful_fills,
-                'zero_count_kmers': zero_count
+                "gaps_processed": original_gaps,
+                "gaps_filled": successful_fills,
+                "zero_count_kmers": zero_count,
             }
-            
+
         except Exception as e:
             print(f"⚠️ 处理序列时出错: {e}")
             # 如果处理失败，返回原始序列
             return sequence, {
-                'gaps_processed': 0,
-                'gaps_filled': 0,
-                'zero_count_kmers': 0
+                "gaps_processed": 0,
+                "gaps_filled": 0,
+                "zero_count_kmers": 0,
             }
 
     def process_fasta_file(self, input_path, output_path):
@@ -268,7 +272,7 @@ class FastaGapProcessorPyO3:
         try:
             fasta = pyfastx.Fasta(input_path)
             total_sequences = len(fasta)
-            self.stats['total_sequences'] = total_sequences
+            self.stats["total_sequences"] = total_sequences
             print(f"📊 在输入文件中找到 {total_sequences} 个序列")
         except Exception as e:
             print(f"❌ 读取 FASTA 文件 {input_path} 时出错: {e}")
@@ -286,49 +290,49 @@ class FastaGapProcessorPyO3:
                     # Get sequence name and sequence
                     name = fasta[i].name
                     sequence = str(fasta[i].seq)
-                    
+
                     # Update progress bar description with current sequence
                     current_name = name.split()[0][:20]
-                    pbar.set_postfix({'current': current_name})
+                    pbar.set_postfix({"current": current_name})
 
                     # Classify sequence for processing
                     seq_type = self.classify_sequence(sequence)
-                    
+
                     if seq_type == "process":
                         # Process the sequence (has internal gaps)
                         filled_sequence, metadata = self.fill_gaps_in_sequence(sequence)
-                        
+
                         # Update statistics
-                        self.stats['processed_sequences'] += 1
-                        self.stats['total_gaps_filled'] += metadata['gaps_processed']
-                        self.stats['successful_fills'] += metadata['gaps_filled']
-                        
+                        self.stats["processed_sequences"] += 1
+                        self.stats["total_gaps_filled"] += metadata["gaps_processed"]
+                        self.stats["successful_fills"] += metadata["gaps_filled"]
+
                         # Create new header with processing info
                         new_header = f"{name} gaps_filled={metadata['gaps_filled']}/{metadata['gaps_processed']} zero_count={metadata['zero_count_kmers']}"
-                        
+
                         # Store processed sequence
                         processed_sequences.append((new_header, filled_sequence))
-                        
+
                     elif seq_type == "too_many_end_n":
                         # Sequence with >3 N's at start or end - print original
-                        self.stats['too_many_end_n'] += 1
+                        self.stats["too_many_end_n"] += 1
                         processed_sequences.append((name, sequence))
-                        
+
                     elif seq_type == "no_n":
                         # Sequence with no N's - print original
-                        self.stats['no_n_sequences'] += 1
+                        self.stats["no_n_sequences"] += 1
                         processed_sequences.append((name, sequence))
-                        
+
                     elif seq_type == "skip":
                         # Sequence with only small end N's (<=3) - skip processing
-                        self.stats['skipped_no_gaps'] += 1
+                        self.stats["skipped_no_gaps"] += 1
                         processed_sequences.append((name, sequence))
 
                 except Exception as e:
                     error_count += 1
-                    print(f"⚠️ 处理序列 {i+1}/{total_sequences} 时出错: {e}")
+                    print(f"⚠️ 处理序列 {i + 1}/{total_sequences} 时出错: {e}")
                     # 继续处理下一个序列
-                
+
                 finally:
                     pbar.update(1)
 
@@ -339,12 +343,12 @@ class FastaGapProcessorPyO3:
         # Write output FASTA file
         print(f"\n💾 写入 {len(processed_sequences)} 个处理过的序列到 {output_path}")
         try:
-            with open(output_path, 'w') as f:
+            with open(output_path, "w") as f:
                 for header, sequence in processed_sequences:
                     f.write(f">{header}\n")
                     # Write sequence in lines of 80 characters
                     for i in range(0, len(sequence), 80):
-                        f.write(f"{sequence[i:i+80]}\n")
+                        f.write(f"{sequence[i : i + 80]}\n")
                     f.write("\n")
             print(f"✅ 成功写入输出文件")
         except Exception as e:
@@ -364,11 +368,13 @@ class FastaGapProcessorPyO3:
         print(f"  跳过序列 (无N): {self.stats['no_n_sequences']}")
         print(f"  总gap数: {self.stats['total_gaps_filled']}")
         print(f"  成功填充的gap数: {self.stats['successful_fills']}")
-        
-        if self.stats['processed_sequences'] > 0:
-            success_rate = (self.stats['successful_fills'] / self.stats['processed_sequences']) * 100
+
+        if self.stats["processed_sequences"] > 0:
+            success_rate = (
+                self.stats["successful_fills"] / self.stats["processed_sequences"]
+            ) * 100
             print(f"  成功率: {success_rate:.1f}%")
-        
+
         # Print PyO3 unified interface benefits
         print(f"\n🚀 PyO3统一接口优势:")
         print(f"  💾 内存优化: 单一数据库实例 (66%内存减少)")
@@ -405,88 +411,67 @@ PyO3统一接口特性:
 - MemoryMapped: 内存映射模式 (推荐大数据库)
 - Lazy: 懒加载模式 (最低内存占用)
         """,
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    
+
+    parser.add_argument("--input", "-i", required=True, help="输入 FASTA 文件路径")
+
+    parser.add_argument("--output", "-o", required=True, help="输出 FASTA 文件路径")
+
+    parser.add_argument("--database", "-d", required=True, help="k-mer 数据库文件路径")
+
     parser.add_argument(
-        '--input', '-i',
-        required=True,
-        help='输入 FASTA 文件路径'
+        "--kmer-size", type=int, default=19, help="k-mer 大小 (默认: 19)"
     )
-    
+
     parser.add_argument(
-        '--output', '-o',
-        required=True,
-        help='输出 FASTA 文件路径'
+        "--max-n", type=int, default=11, help="每个区域最大 N 数量 (默认: 11)"
     )
-    
+
     parser.add_argument(
-        '--database', '-d',
-        required=True,
-        help='k-mer 数据库文件路径'
+        "--top-n", type=int, default=1000, help="考虑的前 N 个匹配 (默认: 1000)"
     )
-    
+
     parser.add_argument(
-        '--kmer-size',
-        type=int,
-        default=19,
-        help='k-mer 大小 (默认: 19)'
+        "--load-mode",
+        choices=["preload", "memory_mapped", "lazy"],
+        default="preload",
+        help="PyO3加载模式 (默认: preload)",
     )
-    
-    parser.add_argument(
-        '--max-n',
-        type=int,
-        default=11,
-        help='每个区域最大 N 数量 (默认: 11)'
-    )
-    
-    parser.add_argument(
-        '--top-n',
-        type=int,
-        default=1000,
-        help='考虑的前 N 个匹配 (默认: 1000)'
-    )
-    
-    parser.add_argument(
-        '--load-mode',
-        choices=['preload', 'memory_mapped', 'lazy'],
-        default='preload',
-        help='PyO3加载模式 (默认: preload)'
-    )
-    
+
     args = parser.parse_args()
-    
+
     # Check if input file exists
     if not Path(args.input).exists():
         print(f"❌ 输入文件不存在: {args.input}")
         sys.exit(1)
-    
+
     # Check if database file exists
     if not Path(args.database).exists():
         print(f"❌ 数据库文件不存在: {args.database}")
         sys.exit(1)
-    
+
     # Create output directory if it doesn't exist
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Convert load mode string to PyO3 LoadMode enum
     load_mode_map = {
-        'preload': rustkmer.LoadMode.Preload,
-        'memory_mapped': rustkmer.LoadMode.MemoryMapped,
-        'lazy': rustkmer.LoadMode.Lazy
+        "preload": rustkmer.LoadMode.Preload,
+        "memory_mapped": rustkmer.LoadMode.MemoryMapped,
+        "lazy": rustkmer.LoadMode.Lazy,
     }
     load_mode = load_mode_map[args.load_mode]
-    
+
     # Initialize processor with PyO3 unified interface
     processor = FastaGapProcessorPyO3(
         database_path=args.database,
         kmer_size=args.kmer_size,
         max_n_per_region=args.max_n,
         top_n=args.top_n,
-        load_mode=load_mode
+        load_mode=load_mode,
     )
-    
+
     # Process the FASTA file
     try:
         processor.process_fasta_file(args.input, args.output)

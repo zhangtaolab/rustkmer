@@ -98,7 +98,7 @@ def test_kmer_sets():
 def pyo3_available():
     """Check if PyO3 is available"""
     try:
-        import rustkmer_pyo3
+        import pyrustkmer
 
         return True
     except ImportError:

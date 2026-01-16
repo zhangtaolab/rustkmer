@@ -6,11 +6,11 @@
 // Allow deprecated methods for backward compatibility
 #![allow(deprecated)]
 
-use pyo3::prelude::*;
 use crate::database::PyDatabase;
+use pyo3::prelude::*;
 use rustkmer::database::format::RKDatabase;
-use rustkmer::fuzzy::{FuzzyQuery, FuzzyQueryEngine, MatchType};
 use rustkmer::fuzzy::query::PositionMutationConfig;
+use rustkmer::fuzzy::{FuzzyQuery, FuzzyQueryEngine, MatchType};
 use std::path::Path;
 use std::time::Instant;
 
@@ -36,27 +36,27 @@ impl PyFuzzyMatch {
     fn kmer(&self) -> &str {
         &self.kmer
     }
-    
+
     #[getter]
     fn count(&self) -> u64 {
         self.count
     }
-    
+
     #[getter]
     fn distance(&self) -> Option<usize> {
         self.distance
     }
-    
+
     #[getter]
     fn mutation_positions(&self) -> Vec<usize> {
         self.mutation_positions.clone()
     }
-    
+
     #[getter]
     fn match_type(&self) -> &str {
         &self.match_type
     }
-    
+
     fn __repr__(&self) -> String {
         format!(
             "PyFuzzyMatch(kmer='{}', count={}, distance={:?}, mutation_positions={:?}, match_type='{}')",
@@ -90,37 +90,37 @@ impl PyFuzzyResult {
     fn query_kmer(&self) -> &str {
         &self.query_kmer
     }
-    
+
     #[getter]
     fn exact_match(&self) -> Option<PyFuzzyMatch> {
         self.exact_match.clone()
     }
-    
+
     #[getter]
     fn matches(&self) -> Vec<PyFuzzyMatch> {
         self.matches.clone()
     }
-    
+
     #[getter]
     fn total_matches(&self) -> usize {
         self.total_matches
     }
-    
+
     #[getter]
     fn mutation_tolerance(&self) -> u32 {
         self.mutation_tolerance
     }
-    
+
     #[getter]
     fn query_time_ms(&self) -> u64 {
         self.query_time_ms
     }
-    
+
     #[getter]
     fn has_position_mutations(&self) -> bool {
         self.has_position_mutations
     }
-    
+
     /// Get matches filtered by specific Hamming distance
     fn get_matches_by_distance(&self, distance: u32) -> Vec<PyFuzzyMatch> {
         self.matches
@@ -129,14 +129,14 @@ impl PyFuzzyResult {
             .cloned()
             .collect()
     }
-    
+
     /// Get top matches by count (most frequent k-mers)
     fn get_top_matches(&self, limit: usize) -> Vec<PyFuzzyMatch> {
         let mut matches = self.matches.clone();
         matches.sort_by(|a, b| b.count.cmp(&a.count));
         matches.into_iter().take(limit).collect()
     }
-    
+
     fn __repr__(&self) -> String {
         format!(
             "PyFuzzyResult(query='{}', total_matches={}, mutation_tolerance={}, query_time_ms={})",
@@ -161,20 +161,21 @@ impl PyFuzzyQuery {
     #[new]
     fn new(database: &PyDatabase) -> PyResult<Self> {
         let database_path = database.path.clone();
-        
+
         // Load the actual Rust database to get k-mer size
         let database = match RKDatabase::from_file_path(Path::new(&database_path)) {
             Ok(db) => db,
             Err(e) => {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    format!("Failed to load database for fuzzy queries: {}", e)
-                ));
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to load database for fuzzy queries: {}",
+                    e
+                )));
             }
         };
-        
+
         // Get k-mer size from the loaded database
         let kmer_size = database.kmer_size();
-        
+
         Ok(Self {
             database_path,
             kmer_size,
@@ -188,13 +189,13 @@ impl PyFuzzyQuery {
         &self,
         pattern: &Bound<'_, pyo3::types::PyString>,
         max_mutations: u32,
-        max_results: Option<usize>
+        max_results: Option<usize>,
     ) -> PyResult<PyFuzzyResult> {
         self.fuzzy_query_with_position_mutations_impl(
             &pattern.to_string_lossy(),
             max_mutations,
             "",
-            max_results
+            max_results,
         )
     }
 
@@ -204,15 +205,18 @@ impl PyFuzzyQuery {
         pattern: &str,
         max_mutations: u32,
         position_mutations: &str,
-        max_results: Option<usize>
+        max_results: Option<usize>,
     ) -> PyResult<PyFuzzyResult> {
         // Parse position mutations configuration if provided
         let parsed_config = if !position_mutations.is_empty() {
-            Some(PositionMutationConfig::parse(position_mutations).map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    format!("Invalid position mutation configuration: {}", e)
-                )
-            })?)
+            Some(
+                PositionMutationConfig::parse(position_mutations).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Invalid position mutation configuration: {}",
+                        e
+                    ))
+                })?,
+            )
         } else {
             None
         };
@@ -221,16 +225,20 @@ impl PyFuzzyQuery {
 
         // Validate pattern length
         if pattern_str.len() != self.kmer_size {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Pattern length {} does not match database k-mer size {}",
-                        pattern_str.len(), self.kmer_size)
-            ));
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Pattern length {} does not match database k-mer size {}",
+                pattern_str.len(),
+                self.kmer_size
+            )));
         }
 
         // Validate pattern characters
-        if !pattern_str.chars().all(|c| matches!(c, 'A' | 'T' | 'C' | 'G' | 'N')) {
+        if !pattern_str
+            .chars()
+            .all(|c| matches!(c, 'A' | 'T' | 'C' | 'G' | 'N'))
+        {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Pattern contains invalid characters (only A,T,C,G,N allowed)".to_string()
+                "Pattern contains invalid characters (only A,T,C,G,N allowed)".to_string(),
             ));
         }
 
@@ -242,7 +250,7 @@ impl PyFuzzyQuery {
                 max_mutations as usize,
                 max_results,
                 false, // Sequential processing
-                1000, // Default batch size
+                1000,  // Default batch size
                 Some(config.clone()),
             )
         } else {
@@ -252,7 +260,7 @@ impl PyFuzzyQuery {
                 max_mutations as usize,
                 max_results,
                 false, // Sequential processing
-                1000, // Default batch size
+                1000,  // Default batch size
             )
         };
 
@@ -260,27 +268,28 @@ impl PyFuzzyQuery {
         let start_time = Instant::now();
 
         // Load database for fuzzy query execution
-        let database = RKDatabase::from_file_path(Path::new(&self.database_path))
-            .map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                    format!("Failed to load database for fuzzy query: {}", e)
-                )
-            })?;
+        let database = RKDatabase::from_file_path(Path::new(&self.database_path)).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to load database for fuzzy query: {}",
+                e
+            ))
+        })?;
 
         let engine = FuzzyQueryEngine::new(database);
 
         // Execute the fuzzy query
-        let result = engine.execute_query(&query)
-            .map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                    format!("Fuzzy query execution failed: {}", e)
-                )
-            })?;
+        let result = engine.execute_query(&query).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Fuzzy query execution failed: {}",
+                e
+            ))
+        })?;
 
         let query_time_ms = start_time.elapsed().as_millis() as u64;
 
         // Convert Rust results to Python results
-        let py_matches: Vec<PyFuzzyMatch> = result.individual_matches
+        let py_matches: Vec<PyFuzzyMatch> = result
+            .individual_matches
             .into_iter()
             .map(|kmer_match| {
                 let match_type_str = match &kmer_match.match_type {
@@ -309,9 +318,7 @@ impl PyFuzzyQuery {
             .collect();
 
         // Find exact match if it exists
-        let exact_match = py_matches.iter()
-            .find(|m| m.match_type == "exact")
-            .cloned();
+        let exact_match = py_matches.iter().find(|m| m.match_type == "exact").cloned();
 
         Ok(PyFuzzyResult {
             query_kmer: pattern_str,
@@ -333,13 +340,13 @@ impl PyFuzzyQuery {
         pattern: &Bound<'_, pyo3::types::PyString>,
         max_mutations: u32,
         position_mutations: &str,
-        max_results: Option<usize>
+        max_results: Option<usize>,
     ) -> PyResult<PyFuzzyResult> {
         self.fuzzy_query_with_position_mutations_impl(
             &pattern.to_string_lossy(),
             max_mutations,
             position_mutations,
-            max_results
+            max_results,
         )
     }
 
@@ -351,13 +358,13 @@ impl PyFuzzyQuery {
         &self,
         pattern: &Bound<'_, pyo3::types::PyString>,
         max_mutations: u32,
-        max_results: Option<usize>
+        max_results: Option<usize>,
     ) -> PyResult<PyFuzzyResult> {
         self.fuzzy_query_with_position_mutations_impl(
             &pattern.to_string_lossy(),
             max_mutations,
             "",
-            max_results
+            max_results,
         )
     }
 
@@ -368,16 +375,16 @@ impl PyFuzzyQuery {
         pattern: &Bound<'_, pyo3::types::PyString>,
         max_mutations: u32,
         position_mutations: &str,
-        max_results: Option<usize>
+        max_results: Option<usize>,
     ) -> PyResult<PyFuzzyResult> {
         self.fuzzy_query_with_position_mutations_impl(
             &pattern.to_string_lossy(),
             max_mutations,
             position_mutations,
-            max_results
+            max_results,
         )
     }
-    
+
     /// Get database k-mer size
     #[getter]
     fn kmer_size(&self) -> usize {

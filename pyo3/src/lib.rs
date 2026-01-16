@@ -6,19 +6,19 @@ mod database;
 mod errors;
 mod fuzzy_query;
 mod kmer_counter;
-mod utils;
 mod prefix_query;
+mod utils;
 
 // Re-export types for convenience
-pub use database::{PyDatabase, PyDatabaseStats, PyQueryResult, PyPrefixQueryResult, LoadMode};
+pub use database::{LoadMode, PyDatabase, PyDatabaseStats, PyPrefixQueryResult, PyQueryResult};
 pub use errors::RustKmerError;
-pub use fuzzy_query::{PyFuzzyQuery, PyFuzzyResult, PyFuzzyMatch};
-pub use kmer_counter::{PyKmerCounter, PyCounterStats};
-pub use prefix_query::{PyPrefixQuery, PyExtendedPrefixQuery, PyPrefixQueryMetrics};
+pub use fuzzy_query::{PyFuzzyMatch, PyFuzzyQuery, PyFuzzyResult};
+pub use kmer_counter::{PyCounterStats, PyKmerCounter};
+pub use prefix_query::{PyExtendedPrefixQuery, PyPrefixQuery, PyPrefixQueryMetrics};
 
 /// Python module
 #[pymodule]
-fn rustkmer_pyo3(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn pyrustkmer(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDatabase>()?;
     m.add_class::<PyDatabaseStats>()?;
     m.add_class::<PyQueryResult>()?;

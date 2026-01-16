@@ -1,1 +1,1 @@
-"""PyO3 Rust bindings test suite for rustkmer_pyo3."""
+"""PyO3 Rust bindings test suite for pyrustkmer."""

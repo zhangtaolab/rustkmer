@@ -1125,8 +1125,8 @@ impl PyDatabase {
     ///     PyRuntimeError: If merge operation fails
     ///
     /// Example:
-    ///     >>> import rustkmer_pyo3
-    ///     >>> rustkmer_pyo3.PyDatabase.merge(
+    ///     >>> import pyrustkmer
+    ///     >>> pyrustkmer.PyDatabase.merge(
     ///     ...     ["db1.rkdb", "db2.rkdb", "db3.rkdb"],
     ///     ...     "merged.rkdb"
     ///     ... )

@@ -375,15 +375,15 @@ class Database:
                 f"Prefix length ({len(validated_prefix)}) must be less than k-mer size ({kmer_size})",
             )
 
-        # Try to use rustkmer_pyo3 if available for prefix query
+        # Try to use pyrustkmer if available for prefix query
         try:
-            import rustkmer_pyo3
+            import pyrustkmer
 
             # Use PyO3 backend for prefix query
-            db_pyo3 = rustkmer_pyo3.PyDatabase(
-                str(self._path), rustkmer_pyo3.LoadMode.MemoryMapped
+            db_pyo3 = pyrustkmer.PyDatabase(
+                str(self._path), pyrustkmer.LoadMode.MemoryMapped
             )
-            query_engine = rustkmer_pyo3.PyPrefixQuery(db_pyo3)
+            query_engine = pyrustkmer.PyPrefixQuery(db_pyo3)
             results = query_engine.query_prefix(validated_prefix)
 
             # Convert PyO3 results to dict format
@@ -450,15 +450,15 @@ class Database:
 
         validated_pattern = pattern.upper()
 
-        # Try to use rustkmer_pyo3 if available for hybrid query
+        # Try to use pyrustkmer if available for hybrid query
         try:
-            import rustkmer_pyo3
+            import pyrustkmer
 
             # Use PyO3 backend for hybrid query
-            db_pyo3 = rustkmer_pyo3.PyDatabase(
-                str(self._path), rustkmer_pyo3.LoadMode.MemoryMapped
+            db_pyo3 = pyrustkmer.PyDatabase(
+                str(self._path), pyrustkmer.LoadMode.MemoryMapped
             )
-            query_engine = rustkmer_pyo3.PyPrefixQuery(db_pyo3)
+            query_engine = pyrustkmer.PyPrefixQuery(db_pyo3)
             results = query_engine.query_hybrid(validated_pattern)
 
             # Convert PyO3 results to dict format

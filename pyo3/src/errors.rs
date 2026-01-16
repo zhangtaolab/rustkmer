@@ -16,22 +16,25 @@ pub struct RustKmerError {
 impl RustKmerError {
     #[new]
     fn new(message: String, error_type: String) -> Self {
-        Self { message, error_type }
+        Self {
+            message,
+            error_type,
+        }
     }
-    
+
     fn __str__(&self) -> String {
         format!("{}: {}", self.error_type, self.message)
     }
-    
+
     fn __repr__(&self) -> String {
         format!("RustKmerError('{}', '{}')", self.error_type, self.message)
     }
-    
+
     #[getter]
     fn message(&self) -> &str {
         &self.message
     }
-    
+
     #[getter]
     fn error_type(&self) -> &str {
         &self.error_type

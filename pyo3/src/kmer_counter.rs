@@ -3,8 +3,8 @@
 //! This module provides a Python class that wraps the Rust KmerCounter
 //! to provide high-performance k-mer counting functionality.
 
-use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 
 /// Statistics for KmerCounter operations
 #[pyclass]
@@ -27,27 +27,27 @@ impl PyCounterStats {
     fn total_kmers(&self) -> u64 {
         self.total_kmers
     }
-    
+
     #[getter]
     fn unique_kmers(&self) -> u64 {
         self.unique_kmers
     }
-    
+
     #[getter]
     fn kmer_length(&self) -> usize {
         self.kmer_length
     }
-    
+
     #[getter]
     fn canonical_mode(&self) -> bool {
         self.canonical_mode
     }
-    
+
     #[getter]
     fn memory_usage(&self) -> usize {
         self.memory_usage
     }
-    
+
     fn __repr__(&self) -> String {
         format!(
             "PyCounterStats(total_kmers={}, unique_kmers={}, kmer_length={}, canonical_mode={}, memory_usage={})",
@@ -71,23 +71,24 @@ impl PyKmerCounter {
     #[new]
     fn new(kmer_length: usize, canonical: bool, _initial_capacity: usize) -> PyResult<Self> {
         if !(1..=64).contains(&kmer_length) {
-            return Err(PyErr::new::<PyValueError, _>(
-                format!("Invalid k-mer size: {}. Must be between 1 and 64", kmer_length)
-            ));
+            return Err(PyErr::new::<PyValueError, _>(format!(
+                "Invalid k-mer size: {}. Must be between 1 and 64",
+                kmer_length
+            )));
         }
-        
+
         Ok(Self {
             kmer_length,
             canonical,
         })
     }
-    
+
     /// Add a single k-mer to the counter
     fn add_kmer(&mut self, _kmer: &Bound<'_, pyo3::types::PyString>) -> PyResult<()> {
         // Simplified implementation - just validate
         Ok(())
     }
-    
+
     /// Get statistics for the counter
     fn get_stats(&self) -> PyCounterStats {
         PyCounterStats {
@@ -98,19 +99,19 @@ impl PyKmerCounter {
             memory_usage: 0,
         }
     }
-    
+
     /// Get k-mer length
     #[getter]
     fn kmer_length(&self) -> usize {
         self.kmer_length
     }
-    
+
     /// Get whether canonical mode is enabled
     #[getter]
     fn canonical(&self) -> bool {
         self.canonical
     }
-    
+
     /// Check if the counter is empty
     fn is_empty(&self) -> bool {
         true // Simplified

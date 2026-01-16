@@ -3,8 +3,8 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "rustkmer-pyo3"
-version = "0.2.0"
+name = "pyrustkmer"
+version = "0.3.0"
 description = "High-performance PyO3 Python bindings for rustkmer k-mer library"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -74,7 +74,7 @@ Repository = "https://github.com/rustkmer/rustkmer.git"
 # Maturin build configuration
 features = ["pyo3/extension-module"]
 python-source = "."
-module-name = "rustkmer_pyo3"
+module-name = "pyrustkmer"
 manifest-path = "Cargo.toml"
 
 [tool.maturin.build]
@@ -93,7 +93,7 @@ markers = [
     "integration: marks tests as integration tests",
 ]
 addopts = [
-    "--cov=rustkmer_pyo3",
+    "--cov=pyrustkmer",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
@@ -140,7 +140,7 @@ warn_unreachable = true
 strict_equality = true
 
 [tool.coverage.run]
-source = ["rustkmer_pyo3"]
+source = ["pyrustkmer"]
 omit = [
     "*/tests/*",
     "*/test_*",
@@ -164,8 +164,8 @@ exclude_lines = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["rustkmer_pyo3*"]
+include = ["pyrustkmer*"]
 
 [tool.setuptools.package-data]
-rustkmer_pyo3 = ["py.typed"]
+pyrustkmer = ["py.typed"]
 
