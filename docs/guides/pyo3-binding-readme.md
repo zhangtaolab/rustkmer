@@ -86,8 +86,8 @@ print(f"数据库统计: kmer_size={stats.kmer_size}, unique_kmers={stats.unique
 ### 文档和报告
 - `docs/guides/pyo3-binding-guide.md` - 详细使用指南 ✅ 已更新
 - `docs/guides/pyo3-binding-readme.md` - 本快速指南 ✅ 已更新
-- `FINAL_UNIFIED_INTERFACE_REPORT.md` - 完整实现报告 ✅
-- `PYO3_UNIFIED_INTERFACE_PLAN.md` - 实施计划
+- `docs/guides/FINAL_UNIFIED_INTERFACE_REPORT.md` - 完整实现报告 ✅
+- `docs/guides/PYO3_UNIFIED_INTERFACE_PLAN.md` - 实施计划
 
 ## ⚙️ 构建状态
 
