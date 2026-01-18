@@ -41,5 +41,3 @@ impl RustKmerError {
     }
 }
 
-/// Type alias for RustKmer results
-pub type RustKmerResult<T> = Result<T, RustKmerError>;
