@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(name = "rustkmer")]
 #[command(about = "A fast k-mer counting tool for genomic data")]
-#[command(version = "0.4.3")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 pub struct Args {
     #[command(subcommand)]
     pub command: Commands,
