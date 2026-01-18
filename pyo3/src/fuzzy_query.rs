@@ -16,7 +16,7 @@ use std::time::Instant;
 
 /// Individual fuzzy match result
 #[pyclass]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PyFuzzyMatch {
     /// The matched k-mer sequence
     pub kmer: String,
@@ -142,6 +142,159 @@ impl PyFuzzyResult {
             "PyFuzzyResult(query='{}', total_matches={}, mutation_tolerance={}, query_time_ms={})",
             self.query_kmer, self.total_matches, self.mutation_tolerance, self.query_time_ms
         )
+    }
+
+    // Formatter methods
+    fn to_json(&self) -> PyResult<String> {
+        // Build JSON for exact_match if present
+        let exact_match_json = match &self.exact_match {
+            Some(exact) => {
+                let positions_json = format!("[{}]", 
+                    exact.mutation_positions.iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                format!(
+                    r#"{{"kmer": "{}", "count": {}, "distance": {}, "match_type": "{}", "mutation_positions": {}}}"#,
+                    exact.kmer,
+                    exact.count,
+                    exact.distance.map_or("null".to_string(), |d| d.to_string()),
+                    exact.match_type,
+                    positions_json
+                )
+            },
+            None => "null".to_string(),
+        };
+
+        // Build JSON array for matches
+        let matches_json: Vec<String> = self.matches.iter().map(|m| {
+            let positions_json = format!("[{}]", 
+                m.mutation_positions.iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            format!(
+                r#"{{"kmer": "{}", "count": {}, "distance": {}, "match_type": "{}", "mutation_positions": {}}}"#,
+                m.kmer,
+                m.count,
+                m.distance.map_or("null".to_string(), |d| d.to_string()),
+                m.match_type,
+                positions_json
+            )
+        }).collect();
+
+        Ok(format!(
+            r#"{{"query_kmer": "{}", "exact_match": {}, "matches": [{}], "total_matches": {}, "mutation_tolerance": {}, "query_time_ms": {}, "has_position_mutations": {}}}"#,
+            self.query_kmer,
+            exact_match_json,
+            matches_json.join(", "),
+            self.total_matches,
+            self.mutation_tolerance,
+            self.query_time_ms,
+            self.has_position_mutations
+        ))
+    }
+
+
+
+    fn to_csv(&self) -> PyResult<String> {
+        let mut csv = String::new();
+        csv.push_str("kmer,count,distance,match_type,mutation_positions\n");
+
+        if let Some(ref exact) = self.exact_match {
+            csv.push_str(&format!(
+                "{},{},{},{},\"{:?}\"\n",
+                exact.kmer,
+                exact.count,
+                exact.distance.unwrap_or(0),
+                exact.match_type,
+                exact.mutation_positions
+            ));
+        }
+
+        for match_item in &self.matches {
+            if match_item.match_type == "exact" {
+                if let Some(ref exact) = self.exact_match {
+                    if match_item.kmer == exact.kmer {
+                        continue;
+                    }
+                }
+            }
+
+            csv.push_str(&format!(
+                "{},{},{},{},\"{:?}\"\n",
+                match_item.kmer,
+                match_item.count,
+                match_item.distance.unwrap_or(0),
+                match_item.match_type,
+                match_item.mutation_positions
+            ));
+        }
+
+        csv.push_str(&format!("# query_kmer={}\n", self.query_kmer));
+        csv.push_str(&format!("# total_matches={}\n", self.total_matches));
+        csv.push_str(&format!(
+            "# mutation_tolerance={}\n",
+            self.mutation_tolerance
+        ));
+        csv.push_str(&format!("# query_time_ms={}\n", self.query_time_ms));
+        csv.push_str(&format!(
+            "# has_position_mutations={}\n",
+            self.has_position_mutations
+        ));
+
+        Ok(csv)
+    }
+
+    fn to_tsv(&self) -> PyResult<String> {
+        let mut tsv = String::new();
+        tsv.push_str("kmer\tcount\tdistance\tmatch_type\tmutation_positions\n");
+
+        if let Some(ref exact) = self.exact_match {
+            tsv.push_str(&format!(
+                "{}\t{}\t{}\t{}\t{:?}\n",
+                exact.kmer,
+                exact.count,
+                exact.distance.unwrap_or(0),
+                exact.match_type,
+                exact.mutation_positions
+            ));
+        }
+
+        for match_item in &self.matches {
+            if match_item.match_type == "exact" {
+                if let Some(ref exact) = self.exact_match {
+                    if match_item.kmer == exact.kmer {
+                        continue;
+                    }
+                }
+            }
+
+            tsv.push_str(&format!(
+                "{}\t{}\t{}\t{}\t{:?}\n",
+                match_item.kmer,
+                match_item.count,
+                match_item.distance.unwrap_or(0),
+                match_item.match_type,
+                match_item.mutation_positions
+            ));
+        }
+
+        tsv.push_str(&format!("# query_kmer={}\n", self.query_kmer));
+        tsv.push_str(&format!("# total_matches={}\n", self.total_matches));
+        tsv.push_str(&format!(
+            "# mutation_tolerance={}\n",
+            self.mutation_tolerance
+        ));
+        tsv.push_str(&format!("# query_time_ms={}\n", self.query_time_ms));
+        tsv.push_str(&format!(
+            "# has_position_mutations={}\n",
+            self.has_position_mutations
+        ));
+
+        Ok(tsv)
     }
 }
 

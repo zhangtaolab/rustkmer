@@ -98,11 +98,11 @@ def PyDatabase(pyo3_module):
 
 
 @pytest.fixture
-def PyKmerCounter(pyo3_module):
-    """Return PyKmerCounter class."""
-    if not hasattr(pyo3_module, "PyKmerCounter"):
-        pytest.skip("PyKmerCounter class not available")
-    return pyo3_module.PyKmerCounter
+def PyCounter(pyo3_module):
+    """Return PyCounter class."""
+    if not hasattr(pyo3_module, "PyCounter"):
+        pytest.skip("PyCounter class not available")
+    return pyo3_module.PyCounter
 
 
 @pytest.fixture

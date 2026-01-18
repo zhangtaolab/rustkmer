@@ -37,17 +37,17 @@ pip install rustkmer
 use rustkmer::KmerCounter;
 
 let mut counter = KmerCounter::new(21, true);
-counter.count_file("genome.fa.gz")?;
-println!("Total k-mers: {}", counter.get_total_count());
+counter.add_from_fasta("genome.fa.gz")?;
+println!("Total k-mers: {}", counter.get_stats().total_kmers));
 ```
 
 #### Python
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import PyCounter, LoadMode
 
-counter = KmerCounter(k=21, canonical=True)
-counter.count_file("genome.fa.gz")
-print(f"Total k-mers: {counter.get_total_count()}")
+counter = PyCounter(21, canonical=True)
+counter.add_from_fasta("genome.fa.gz")
+print(f"Total k-mers: {counter.get_stats().total_kmers)}")
 ```
 
 ### Command Line
@@ -158,26 +158,24 @@ RustKmer delivers world-class performance validated with real genomic datasets:
 ### Fuzzy Querying
 ```python
 # Search with wildcards (N = any base)
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
-db = Database()
-db.load("genome.rkdb")
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
 
-# Wildcard search
-results = db.fuzzy_query("AATN")  # Matches AATA, AATC, AATG, AATT
+# Fuzzy search using PyFuzzyQuery class
+fuzzy = PyFuzzyQuery(db)
+results = fuzzy.query_fuzzy("ATNNGTANN", max_distance=2)
 
-# Mutation tolerance search
-results = db.fuzzy_query("ATCGATCGATCGATCGATCGA", max_distance=2)
-
-# Complex pattern with multiple wildcards
-results = db.fuzzy_query("ATNNGTANN")
+# The fuzzy search finds k-mers matching the pattern within the specified distance
+for result in results:
+    print(f"K-mer: {result.kmer}, Count: {result.count}, Distance: {result.distance}")
 ```
 
 ### Batch Processing
 ```python
 # Process large files efficiently
-counter = KmerCounter(k=21, canonical=True)
-counter.count_file("large_genome.fa.gz")  # Streaming processing
+counter = PyCounter(21, canonical=True)
+counter.add_from_fasta("large_genome.fa.gz")  # Streaming processing
 
 # Get top k-mers
 top_kmers = counter.get_top_kmers(1000)
@@ -186,8 +184,9 @@ top_kmers = counter.get_top_kmers(1000)
 ### Memory Optimization
 ```python
 # Memory-mapped database access for large datasets
-db = Database()
-db.load("huge_db.rkdb", preload=False)  # Uses memory mapping
+from pyrustkmer import PyDatabase, LoadMode
+
+db = PyDatabase("huge_db.rkdb", LoadMode.MemoryMapped)  # Uses memory mapping
 ```
 
 ## 🤝 Contributing

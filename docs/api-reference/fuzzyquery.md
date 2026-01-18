@@ -102,10 +102,11 @@ Get top N matches by count (most abundant).
 
 **Example:**
 ```python
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 
-db = Database("example.rkdb")
-result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
+result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
 
 print(f"Query: {result.query_kmer}")
 print(f"Total matches: {result.total_matches}")
@@ -158,9 +159,10 @@ Get summary statistics for the batch query.
 
 **Example:**
 ```python
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 
-db = Database("example.rkdb")
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 kmers = [
     "ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
     "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTA",
@@ -233,22 +235,23 @@ def fuzzy_query(
 
 **Examples:**
 ```python
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 
-db = Database("example.rkdb")
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 
 # Basic fuzzy query
-result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
+result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
 print(f"Found {result.total_matches} matches")
 
 # Position-specific mutations
-result = db.fuzzy_query(
+result = fuzzy.query_fuzzy(
     "ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
     position_mutations="10,15:2"  # Allow 2 mutations at positions 10 and 15
 )
 
 # Limit variants to prevent combinatorial explosion
-result = db.fuzzy_query(
+result = fuzzy.query_fuzzy(
     "ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
     mutations=3,
     max_variants=1000
@@ -288,9 +291,10 @@ def fuzzy_query_batch(
 
 **Example:**
 ```python
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 
-db = Database("example.rkdb")
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 kmers = [
     "ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
     "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTA",
@@ -322,10 +326,10 @@ Use `max_variants` to limit computational cost:
 
 ```python
 # Safe: Low mutation tolerance
-result = db.fuzzy_query(kmer, mutations=1)
+result = fuzzy.query_fuzzy(kmer, mutations=1)
 
 # Use limit: Higher mutation tolerance
-result = db.fuzzy_query(kmer, mutations=3, max_variants=1000)
+result = fuzzy.query_fuzzy(kmer, mutations=3, max_variants=1000)
 ```
 
 ### Position Mutations
@@ -334,14 +338,14 @@ Position mutations can dramatically reduce search space by restricting mutations
 
 ```python
 # Allow mutations only at specific positions
-result = db.fuzzy_query(
+result = fuzzy.query_fuzzy(
     kmer,
     mutations=2,
     position_mutations="10,15:2"  # Much faster than allowing mutations anywhere
 )
 
 # Range notation for consecutive positions
-result = db.fuzzy_query(
+result = fuzzy.query_fuzzy(
     kmer,
     position_mutations="5-8:1"  # Positions 5,6,7,8 with 1 mutation total
 )
@@ -354,7 +358,7 @@ For multiple queries, use `fuzzy_query_batch()` for better performance:
 ```python
 # Less efficient: Individual queries
 for kmer in kmers:
-    result = db.fuzzy_query(kmer, mutations=2)
+    result = fuzzy.query_fuzzy(kmer, mutations=2)
     process_result(result)
 
 # More efficient: Batch processing
@@ -372,7 +376,7 @@ Find potential correct versions of erroneous k-mers:
 ```python
 def find_corrections(db, erroneous_kmer, max_distance=2):
     """Find potential corrections for an erroneous k-mer."""
-    result = db.fuzzy_query(erroneous_kmer, mutations=max_distance)
+    result = fuzzy.query_fuzzy(erroneous_kmer, mutations=max_distance)
 
     # Sort by abundance (most likely to be correct)
     candidates = result.get_top_matches(5)
@@ -397,7 +401,7 @@ Find variants of a known sequence:
 ```python
 def discover_variants(db, reference_kmer, max_distance=3):
     """Discover variants of a reference sequence."""
-    result = db.fuzzy_query(reference_kmer, mutations=max_distance)
+    result = fuzzy.query_fuzzy(reference_kmer, mutations=max_distance)
 
     variants = {}
     for distance in range(1, max_distance + 1):
@@ -427,7 +431,7 @@ def assess_sequencing_quality(db, high_confidence_kmers):
 
     for kmer in high_confidence_kmers:
         # Query with mutation tolerance
-        result = db.fuzzy_query(kmer, mutations=2)
+        result = fuzzy.query_fuzzy(kmer, mutations=2)
 
         # Calculate error indicators
         exact_count = result.exact_matches
@@ -456,7 +460,7 @@ def assess_sequencing_quality(db, high_confidence_kmers):
 
 ```python
 import pandas as pd
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 
 def fuzzy_query_to_dataframe(result, query_kmer):
     """Convert FuzzyQueryResult to pandas DataFrame."""
@@ -474,8 +478,9 @@ def fuzzy_query_to_dataframe(result, query_kmer):
     return pd.DataFrame(data)
 
 # Usage
-db = Database("example.rkdb")
-result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
+result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
 df = fuzzy_query_to_dataframe(result, "ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
 
 # Analyze results
@@ -487,12 +492,12 @@ print(f"\nTop matches:\n{df.nlargest(10, 'count')[['matched_kmer', 'count', 'dis
 
 ```python
 import numpy as np
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 
 def analyze_mutation_spectrum(db, reference_kmer, max_distance=3):
     """Analyze mutation spectrum using NumPy."""
 
-    result = db.fuzzy_query(reference_kmer, mutations=max_distance)
+    result = fuzzy.query_fuzzy(reference_kmer, mutations=max_distance)
 
     # Extract data as arrays
     distances = np.array([match.distance for match in result.matches])
@@ -527,14 +532,14 @@ def analyze_mutation_spectrum(db, reference_kmer, max_distance=3):
 ### SNP and Indel Detection
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 from collections import defaultdict
 
 def detect_variants(db, reference_kmer, min_abundance=10):
     """Detect potential SNPs and variants around a reference sequence."""
 
     # Search for variants with 1-2 mutations
-    result = db.fuzzy_query(reference_kmer, mutations=2)
+    result = fuzzy.query_fuzzy(reference_kmer, mutations=2)
 
     variants = defaultdict(list)
 
@@ -564,7 +569,8 @@ def detect_variants(db, reference_kmer, min_abundance=10):
     return dict(variants)
 
 # Example usage
-db = Database("genome.rkdb")
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 reference = "ATCGATCGATCGATCGATCGATCGATCGATCGATCG"
 variants = detect_variants(db, reference)
 
@@ -586,7 +592,7 @@ def build_consensus_sequence(db, kmer_region, max_distance=2, min_abundance=5):
     """Build a consensus sequence from variants in a k-mer region."""
 
     # Get all variants in the region
-    result = db.fuzzy_query(kmer_region, mutations=max_distance)
+    result = fuzzy.query_fuzzy(kmer_region, mutations=max_distance)
 
     # Filter by abundance
     abundant_matches = [m for m in result.matches if m.count >= min_abundance]
@@ -650,9 +656,9 @@ def analyze_metagenomic_samples(db_files, query_kmers, mutations=2):
         sample_name = db_file.stem
         sample_results[sample_name] = {}
 
-        with Database(db_file) as db:
+        db = PyDatabase(db_file, LoadMode.Preload)
             for kmer in query_kmers:
-                result = db.fuzzy_query(kmer, mutations=mutations)
+                result = fuzzy.query_fuzzy(kmer, mutations=mutations)
 
                 # Summarize variant diversity
                 variants_by_distance = defaultdict(int)
@@ -705,7 +711,7 @@ def detect_resistance_variants(db, resistance_kmers, mutation_tolerance=3):
     resistance_variants = {}
 
     for gene_name, reference_kmer in resistance_kmers.items():
-        result = db.fuzzy_query(reference_kmer, mutations=mutation_tolerance)
+        result = fuzzy.query_fuzzy(reference_kmer, mutations=mutation_tolerance)
 
         # Classify variants by potential impact
         high_impact = []  # Multiple mutations, low abundance
@@ -761,7 +767,7 @@ def identify_error_prone_regions(db, genome_kmers, threshold_distance=2, min_var
     error_prone_regions = []
 
     for kmer in genome_kmers:
-        result = db.fuzzy_query(kmer, mutations=threshold_distance)
+        result = fuzzy.query_fuzzy(kmer, mutations=threshold_distance)
 
         # Calculate variant rate
         total_matches = sum(match.count for match in result.matches)
@@ -788,7 +794,8 @@ def identify_error_prone_regions(db, genome_kmers, threshold_distance=2, min_var
 
 # Example usage
 # Get a subset of k-mers from the database to analyze
-with Database("genome.rkdb") as db:
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     genome_kmers = []
     for result in db.dump(limit=1000):
         genome_kmers.append(result.kmer)
@@ -816,9 +823,9 @@ def analyze_population_structure(db_files, query_kmers, mutations=2):
         population_name = db_file.stem
         population_variants = {}
 
-        with Database(db_file) as db:
+        db = PyDatabase(db_file, LoadMode.Preload)
             for kmer in query_kmers:
-                result = db.fuzzy_query(kmer, mutations=mutations)
+                result = fuzzy.query_fuzzy(kmer, mutations=mutations)
 
                 # Create allele frequency matrix
                 alleles = defaultdict(int)
@@ -912,16 +919,17 @@ for kmer in query_kmers:
 ```python
 import pandas as pd
 import numpy as np
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 
 def create_variant_analysis_dataframe(db_path, query_kmers, mutations=3):
     """Create comprehensive variant analysis DataFrame."""
 
-    db = Database(db_path)
+    db = PyDatabase(db_path)
+fuzzy = PyFuzzyQuery(db)
     all_data = []
 
     for kmer in query_kmers:
-        result = db.fuzzy_query(kmer, mutations=mutations)
+        result = fuzzy.query_fuzzy(kmer, mutations=mutations)
 
         for match in result.matches:
             all_data.append({
@@ -977,9 +985,9 @@ def extract_fuzzy_features(db_files, labels, query_kmers, mutations=2):
     for db_file, label in zip(db_files, labels):
         sample_features = []
 
-        with Database(db_file) as db:
+        db = PyDatabase(db_file, LoadMode.Preload)
             for kmer in query_kmers:
-                result = db.fuzzy_query(kmer, mutations=mutations)
+                result = fuzzy.query_fuzzy(kmer, mutations=mutations)
 
                 # Extract numerical features
                 feature_vector = [
@@ -1068,7 +1076,8 @@ import seaborn as sns
 def visualize_fuzzy_query_results(db_path, query_kmers, mutations=2):
     """Create comprehensive visualizations of fuzzy query results."""
 
-    db = Database(db_path)
+    db = PyDatabase(db_path)
+fuzzy = PyFuzzyQuery(db)
 
     # Create subplots
     fig, axes = plt.subplots(2, 3, figsize=(18, 12))
@@ -1083,7 +1092,7 @@ def visualize_fuzzy_query_results(db_path, query_kmers, mutations=2):
         if i >= 6:  # Limit to 6 k-mers for visualization
             break
 
-        result = db.fuzzy_query(kmer, mutations=mutations)
+        result = fuzzy.query_fuzzy(kmer, mutations=mutations)
 
         distances = [match.distance for match in result.matches]
         counts = [match.count for match in result.matches]
@@ -1118,7 +1127,7 @@ def visualize_fuzzy_query_results(db_path, query_kmers, mutations=2):
 
         matrix_data = []
         for kmer in query_kmers:
-            result = db.fuzzy_query(kmer, mutations=mutations)
+            result = fuzzy.query_fuzzy(kmer, mutations=mutations)
             distance_counts = [0] * (mutations + 1)
 
             for match in result.matches:

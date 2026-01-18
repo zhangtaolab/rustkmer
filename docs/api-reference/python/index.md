@@ -25,20 +25,21 @@ pip install rustkmer
 ### Basic Usage
 
 ```python
-from rustkmer import Database, KmerCounter
+from pyrustkmer import Database, KmerCounter, PyFuzzyQuery
 
 # Create a database from sequences
-counter = KmerCounter(k=31, canonical=True)
-counter.count_file("sequences.fasta")
-counter.save_to_database("output.rkdb")
+counter = PyCounter(31, canonical=True)
+counter.add_from_fasta("sequences.fasta")
+counter.save_database("output.rkdb")
 
 # Query the database
-with Database("output.rkdb") as db:
-    result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+db = PyDatabase("output.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
+    result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
     print(f"Count: {result.count}")
 
     # Fuzzy query
-    fuzzy_result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATGG", mutations=2)
+    fuzzy_result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATCGATGG", mutations=2)
     print(f"Found {fuzzy_result.total_matches} similar k-mers")
 ```
 
@@ -81,10 +82,11 @@ with Database("output.rkdb") as db:
 Always use context managers for database operations to ensure proper resource cleanup:
 
 ```python
-with Database("my_database.rkdb") as db:
+db = PyDatabase("my_database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     # Database operations here
-    result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
-    stats = db.stats()
+    result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+    stats = db.get_stats()
 # Database automatically closed here
 ```
 
@@ -108,7 +110,8 @@ The Python API integrates seamlessly with popular scientific libraries:
 import pandas as pd
 
 # Export database to pandas DataFrame
-with Database("database.rkdb") as db:
+db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     data = []
     for result in db.dump(limit=10000):
         data.append({
@@ -147,22 +150,23 @@ with Database("database.rkdb") as db:
 
 ```python
 from Bio import SeqIO
-from rustkmer import KmerCounter, Database
+from pyrustkmer import KmerCounter, Database, PyFuzzyQuery
 
 # Process BioPython sequences
 sequences = [record for record in SeqIO.parse("input.fasta", "fasta")]
 
 # Create database
-counter = KmerCounter(k=31, canonical=True)
-counter.count_file("input.fasta")
-counter.save_to_database("database.rkdb")
+counter = PyCounter(31, canonical=True)
+counter.add_from_fasta("input.fasta")
+counter.save_database("database.rkdb")
 
 # Query with BioPython sequences
-with Database("database.rkdb") as db:
+db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     for record in sequences[:10]:  # Sample first 10
         if len(record.seq) >= 31:
             kmer = str(record.seq[:31])
-            result = db.query(kmer)
+            result = db.query_exact(kmer)
             print(f"{record.id}: {result.count}")
 ```
 
@@ -173,8 +177,8 @@ with Database("database.rkdb") as db:
 from IPython.display import display, clear_output
 import time
 
-with Database("large_database.rkdb") as db:
-    stats = db.stats()
+db = PyDatabase("large_database.rkdb", LoadMode.Preload)
+    stats = db.get_stats()
     display(f"Database: {stats.unique_kmers:,} unique k-mers")
 
     # Process with progress feedback
@@ -202,17 +206,18 @@ with Database("large_database.rkdb") as db:
 ### Database Creation and Analysis
 
 ```python
-from rustkmer import KmerCounter, Database
+from pyrustkmer import KmerCounter, Database, PyFuzzyQuery
 import pandas as pd
 
 # 1. Create database from FASTA
-counter = KmerCounter(k=31, canonical=True)
-counter.count_file("sequences.fasta")
-counter.save_to_database("analysis.rkdb")
+counter = PyCounter(31, canonical=True)
+counter.add_from_fasta("sequences.fasta")
+counter.save_database("analysis.rkdb")
 
 # 2. Analyze database content
-with Database("analysis.rkdb") as db:
-    stats = db.stats()
+db = PyDatabase("analysis.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
+    stats = db.get_stats()
     print(f"Database stats: {stats}")
 
     # 3. Export for analysis
@@ -233,10 +238,10 @@ with Database("analysis.rkdb") as db:
 def find_variants(reference_kmer, database_path, max_mutations=3):
     """Find variants of a reference k-mer."""
 
-    with Database(database_path) as db:
+    db = PyDatabase(database_path, LoadMode.Preload)
         # Progressive search with increasing mutation tolerance
         for mutations in range(max_mutations + 1):
-            result = db.fuzzy_query(reference_kmer, mutations=mutations)
+            result = fuzzy.query_fuzzy(reference_kmer, mutations=mutations)
 
             if result.total_matches > 0:
                 print(f"Found {result.total_matches} variants with {mutations} mutations")

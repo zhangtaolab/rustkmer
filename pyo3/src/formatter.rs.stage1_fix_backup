@@ -1,0 +1,784 @@
+//! Formatting utilities for PyO3 result types
+//!
+//! This module provides formatted output methods for converting PyO3 result types
+//! into various formats (JSON, CSV, TSV, and table formats).
+
+use pyo3::prelude::*;
+use pyo3::types::PyDict;
+use serde::{Deserialize, Serialize};
+
+/// Serde-compatible wrapper for PyQueryResult
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct QueryResultSerializable {
+    kmer: String,
+    count: u32,
+    found: bool,
+}
+
+impl From<&crate::database::PyQueryResult> for QueryResultSerializable {
+    fn from(result: &crate::database::PyQueryResult) -> Self {
+        Self {
+            kmer: result.kmer.clone(),
+            count: result.count,
+            found: result.found,
+        }
+    }
+}
+
+/// Serde-compatible wrapper for PyPrefixQueryResult
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PrefixQueryResultSerializable {
+    matches: Vec<(String, String)>,
+    total_matches: usize,
+    start_index: usize,
+    end_index: usize,
+    block_size: usize,
+    is_sorted: bool,
+    query_time_ms: u64,
+}
+
+impl From<&crate::database::PyPrefixQueryResult> for PrefixQueryResultSerializable {
+    fn from(result: &crate::database::PyPrefixQueryResult) -> Self {
+        let matches_vec: Vec<(String, String)> = result
+            .matches
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+
+        Self {
+            matches: matches_vec,
+            total_matches: result.total_matches,
+            start_index: result.start_index,
+            end_index: result.end_index,
+            block_size: result.block_size,
+            is_sorted: result.is_sorted,
+            query_time_ms: result.query_time_ms,
+        }
+    }
+}
+
+/// Serde-compatible wrapper for PyFuzzyMatch
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct FuzzyMatchSerializable {
+    kmer: String,
+    count: u64,
+    distance: Option<usize>,
+    match_type: String,
+    mutation_positions: Vec<usize>,
+}
+
+impl From<&crate::fuzzy_query::PyFuzzyMatch> for FuzzyMatchSerializable {
+    fn from(match_item: &crate::fuzzy_query::PyFuzzyMatch) -> Self {
+        Self {
+            kmer: match_item.kmer.clone(),
+            count: match_item.count,
+            distance: match_item.distance,
+            match_type: match_item.match_type.clone(),
+            mutation_positions: match_item.mutation_positions.clone(),
+        }
+    }
+}
+
+/// Serde-compatible wrapper for PyFuzzyResult
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct FuzzyResultSerializable {
+    query_kmer: String,
+    exact_match: Option<FuzzyMatchSerializable>,
+    matches: Vec<FuzzyMatchSerializable>,
+    total_matches: usize,
+    mutation_tolerance: u32,
+    query_time_ms: u64,
+    has_position_mutations: bool,
+}
+
+impl From<&crate::fuzzy_query::PyFuzzyResult> for FuzzyResultSerializable {
+    fn from(result: &crate::fuzzy_query::PyFuzzyResult) -> Self {
+        Self {
+            query_kmer: result.query_kmer.clone(),
+            exact_match: result
+                .exact_match
+                .as_ref()
+                .map(FuzzyMatchSerializable::from),
+            matches: result
+                .matches
+                .iter()
+                .map(FuzzyMatchSerializable::from)
+                .collect(),
+            total_matches: result.total_matches,
+            mutation_tolerance: result.mutation_tolerance,
+            query_time_ms: result.query_time_ms,
+            has_position_mutations: result.has_position_mutations,
+        }
+    }
+}
+
+/// Serde-compatible wrapper for PyDatabaseStats
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DatabaseStatsSerializable {
+    kmer_size: usize,
+    total_kmers: u64,
+    unique_kmers: u64,
+    file_size: u64,
+    is_sorted: bool,
+    canonical: bool,
+}
+
+impl From<&crate::database::PyDatabaseStats> for DatabaseStatsSerializable {
+    fn from(stats: &crate::database::PyDatabaseStats) -> Self {
+        Self {
+            kmer_size: stats.kmer_size,
+            total_kmers: stats.total_kmers,
+            unique_kmers: stats.unique_kmers,
+            file_size: stats.file_size,
+            is_sorted: stats.is_sorted,
+            canonical: stats.canonical,
+        }
+    }
+}
+
+// ============================================================================
+// PyQueryResult formatting extensions
+// ============================================================================
+
+/// Formatting methods for PyQueryResult
+impl crate::database::PyQueryResult {
+    /// Convert query result to JSON format
+    ///
+    /// Returns a JSON string containing the k-mer, count, and found status.
+    ///
+    /// # Returns
+    /// * `String` - JSON formatted string
+    ///
+    /// # Example
+    /// ```python
+    /// result = db.query_exact("ATCG")
+    /// json_str = result.to_json()
+    /// # {"kmer":"ATCG","count":5,"found":true}
+    /// ```
+    pub fn to_json(&self) -> PyResult<String> {
+        let serializable = QueryResultSerializable::from(self);
+        serde_json::to_string_pretty(&serializable)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    }
+
+    /// Convert query result to CSV format
+    ///
+    /// Returns a CSV formatted string with header row.
+    ///
+    /// # Returns
+    /// * `String` - CSV formatted string
+    ///
+    /// # Example
+    /// ```python
+    /// result = db.query_exact("ATCG")
+    /// csv_str = result.to_csv()
+    /// # kmer,count,found
+    /// # ATCG,5,true
+    /// ```
+    pub fn to_csv(&self) -> PyResult<String> {
+        let mut csv = String::new();
+        csv.push_str("kmer,count,found\n");
+        csv.push_str(&format!("{},{},{}\n", self.kmer, self.count, self.found));
+        Ok(csv)
+    }
+
+    /// Convert query result to TSV format
+    ///
+    /// Returns a TSV (Tab-Separated Values) formatted string with header row.
+    ///
+    /// # Returns
+    /// * `String` - TSV formatted string
+    ///
+    /// # Example
+    /// ```python
+    /// result = db.query_exact("ATCG")
+    /// tsv_str = result.to_tsv()
+    /// # kmer\tcount\tfound
+    /// # ATCG\t5\ttrue
+    /// ```
+    pub fn to_tsv(&self) -> PyResult<String> {
+        let mut tsv = String::new();
+        tsv.push_str("kmer\tcount\tfound\n");
+        tsv.push_str(&format!("{}\t{}\t{}\n", self.kmer, self.count, self.found));
+        Ok(tsv)
+    }
+
+    /// Convert query result to Python dict
+    ///
+    /// Returns a Python dictionary containing k-mer, count, and found status.
+    ///
+    /// # Returns
+    /// * `Py<PyDict>` - Python dictionary with result fields
+    ///
+    /// # Example
+    /// ```python
+    /// result = db.query_exact("ATCG")
+    /// data = result.to_dict()
+    /// # {'kmer': 'ATCG', 'count': 5, 'found': True}
+    /// ```
+    pub fn to_dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let dict = PyDict::new(py);
+        dict.set_item("kmer", &self.kmer)?;
+        dict.set_item("count", self.count)?;
+        dict.set_item("found", self.found)?;
+        Ok(dict.unbind())
+    }
+}
+
+// ============================================================================
+// PyFormatter class for backward compatibility
+// ============================================================================
+
+/// Formatter for k-mer data and query results (legacy, for backward compatibility)
+///
+/// Note: Result types now have built-in formatting methods (to_json, to_csv, to_tsv, to_dict, to_table)
+#[pyclass]
+pub struct PyFormatter {
+    /// Whether to use canonical representation
+    canonical: bool,
+    /// Output format style (e.g., "compact", "verbose", "json")
+    format_style: String,
+}
+
+#[pymethods]
+impl PyFormatter {
+    /// Create a new formatter
+    #[new]
+    #[pyo3(signature = (canonical=false, format_style="compact".to_string()))]
+    fn new(canonical: bool, format_style: String) -> Self {
+        Self {
+            canonical,
+            format_style,
+        }
+    }
+
+    /// Format a k-mer string
+    fn format_kmer(&self, kmer: &Bound<'_, pyo3::types::PyString>) -> PyResult<String> {
+        let kmer_str = kmer.to_string();
+        Ok(if self.canonical {
+            format_kmer_canonical(&kmer_str)
+        } else {
+            kmer_str
+        })
+    }
+
+    /// Format a count result
+    fn format_count(&self, kmer: &str, count: u64) -> PyResult<String> {
+        match self.format_style.as_str() {
+            "compact" => Ok(format!("{}:{}", kmer, count)),
+            "verbose" => Ok(format!("k-mer: {}, count: {}", kmer, count)),
+            "json" => Ok(format!(r#"{{"kmer": "{}", "count": {}}}"#, kmer, count)),
+            _ => Ok(format!("{}:{}", kmer, count)),
+        }
+    }
+
+    /// Get whether canonical mode is enabled
+    #[getter]
+    fn canonical(&self) -> bool {
+        self.canonical
+    }
+
+    /// Get the current format style
+    #[getter]
+    fn format_style(&self) -> String {
+        self.format_style.clone()
+    }
+
+    /// Set the format style
+    #[setter]
+    fn set_format_style(&mut self, style: String) {
+        self.format_style = style;
+    }
+}
+
+/// Format a k-mer in canonical representation (reverse complement if needed)
+fn format_kmer_canonical(kmer: &str) -> String {
+    let revcomp = reverse_complement(kmer);
+    if kmer.to_string() < revcomp {
+        kmer.to_string()
+    } else {
+        revcomp
+    }
+}
+
+/// Compute the reverse complement of a DNA sequence
+fn reverse_complement(seq: &str) -> String {
+    seq.chars()
+        .rev()
+        .map(|c| match c {
+            'A' | 'a' => 'T',
+            'T' | 't' => 'A',
+            'C' | 'c' => 'G',
+            'G' | 'g' => 'C',
+            _ => c,
+        })
+        .collect()
+}
+
+// ============================================================================
+// PyPrefixQueryResult formatting extensions
+// ============================================================================
+
+/// Formatting methods for PyPrefixQueryResult
+impl crate::database::PyPrefixQueryResult {
+    /// Convert prefix query result to JSON format
+    ///
+    /// Returns a JSON string containing all matches and metadata.
+    ///
+    /// # Returns
+    /// * `String` - JSON formatted string
+    ///
+    /// # Example
+    /// ```python
+    /// result = db.query_prefix("ATCG")
+    /// json_str = result.to_json()
+    /// ```
+    pub fn to_json(&self) -> PyResult<String> {
+        let serializable = PrefixQueryResultSerializable::from(self);
+        serde_json::to_string_pretty(&serializable)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    }
+
+    /// Convert prefix query result to CSV format
+    ///
+    /// Returns a CSV formatted string with all matching k-mers and their counts.
+    /// Includes header row and a metadata section at the end.
+    ///
+    /// # Returns
+    /// * `String` - CSV formatted string
+    ///
+    /// # Example
+    /// ```python
+    /// result = db.query_prefix("AT")
+    /// csv_str = result.to_csv()
+    /// # kmer,count
+    /// # ATCG,5
+    /// # ATGC,3
+    /// # ...
+    /// # # total_matches=100,query_time_ms=5
+    /// ```
+    pub fn to_csv(&self) -> PyResult<String> {
+        let mut csv = String::new();
+        csv.push_str("kmer,count\n");
+
+        // Sort matches for consistent output
+        let mut matches_vec: Vec<_> = self.matches.iter().collect();
+        matches_vec.sort_by_key(|&(k, _)| k);
+
+        for (kmer, count) in matches_vec {
+            csv.push_str(&format!("{},{}\n", kmer, count));
+        }
+
+        // Add metadata as comments
+        csv.push_str(&format!("# total_matches={}\n", self.total_matches));
+        csv.push_str(&format!("# query_time_ms={}\n", self.query_time_ms));
+        csv.push_str(&format!("# start_index={}\n", self.start_index));
+        csv.push_str(&format!("# end_index={}\n", self.end_index));
+        csv.push_str(&format!("# block_size={}\n", self.block_size));
+        csv.push_str(&format!("# is_sorted={}\n", self.is_sorted));
+
+        Ok(csv)
+    }
+
+    /// Convert prefix query result to TSV format
+    ///
+    /// Returns a TSV (Tab-Separated Values) formatted string with all matching k-mers.
+    ///
+    /// # Returns
+    /// * `String` - TSV formatted string
+    ///
+    /// # Example
+    /// ```python
+    /// result = db.query_prefix("AT")
+    /// tsv_str = result.to_tsv()
+    /// ```
+    pub fn to_tsv(&self) -> PyResult<String> {
+        let mut tsv = String::new();
+        tsv.push_str("kmer\tcount\n");
+
+        // Sort matches for consistent output
+        let mut matches_vec: Vec<_> = self.matches.iter().collect();
+        matches_vec.sort_by_key(|&(k, _)| k);
+
+        for (kmer, count) in matches_vec {
+            tsv.push_str(&format!("{}\t{}\n", kmer, count));
+        }
+
+        // Add metadata as comments
+        tsv.push_str(&format!("# total_matches={}\n", self.total_matches));
+        tsv.push_str(&format!("# query_time_ms={}\n", self.query_time_ms));
+        tsv.push_str(&format!("# start_index={}\n", self.start_index));
+        tsv.push_str(&format!("# end_index={}\n", self.end_index));
+        tsv.push_str(&format!("# block_size={}\n", self.block_size));
+        tsv.push_str(&format!("# is_sorted={}\n", self.is_sorted));
+
+        Ok(tsv)
+    }
+
+    /// Convert prefix query result to table format
+    ///
+    /// Returns a formatted ASCII table with column headers and aligned data.
+    ///
+    /// # Returns
+    /// * `String` - Table formatted string
+    ///
+    /// # Example
+    /// ```python
+    /// result = db.query_prefix("AT")
+    /// table_str = result.to_table()
+    /// # +------+-------+
+    /// # | kmer | count |
+    /// # +------+-------+
+    /// # | ATCG |     5 |
+    /// # | ATGC |     3 |
+    /// # +------+-------+
+    /// # Total matches: 100
+    /// # Query time: 5ms
+    /// ```
+    pub fn to_table(&self) -> PyResult<String> {
+        let mut table = String::new();
+
+        // Calculate column widths
+        let max_kmer_width = self
+            .matches
+            .keys()
+            .map(|k| k.len())
+            .max()
+            .unwrap_or("kmer".len())
+            .max("kmer".len());
+        let max_count_width = self
+            .matches
+            .values()
+            .map(|v| v.len())
+            .max()
+            .unwrap_or("count".len())
+            .max("count".len());
+
+        let kmer_width = max_kmer_width.max(4);
+        let count_width = max_count_width.max(5);
+
+        // Create top border
+        table.push_str(&format!("+-{:-<}-+-{:-<}-+\n", kmer_width, count_width));
+
+        // Create header
+        table.push_str(&format!(
+            "| {:^width$} | {:^width2$} |\n",
+            "kmer",
+            "count",
+            width = kmer_width,
+            width2 = count_width
+        ));
+
+        // Create separator
+        table.push_str(&format!("+={:=<}-+={:=<}-+\n", kmer_width, count_width));
+
+        // Sort matches for consistent output
+        let mut matches_vec: Vec<_> = self.matches.iter().collect();
+        matches_vec.sort_by_key(|&(k, _)| k);
+
+        // Add data rows
+        for (kmer, count) in matches_vec {
+            table.push_str(&format!(
+                "| {:<width$} | {:>width2$} |\n",
+                kmer,
+                count,
+                width = kmer_width,
+                width2 = count_width
+            ));
+        }
+
+        // Create bottom border
+        table.push_str(&format!("+-{:-<}-+-{:-<}-+\n", kmer_width, count_width));
+
+        // Add metadata section
+        table.push_str(&format!("\nTotal matches: {}\n", self.total_matches));
+        table.push_str(&format!("Query time: {}ms\n", self.query_time_ms));
+        table.push_str(&format!(
+            "Memory block: [{}, {}) size={}\n",
+            self.start_index, self.end_index, self.block_size
+        ));
+        table.push_str(&format!("Sorted: {}\n", self.is_sorted));
+
+        Ok(table)
+    }
+}
+
+// ============================================================================
+// PyFuzzyResult formatting extensions
+// ============================================================================
+
+/// Formatting methods for PyFuzzyResult
+impl crate::fuzzy_query::PyFuzzyResult {
+    /// Convert fuzzy query result to JSON format
+    ///
+    /// Returns a JSON string containing all matches and query metadata.
+    ///
+    /// # Returns
+    /// * `String` - JSON formatted string
+    ///
+    /// # Example
+    /// ```python
+    /// result = fuzzy_query.query_fuzzy("ATNG", max_mutations=2)
+    /// json_str = result.to_json()
+    /// ```
+    pub fn to_json(&self) -> PyResult<String> {
+        let serializable = FuzzyResultSerializable::from(self);
+        serde_json::to_string_pretty(&serializable)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    }
+
+    /// Convert fuzzy query result to CSV format
+    ///
+    /// Returns a CSV formatted string with all fuzzy matches.
+    /// Includes header row and a metadata section at the end.
+    ///
+    /// # Returns
+    /// * `String` - CSV formatted string
+    ///
+    /// # Example
+    /// ```python
+    /// result = fuzzy_query.query_fuzzy("ATNG", max_mutations=2)
+    /// csv_str = result.to_csv()
+    /// # kmer,count,distance,match_type,mutation_positions
+    /// # ATCG,5,0,exact,"[]"
+    /// # ATGC,3,1,mutation_tolerance,"[2]"
+    /// # ...
+    /// ```
+    pub fn to_csv(&self) -> PyResult<String> {
+        let mut csv = String::new();
+        csv.push_str("kmer,count,distance,match_type,mutation_positions\n");
+
+        // Add exact match first if present
+        if let Some(ref exact) = self.exact_match {
+            csv.push_str(&format!(
+                "{},{},{},{},\"{:?}\"\n",
+                exact.kmer,
+                exact.count,
+                exact.distance.unwrap_or(0),
+                exact.match_type,
+                exact.mutation_positions
+            ));
+        }
+
+        // Add other matches
+        for match_item in &self.matches {
+            // Skip exact match if already added
+            if match_item.match_type == "exact" {
+                if let Some(ref exact) = self.exact_match {
+                    if match_item.kmer == exact.kmer {
+                        continue;
+                    }
+                }
+            }
+
+            csv.push_str(&format!(
+                "{},{},{},{},\"{:?}\"\n",
+                match_item.kmer,
+                match_item.count,
+                match_item.distance.unwrap_or(0),
+                match_item.match_type,
+                match_item.mutation_positions
+            ));
+        }
+
+        // Add metadata as comments
+        csv.push_str(&format!("# query_kmer={}\n", self.query_kmer));
+        csv.push_str(&format!("# total_matches={}\n", self.total_matches));
+        csv.push_str(&format!(
+            "# mutation_tolerance={}\n",
+            self.mutation_tolerance
+        ));
+        csv.push_str(&format!("# query_time_ms={}\n", self.query_time_ms));
+        csv.push_str(&format!(
+            "# has_position_mutations={}\n",
+            self.has_position_mutations
+        ));
+
+        Ok(csv)
+    }
+
+    /// Convert fuzzy query result to TSV format
+    ///
+    /// Returns a TSV (Tab-Separated Values) formatted string with all fuzzy matches.
+    ///
+    /// # Returns
+    /// * `String` - TSV formatted string
+    ///
+    /// # Example
+    /// ```python
+    /// result = fuzzy_query.query_fuzzy("ATNG", max_mutations=2)
+    /// tsv_str = result.to_tsv()
+    /// ```
+    pub fn to_tsv(&self) -> PyResult<String> {
+        let mut tsv = String::new();
+        tsv.push_str("kmer\tcount\tdistance\tmatch_type\tmutation_positions\n");
+
+        // Add exact match first if present
+        if let Some(ref exact) = self.exact_match {
+            tsv.push_str(&format!(
+                "{}\t{}\t{}\t{}\t{:?}\n",
+                exact.kmer,
+                exact.count,
+                exact.distance.unwrap_or(0),
+                exact.match_type,
+                exact.mutation_positions
+            ));
+        }
+
+        // Add other matches
+        for match_item in &self.matches {
+            // Skip exact match if already added
+            if match_item.match_type == "exact" {
+                if let Some(ref exact) = self.exact_match {
+                    if match_item.kmer == exact.kmer {
+                        continue;
+                    }
+                }
+            }
+
+            tsv.push_str(&format!(
+                "{}\t{}\t{}\t{}\t{:?}\n",
+                match_item.kmer,
+                match_item.count,
+                match_item.distance.unwrap_or(0),
+                match_item.match_type,
+                match_item.mutation_positions
+            ));
+        }
+
+        // Add metadata as comments
+        tsv.push_str(&format!("# query_kmer={}\n", self.query_kmer));
+        tsv.push_str(&format!("# total_matches={}\n", self.total_matches));
+        tsv.push_str(&format!(
+            "# mutation_tolerance={}\n",
+            self.mutation_tolerance
+        ));
+        tsv.push_str(&format!("# query_time_ms={}\n", self.query_time_ms));
+        tsv.push_str(&format!(
+            "# has_position_mutations={}\n",
+            self.has_position_mutations
+        ));
+
+        Ok(tsv)
+    }
+}
+
+// ============================================================================
+// PyDatabaseStats formatting extensions
+// ============================================================================
+
+/// Formatting methods for PyDatabaseStats
+impl crate::database::PyDatabaseStats {
+    /// Convert database statistics to JSON format
+    ///
+    /// Returns a JSON string containing database metadata.
+    ///
+    /// # Returns
+    /// * `String` - JSON formatted string
+    ///
+    /// # Example
+    /// ```python
+    /// stats = db.get_stats()
+    /// json_str = stats.to_json()
+    /// ```
+    pub fn to_json(&self) -> PyResult<String> {
+        let serializable = DatabaseStatsSerializable::from(self);
+        serde_json::to_string_pretty(&serializable)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    }
+
+    /// Convert database statistics to CSV format
+    ///
+    /// Returns a CSV formatted string with database statistics.
+    ///
+    /// # Returns
+    /// * `String` - CSV formatted string
+    ///
+    /// # Example
+    /// ```python
+    /// stats = db.get_stats()
+    /// csv_str = stats.to_csv()
+    /// # metric,value
+    /// # kmer_size,31
+    /// # total_kmers,1000000
+    /// # ...
+    /// ```
+    pub fn to_csv(&self) -> PyResult<String> {
+        let mut csv = String::new();
+        csv.push_str("metric,value\n");
+
+        let stats = vec![
+            ("kmer_size", self.kmer_size.to_string()),
+            ("total_kmers", self.total_kmers.to_string()),
+            ("unique_kmers", self.unique_kmers.to_string()),
+            ("file_size", self.file_size.to_string()),
+            ("is_sorted", self.is_sorted.to_string()),
+            ("canonical", self.canonical.to_string()),
+        ];
+
+        for (metric, value) in stats {
+            csv.push_str(&format!("{},{}\n", metric, value));
+        }
+
+        Ok(csv)
+    }
+
+    /// Convert database statistics to TSV format
+    ///
+    /// Returns a TSV (Tab-Separated Values) formatted string with database statistics.
+    ///
+    /// # Returns
+    /// * `String` - TSV formatted string
+    ///
+    /// # Example
+    /// ```python
+    /// stats = db.get_stats()
+    /// tsv_str = stats.to_tsv()
+    /// # metric\tvalue
+    /// # kmer_size\t31
+    /// # total_kmers\t1000000
+    /// # ...
+    /// ```
+    pub fn to_tsv(&self) -> PyResult<String> {
+        let mut tsv = String::new();
+        tsv.push_str("metric\tvalue\n");
+
+        let stats = vec![
+            ("kmer_size", self.kmer_size.to_string()),
+            ("total_kmers", self.total_kmers.to_string()),
+            ("unique_kmers", self.unique_kmers.to_string()),
+            ("file_size", self.file_size.to_string()),
+            ("is_sorted", self.is_sorted.to_string()),
+            ("canonical", self.canonical.to_string()),
+        ];
+
+        for (metric, value) in stats {
+            tsv.push_str(&format!("{}\t{}\n", metric, value));
+        }
+
+        Ok(tsv)
+    }
+}
+/// Format a k-mer in canonical representation (reverse complement if needed)
+fn format_kmer_canonical(kmer: &str) -> String {
+    let revcomp = reverse_complement(kmer);
+    if kmer.to_string() < revcomp {
+        kmer.to_string()
+    } else {
+        revcomp
+    }
+}
+
+/// Compute the reverse complement of a DNA sequence
+fn reverse_complement(seq: &str) -> String {
+    seq.chars()
+        .rev()
+        .map(|c| match c {
+            'A' | 'a' => 'T',
+            'T' | 't' => 'A',
+            'C' | 'c' => 'G',
+            'G' | 'g' => 'C',
+            _ => c,
+        })
+        .collect()
+}

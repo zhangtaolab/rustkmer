@@ -75,10 +75,10 @@ class TestPyO3BasicFunctionality:
             assert result is not None
             assert hasattr(result, "count")
 
-    def test_kmer_counter_exists(self, PyKmerCounter):
-        """Test that PyKmerCounter can be used."""
-        # PyKmerCounter uses positional arguments: k, canonical, _initial_capacity
-        counter = PyKmerCounter(21, True, 1000)
+    def test_kmer_counter_exists(self, PyCounter):
+        """Test that PyCounter can be used."""
+        # PyCounter uses positional arguments: k, canonical, _initial_capacity
+        counter = PyCounter(21, True, 1000)
         assert counter is not None
 
         # Get stats
@@ -110,7 +110,7 @@ class TestPyO3ModuleCompleteness:
         m = pyo3_module
 
         assert hasattr(m, "PyDatabase")
-        assert hasattr(m, "PyKmerCounter")
+        assert hasattr(m, "PyCounter")
         assert hasattr(m, "PyFuzzyQuery")
         assert hasattr(m, "PyPrefixQuery")
         assert hasattr(m, "PyQueryResult")

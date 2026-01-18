@@ -271,10 +271,10 @@ done
 ### Python API
 
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 
 # Load database
-db = rustkmer_pyo3.PyDatabase("genome.rkdb")
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
 
 # Extract by hybrid pattern
 results = db.extract_by_prefix("ATG{N5}TGA")

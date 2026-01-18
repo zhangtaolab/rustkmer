@@ -9,12 +9,12 @@ When working with large genomic datasets (millions of k-mers), proper optimizati
 For very large databases, use memory-mapped access instead of preloading:
 
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode
 
 # Use memory mapping for large databases
-engine = rustkmer_pyo3.PyDatabase(
+engine = PyDatabase(
     "large_genome.rkdb", 
-    rustkmer_pyo3.LoadMode.MemoryMapped
+    LoadMode.MemoryMapped
 )
 ```
 
@@ -24,7 +24,7 @@ Process large datasets in smaller chunks:
 
 ```python
 def process_large_dataset(database_path, batch_size=10000):
-    engine = rustkmer_pyo3.PyDatabase(database_path, rustkmer_pyo3.LoadMode.MemoryMapped)
+    engine = PyDatabase(database_path, LoadMode.MemoryMapped)
     
     # Get all k-mers in batches
     all_kmers = engine.get_all_kmers()
@@ -69,10 +69,10 @@ rustkmer count -k 21 --sort -i genome.fa -o sorted_genome.rkdb
 ## Example: Large Genome Analysis
 
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode
 
 # Load large genome database
-engine = rustkmer_pyo3.PyDatabase("human_genome_k31.rkdb", rustkmer_pyo3.LoadMode.MemoryMapped)
+engine = PyDatabase("human_genome_k31.rkdb", LoadMode.MemoryMapped)
 
 # Get statistics
 stats = engine.get_stats()

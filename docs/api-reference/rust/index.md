@@ -51,10 +51,10 @@ use rustkmer::KmerCounter;
 let mut counter = KmerCounter::new(21, true);
 
 // Count k-mers from a file
-counter.count_file("genome.fa.gz")?;
+counter.add_from_fasta("genome.fa.gz")?;
 
 // Get statistics
-let total = counter.get_total_count();
+let total = counter.get_stats().total_kmers);
 let unique = counter.get_unique_count();
 
 println!("Total k-mers: {}, Unique k-mers: {}", total, unique);

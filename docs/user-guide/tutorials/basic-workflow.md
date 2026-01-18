@@ -18,7 +18,7 @@ This tutorial walks you through a complete k-mer analysis workflow using RustKme
 Import the necessary libraries:
 
 ```python
-from rustkmer import KmerCounter, Database
+from pyrustkmer import KmerCounter, Database
 import matplotlib.pyplot as plt
 import pandas as pd
 ```
@@ -51,14 +51,14 @@ Create a k-mer counter and count k-mers from your data:
 ```python
 # Create counter with k=21 (common for genomics)
 print("Creating k-mer counter (k=21)...")
-counter = KmerCounter(k=21, canonical=True)
+counter = PyCounter(21, canonical=True)
 
 # Count k-mers from the FASTA file
 print("Counting k-mers...")
-counter.count_file("tutorial_sequences.fasta")
+counter.add_from_fasta("tutorial_sequences.fasta")
 
 # Get basic statistics
-total_kmers = counter.get_total_count()
+total_kmers = counter.get_stats().total_kmers)
 unique_kmers = counter.get_unique_count()
 
 print(f"\nK-mer Counting Results:")
@@ -80,7 +80,7 @@ Save your k-mer counts to a database for fast querying:
 ```python
 # Save to database
 database_path = "tutorial_database.rkdb"
-counter.save_to_database(database_path, canonical=True)
+counter.save_database(database_path, canonical=True)
 
 print(f"\nDatabase saved to: {database_path}")
 print(f"File size: {os.path.getsize(database_path) / 1024:.2f} KB")
@@ -98,7 +98,7 @@ Load the database and perform queries:
 
 ```python
 # Load database
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load(database_path)
 
 # Query specific k-mers
@@ -110,7 +110,7 @@ test_kmers = [
 
 print("\nQuery Results:")
 for kmer in test_kmers:
-    count = db.query(kmer)
+    count = db.query_exact(kmer)
     print(f"  {kmer[:20]}...: {count}")
 ```
 
@@ -202,15 +202,15 @@ def analyze_with_different_k(file_path):
             counter = KmerCounter64(k=k, canonical=True)
         else:
             print(f"\nAnalyzing with k={k}...")
-            counter = KmerCounter(k=k, canonical=True)
+            counter = PyCounter(k, canonical=True)
 
         # Time the counting
         start_time = time.time()
-        counter.count_file(file_path)
+        counter.add_from_fasta(file_path)
         count_time = time.time() - start_time
 
         # Get results
-        total = counter.get_total_count()
+        total = counter.get_stats().total_kmers)
         unique = counter.get_unique_count()
 
         results[k] = {
@@ -334,7 +334,7 @@ Here's the complete workflow in a single script:
 import os
 import time
 import matplotlib.pyplot as plt
-from rustkmer import KmerCounter, Database
+from pyrustkmer import KmerCounter, Database
 
 def main():
     print("RustKmer Basic Workflow Tutorial")
@@ -346,26 +346,26 @@ def main():
 
     # Step 2: Count k-mers
     print("\n2. Counting k-mers...")
-    counter = KmerCounter(k=21, canonical=True)
-    counter.count_file("tutorial_sequences.fasta")
+    counter = PyCounter(21, canonical=True)
+    counter.add_from_fasta("tutorial_sequences.fasta")
 
-    total = counter.get_total_count()
+    total = counter.get_stats().total_kmers)
     unique = counter.get_unique_count()
     print(f"   Total: {total:,}, Unique: {unique:,}")
 
     # Step 3: Create database
     print("\n3. Creating database...")
     db_path = "tutorial_db.rkdb"
-    counter.save_to_database(db_path)
+    counter.save_database(db_path)
     print(f"   Database: {db_path}")
 
     # Step 4: Query database
     print("\n4. Querying database...")
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
     db.load(db_path)
 
     test_kmer = "ATCGATCGATCGATCGATCGATCG"
-    count = db.query(test_kmer)
+    count = db.query_exact(test_kmer)
     print(f"   '{test_kmer[:15]}...': {count}")
 
     # Step 5: Get statistics

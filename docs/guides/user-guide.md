@@ -319,10 +319,10 @@ export PYTHONPATH="$PWD/target/debug:$PYTHONPATH"
 ### 基本使用
 
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 
 # 加载数据库
-db = rustkmer_pyo3.PyDatabase("genome.rkdb")
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
 
 # 精确查询
 result = db.query_kmer("ATGCGATGCTAGCGCTAGCTA")
@@ -340,7 +340,7 @@ hybrid_results = db.query_hybrid("ATCG{N5}GTAC")
 ### 批量处理
 
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 from pathlib import Path
 
 # 批量查询多个序列
@@ -348,7 +348,7 @@ query_file = "queries.fa"
 output_dir = Path("results")
 output_dir.mkdir(exist_ok=True)
 
-with rustkmer_pyo3.PyDatabase("genome.rkdb") as db:
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
     # 读取查询序列
     with open(query_file) as f:
         queries = [line.strip() for line in f if line.startswith('>')]

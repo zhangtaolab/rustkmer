@@ -51,7 +51,7 @@ Choose your installation method below and begin your RustKmer journey!
 
 ```bash
 # Quick test with Python (after installation)
-python -c "from rustkmer import KmerCounter; print('RustKmer ready! 🚀')"
+python -c "from pyrustkmer import PyCounter; print('RustKmer ready! 🚀')"
 ```
 
 Let's get started with [Installation](installation.md)!

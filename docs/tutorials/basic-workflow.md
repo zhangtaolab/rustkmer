@@ -26,7 +26,7 @@ In this tutorial, you'll learn to:
 pip install rustkmer
 
 # Verify installation
-python -c "from rustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
+python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer installed successfully!')", LoadMode
 ```
 
 ### Create Sample Data
@@ -91,7 +91,7 @@ python3 create_sample_data.py
 ### Count K-mers from File
 ```python
 # step1_counting.py
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter, LoadMode
 
 def basic_kmer_counting(input_file, k=21, canonical=True):
     """Basic k-mer counting from a FASTA file."""
@@ -102,14 +102,14 @@ def basic_kmer_counting(input_file, k=21, canonical=True):
     print(f"   Canonical mode: {canonical}")
 
     # Create k-mer counter
-    counter = KmerCounter(k=k, canonical=canonical)
+    counter = PyCounter(k, canonical=canonical)
 
     # Count k-mers from file
     print("📊 Counting k-mers...")
-    counter.count_file(input_file)
+    counter.add_from_fasta(input_file)
 
     # Get basic statistics
-    total_kmers = counter.get_total_count()
+    total_kmers = counter.get_stats().total_kmers)
     unique_kmers = counter.get_unique_count()
     uniqueness_ratio = unique_kmers / total_kmers if total_kmers > 0 else 0
 
@@ -164,7 +164,7 @@ python3 step1_counting.py
 ### Create K-mer Database
 ```python
 # step2_database.py
-from rustkmer import KmerCounter, Database
+from pyrustkmer import KmerCounter, Database, LoadMode
 
 def create_database(counter, output_file):
     """Save k-mer counting results to database."""
@@ -173,13 +173,12 @@ def create_database(counter, output_file):
     print(f"   Output file: {output_file}")
 
     # Save to database
-    counter.save_to_database(output_file)
+    counter.save_database(output_file)
 
     print(f"✅ Database saved successfully!")
 
     # Verify database
-    with Database() as db:
-        db.load(output_file)
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
         stats = db.get_stats()
 
         print(f"\n📊 Database Statistics:")
@@ -194,15 +193,14 @@ def query_database(db_file, queries):
     print(f"\n🔍 Querying k-mers from database...")
     print(f"   Database: {db_file}")
 
-    with Database() as db:
-        db.load(db_file)
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
 
         results = []
 
         for i, query in enumerate(queries, 1):
             print(f"\n   Query {i}: {query}")
 
-            result = db.query(query)
+            result = db.query_exact(query)
 
             if result.exists:
                 print(f"   ✅ Found: {result.count:,} occurrences")
@@ -243,15 +241,14 @@ python3 step2_database.py
 # step3_analysis.py
 import matplotlib.pyplot as plt
 import numpy as np
-from rustkmer import Database
+from pyrustkmer import Database, LoadMode
 
 def analyze_kmer_frequencies(db_file):
     """Analyze and visualize k-mer frequency distribution."""
 
     print("📊 Analyzing k-mer frequencies...")
 
-    with Database() as db:
-        db.load(db_file)
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
         stats = db.get_stats()
 
         print(f"Database: {db_file}")
@@ -267,7 +264,7 @@ def analyze_kmer_frequencies(db_file):
 
         query_results = {}
         for query in queries:
-            result = db.query(query)
+            result = db.query_exact(query)
             query_results[query] = result.count if result.exists else 0
 
         print(f"\n🔍 Query Results Analysis:")
@@ -358,7 +355,7 @@ This script combines all steps into a single automated workflow.
 
 import os
 import sys
-from rustkmer import KmerCounter, Database
+from pyrustkmer import KmerCounter, Database, LoadMode
 
 def run_complete_workflow():
     """Run the complete RustKmer workflow from start to finish."""
@@ -373,10 +370,10 @@ def run_complete_workflow():
 
     # Step 2: Count k-mers
     print("\n🧬 Step 2: Counting k-mers...")
-    counter = KmerCounter(k=21, canonical=True)
-    counter.count_file("tutorial_data.fa")
+    counter = PyCounter(21, canonical=True)
+    counter.add_from_fasta("tutorial_data.fa")
 
-    total_kmers = counter.get_total_count()
+    total_kmers = counter.get_stats().total_kmers)
     unique_kmers = counter.get_unique_count()
 
     print(f"   Total k-mers: {total_kmers:,}")
@@ -385,7 +382,7 @@ def run_complete_workflow():
     # Step 3: Create database
     print("\n💾 Step 3: Creating database...")
     db_file = "tutorial_complete.rkdb"
-    counter.save_to_database(db_file)
+    counter.save_database(db_file)
 
     # Step 4: Query database
     print("\n🔍 Step 4: Querying database...")
@@ -395,14 +392,13 @@ def run_complete_workflow():
         queries = [line.strip() for line in f if line.strip()]
 
     # Perform queries
-    with Database() as db:
-        db.load(db_file)
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
 
         query_results = {}
         found_count = 0
 
         for query in queries:
-            result = db.query(query)
+            result = db.query_exact(query)
             count = result.count if result.exists else 0
             query_results[query] = count
 
@@ -544,7 +540,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 **Import Errors:**
 ```python
 # Verify RustKmer is properly installed
-python -c "from rustkmer import KmerCounter, Database; print('✅ OK')"
+python -c "from pyrustkmer import KmerCounter, Database; print('✅ OK')", LoadMode
 ```
 
 **File Not Found:**
@@ -556,7 +552,7 @@ ls -la tutorial_*
 **Memory Issues:**
 ```python
 # Use smaller k-mer size for memory efficiency
-counter = KmerCounter(k=13, canonical=True)  # Instead of k=21
+counter = PyCounter(13, canonical=True)  # Instead of k=21
 ```
 
 ---

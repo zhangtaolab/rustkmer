@@ -5,9 +5,9 @@ The `KmerCounter` class provides high-performance k-mer counting functionality f
 ## Class Overview
 
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 
-counter = KmerCounter(k=21, canonical=True)
+counter = PyCounter(21, canonical=True)
 ```
 
 ## Constructor
@@ -23,10 +23,10 @@ Initialize a new k-mer counter.
 **Example:**
 ```python
 # Standard k-mer counting
-counter = KmerCounter(k=21)
+counter = PyCounter(21)
 
 # Canonical k-mer counting (recommended)
-counter = KmerCounter(k=21, canonical=True)
+counter = PyCounter(21, canonical=True)
 ```
 
 ## Methods
@@ -40,8 +40,8 @@ Count k-mers from a FASTA/FASTQ file.
 
 **Example:**
 ```python
-counter = KmerCounter(k=21, canonical=True)
-counter.count_file("genome.fa.gz")
+counter = PyCounter(21, canonical=True)
+counter.add_from_fasta("genome.fa.gz")
 ```
 
 ### `count_sequence(sequence)`
@@ -53,7 +53,7 @@ Count k-mers from a sequence string.
 
 **Example:**
 ```python
-counter = KmerCounter(k=7)
+counter = PyCounter(7)
 counter.count_sequence("ATGCGATCGATCG")
 ```
 
@@ -66,7 +66,7 @@ Get the total number of k-mers counted.
 
 **Example:**
 ```python
-total = counter.get_total_count()
+total = counter.get_stats().total_kmers)
 print(f"Total k-mers: {total:,}")
 ```
 
@@ -158,16 +158,16 @@ The KmerCounter may raise the following exceptions:
 ## Complete Example
 
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 
 # Initialize counter
-counter = KmerCounter(k=21, canonical=True)
+counter = PyCounter(21, canonical=True)
 
 # Count k-mers from file
-counter.count_file("genome.fa.gz")
+counter.add_from_fasta("genome.fa.gz")
 
 # Get statistics
-print(f"Total k-mers: {counter.get_total_count():,}")
+print(f"Total k-mers: {counter.get_stats().total_kmers):,}")
 print(f"Unique k-mers: {counter.get_unique_count():,}")
 
 # Get top 10 most frequent k-mers

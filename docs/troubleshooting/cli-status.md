@@ -42,7 +42,7 @@ rustkmer dump database.rkdb | grep "AAA$" > suffix_matches.txt
 由于Python API集成还在完善中，可以创建临时脚本：
 ```python
 # prefix_query_temp.py
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 
 def prefix_query(database_path, prefix):
     # 这里可以使用数据库的迭代查询功能

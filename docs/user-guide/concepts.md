@@ -63,29 +63,29 @@ RustKmer uses a custom binary format (RKDB) for storing k-mer data:
 ### 1. K-mer Counting
 
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 
 # Create counter
-counter = KmerCounter(k=31, canonical=True)
+counter = PyCounter(31, canonical=True)
 
 # Count from file
-counter.count_file("genome.fa")
+counter.add_from_fasta("genome.fa")
 
 # Get statistics
-total = counter.get_total_count()  # Total k-mers counted
+total = counter.get_stats().total_kmers)  # Total k-mers counted
 unique = counter.get_unique_count()  # Unique k-mers
 ```
 
 ### 2. Database Queries
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load("genome.rkdb")
 
 # Exact match
-count = db.query("ATCGATCGATCGATCGATCGATC")
+count = db.query_exact("ATCGATCGATCGATCGATCGATC")
 
 # Batch queries (more efficient)
 results = db.query_multiple(["ATCG", "GCTA", "CCCC"])
@@ -96,16 +96,16 @@ results = db.query_multiple(["ATCG", "GCTA", "CCCC"])
 Find k-mers with patterns or mismatches:
 
 ```python
-from rustkmer import FuzzyQuery
+from pyrustkmer import FuzzyQuery
 
 fq = FuzzyQuery()
 fq.load("genome.rkdb")
 
 # Wildcard search (N = any base)
-results = fq.query("AATN")  # Matches AATA, AATC, AATG, AATT
+results = fuzzy.query_fuzzy("AATN")  # Matches AATA, AATC, AATG, AATT
 
 # Mismatch search
-results = fq.query("ATCGATCG", max_mismatches=2)
+results = fuzzy.query_fuzzy("ATCGATCG", max_mismatches=2)
 ```
 
 ## Choosing K-mer Size
@@ -130,10 +130,10 @@ RustKmer uses multiple threads for performance:
 
 ```python
 # Automatic thread count (uses all available cores)
-counter = KmerCounter(k=31)
+counter = PyCounter(31)
 
 # Specify thread count
-counter = KmerCounter(k=31, threads=8)
+counter = PyCounter(31, threads=8)
 ```
 
 ### When to Use Multiple Threads
@@ -151,13 +151,13 @@ counter = KmerCounter(k=31, threads=8)
 ### Canonical Mode
 ```python
 # Halves memory usage for DNA
-counter = KmerCounter(k=31, canonical=True)
+counter = PyCounter(31, canonical=True)
 ```
 
 ### Memory Mapping
 ```python
 # For databases larger than RAM
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load("huge_db.rkdb", memory_mapped=True)
 ```
 
@@ -165,8 +165,8 @@ db.load("huge_db.rkdb", memory_mapped=True)
 ```python
 # Process files incrementally
 for file in file_list:
-    counter = KmerCounter(k=31)
-    counter.count_file(file)
+    counter = PyCounter(31)
+    counter.add_from_fasta(file)
     # Save intermediate results if needed
 ```
 
@@ -182,10 +182,10 @@ RustKmer automatically detects file format from extension:
 
 ```python
 # All these work automatically
-counter.count_file("genome.fa")
-counter.count_file("reads.fq")
-counter.count_file("data.fa.gz")
-counter.count_file("sequences.fastq.gz")
+counter.add_from_fasta("genome.fa")
+counter.add_from_fasta("reads.fq")
+counter.add_from_fasta("data.fa.gz")
+counter.add_from_fasta("sequences.fastq.gz")
 ```
 
 ## Error Handling
@@ -193,11 +193,11 @@ counter.count_file("sequences.fastq.gz")
 Common errors and how to handle them:
 
 ```python
-from rustkmer import KmerCounter, SequenceError, DatabaseError
+from pyrustkmer import KmerCounter, SequenceError, DatabaseError
 
 try:
-    counter = KmerCounter(k=31)
-    counter.count_file("nonexistent.fa")
+    counter = PyCounter(31)
+    counter.add_from_fasta("nonexistent.fa")
 except SequenceError as e:
     print(f"File error: {e}")
 except DatabaseError as e:
@@ -223,9 +223,9 @@ except DatabaseError as e:
 ### With Pandas
 ```python
 import pandas as pd
-from rustkmer import Database
+from pyrustkmer import Database
 
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load("data.rkdb")
 
 # Query from DataFrame
@@ -236,21 +236,21 @@ df['count'] = df['sequence'].apply(db.query)
 ### With Biopython
 ```python
 from Bio import SeqIO
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 
-counter = KmerCounter(k=21)
+counter = PyCounter(21)
 for record in SeqIO.parse("sequences.fasta", "fasta"):
-    counter.count_string(str(record.seq))
+    counter.add_sequence(str(record.seq))
 ```
 
 ### With NumPy
 ```python
 import numpy as np
-from rustkmer import Database
+from pyrustkmer import Database
 
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 sequences = np.array(['ATCG', 'GCTA', 'CCCC'])
-counts = np.array([db.query(seq) for seq in sequences])
+counts = np.array([db.query_exact(seq) for seq in sequences])
 ```
 
 ## Understanding the Output

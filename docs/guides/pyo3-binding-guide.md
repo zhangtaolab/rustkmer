@@ -37,8 +37,8 @@ export PYTHONPATH="/Users/forrest/Github/rustkmer/pyo3/target/debug:$PYTHONPATH"
 ### 2. 测试导入
 
 ```python
-import rustkmer_pyo3
-print("Available classes:", [x for x in dir(rustkmer_pyo3) if not x.startswith('_')])
+from pyrustkmer import PyCounter, PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase, PyFormatter
+print("Available classes: PyCounter, PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase, PyFormatter")
 ```
 
 ## 📖 使用示例
@@ -47,27 +47,23 @@ print("Available classes:", [x for x in dir(rustkmer_pyo3) if not x.startswith('
 
 #### 基本数据库操作:
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode
 
 # 创建数据库连接
-engine = rustkmer_pyo3.PyDatabase(
-    "python/tests/test_data/small_test.rkdb", 
-    rustkmer_pyo3.LoadMode.Preload
+db = PyDatabase(
+    "python/tests/test_data/small_test.rkdb",
+    LoadMode.Preload
 )
 
-# 单个k-mer查询（推荐使用新命名）
-result = engine.query_exact("GCCGCGG")
+# 单个k-mer查询
+result = db.query_exact("GCCGCGG")
 if result:
     print(f"找到: {result.count}")
 
-# 批量查询（推荐使用新命名）
-batch_results = engine.query_exact_batch(["GCCGCGG", "ATCCTGA", "AAAAAAA"])
+# 批量查询
+batch_results = db.query_exact_batch(["GCCGCGG", "ATCCTGA", "AAAAAAA"])
 for kmer, result in batch_results.items():
     print(f"{kmer}: {result.count}")
-
-# 兼容性说明：旧方法名仍然可用但已废弃
-# result = engine.query("GCCGCGG")           # 旧方法，已废弃
-# batch_results = engine.query_batch([...])  # 旧方法，已废弃
 ```
 
 ### 完整示例脚本
@@ -92,51 +88,45 @@ python3 prefix_query_pyo3_binding.py ~/Data/data/kmer/K19/R1_001.rkdb "AAAAAAAA{
 
 #### 初始化
 ```python
-engine = rustkmer_pyo3.PyDatabase(database_path, load_mode)
+db = PyDatabase(database_path, load_mode)
 ```
 
 #### 可用的加载模式
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode
 
 # 预加载模式（推荐用于小数据库）
-engine = rustkmer_pyo3.PyDatabase("database.rkdb", rustkmer_pyo3.LoadMode.Preload)
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 
 # 内存映射模式（推荐用于大数据库）
-engine = rustkmer_pyo3.PyDatabase("database.rkdb", rustkmer_pyo3.LoadMode.MemoryMapped)
+db = PyDatabase("database.rkdb", LoadMode.MemoryMapped)
 
 # 懒加载模式
-engine = rustkmer_pyo3.PyDatabase("database.rkdb", rustkmer_pyo3.LoadMode.Lazy)
+db = PyDatabase("database.rkdb", LoadMode.Lazy)
 ```
 
 #### 主要方法
 
-##### 1. 单个k-mer查询（推荐使用新命名）
+##### 1. 单个k-mer查询
 ```python
-result = engine.query_exact("GCCGCGG")
+result = db.query_exact("GCCGCGG")
 # 返回: PyQueryResult对象，包含count属性
 if result:
     print(f"找到: {result.count}")
-
-# 兼容性说明：旧方法名仍然可用但已废弃
-result = engine.query("GCCGCGG")  # 已废弃，请使用 query_exact()
 ```
 
-##### 2. 批量查询（推荐使用新命名）
+##### 2. 批量查询
 ```python
-results = engine.query_exact_batch(["GCCGCGG", "ATCCTGA", "AAAAAAA"])
+results = db.query_exact_batch(["GCCGCGG", "ATCCTGA", "AAAAAAA"])
 # 返回: 包含所有查询结果的字典
 for kmer, result in results.items():
     print(f"{kmer}: {result.count}")
-
-# 兼容性说明：旧方法名仍然可用但已废弃
-results = engine.query_batch([...])  # 已废弃，请使用 query_exact_batch()
 ```
 
 ##### 3. 前缀查询
 ```python
-# 统一前缀查询（推荐使用新命名）
-result = engine.query_prefix("GCC")
+# 统一前缀查询
+result = db.query_prefix("GCC")
 print(f"找到 {result.total_matches} 个前缀匹配")
 print(f"查询时间: {result.query_time_ms}ms")
 
@@ -144,24 +134,21 @@ print(f"查询时间: {result.query_time_ms}ms")
 for kmer, count in result.matches.items():
     print(f"  {kmer}: {count}")
 
-# 批量前缀查询（推荐使用新命名）
+# 批量前缀查询
 prefixes = ["GCC", "ATC", "AAA", "TTT"]
-batch_results = engine.query_prefix_batch(prefixes)
+batch_results = db.query_prefix_batch(prefixes)
 for prefix, result in zip(prefixes, batch_results):
     print(f"前缀 {prefix}: {result.total_matches} 个结果")
-
-# 兼容性说明：旧方法名仍然可用但已废弃
-result = engine.query_prefix_optimized("GCC")  # 已废弃，请使用 query_prefix()
 ```
 
 #### 4. 混合模式查询 (query_hybrid)
 ```python
 # 混合模式查询 - 支持 {N} 语法
-results = engine.query_hybrid("AAAAAAAA{N5}AAAAAA")
+results = db.query_hybrid("AAAAAAAA{N5}AAAAAA")
 print(f"找到 {len(results)} 个混合模式匹配")
 
 # 模式解析（不执行查询）
-pattern_info = engine.parse_pattern("AAAAAAAA{N5}AAAAAA")
+pattern_info = db.parse_pattern("AAAAAAAA{N5}AAAAAA")
 print(f"前缀: {pattern_info['prefix']}")      # AAAAAAAA
 print(f"后缀: {pattern_info['suffix']}")      # AAAAAA
 print(f"N数量: {pattern_info['n_count']}")    # 5
@@ -172,7 +159,7 @@ patterns = [
     "ATCG{N3}GCTA",
     "GCC{N2}GCC"
 ]
-batch_results = engine.query_hybrid_batch(patterns)
+batch_results = db.query_hybrid_batch(patterns)
 for pattern, results in zip(patterns, batch_results):
     print(f"模式 {pattern}: {len(results)} 个结果")
 ```
@@ -180,11 +167,11 @@ for pattern, results in zip(patterns, batch_results):
 #### 5. 模糊查询
 ```python
 # 模糊查询 - 支持突变容忍
-# 模糊查询（推荐使用新命名）
-result = engine.query_fuzzy("GCCGCNG", max_mutations=1)
+from pyrustkmer import PyFuzzyQuery
 
-# 兼容性说明：旧方法名仍然可用但已废弃
-# result = engine.fuzzy_query("GCCGCNG", max_mutations=1)  # 已废弃，请使用 query_fuzzy()
+fuzzy_query = PyFuzzyQuery(db)
+result = fuzzy_query.query_fuzzy("GCCGCNG", max_mutations=1)
+
 print(f"找到 {result.total_matches} 个模糊匹配")
 print(f"查询时间: {result.query_time_ms}ms")
 
@@ -195,17 +182,17 @@ for match in result.matches:
 
 #### 6. 数据库信息
 ```python
-print(f"数据库路径: {engine.path}")
-print(f"K-mer大小: {engine.kmer_size}")
-print(f"加载模式: {engine.load_mode}")
+print(f"数据库路径: {db.path}")
+print(f"K-mer大小: {db.kmer_size}")
+print(f"加载模式: {db.load_mode}")
 
 # 获取详细统计信息
-stats = engine.get_stats()
+stats = db.get_stats()
 print(f"总k-mers: {stats.total_kmers}")
 print(f"唯一k-mers: {stats.unique_kmers}")
 
 # 获取统一接口信息
-info = engine.database_info()
+info = db.database_info()
 print(f"加载状态: {info['is_loaded']}")
 print(f"数据库路径: {info['database_path']}")
 ```
@@ -218,26 +205,26 @@ import time
 
 # 监控查询性能
 start_time = time.time()
-result = engine.query("GCCGCGG")
+result = db.query_exact("GCCGCGG")
 end_time = time.time()
 
 print(f"查询时间: {(end_time - start_time)*1000:.2f} ms")
 
 # 内存使用监控
-memory_usage = engine.get_memory_usage()
+memory_usage = db.get_memory_usage()
 print(f"内存使用: {memory_usage}")
 ```
 
 #### 数据库属性
 ```python
 # 检查数据库状态
-print(f"是否已加载: {engine.is_loaded}")
-print(f"数据库路径: {engine.path}")
-print(f"K-mer大小: {engine.kmer_size}")
-print(f"加载模式: {engine.load_mode}")
+print(f"是否已加载: {db.is_loaded}")
+print(f"数据库路径: {db.path}")
+print(f"K-mer大小: {db.kmer_size}")
+print(f"加载模式: {db.load_mode}")
 
 # 获取所有k-mers（注意：仅用于小数据库）
-all_kmers = engine.get_all_kmers()
+all_kmers = db.get_all_kmers()
 print(f"数据库中共有 {len(all_kmers)} 个k-mers")
 ```
 
@@ -248,10 +235,10 @@ print(f"数据库中共有 {len(all_kmers)} 个k-mers")
 传统的PyO3接口需要多个独立的查询类：
 
 ```python
-# 旧方式 - 需要多个实例
+# 旧方式 - 需要多个实例（已废弃）
 db = PyDatabase("db.rkdb", LoadMode.Preload)           # 精确查询
-prefix_query = PyPrefixQuery("db.rkdb")                # 前缀查询
-fuzzy_query = PyFuzzyQuery(db)                         # 模糊查询
+prefix_query = PyDatabase("db.rkdb")                # 前缀查询（已废弃）
+fuzzy_query = PyFuzzyQuery(db)                         # 模糊查询（已废弃）
 
 # 问题：重复加载数据库，内存占用高
 ```
@@ -260,18 +247,18 @@ fuzzy_query = PyFuzzyQuery(db)                         # 模糊查询
 
 ```python
 # 新方式 - 单一实例，所有功能
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
+
 db = PyDatabase("db.rkdb", LoadMode.Preload)
 
-# 所有查询功能都通过同一个实例（推荐使用新命名）
+# 所有查询功能都通过同一个实例
 exact_result = db.query_exact("GCCGCGG")              # 精确查询
 prefix_result = db.query_prefix("GCC")                # 前缀查询
 hybrid_result = db.query_hybrid("GCC{N3}CGG")         # 混合查询
-fuzzy_result = db.query_fuzzy("GCCGCN", 1)            # 模糊查询
 
-# 兼容性说明：旧方法名仍然可用但已废弃
-# exact_result = db.query("GCCGCGG")                   # 已废弃
-# prefix_result = db.query_prefix_optimized("GCC")     # 已废弃
-# fuzzy_result = db.fuzzy_query("GCCGCN", 1)           # 已废弃
+# 模糊查询使用单独的类
+fuzzy_query = PyFuzzyQuery(db)
+fuzzy_result = fuzzy_query.query_fuzzy("GCCGCN", max_mutations=1)
 
 # 优势：内存高效，API统一，功能完整
 ```
@@ -363,54 +350,53 @@ print(f"""
 
 ### 示例 1: 基础查询
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode
 
 # 加载数据库
-engine = rustkmer_pyo3.PyPrefixQuery("~/Data/data/kmer/K19/R1_001.rkdb")
+db = PyDatabase("~/Data/data/kmer/K19/R1_001.rkdb", LoadMode.Preload)
 
 # 查询以 AAAAAAAA 开头的 k-mers
-prefix_results = engine.query_prefix_string("AAAAAAAA")
+prefix_results = db.query_prefix("AAAAAAAA")
 print(f"找到 {len(prefix_results)} 个以 AAAAAAAA 开头的 k-mers")
 
 # 混合搜索
-hybrid_results = engine.query_hybrid("AAAAAAAA{N5}AAAAAA")  
+hybrid_results = db.query_hybrid("AAAAAAAA{N5}AAAAAA")
 print(f"找到 {len(hybrid_results)} 个符合 AAAAAAAA{N5}AAAAAA 模式的 k-mers")
 ```
 
 ### 示例 2: 批量查询
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode
 
-# 创建扩展引擎
-extended_engine = rustkmer_pyo3.PyExtendedPrefixQuery("~/Data/data/kmer/K19/R1_001.rkdb")
+# 加载数据库
+db = PyDatabase("~/Data/data/kmer/K19/R1_001.rkdb", LoadMode.Preload)
 
-# 批量查询多个模式
-patterns = ["AAAAAAAA", "AAAAAAA{N5}AAAAAA", "ATCG{N3}GCTA"]
-batch_results = extended_engine.batch_query(patterns)
+# 批量查询多个前缀模式
+patterns = ["AAAAAAAA", "AAAAAAA", "ATCG", "GCTA"]
+batch_results = db.query_prefix_batch(patterns)
 
 # 分析结果
-for pattern, metrics in batch_results.items():
-    print(f"模式 '{pattern}':")
-    print(f"  结果数: {metrics.total_matches}")
-    print(f"  执行时间: {metrics.execution_time_ms} ms")
+for prefix, result in zip(patterns, batch_results):
+    print(f"前缀 '{prefix}':")
+    print(f"  结果数: {result.total_matches}")
     
     # 显示前3个结果
-    sample_results = list(metrics.results.items())[:3]
+    sample_results = list(result.matches.items())[:3]
     for kmer, count in sample_results:
         print(f"    {kmer}: {count}")
 ```
 
 ### 示例 3: 性能比较
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode
 import time
 
-engine = rustkmer_pyo3.PyExtendedPrefixQuery("~/Data/data/kmer/K19/R1_001.rkdb")
+db = PyDatabase("~/Data/data/kmer/K19/R1_001.rkdb", LoadMode.Preload)
 
 # 比较不同查询的性能
 patterns = [
     "A",           # 短前缀
-    "AA",          # 中等前缀  
+    "AA",          # 中等前缀
     "AAAAAAAA",    # 长前缀
     "AAAAAAAA{N5}AAAAAA"  # 混合模式
 ]
@@ -419,12 +405,17 @@ print("性能比较:")
 print("-" * 60)
 for pattern in patterns:
     start_time = time.time()
-    metrics = engine.query_with_metrics(pattern)
+    if '{' in pattern:  # 混合模式
+        result = db.query_hybrid(pattern)
+        total_matches = len(result)
+    else:  # 前缀模式
+        result = db.query_prefix(pattern)
+        total_matches = result.total_matches
     end_time = time.time()
     
     print(f"模式: {pattern:<20} | "
-          f"结果: {metrics.total_matches:>6} | "
-          f"时间: {metrics.execution_time_ms:>6.2f} ms")
+          f"结果: {total_matches:>6} | "
+          f"时间: {(end_time - start_time)*1000:>6.2f} ms")
 ```
 
 ## ⚠️ 错误处理
@@ -442,7 +433,7 @@ os.environ['PYTHONPATH'] = '/path/to/rustkmer/pyo3/target/debug:' + os.environ.g
 #### 2. 数据库文件不存在
 ```python
 try:
-    engine = rustkmer_pyo3.PyDatabase("nonexistent.db", rustkmer_pyo3.LoadMode.Preload)
+    db = PyDatabase("nonexistent.db", LoadMode.Preload)
 except Exception as e:
     print(f"数据库加载失败: {e}")
 ```
@@ -459,15 +450,15 @@ except Exception as e:
 ```python
 # 对于大数据库，建议使用MemoryMapped模式以节省内存
 try:
-    engine = rustkmer_pyo3.PyDatabase(
-        "large_database.rkdb", 
-        rustkmer_pyo3.LoadMode.MemoryMapped
+    db = PyDatabase(
+        "large_database.rkdb",
+        LoadMode.MemoryMapped
     )
-    
+
     # 监控内存使用
-    memory_info = engine.get_memory_usage()
+    memory_info = db.get_memory_usage()
     print(f"内存使用情况: {memory_info}")
-    
+
 except Exception as e:
     print(f"LoadMode错误: {e}")
 ```
@@ -481,45 +472,43 @@ except Exception as e:
 
 ### Python 统一接口等效代码 ✅
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 # 创建统一数据库接口（推荐方式）
-engine = rustkmer_pyo3.PyDatabase(
-    "~/Data/data/kmer/K19/R1_001.rkdb", 
-    rustkmer_pyo3.LoadMode.Preload
+db = PyDatabase(
+    "~/Data/data/kmer/K19/R1_001.rkdb",
+    LoadMode.Preload
 )
 
 # 执行混合模式查询
-results = engine.query_hybrid("AAAAAAAA{N5}AAAAAA")
+results = db.query_hybrid("AAAAAAAA{N5}AAAAAA")
 
 # 处理结果
 for kmer, count in results.items():
     print(f"{kmer}\t{count}")
 
-# 其他查询功能（同一个实例，推荐使用新命名）
-exact_result = engine.query_exact("GCCGCGG")              # 精确查询
-prefix_result = engine.query_prefix("GCC")                # 前缀查询
-fuzzy_result = engine.query_fuzzy("GCCGCN", 1)            # 模糊查询
+# 其他查询功能（同一个实例）
+exact_result = db.query_exact("GCCGCGG")              # 精确查询
+prefix_result = db.query_prefix("GCC")                # 前缀查询
 
-# 兼容性说明：旧方法名仍然可用但已废弃
-# exact_result = engine.query("GCCGCGG")                   # 已废弃
-# prefix_result = engine.query_prefix_optimized("GCC")     # 已废弃
-# fuzzy_result = engine.fuzzy_query("GCCGCN", 1)           # 已废弃
+# 模糊查询使用单独的类
+fuzzy = PyFuzzyQuery(db)
+fuzzy_result = fuzzy.query_fuzzy("GCCGCN", max_mutations=1)
 
 # 批量查询
 batch_patterns = ["AAAAAAAA{N5}AAAAAA", "ATCG{N3}GCTA"]
-batch_results = engine.query_hybrid_batch(batch_patterns)
+batch_results = db.query_hybrid_batch(batch_patterns)
 ```
 
 ### 传统接口等效代码（兼容性）
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode
 
-# 传统方式（逐步弃用）
-engine = rustkmer_pyo3.PyPrefixQuery("~/Data/data/kmer/K19/R1_001.rkdb")
-results = engine.query_hybrid("AAAAAAAA{N5}AAAAAA")
+# 推荐方式：统一接口
+db = PyDatabase("~/Data/data/kmer/K19/R1_001.rkdb", LoadMode.Preload)
+results = db.query_hybrid("AAAAAAAA{N5}AAAAAA")
 
-# 注意：建议迁移到统一接口以获得更好的性能和更多功能
+# 注意：PyDatabase、PyDatabase等已废弃，建议迁移到统一接口
 ```
 
 ## 🌟 统一接口最新实现状态
@@ -564,22 +553,22 @@ PyO3统一接口已成功实现，显著提升了内存效率和API一致性：
 
 #### 旧代码迁移
 ```python
-# 旧方式（逐步弃用）
-db = PyDatabase("db.rkdb", LoadMode.Preload)           # 精确查询
-prefix_query = PyPrefixQuery("db.rkdb")                # 前缀查询
-fuzzy_query = PyFuzzyQuery(db)                         # 模糊查询
+# 旧方式（已废弃）
+# db = PyDatabase("db.rkdb", LoadMode.Preload)
+# prefix_query = PyDatabase("db.rkdb")
+# fuzzy_query = PyFuzzyQuery(db)
 
-# 新方式（推荐使用统一命名）
+# 新方式（推荐）
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
+
 db = PyDatabase("db.rkdb", LoadMode.Preload)
 exact_result = db.query_exact("GCCGCGG")              # 精确查询
 prefix_result = db.query_prefix("GCC")                # 前缀查询
 hybrid_result = db.query_hybrid("GCC{N3}CGG")         # 混合查询
-fuzzy_result = db.query_fuzzy("GCCGCN", 1)            # 模糊查询
 
-# 兼容性说明：旧方法名仍然可用但已废弃
-# exact_result = db.query("GCCGCGG")                   # 已废弃
-# prefix_result = db.query_prefix_optimized("GCC")     # 已废弃
-# fuzzy_result = db.fuzzy_query("GCCGCN", 1)           # 已废弃
+# 模糊查询使用单独的类
+fuzzy = PyFuzzyQuery(db)
+fuzzy_result = fuzzy.query_fuzzy("GCCGCN", max_mutations=1)
 ```
 
 ## 📚 完整文档

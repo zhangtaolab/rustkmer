@@ -1,6 +1,6 @@
 [package]
 name = "rustkmer-pyo3"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 authors = ["RustKmer Team <team@rustkmer.org>"]
 description = "High-performance PyO3 Python bindings for rustkmer k-mer library"
@@ -41,6 +41,9 @@ thiserror = "2.0"
 # Performance and utilities
 parking_lot = "0.12"
 hashbrown = "0.14"
+
+# Compression support
+flate2 = "1.0"
 
 [build-dependencies]
 pyo3-build-config = "0.22"

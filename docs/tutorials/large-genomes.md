@@ -39,7 +39,7 @@ Processing large genomes presents unique challenges:
 ### Context Managers for Resource Management
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 import psutil
 import os
 
@@ -57,8 +57,8 @@ def load_large_database_safely(db_path):
         print("⚠️  Warning: Database is large, using memory mapping")
 
     # Use context manager for automatic cleanup
-    with Database(db_path) as db:
-        stats = db.stats()
+    db = PyDatabase(db_path, LoadMode.Preload)
+        stats = db.get_stats()
         print(f"Database loaded successfully!")
         print(f"Unique k-mers: {stats.unique_kmers:,}")
         print(f"K-mer size: {stats.kmer_size}")
@@ -72,14 +72,14 @@ db, stats = load_large_database_safely("large_genome.rkdb")
 ### Lazy Loading and Memory Mapping
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 
 def query_large_database_efficiently(db_path, queries, batch_size=1000):
     """Query large database in batches to manage memory."""
 
     results = {}
 
-    with Database(db_path) as db:
+    db = PyDatabase(db_path, LoadMode.Preload)
         # Process queries in batches
         for i in range(0, len(queries), batch_size):
             batch = queries[i:i + batch_size]
@@ -88,7 +88,7 @@ def query_large_database_efficiently(db_path, queries, batch_size=1000):
             # Batch query for efficiency
             for query in batch:
                 try:
-                    result = db.query(query)
+                    result = db.query_exact(query)
                     results[query] = result.count
                 except Exception as e:
                     print(f"Query failed for {query[:10]}...: {e}")
@@ -108,7 +108,7 @@ results = query_large_database_efficiently("human_genome.rkdb", queries)
 ### Process Large FASTA Files in Chunks
 
 ```python
-from rustkmer import KmerCounter, Database
+from pyrustkmer import KmerCounter, Database
 from Bio import SeqIO
 import tempfile
 import os
@@ -148,11 +148,11 @@ def process_large_fasta_in_chunks(fasta_file, k=31, chunk_size=1000000, output_p
                         out.write(f">seq_{i}\n{seq}\n")
 
                 # Count k-mers in chunk
-                counter = KmerCounter(k=k, canonical=True)
-                counter.count_file(chunk_file)
+                counter = PyCounter(k, canonical=True)
+                counter.add_from_fasta(chunk_file)
 
                 # Save chunk database
-                counter.save_to_database(db_file)
+                counter.save_database(db_file)
                 all_databases.append(db_file)
 
                 # Clear memory
@@ -173,9 +173,9 @@ def process_large_fasta_in_chunks(fasta_file, k=31, chunk_size=1000000, output_p
             for i, seq in enumerate(sequences):
                 out.write(f">seq_{i}\n{seq}\n")
 
-        counter = KmerCounter(k=k, canonical=True)
-        counter.count_file(chunk_file)
-        counter.save_to_database(db_file)
+        counter = PyCounter(k, canonical=True)
+        counter.add_from_fasta(chunk_file)
+        counter.save_database(db_file)
         all_databases.append(db_file)
 
     print(f"\nProcessed {seq_count:,} sequences in {chunk_num} chunks")
@@ -245,7 +245,7 @@ chunk_databases, temp_dir = monitor_memory_during_processing(
 ### Efficient Database Merging
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 import shutil
 import os
 
@@ -262,7 +262,7 @@ def merge_chunk_databases(chunk_databases, output_file):
     print(f"Created base database: {output_file}")
 
     # Merge remaining databases
-    with Database(output_file) as merged_db:
+    db = PyDatabase(output_file) as merged_db:
         for i, db_file in enumerate(chunk_databases[1:], 2):
             print(f"Merging database {i}/{len(chunk_databases)}")
 
@@ -272,9 +272,9 @@ def merge_chunk_databases(chunk_databases, output_file):
 
             # For now, we'll demonstrate the pattern
             try:
-                with Database(db_file) as chunk_db:
+                db = PyDatabase(db_file) as chunk_db:
                     # This would be replaced with actual merge implementation
-                    stats = chunk_db.stats()
+                    stats = chunk_db.get_stats()
                     print(f"  - Processing database with {stats.unique_kmers:,} k-mers")
             except Exception as e:
                 print(f"  - Error merging {db_file}: {e}")
@@ -293,7 +293,7 @@ merged_db = merge_chunk_databases(chunk_databases, "large_genome_merged.rkdb")
 ### Parallel Query Processing
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing
 
@@ -309,10 +309,10 @@ def parallel_database_query(db_path, query_list, max_workers=None):
     def worker_batch_queries(queries_chunk):
         """Worker function for batch queries."""
         results = {}
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
             for query in queries_chunk:
                 try:
-                    result = db.query(query)
+                    result = db.query_exact(query)
                     results[query] = result.count
                 except Exception as e:
                     print(f"Query failed: {e}")
@@ -354,7 +354,7 @@ results = parallel_database_query("human_genome.rkdb", large_query_set)
 ### Caching Frequently Accessed K-mers
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 from functools import lru_cache
 import pickle
 
@@ -370,8 +370,8 @@ class CachedDatabaseQuery:
         """Setup LRU cache for query results."""
         @lru_cache(maxsize=self.cache_size)
         def cached_query(kmer):
-            with Database(self.db_path) as db:
-                result = db.query(kmer)
+            db = PyDatabase(self.db_path) as db:
+                result = db.query_exact(kmer)
                 return result.count
 
         self.cached_query = cached_query
@@ -382,7 +382,7 @@ class CachedDatabaseQuery:
 
     def query_batch(self, kmer_list):
         """Query multiple k-mers with cache benefits."""
-        return {kmer: self.query(kmer) for kmer in kmer_list}
+        return {kmer: self.query_exact(kmer) for kmer in kmer_list}
 
     def save_cache(self, cache_file):
         """Save cache to file for persistence."""
@@ -406,7 +406,7 @@ cached_db = CachedDatabaseQuery("large_genome.rkdb", cache_size=50000)
 # Query with caching
 results = []
 for query in frequent_queries:
-    count = cached_db.query(query)
+    count = cached_db.query_exact(query)
     results.append((query, count))
 
 # Save cache statistics
@@ -429,7 +429,7 @@ Demonstrates processing of a 3GB human genome with 31-mers.
 import os
 import time
 import psutil
-from rustkmer import KmerCounter, Database
+from pyrustkmer import KmerCounter, Database
 from Bio import SeqIO
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -491,14 +491,14 @@ class HumanGenomeAnalyzer:
         start_time = time.time()
 
         # Create k-mer counter
-        counter = KmerCounter(k=self.k, canonical=True)
+        counter = PyCounter(self.k, canonical=True)
 
         # Count k-mers from file (RustKmer handles large files efficiently)
         print("   Counting k-mers...")
-        counter.count_file(self.genome_file)
+        counter.add_from_fasta(self.genome_file)
 
         # Get statistics
-        total_kmers = counter.get_total_count()
+        total_kmers = counter.get_stats().total_kmers)
         unique_kmers = counter.get_unique_count()
 
         print(f"   Total k-mers: {total_kmers:,}")
@@ -506,7 +506,7 @@ class HumanGenomeAnalyzer:
 
         # Save database
         print(f"   Saving database to {self.db_file}")
-        counter.save_to_database(self.db_file)
+        counter.save_database(self.db_file)
 
         processing_time = time.time() - start_time
         print(f"   Processing time: {processing_time:.1f} seconds")
@@ -525,7 +525,7 @@ class HumanGenomeAnalyzer:
         print(f"\n📈 Analyzing k-mer distribution")
 
         # Load database for analysis
-        with Database(self.db_file) as db:
+        db = PyDatabase(self.db_file) as db:
             # Get top k-mers
             top_kmers = db.dump(limit=1000, canonical_only=True)
 
@@ -661,13 +661,13 @@ if __name__ == "__main__":
 ### 1. Memory Optimization
 ```python
 # Use smaller k-mer sizes for memory efficiency
-counter = KmerCounter(k=21, canonical=True)  # Instead of k=31
+counter = PyCounter(21, canonical=True)  # Instead of k=31
 
 # Process in smaller chunks
 chunk_size = 100000  # Reduce if memory constrained
 
 # Use context managers
-with Database("large_db.rkdb") as db:
+db = PyDatabase("large_db.rkdb", LoadMode.Preload)
     # Automatic cleanup
     pass
 ```
@@ -684,7 +684,7 @@ results = db.query_exact_batch(large_query_list)
 # results = db.query_batch(large_query_list)  # 已废弃，请使用 query_exact_batch()
 
 # Cache frequently accessed k-mers
-cached_queries = CacheDatabase(db_path, cache_size=50000)
+cached_queries = CachePyDatabase(db_path, cache_size=50000)
 ```
 
 ### 3. Parallel Processing

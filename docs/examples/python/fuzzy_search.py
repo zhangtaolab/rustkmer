@@ -10,7 +10,7 @@ This script demonstrates fuzzy k-mer searching capabilities:
 - Performance optimization
 """
 
-from rustkmer import Database, KmerCounter
+from pyrustkmer import PyDatabase, LoadMode, KmerCounter, PyFuzzyQuery
 import tempfile
 import os
 import sys
@@ -29,7 +29,8 @@ def example_1_basic_fuzzy_query():
         create_sample_database_with_variants(db_path)
 
     try:
-        db = Database(db_path)
+        db = PyDatabase(db_path)
+fuzzy = PyFuzzyQuery(db)
 
         # Reference k-mer (should have exact match)
         reference_kmer = "ATCGATCGATCGATCGATCGATCGATCGATCGATCG"
@@ -38,7 +39,7 @@ def example_1_basic_fuzzy_query():
         # Query with different mutation tolerances
         for mutations in range(4):
             print(f"\n--- Mutation tolerance: {mutations} ---")
-            result = db.fuzzy_query(reference_kmer, mutations=mutations)
+            result = fuzzy.query_fuzzy(reference_kmer, mutations=mutations)
 
             print(f"Total matches: {result.total_matches}")
             print(f"Exact matches: {result.exact_matches}")
@@ -51,7 +52,6 @@ def example_1_basic_fuzzy_query():
                 for i, match in enumerate(top_matches, 1):
                     print(f"  {i}. {match.kmer}: {match.count:,} (distance={match.distance})")
 
-        db.close()
 
     except Exception as e:
         print(f"Error: {e}")
@@ -69,7 +69,8 @@ def example_2_position_mutations():
     db_path = "example.rkdb"
 
     try:
-        db = Database(db_path)
+        db = PyDatabase(db_path)
+fuzzy = PyFuzzyQuery(db)
 
         reference_kmer = "ATCGATCGATCGATCGATCGATCGATCGATCGATCG"
         print(f"Reference k-mer: {reference_kmer}")
@@ -92,13 +93,13 @@ def example_2_position_mutations():
             start_time = time.time()
 
             if position_mutations:
-                result = db.fuzzy_query(
+                result = fuzzy.query_fuzzy(
                     reference_kmer,
                     mutations=3,
                     position_mutations=position_mutations
                 )
             else:
-                result = db.fuzzy_query(reference_kmer, mutations=2)
+                result = fuzzy.query_fuzzy(reference_kmer, mutations=2)
 
             query_time = time.time() - start_time
 
@@ -116,7 +117,6 @@ def example_2_position_mutations():
                 for distance in sorted(mutations_by_distance):
                     print(f"  Distance {distance}: {mutations_by_distance[distance]} variants")
 
-        db.close()
 
     except Exception as e:
         print(f"Error: {e}")
@@ -146,7 +146,8 @@ def example_3_batch_fuzzy_queries():
     ]
 
     try:
-        db = Database(db_path)
+        db = PyDatabase(db_path)
+fuzzy = PyFuzzyQuery(db)
 
         print(f"Querying {len(test_kmers)} k-mers in batch...")
         print("K-mers to query:")
@@ -185,7 +186,6 @@ def example_3_batch_fuzzy_queries():
             for kmer, error in batch_result.errors.items():
                 print(f"  {kmer[:20]:20} | {error}")
 
-        db.close()
 
     except Exception as e:
         print(f"Error: {e}")
@@ -212,7 +212,8 @@ def example_4_performance_comparison():
     print(f"Performance test with {len(test_kmers)} queries")
 
     try:
-        db = Database(db_path)
+        db = PyDatabase(db_path)
+fuzzy = PyFuzzyQuery(db)
 
         # Method 1: Individual exact queries
         print("\n--- Method 1: Individual Exact Queries ---")
@@ -220,7 +221,7 @@ def example_4_performance_comparison():
 
         exact_results = []
         for kmer in test_kmers:
-            result = db.query(kmer)
+            result = db.query_exact(kmer)
             exact_results.append(result.count)
 
         exact_time = time.time() - start_time
@@ -236,7 +237,7 @@ def example_4_performance_comparison():
 
         fuzzy_results = []
         for kmer in test_kmers:
-            result = db.fuzzy_query(kmer, mutations=1)
+            result = fuzzy.query_fuzzy(kmer, mutations=1)
             fuzzy_results.append(result.total_matches)
 
         fuzzy_time = time.time() - start_time
@@ -271,7 +272,6 @@ def example_4_performance_comparison():
         print(f"{'Batch queries':<25} {batch_time:<10.3f} {batch_rate:<12.1f} "
               f"{sum(r.total_matches for r in batch_result.successes.values()):<10}")
 
-        db.close()
 
     except Exception as e:
         print(f"Error: {e}")
@@ -289,14 +289,15 @@ def example_5_mutation_analysis():
     db_path = "example.rkdb"
 
     try:
-        db = Database(db_path)
+        db = PyDatabase(db_path)
+fuzzy = PyFuzzyQuery(db)
 
         # Reference sequence
         reference_kmer = "ATCGATCGATCGATCGATCGATCGATCGATCGATCG"
         print(f"Analyzing mutations from: {reference_kmer}")
 
         # Query with higher mutation tolerance
-        result = db.fuzzy_query(reference_kmer, mutations=3)
+        result = fuzzy.query_fuzzy(reference_kmer, mutations=3)
 
         print(f"\nFound {result.total_matches} total matches")
         print(f"Exact matches: {result.exact_matches}")
@@ -363,7 +364,6 @@ def example_5_mutation_analysis():
             for start, end, count in sorted(hotspots, key=lambda x: x[2], reverse=True)[:5]:
                 print(f"  Positions {start}-{end}: {count} total mutations")
 
-        db.close()
 
     except Exception as e:
         print(f"Error: {e}")
@@ -406,7 +406,7 @@ def create_sample_database_with_variants(db_path):
         fasta_file = f.name
 
     try:
-        counter = KmerCounter(k=31, canonical=True)
+        counter = PyCounter(k=31, canonical=True)
         counter.count_file(fasta_file)
         counter.save_to_database(db_path)
 

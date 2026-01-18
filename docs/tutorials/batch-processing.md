@@ -56,7 +56,7 @@ import glob
 import time
 import pandas as pd
 from pathlib import Path
-from rustkmer import KmerCounter, Database
+from pyrustkmer import KmerCounter, Database
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing
 
@@ -140,17 +140,17 @@ class BatchKmerProcessor:
             print(f"🧬 Processing {fasta_file.name}...")
 
             # Create k-mer counter
-            counter = KmerCounter(k=self.k, canonical=True)
+            counter = PyCounter(self.k, canonical=True)
 
             # Count k-mers from file
-            counter.count_file(str(fasta_file))
+            counter.add_from_fasta(str(fasta_file))
 
             # Get statistics
-            total_kmers = counter.get_total_count()
+            total_kmers = counter.get_stats().total_kmers)
             unique_kmers = counter.get_unique_count()
 
             # Save database
-            counter.save_to_database(str(db_file))
+            counter.save_database(str(db_file))
 
             return {
                 'input_file': fasta_file,
@@ -222,7 +222,7 @@ if __name__ == "__main__":
 ### Parallel Batch Querying
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 
@@ -265,13 +265,13 @@ class BatchKmerQuery:
         results = {}
 
         try:
-            with Database(str(db_file)) as db:
+            db = PyDatabase(str(db_file), LoadMode.Preload)
                 for query in self.queries:
                     try:
-                        result = db.query(query)
+                        result = db.query_exact(query)
                         results[query] = {
                             'count': result.count,
-                            'present': result.is_present,
+                            'present': result.found,
                             'canonical': result.canonical
                         }
                     except Exception as e:
@@ -396,7 +396,7 @@ import os
 import glob
 import time
 from pathlib import Path
-from rustkmer import Database, KmerCounter
+from pyrustkmer import Database, KmerCounter
 import pandas as pd
 
 class DatabaseMerger:
@@ -436,25 +436,25 @@ class DatabaseMerger:
         """Merge by re-counting from original FASTA files."""
 
         # Get k-mer size from first database
-        with Database(str(self.db_files[0])) as db:
-            stats = db.stats()
+        db = PyDatabase(str(self.db_files[0])) as db:
+            stats = db.get_stats()
             k = stats.kmer_size
 
         print(f"Using k-mer size: {k}")
 
         # Create merged counter
-        merged_counter = KmerCounter(k=k, canonical=True)
+        merged_counter = PyCounter(k, canonical=True)
 
         # Count k-mers from all FASTA files
         for fasta_file in fasta_files:
             print(f"Processing: {fasta_file.name}")
-            merged_counter.count_file(str(fasta_file))
+            merged_counter.add_from_fasta(str(fasta_file))
 
         # Save merged database
-        merged_counter.save_to_database(str(self.output_file))
+        merged_counter.save_database(str(self.output_file))
 
         # Get statistics
-        total_kmers = merged_counter.get_total_count()
+        total_kmers = merged_counter.get_stats().total_kmers)
         unique_kmers = merged_counter.get_unique_count()
 
         print(f"\n✅ Merge completed:")
@@ -475,8 +475,8 @@ class DatabaseMerger:
         print("Extracting k-mers from databases...")
 
         # Get k-mer size from first database
-        with Database(str(self.db_files[0])) as db:
-            stats = db.stats()
+        db = PyDatabase(str(self.db_files[0])) as db:
+            stats = db.get_stats()
             k = stats.kmer_size
 
         # Create temporary FASTA for all k-mers
@@ -488,7 +488,7 @@ class DatabaseMerger:
             for db_file in self.db_files:
                 print(f"Extracting from: {db_file.name}")
 
-                with Database(str(db_file)) as db:
+                db = PyDatabase(str(db_file), LoadMode.Preload)
                     # Dump all k-mers (consider using a limit for very large databases)
                     for result in db.dump(limit=1000000):  # Limit to 1M per database for demo
                         # Write k-mer with count as sequence name
@@ -499,15 +499,15 @@ class DatabaseMerger:
         print(f"Extracted {kmer_count:,} k-mers")
 
         # Re-count from extracted k-mers
-        merged_counter = KmerCounter(k=k, canonical=True)
-        merged_counter.count_file(str(temp_fasta))
-        merged_counter.save_to_database(str(self.output_file))
+        merged_counter = PyCounter(k, canonical=True)
+        merged_counter.add_from_fasta(str(temp_fasta))
+        merged_counter.save_database(str(self.output_file))
 
         # Clean up temporary file
         temp_fasta.unlink()
 
         # Get statistics
-        total_kmers = merged_counter.get_total_count()
+        total_kmers = merged_counter.get_stats().total_kmers)
         unique_kmers = merged_counter.get_unique_count()
 
         print(f"\n✅ Merge completed:")
@@ -530,8 +530,8 @@ class DatabaseMerger:
 
         for db_file in self.db_files:
             try:
-                with Database(str(db_file)) as db:
-                    stats = db.stats()
+                db = PyDatabase(str(db_file), LoadMode.Preload)
+                    stats = db.get_stats()
                     input_stats.append({
                         'Database': db_file.name,
                         'Unique_kmers': stats.unique_kmers,
@@ -956,7 +956,7 @@ if __name__ == "__main__":
 batch_size = 50  # Adjust based on available memory
 
 # Use context managers
-with Database(db_file) as db:
+db = PyDatabase(db_file) as db:
     # Automatic cleanup
     pass
 
@@ -1009,8 +1009,8 @@ shutil.rmtree(temp_dir)
    # Validate databases before merging
    for db_file in database_files:
        try:
-           with Database(db_file) as db:
-               stats = db.stats()
+           db = PyDatabase(db_file) as db:
+               stats = db.get_stats()
                print(f"✅ {db_file.name}: {stats.unique_kmers:,} k-mers")
        except Exception as e:
            print(f"❌ {db_file.name}: {e}")

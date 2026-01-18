@@ -64,11 +64,9 @@ impl PyPrefixQuery {
     /// Perform optimized prefix query with string input
     fn query_prefix_string(&self, prefix: &str) -> PyResult<HashMap<String, String>> {
         if let Some(ref db) = self.rk_database {
-            // Validate prefix
+            // Return empty result for empty prefix instead of error
             if prefix.trim().is_empty() {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    "Prefix cannot be empty",
-                ));
+                return Ok(std::collections::HashMap::new());
             }
 
             if !prefix

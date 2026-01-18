@@ -10,7 +10,7 @@ This script demonstrates integration with BioPython:
 - Transcriptomic analysis workflows
 """
 
-from rustkmer import Database, KmerCounter
+from pyrustkmer import PyDatabase, LoadMode, KmerCounter
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
@@ -66,7 +66,7 @@ def example_1_basic_biopython_integration():
         # Create k-mer database using RustKmer
         print("\nCreating k-mer database...")
         kmer_size = 31
-        counter = KmerCounter(k=kmer_size, canonical=True)
+        counter = PyCounter(k=kmer_size, canonical=True)
         counter.count_file(fasta_file)
 
         # Save database
@@ -76,10 +76,10 @@ def example_1_basic_biopython_integration():
 
         # Query database with BioPython sequences
         print("\nQuerying database with BioPython sequences...")
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
             for record in records:
                 kmer = str(record.seq[:kmer_size]) if len(record.seq) >= kmer_size else str(record.seq)
-                result = db.query(kmer)
+                result = db.query_exact(kmer)
                 print(f"  {record.id}: {result.is_present} (count: {result.count:,})")
 
         # Clean up
@@ -132,7 +132,7 @@ def example_2_sequence_similarity_analysis():
             fasta_file = f.name
 
         kmer_size = 31
-        counter = KmerCounter(k=kmer_size, canonical=True)
+        counter = PyCounter(k=kmer_size, canonical=True)
         counter.count_file(fasta_file)
         db_path = "similarity_analysis.rkdb"
         counter.save_to_database(db_path)
@@ -141,7 +141,7 @@ def example_2_sequence_similarity_analysis():
         print("Performing pairwise similarity analysis...")
         similarity_matrix = {}
 
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
             for i, record1 in enumerate(records):
                 similarity_matrix[record1.id] = {}
                 sequence1 = str(record1.seq)
@@ -151,7 +151,7 @@ def example_2_sequence_similarity_analysis():
                     continue
 
                 query_kmer = sequence1[:kmer_size]
-                result1 = db.query(query_kmer)
+                result1 = db.query_exact(query_kmer)
 
                 for j, record2 in enumerate(records):
                     if i <= j:  # Only compute upper triangle
@@ -162,7 +162,7 @@ def example_2_sequence_similarity_analysis():
                         continue
 
                     query_kmer2 = sequence2[:kmer_size]
-                    result2 = db.query(query_kmer2)
+                    result2 = db.query_exact(query_kmer2)
 
                     # Calculate similarity based on shared k-mers
                     total_kmers = result1.count + result2.count - result1.count  # Simplified
@@ -287,7 +287,7 @@ def example_3_transcriptome_analysis():
         # Create transcriptome database
         print("Creating transcriptome database...")
         kmer_size = 25  # Smaller k for transcripts
-        counter = KmerCounter(k=kmer_size, canonical=True)
+        counter = PyCounter(k=kmer_size, canonical=True)
         counter.count_file(fasta_file)
         db_path = "transcriptome.rkdb"
         counter.save_to_database(db_path)
@@ -296,7 +296,7 @@ def example_3_transcriptome_analysis():
         print("\nAnalyzing transcript expression via k-mer abundance...")
         expression_analysis = {}
 
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
             for record in transcript_records:
                 # Extract k-mers from coding region only
                 cds_feature = [f for f in record.features if f.type == "CDS"][0]
@@ -309,7 +309,7 @@ def example_3_transcriptome_analysis():
 
                     for i in range(0, len(cds_seq) - kmer_size + 1, kmer_size):
                         kmer = cds_seq[i:i+kmer_size]
-                        result = db.query(kmer)
+                        result = db.query_exact(kmer)
                         if result.is_present:
                             kmer_count += 1
                             total_count += result.count
@@ -418,7 +418,7 @@ def example_4_metagenomics_profiling():
             fasta_file = f.name
 
         kmer_size = 21
-        counter = KmerCounter(k=kmer_size, canonical=True)
+        counter = PyCounter(k=kmer_size, canonical=True)
         counter.count_file(fasta_file)
         db_path = "metagenome.rkdb"
         counter.save_to_database(db_path)
@@ -463,12 +463,12 @@ def example_4_metagenomics_profiling():
         composition = {}
         total_matches = 0
 
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
             for organism, profile_kmers in organism_profiles.items():
                 matches = 0
                 for kmer in sample_kmers:
                     if kmer in profile_kmers:
-                        result = db.query(kmer)
+                        result = db.query_exact(kmer)
                         if result.is_present:
                             matches += 1
 
@@ -577,7 +577,7 @@ def example_5_protein_domain_analysis():
             fasta_file = f.name
 
         kmer_size = 15  # Smaller k for proteins
-        counter = KmerCounter(k=kmer_size, canonical=True)
+        counter = PyCounter(k=kmer_size, canonical=True)
         counter.count_file(fasta_file)
         db_path = "protein_domains.rkdb"
         counter.save_to_database(db_path)
@@ -586,7 +586,7 @@ def example_5_protein_domain_analysis():
         print("\nAnalyzing domain-specific k-mer patterns...")
         domain_signatures = {}
 
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
             for i, record in enumerate(dna_records):
                 domain_type = record.annotations["domain_type"]
                 dna_seq = str(record.seq)
@@ -595,7 +595,7 @@ def example_5_protein_domain_analysis():
                 signature_kmers = []
                 for j in range(0, len(dna_seq) - kmer_size + 1, kmer_size):
                     kmer = dna_seq[j:j+kmer_size]
-                    result = db.query(kmer)
+                    result = db.query_exact(kmer)
                     if result.is_present and result.count > 0:
                         signature_kmers.append((kmer, result.count))
 
@@ -625,13 +625,13 @@ def example_5_protein_domain_analysis():
             unknown_dna += codon_table.get(aa, 'NNN')
 
         # Check for domain matches
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
             domain_matches = defaultdict(int)
             total_matches = 0
 
             for j in range(0, len(unknown_dna) - kmer_size + 1, kmer_size):
                 kmer = unknown_dna[j:j+kmer_size]
-                result = db.query(kmer)
+                result = db.query_exact(kmer)
                 if result.is_present:
                     total_matches += result.count
 

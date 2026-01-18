@@ -9,7 +9,7 @@ This script demonstrates fundamental operations with RustKmer:
 - Context manager usage
 """
 
-from rustkmer import Database, KmerCounter
+from pyrustkmer import PyDatabase, LoadMode, KmerCounter
 import tempfile
 import os
 import sys
@@ -29,11 +29,11 @@ def example_1_basic_query():
 
     try:
         # Create database object
-        db = Database(db_path)
+        db = PyDatabase(db_path)
 
         # Query a k-mer
         kmer = "ATCGATCGATCGATCGATCGATCGATCGATCGATCG"
-        result = db.query(kmer)
+        result = db.query_exact(kmer)
 
         print(f"Query k-mer: {kmer}")
         print(f"Found in database: {result.is_present}")
@@ -41,14 +41,13 @@ def example_1_basic_query():
         print(f"Canonical form: {result.canonical}")
 
         # Get database statistics
-        stats = db.stats()
+        stats = db.get_stats()
         print(f"\nDatabase Statistics:")
         print(f"  K-mer size: {stats.kmer_size}")
         print(f"  Unique k-mers: {stats.unique_kmers:,}")
         print(f"  Total counts: {stats.total_counts:,}")
 
         # Close database
-        db.close()
         print("\nDatabase closed successfully.")
 
     except Exception as e:
@@ -72,7 +71,7 @@ def example_2_context_manager():
 
     # Context manager automatically handles opening/closing
     try:
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
             # Multiple queries
             queries = [
                 "ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
@@ -84,12 +83,12 @@ def example_2_context_manager():
 
             print("Querying multiple k-mers:")
             for i, query in enumerate(queries, 1):
-                result = db.query(query)
+                result = db.query_exact(query)
                 status = "✓ Found" if result.is_present else "✗ Not found"
                 print(f"  {i:2d}. {query[:20]:20} {status} (count: {result.count:,})")
 
             # Database statistics
-            stats = db.stats()
+            stats = db.get_stats()
             print(f"\nDatabase contains {stats.unique_kmers:,} unique k-mers")
 
         # Database is automatically closed here
@@ -134,7 +133,7 @@ def example_3_create_database():
         # Count k-mers
         print("\nCounting k-mers...")
         kmer_size = 21  # Use k=21 for demonstration
-        counter = KmerCounter(k=kmer_size, canonical=True)
+        counter = PyCounter(k=kmer_size, canonical=True)
         counter.count_file(fasta_file)
 
         # Get counting statistics
@@ -156,8 +155,8 @@ def example_3_create_database():
 
         # Verify database
         print("\nVerifying created database...")
-        with Database(db_file) as db:
-            stats = db.stats()
+        db = PyDatabase(db_file, LoadMode.Preload)
+            stats = db.get_stats()
             print(f"Verification successful:")
             print(f"  K-mer size: {stats.kmer_size}")
             print(f"  Unique k-mers: {stats.unique_kmers:,}")
@@ -179,7 +178,7 @@ def example_4_error_handling():
     print("Example 4: Error Handling")
     print("=" * 50)
 
-    from rustkmer import DatabaseNotFoundError, InvalidKmerError, QueryError
+    from pyrustkmer import PyDatabase, LoadModeNotFoundError, InvalidKmerError, QueryError
 
     # Test different error scenarios
     error_scenarios = [
@@ -192,8 +191,8 @@ def example_4_error_handling():
         print(f"Database path: '{db_path}'")
 
         try:
-            with Database(db_path) as db:
-                result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+            db = PyDatabase(db_path, LoadMode.Preload)
+                result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
                 print(f"Unexpected success: {result.count}")
 
         except DatabaseNotFoundError as e:
@@ -208,10 +207,10 @@ def example_4_error_handling():
     # Test invalid k-mer handling
     print(f"\nTesting: Invalid k-mer handling")
     try:
-        with Database("example.rkdb") as db:
+        db = PyDatabase("example.rkdb", LoadMode.Preload)
             # Try invalid k-mer (wrong characters)
             invalid_kmer = "ATCGXKATCG"  # Contains X and K
-            result = db.query(invalid_kmer, validate_strict=True)
+            result = db.query_exact(invalid_kmer, validate_strict=True)
             print(f"Unexpected success with invalid k-mer")
 
     except InvalidKmerError as e:
@@ -220,9 +219,9 @@ def example_4_error_handling():
     # Test non-strict validation
     print(f"\nTesting: Non-strict validation")
     try:
-        with Database("example.rkdb") as db:
+        db = PyDatabase("example.rkdb", LoadMode.Preload)
             invalid_kmer = "ATCGXKATCG"
-            result = db.query(invalid_kmer, validate_strict=False)
+            result = db.query_exact(invalid_kmer, validate_strict=False)
             print(f"Non-strict validation: count={result.count}, is_present={result.is_present}")
 
     except Exception as e:
@@ -245,7 +244,7 @@ def create_sample_database(db_path):
         fasta_file = f.name
 
     try:
-        counter = KmerCounter(k=31, canonical=True)
+        counter = PyCounter(k=31, canonical=True)
         counter.count_file(fasta_file)
         counter.save_to_database(db_path)
 

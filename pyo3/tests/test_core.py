@@ -122,14 +122,14 @@ class TestPyPrefixQuery:
         # Result should be empty or have few matches
 
 
-class TestPyKmerCounter:
-    """Test PyKmerCounter class."""
+class TestPyCounter:
+    """Test PyCounter class."""
 
     def test_create_counter(self):
         """Test creating a counter."""
         import pyrustkmer
 
-        counter = pyrustkmer.PyKmerCounter(21, True, 1000)
+        counter = pyrustkmer.PyCounter(21, True, 1000)
 
         assert counter is not None
         assert hasattr(counter, "get_stats")
@@ -138,7 +138,7 @@ class TestPyKmerCounter:
         """Test getting counter stats."""
         import pyrustkmer
 
-        counter = pyrustkmer.PyKmerCounter(21, True, 1000)
+        counter = pyrustkmer.PyCounter(21, True, 1000)
 
         stats = counter.get_stats()
 
@@ -171,7 +171,7 @@ class TestModuleCompleteness:
         import pyrustkmer
 
         assert hasattr(pyrustkmer, "PyDatabase")
-        assert hasattr(pyrustkmer, "PyKmerCounter")
+        assert hasattr(pyrustkmer, "PyCounter")
         assert hasattr(pyrustkmer, "PyFuzzyQuery")
         assert hasattr(pyrustkmer, "PyPrefixQuery")
         assert hasattr(pyrustkmer, "PyQueryResult")

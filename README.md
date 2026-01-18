@@ -52,7 +52,7 @@ source .venv/bin/activate
 pip install rustkmer
 
 # 4. 验证安装
-python -c "from rustkmer import KmerCounter; print('✅ 安装成功!')"
+python -c "from pyrustkmer import PyCounter; print('✅ 安装成功!')"
 
 # 5. 完成后退出虚拟环境
 deactivate
@@ -82,11 +82,11 @@ cd rustkmer-analysis
 uv add rustkmer
 
 # 3. 立即开始使用！
-uv run python -c "from rustkmer import KmerCounter; print('✅ RustKmer就绪!')"
+uv run python -c "from pyrustkmer import PyCounter; print('✅ RustKmer就绪!')"
 
 # 4. 创建分析脚本
-echo 'from rustkmer import KmerCounter
-counter = KmerCounter(k=21, canonical=True)
+echo 'from pyrustkmer import PyCounter
+counter = PyCounter(21, canonical=True)
 print("🧬 开始k-mer分析!")' > analysis.py
 
 # 5. 运行分析
@@ -117,7 +117,7 @@ conda activate rustkmer-env
 conda install -c conda-forge rustkmer numpy matplotlib pytest
 
 # 4. 验证安装
-python -c "from rustkmer import KmerCounter; print('✅ Conda安装成功!')"
+python -c "from pyrustkmer import PyCounter; print('✅ Conda安装成功!')"
 
 # 5. 安装额外的数据科学工具 (可选)
 conda install -c conda-forge pandas seaborn jupyter
@@ -135,7 +135,7 @@ pip install rustkmer
 pip install pytest numpy matplotlib pandas
 
 # 3. 验证安装
-python -c "import rustkmer; print(f'RustKmer {rustkmer.__version__} 已就绪!')"
+python -c "from pyrustkmer import PyCounter; print('✅ 安装成功!')"
 ```
 
 #### 方法三：开发环境设置 (完整版)
@@ -305,10 +305,10 @@ rustkmer count -k 64 -o k64_database.rkdb genome.fa
 
 # Python API中使用大k-mer
 python3 -c "
-import rustkmer
-counter = rustkmer.SimpleKmerCounter(k=48)
+from pyrustkmer import PyCounter
+counter = PyCounter(kmer_length=48, canonical=True)
 counter.add_sequence('ACGT' * 12)
-counter.save('k48_database.rkdb')
+counter.save_database('k48_database.rkdb')
 "
 ```
 
@@ -336,52 +336,47 @@ rustkmer query database.rkdb ATGCGATGCTAGCGCTAGCTA
 #### 方式一：纯Python API（推荐）
 ```python
 # 导入RustKmer Python模块
-from rustkmer import KmerCounter, Database
+from pyrustkmer import PyCounter, PyDatabase, LoadMode
 
 # 创建k-mer计数器
-counter = KmerCounter(k=21, canonical=True, threads=4)
+counter = PyCounter(21, canonical=True)
 
 # 处理文件（自动支持压缩格式）
-counter.count_file("genome.fa")     # 常规FASTA文件
-counter.count_file("genome.fa.gz")  # 压缩FASTA文件
-counter.count_file("reads.fq.gz")   # 压缩FASTQ文件
-counter.count_string("ACGTACGT")  # 从字符串计数
+counter.add_from_fasta("genome.fa")     # 常规FASTA文件
+counter.add_from_fasta("genome.fa.gz")  # 压缩FASTA文件
+counter.add_sequence("ACGTACGT")  # 从字符串计数
 
-# 获取k-mer计数
-count = counter.get_count("ATGCGATGCTAGCGCTAGCTA")
-print(f"k-mer count: {count}")
+# 获取统计信息
+stats = counter.get_stats()
+print(f"k-mer count: {stats.total_kmers}")
 
 # 加载数据库
-db = Database("output.rkdb")
+db = PyDatabase("output.rkdb", LoadMode.Preload)
 
 # 查询k-mer
-result = db.query("ATGCGATGCTAGCGCTAGCTA")
+result = db.query_exact("ATGCGATGCTAGCGCTAGCTA")
 print(f"Query result: {result.count}, found: {result.found}")
 ```
 
 #### 方式二：PyO3高性能扩展 ⚡
 ```python
 # 导入PyO3扩展
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, PyPrefixQuery, LoadMode
 
 # 加载数据库（高性能模式）
-db = rustkmer_pyo3.PyDatabase("genome.rkdb", 
-                              load_mode=rustkmer_pyo3.LoadMode.Preload)
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
 
 # 🔥 前缀搜索（全新功能）
-result = db.extract_prefix_optimized("ATG")
-print(f"找到 {result.total_matches} 个前缀匹配")
-print(f"查询时间: {result.query_time_ms}ms")
+result = db.query_prefix("ATG")
+print(f"找到 {len(result)} 个前缀匹配")
 
 # 🔥 混合搜索模式
-hybrid_result = db.extract_by_pattern("ATGC{N5}TACG")
-
-# 解析模式信息
-pattern_info = db.parse_hybrid_pattern("ATGC{N5}TACG")
-print(f"模式解析: {pattern_info}")
+from pyrustkmer import PyFuzzyQuery
+fuzzy = PyFuzzyQuery(db)
+hybrid_result = fuzzy.query_fuzzy("ATCGNNN", max_mutations=2)
 
 # 使用专用查询引擎
-query_engine = rustkmer_pyo3.PyPrefixQuery("genome.rkdb")
+query_engine = PyPrefixQuery("genome.rkdb", LoadMode.Preload)
 results = query_engine.query_prefix("ATG")
 ```
 
@@ -390,33 +385,32 @@ results = query_engine.query_prefix("ATG")
 RustKmer提供强大的模糊查询功能，支持通配符搜索和突变容忍匹配：
 
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, PyFuzzyQuery, LoadMode
 
 # 加载数据库
-db = Database()
-db.load("genome.rkdb")
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
+
+# 创建模糊查询器
+fuzzy = PyFuzzyQuery(db)
 
 # 通配符查询 (N = 任意碱基: A,T,C,G)
-wildcard_results = db.fuzzy_query("ATNNGTA")  # 4^2 = 16种组合
-print(f"通配符查询找到 {len(wildcard_results)} 个匹配")
+wildcard_results = fuzzy.query_fuzzy("ATNNGTA", max_mutations=0)
+print(f"通配符查询找到 {len(wildcard_results.get_top_matches(1000))} 个匹配")
 
 # 突变容忍搜索 (汉明距离)
-mutation_results = db.fuzzy_query("ATCGATCGATCGATCGATCGA", max_distance=2)
-print(f"突变容忍搜索找到 {len(mutation_results)} 个变体")
-
-# 复杂模式组合
-complex_results = db.fuzzy_query("ATNNGTANN", max_distance=1)
-print(f"复杂模式找到 {len(complex_results)} 个匹配")
+mutation_results = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGA", max_mutations=2)
+print(f"突变容忍搜索找到 {len(mutation_results.get_top_matches(1000))} 个变体")
 
 # 批量模糊查询
 patterns = ["ATNNGTA", "ANNNNNNGT", "GTCGATCNN"]
-batch_results = db.fuzzy_query_batch(patterns, max_distance=1)
-for pattern, matches in batch_results.items():
-    print(f"模式 '{pattern}': {len(matches)} 个匹配")
+for pattern in patterns:
+    result = fuzzy.query_fuzzy(pattern, max_mutations=1)
+    print(f"模式 '{pattern}': {len(result.get_top_matches(1000))} 个匹配")
 
-# 结果处理和导出
-for result in wildcard_results[:5]:  # 显示前5个结果
-    print(f"  {result.kmer}: {result.count} (distance: {result.distance}, type: {result.match_type})")
+# 结果处理
+top_matches = wildcard_results.get_top_matches(5)
+for match in top_matches:
+    print(f"  {match.kmer}: {match.count}")
 ```
 
 **命令行模糊查询:**
@@ -699,41 +693,30 @@ python3 examples/python_integration.py
 ### 基本Python API
 
 ```python
-from rustkmer import KmerCounter, Database
+from pyrustkmer import PyCounter, PyDatabase, LoadMode
 
 # 创建k-mer计数器
-counter = KmerCounter(k=21, canonical=True, threads=4)
+counter = PyCounter(21, canonical=True)
 
 # 处理文件（自动支持压缩格式）
-counter.count_file("genome.fa")     # 常规FASTA文件
-counter.count_file("genome.fa.gz")  # 压缩FASTA文件
-counter.count_file("reads.fq.gz")   # 压缩FASTQ文件
-counter.count_string("ACGTACGT")    # 从字符串计数
-
-# 获取k-mer计数
-count = counter.get_count("ATGCGATGCTAGCGCTAGCTA")
-print(f"k-mer count: {count}")
+counter.add_from_fasta("genome.fa")     # 常规FASTA文件
+counter.add_from_fasta("genome.fa.gz")  # 压缩FASTA文件
+counter.add_sequence("ACGTACGT")    # 从字符串计数
 
 # 获取统计信息
-unique_count = counter.get_unique_count()
-total_count = counter.get_total_count()
-print(f"Unique k-mers: {unique_count}")
-print(f"Total k-mers: {total_count}")
+stats = counter.get_stats()
+print(f"Unique k-mers: {stats.unique_kmers}")
+print(f"Total k-mers: {stats.total_kmers}")
 
 # 保存到数据库
-counter.save_to_database("output.rkdb", False)
+counter.save_database("output.rkdb")
 
 # 加载数据库
-db = Database()
-db.load("output.rkdb")
+db = PyDatabase("output.rkdb", LoadMode.Preload)
 
 # 查询k-mer
-result = db.query("ATGCGATGCTAGCGCTAGCTA")
+result = db.query_exact("ATGCGATGCTAGCGCTAGCTA")
 print(f"Query result: {result.count}, found: {result.found}")
-
-# 获取数据库统计
-stats = db.get_stats()
-print(f"Database stats: k={stats.kmer_size}, total={stats.total_kmers}")
 ```
 
 ### 高级分析示例
@@ -865,7 +848,7 @@ which rustkmer  # 应该输出路径
 pip install rustkmer
 
 # 3. 验证安装
-python -c "from rustkmer import Database; print('✅ RustKmer Python API 就绪!')"
+python -c "from pyrustkmer import PyDatabase, LoadMode; print('✅ RustKmer Python API 就绪!')"
 ```
 
 **工作原理**:
@@ -896,11 +879,11 @@ cd python  # 进入 Python 子目录
 pip install -e .
 
 # 5. 验证安装
-python -c "from rustkmer import Database; print('✅ 可编辑安装就绪!')"
+python -c "from pyrustkmer import PyDatabase, LoadMode; print('✅ 可编辑安装就绪!')"
 
 # 6. 测试从不同目录导入
 cd /tmp
-python -c "from rustkmer import Database; print('✅ 任意目录导入成功!')"
+python -c "from pyrustkmer import PyDatabase, LoadMode; print('✅ 任意目录导入成功!')"
 ```
 
 **🔧 重要配置步骤**：
@@ -937,7 +920,7 @@ pip install maturin
 maturin develop --release
 
 # 4. 验证安装
-python -c "import rustkmer_pyo3; print('✅ PyO3 扩展就绪!')"
+python -c "from pyrustkmer import PyDatabase; print('✅ PyO3 扩展就绪!')"
 ```
 
 **✅ PyO3 扩展特性**:
@@ -976,14 +959,11 @@ maturin build
 **🚀 性能对比**:
 ```python
 # PyO3扩展 - 最高性能
-import rustkmer_pyo3
-db = rustkmer_pyo3.PyDatabase("genome.rkdb")
-result = db.extract_prefix_optimized("ATG")  # 直接内存访问
+from pyrustkmer import PyDatabase, LoadMode
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
+result = db.query_prefix("ATG")  # 直接内存访问
+print(f"Found {len(result)} matches")
 
-# CLI方式 - 进程间通信开销
-import subprocess
-result = subprocess.run(["rustkmer", "prefix-query", "-d", "genome.rkdb", "-p", "ATG"])
-```
 
 **💡 使用建议**:
 - **生产环境高性能**: PyO3扩展
@@ -1005,64 +985,52 @@ PyO3扩展提供了最完整的RustKmer功能访问：
 
 #### 🔥 高级查询功能
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, PyPrefixQuery, LoadMode
 
 # 1. 高性能前缀搜索
-db = rustkmer_pyo3.PyDatabase("genome.rkdb", load_mode=rustkmer_pyo3.LoadMode.Preload)
-result = db.extract_prefix_optimized("ATG")
-print(f"找到 {result.total_matches} 个前缀匹配")
-print(f"查询时间: {result.query_time_ms}ms")
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
+result = db.query_prefix("ATG")
+print(f"找到 {len(result)} 个前缀匹配")
 
-# 2. 混合搜索模式 (ATAC{N5}ACAC)
-hybrid_result = db.extract_by_pattern("ATGC{N5}TACG")
-pattern_info = db.parse_hybrid_pattern("ATGC{N5}TACG")
-print(f"模式解析: {pattern_info}")
+# 2. 混合搜索模式
+from pyrustkmer import PyFuzzyQuery
+fuzzy = PyFuzzyQuery(db)
+hybrid_result = fuzzy.query_fuzzy("ATCGNNN", max_mutations=2)
 
 # 3. 专用查询引擎
-query_engine = rustkmer_pyo3.PyPrefixQuery("genome.rkdb")
+query_engine = PyPrefixQuery("genome.rkdb", LoadMode.Preload)
 prefix_results = query_engine.query_prefix("ATG")
-hybrid_results = query_engine.query_hybrid("ATGC{N5}TACG")
 
-# 4. 扩展查询引擎（带性能指标）
-ext_engine = rustkmer_pyo3.PyExtendedPrefixQuery("genome.rkdb")
-metrics = ext_engine.query_with_metrics("ATG")
-print(f"执行时间: {metrics.execution_time_ms}ms")
-print(f"内存块: [{metrics.start_index}, {metrics.end_index})")
-
-# 5. 批量查询
+# 4. 批量前缀查询
 prefixes = ["ATG", "CTG", "GTG", "TTA", "TAA"]
-batch_results = ext_engine.batch_query(prefixes)
+for prefix in prefixes:
+    result = db.query_prefix(prefix)
+    print(f"{prefix}: {len(result)} matches")
 ```
 
 #### 📊 性能监控
 ```python
 # 获取详细性能指标
-result = db.extract_prefix_optimized("ATG")
-print(f"内存块信息: [{result.start_index}, {result.end_index})")
-print(f"块大小: {result.block_size}")
-print(f"数据库排序: {result.is_sorted}")
-print(f"查询时间: {result.query_time_ms}ms")
+result = db.query_prefix("ATG")
+print(f"前缀匹配数: {len(result)}")
 
-# 查询引擎信息
-info = query_engine.database_info()
-print(f"数据库路径: {info['database_path']}")
-print(f"k-mer大小: {info['kmer_size']}")
-print(f"加载状态: {info['is_loaded']}")
+# 模糊查询性能
+fuzzy_result = fuzzy.query_fuzzy("ATCGNNN", max_mutations=2)
+print(f"模糊匹配数: {len(fuzzy_result.get_top_matches(1000))}")
 ```
 
 #### 🔧 加载模式
 ```python
+from pyrustkmer import PyDatabase, LoadMode
+
 # 预加载模式（最快查询，适合小数据库）
-db = rustkmer_pyo3.PyDatabase("small_genome.rkdb", 
-                              load_mode=rustkmer_pyo3.LoadMode.Preload)
+db = PyDatabase("small_genome.rkdb", LoadMode.Preload)
 
 # 内存映射模式（平衡内存和性能）
-db = rustkmer_pyo3.PyDatabase("large_genome.rkdb", 
-                              load_mode=rustkmer_pyo3.LoadMode.MemoryMapped)
+db = PyDatabase("large_genome.rkdb", LoadMode.MemoryMapped)
 
 # 延迟加载模式（最低内存，适合超大数据库）
-db = rustkmer_pyo3.PyDatabase("huge_genome.rkdb", 
-                              load_mode=rustkmer_pyo3.LoadMode.Lazy)
+db = PyDatabase("huge_genome.rkdb", LoadMode.Lazy)
 ```
 
 ### 快速示例
@@ -1070,83 +1038,81 @@ db = rustkmer_pyo3.PyDatabase("huge_genome.rkdb",
 #### K-mer 计数
 
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import PyCounter
 
 # 创建k-mer计数器
-counter = KmerCounter(k=21, canonical=True, threads=4)
+counter = PyCounter(21, canonical=True)
 
 # 从FASTA文件计数
-database = counter.count_file("sequences.fasta", "output.rkdb")
+counter.add_from_fasta("sequences.fasta")
 
 # 从字符串计数
-counts = counter.count_string("ATCGATCGATCGATCGATCGATCG")
-print(f"Counts: {counts}")
+counter.add_sequence("ATCGATCGATCGATCGATCGATCG")
+
+# 获取统计信息
+stats = counter.get_stats()
+print(f"Counts: {stats.total_kmers}")
+
+# 保存数据库
+counter.save_database("output.rkdb")
 ```
 
 #### 数据库查询
 
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
 # 加载数据库
-db = Database("genome.rkdb")
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
 
 # 单个查询
-count = db.query("ATCGATCGATCGATCGATCGATCG")
-print(f"K-mer count: {count}")
+result = db.query_exact("ATCGATCGATCGATCGATCGATCG")
+print(f"K-mer count: {result.count}, found: {result.found}")
 
-# 批量查询
-kmers = ["ATCGATCG", "GCTAGCTA", "TATATATA"]
-results = db.query_batch(kmers)
-print(f"Batch results: {results}")
+# 前缀查询
+prefix_results = db.query_prefix("ATCG")
+print(f"Prefix matches: {len(prefix_results)}")
 
 # 检查k-mer是否存在
-if db.exists("ATCGATCGATCGATCGATCGATCG"):
+if result.found:
     print("K-mer found in database")
 ```
 
 #### 数据库统计
 
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
-db = Database("genome.rkdb")
-stats = db.get_statistics()
-
-print(f"K-mer size: {stats.kmer_size}")
-print(f"Total k-mers: {stats.total_kmers}")
-print(f"Unique k-mers: {stats.unique_kmers}")
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
+# 可以通过前缀查询来了解数据库大小
+sample_results = db.query_prefix("A")
+print(f"Sample prefix matches: {len(sample_results)}")
 ```
 
-#### 数据导出
+#### 数据库导出
 
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
-db = Database("genome.rkdb")
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
 
-# 导出为文本格式
-db.dump("output.txt", format="text")
-
-# 导出为CSV（带阈值过滤）
-db.dump("filtered.csv", format="csv", min_count=10)
-
-# 导出为JSON
-db.dump("data.json", format="json")
+# 导出为文本格式（通过前缀查询并写入文件）
+with open("output.txt", "w") as f:
+    results = db.query_prefix("A")
+    for result in results:
+        f.write(f"{result.kmer}\t{result.count}\n")
 ```
 
 #### 数据库合并
 
 ```python
-from rustkmer import Database
+# 使用命令行工具合并数据库
+# rustkmer merge -i sample1.rkdb sample2.rkdb -o merged.rkdb
 
-# 加载多个数据库
-db1 = Database("sample1.rkdb")
-db2 = Database("sample2.rkdb")
-
-# 合并数据库
-merged_db = db1.merge([db2], "merged.rkdb")
-print(f"Merged database contains {merged_db.total_kmers} k-mers")
+# 然后在Python中加载合并后的数据库
+from pyrustkmer import PyDatabase, LoadMode
+db = PyDatabase("merged.rkdb", LoadMode.Preload)
+print(f"Merged database loaded successfully")
 ```
 
 ### 性能优势
@@ -1156,56 +1122,49 @@ print(f"Merged database contains {merged_db.total_kmers} k-mers")
 - **线程安全**: 可以在多线程环境中安全使用
 - **兼容性**: 与CLI命令行工具完全兼容
 
-更多详细信息请查看 [Python API文档](python/rustkmer/)。
+更多详细信息请查看 pyrustkmer Python 包 (pyo3/)。
 
 ### 🛠️ 故障排除
 
 #### 常见导入问题
 
-**问题1: ImportError: cannot import name 'Database'**
+**问题1: ImportError: cannot import name 'PyDatabase'**
 ```bash
-# 检查 rustkmer 是否在 PATH 中
-which rustkmer
+# 检查 pyrustkmer 是否安装
+pip list | grep pyrustkmer
 
-# 如果没有输出，添加到 PATH
-echo 'export PATH="/path/to/rustkmer/target/release:$PATH"' >> ~/.zshrc
-source ~/.zshrc
+# 如果没有安装，重新安装
+pip install rustkmer
 ```
 
 **问题2: 只能在特定目录下导入**
 ```bash
-# 确保使用了可编辑安装
+# 确保使用了正确安装
 pip uninstall rustkmer
-pip install -e ./python
+pip install rustkmer
 
 # 测试从不同目录导入
 cd /tmp
-python -c "from rustkmer import Database; print('✅ 导入成功')"
+python -c "from pyrustkmer import PyDatabase; print('✅ 导入成功')"
 ```
 
-**问题3: ImportError: No module named 'rustkmer'**
+**问题3: ImportError: No module named 'pyrustkmer'**
 ```bash
 # 检查包是否正确安装
-pip list | grep rustkmer
+pip list | grep pyrustkmer
 
 # 如果没有安装，重新安装
 pip install rustkmer
-
-# 如果是可编辑安装
-cd /path/to/rustkmer
-pip install -e ./python
 ```
 
-**问题4: PATH 设置后仍无法找到 rustkmer**
+**问题4: 无法找到 rustkmer 命令**
 ```bash
-# 检查 PATH 环境变量
-echo $PATH | grep rustkmer
+# 检查 rustkmer 是否在 PATH 中
+which rustkmer
 
-# 重新加载 shell 配置
-source ~/.zshrc  # 或 ~/.bashrc
-
-# 检查二进制文件是否存在
-ls -la /path/to/rustkmer/target/release/rustkmer
+# 如果没有，添加 rustkmer 到 PATH
+echo 'export PATH="/path/to/rustkmer/target/release:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 ```
 
 **问题5: PyO3 扩展编译失败**
@@ -1223,11 +1182,8 @@ sudo apt install python3-dev build-essential
 xcode-select --install
 
 # 手动编译调试
-cd rustkmer/pyo3
+cd /path/to/rustkmer/pyo3
 maturin develop --verbose
-
-# 检查编译日志
-cat ~/.cache/pypoetry/virtualenvs/*/src/rustkmer-pyo3/build.log
 ```
 
 **问题5.1: VIRTUAL_ENV 和 CONDA_PREFIX 环境冲突**
@@ -1353,46 +1309,37 @@ conda deactivate
 #       clang: error: linker command failed with exit code 1
 
 # 解决方案1: 使用正确的链接器标志（macOS）
-cd rustkmer/pyo3
-export RUSTFLAGS="-C link-arg=--arg=dynamicundefined -C link_lookup"
-cargo build
+cd /path/to/rustkmer/pyo3
+export RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup"
+maturin develop --release
 
 # 解决方案2: 指定正确的Python解释器
-cd rustkmer/pyo3
-PYO3_PYTHON=/usr/bin/python3 cargo build
+cd /path/to/rustkmer/pyo3
+PYO3_PYTHON=/usr/bin/python3 maturin develop --release
 
 # 解决方案3: 结合使用（最可靠）
-cd rustkmer/pyo3
+cd /path/to/rustkmer/pyo3
 export RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup"
 export PYO3_PYTHON=/usr/bin/python3
-cargo build
+maturin develop --release
 
-# 解决方案4: 验证扩展库
-# 构建后检查生成的库文件
-ls target/debug/librustkmer_pyo3.dylib
-# 复制为Python期望的格式
-cp librustkmer_pyo3.dylib rustkmer_pyo3.cpython-39-darwin.so
-
-# 解决方案5: 测试导入
-export PYTHONPATH="/path/to/target/debug:$PYTHONPATH"
-python3 -c "import rustkmer_pyo3; print('Success!')"
+# 解决方案4: 测试导入
+python3 -c "from pyrustkmer import PyDatabase; print('Success!')"
 ```
 
 **问题6: PyO3 导入错误**
 ```python
 # 验证 PyO3 扩展安装
 try:
-    import rustkmer_pyo3
+    from pyrustkmer import PyDatabase, LoadMode
     print("✅ PyO3 扩展导入成功")
-    print(f"版本: {getattr(rustkmer_pyo3, '__version__', '未知')}")
     
     # 测试基本功能
-    db = rustkmer_pyo3.PyDatabase
     print("✅ PyDatabase 类可用")
     
 except ImportError as e:
     print(f"❌ PyO3 扩展导入失败: {e}")
-    print("请重新安装: pip install rustkmer-pyo3")
+    print("请重新安装: pip install rustkmer")
 except Exception as e:
     print(f"❌ 其他错误: {e}")
 ```
@@ -1400,33 +1347,29 @@ except Exception as e:
 **问题7: PyO3 性能不如预期**
 ```python
 # 检查是否使用了正确的加载模式
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode
 
 # 对于小数据库，使用预加载
-db = rustkmer_pyo3.PyDatabase("small.rkdb", 
-                              load_mode=rustkmer_pyo3.LoadMode.Preload)
+db = PyDatabase("small.rkdb", LoadMode.Preload)
 
 # 对于大数据库，使用内存映射
-db = rustkmer_pyo3.PyDatabase("large.rkdb", 
-                              load_mode=rustkmer_pyo3.LoadMode.MemoryMapped)
+db = PyDatabase("large.rkdb", LoadMode.MemoryMapped)
 
-# 使用优化方法而非传统方法
+# 使用优化方法
 # ✅ 优化方法
-result = db.extract_prefix_optimized("ATG")
-
-# ❌ 传统方法（较慢）
-result = db.extract_by_prefix("ATG")
+result = db.query_prefix("ATG")
+print(f"Found {len(result)} matches")
 ```
 
 **问题8: Python 3.13 兼容性问题**
 ```bash
-# Python 3.13 用户建议使用纯 Python Stubs
-pip install rustkmer  # 方式一
+# Python 3.13 用户建议使用 pyrustkmer
+pip install rustkmer
 
-# 或使用 Python 3.11/3.12 环境
+# 或使用 Python 3.10-3.12 环境以获得完整功能
 conda create -n rustkmer-py311 python=3.11
 conda activate rustkmer-py311
-pip install rustkmer  # 或编译 PyO3 扩展
+pip install rustkmer
 ```
 
 **问题9: 防止环境冲突的最佳实践**
@@ -1503,17 +1446,14 @@ export PYO3_PYTHON=/usr/bin/python3
 
 # 构建
 echo "🔨 开始构建..."
-cd pyo3
-cargo build
+cd /path/to/rustkmer/pyo3
+maturin develop --release
 
 # 检查结果
 if [ $? -eq 0 ]; then
     echo "✅ 构建成功!"
-    echo "📁 生成的文件:"
-    ls -la target/debug/librustkmer_pyo3.dylib
     echo "🧪 测试导入..."
-    export PYTHONPATH="/Users/forrest/Github/rustkmer/pyo3/target/debug:$PYTHONPATH"
-    /usr/bin/python3 -c "import rustkmer_pyo3; print('🎉 PyO3 扩展导入成功!')" 2>/dev/null || echo "❌ 导入失败"
+    /usr/bin/python3 -c "from pyrustkmer import PyDatabase; print('🎉 PyO3 扩展导入成功!')" 2>/dev/null || echo "❌ 导入失败"
 else
     echo "❌ 构建失败!"
     exit 1
@@ -1533,58 +1473,20 @@ def verify_rustkmer_installation():
     
     print("🔍 开始验证 RustKmer 安装...")
     
-    # 1. 验证纯 Python Stubs
+    # 1. 验证 pyrustkmer
     try:
-        from rustkmer import Database, QueryResult, DatabaseStats
-        print("✅ 纯 Python Stubs 导入成功")
-        
-        # 2. 验证异常类
-        from rustkmer import RustKmerError, DatabaseError, QueryError
-        print("✅ 异常类导入成功")
-        
-        # 3. 验证模糊查询类
-        from rustkmer import FuzzyQueryResult, FuzzyMatchResult
-        print("✅ 模糊查询类导入成功")
-        
-        # 4. 检查版本
-        import rustkmer
-        version = getattr(rustkmer, '__version__', '未知')
-        print(f"✅ RustKmer 版本: {version}")
-        
-        # 5. 测试基本功能
-        db = Database()
-        print("✅ Database 类实例化成功")
-        
+        from pyrustkmer import PyDatabase, PyCounter, LoadMode
+        print("✅ pyrustkmer 导入成功")
+
+        # 2. 测试基本功能
+        print("✅ PyDatabase, PyCounter 类可用")
+
     except ImportError as e:
-        print(f"❌ 纯 Python Stubs 导入失败: {e}")
+        print(f"❌ pyrustkmer 导入失败: {e}")
     except Exception as e:
-        print(f"❌ 纯 Python Stubs 其他错误: {e}")
+        print(f"❌ pyrustkmer 其他错误: {e}")
     
-    # 6. 验证 PyO3 扩展（如果安装）
-    try:
-        import rustkmer_pyo3
-        print("✅ PyO3 扩展导入成功")
-        
-        # 测试 PyO3 特有功能
-        from rustkmer_pyo3 import PyDatabase, PyPrefixQuery, LoadMode
-        print("✅ PyO3 核心类导入成功")
-        
-        # 测试加载模式
-        modes = [LoadMode.Preload, LoadMode.MemoryMapped, LoadMode.Lazy]
-        print(f"✅ 加载模式可用: {len(modes)} 种")
-        
-        # 测试高级功能
-        try:
-            # 这些会失败如果没有数据库文件，但类应该可用
-            PyPrefixQuery.__new__
-            print("✅ PyPrefixQuery 类可用")
-        except:
-            print("⚠️ PyPrefixQuery 类部分可用")
-            
-    except ImportError:
-        print("ℹ️ PyO3 扩展未安装（可选）")
-    except Exception as e:
-        print(f"❌ PyO3 扩展错误: {e}")
+    # 6. PyO3 扩展已经集成到 pyrustkmer 中，无需单独验证
     
     # 7. 系统信息检查
     import sys
@@ -1634,7 +1536,7 @@ cd python && pip install -e .
 python -m pytest tests/
 
 # 5. 验证功能
-python -c "from rustkmer import Database; print('✅ 开发版本正常工作')"
+python -c "from pyrustkmer import PyDatabase; print('✅ 开发版本正常工作')"
 
 # 6. 提交更改
 git add .

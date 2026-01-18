@@ -17,14 +17,14 @@ Practical examples demonstrating RustKmer's fuzzy search functionality, from bas
 ### Getting Started
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 
 # Load your database
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load("genome_k21.rkdb")
 
 # Basic wildcard search
-results = db.fuzzy_query("ATNNGTA")
+results = fuzzy.query_fuzzy("ATNNGTA")
 print(f"Found {len(results)} matches for 'ATNNGTA'")
 
 # Show first few results
@@ -36,15 +36,15 @@ for i, result in enumerate(results[:5]):
 
 ```python
 # Single wildcard - expands to 4 possibilities
-results = db.fuzzy_query("ATN")
+results = fuzzy.query_fuzzy("ATN")
 print(f"Single wildcard matches: {len(results)}")
 
 # Double wildcard - expands to 16 possibilities
-results = db.fuzzy_query("ATNN")
+results = fuzzy.query_fuzzy("ATNN")
 print(f"Double wildcard matches: {len(results)}")
 
 # Triple wildcard - expands to 64 possibilities
-results = db.fuzzy_query("ATNNN")
+results = fuzzy.query_fuzzy("ATNNN")
 print(f"Triple wildcard matches: {len(results)}")
 ```
 
@@ -77,7 +77,7 @@ def analyze_wildcard_complexity(db, base_pattern):
 
         try:
             start_time = time.time()
-            results = db.fuzzy_query(pattern)
+            results = fuzzy.query_fuzzy(pattern)
             end_time = time.time()
 
             print(f"Actual matches: {len(results)}")
@@ -136,7 +136,7 @@ def find_promoter_elements(db, promoter_consensus="TATAAAW"):
     print(f"Searching for promoter consensus: {promoter_consensus}")
     print(f"Using pattern: {pattern}")
 
-    results = db.fuzzy_query(pattern)
+    results = fuzzy.query_fuzzy(pattern)
 
     # Filter by biological relevance
     significant_results = [r for r in results if r.count >= 50]
@@ -166,7 +166,7 @@ def analyze_mutation_spectrum(db, reference_kmer):
 
     # Search with increasing mutation distance
     for distance in range(4):  # 0, 1, 2, 3
-        results = db.fuzzy_query(reference_kmer, max_distance=distance)
+        results = fuzzy.query_fuzzy(reference_kmer, max_distance=distance)
 
         # Filter by exact distance
         exact_distance_results = [r for r in results if r.distance == distance]
@@ -212,10 +212,10 @@ def detect_snp_variants(db, reference_kmer, min_frequency=0.01, min_count=10):
     print("-" * 50)
 
     # Find all single-mutation variants
-    results = db.fuzzy_query(reference_kmer, max_distance=1)
+    results = fuzzy.query_fuzzy(reference_kmer, max_distance=1)
 
     # Get reference count
-    ref_result = db.query(reference_kmer)
+    ref_result = db.query_exact(reference_kmer)
     ref_count = ref_result.count if ref_result.found else 0
 
     # Calculate total with variants
@@ -324,7 +324,7 @@ def process_query_batch_optimized(db, queries: List[str],
         print(f"\nProcessing {len(simple_queries)} simple queries...")
         for query in simple_queries:
             try:
-                results = db.fuzzy_query(
+                results = fuzzy.query_fuzzy(
                     query,
                     max_distance=max_distance,
                     parallel=len(simple_queries) > 10
@@ -339,7 +339,7 @@ def process_query_batch_optimized(db, queries: List[str],
         print(f"\nProcessing {len(medium_queries)} medium queries...")
         for query in medium_queries:
             try:
-                results = db.fuzzy_query(
+                results = fuzzy.query_fuzzy(
                     query,
                     max_distance=max_distance,
                     max_variants=5000,
@@ -356,7 +356,7 @@ def process_query_batch_optimized(db, queries: List[str],
         print(f"\nProcessing {len(complex_queries)} complex queries...")
         for query in complex_queries:
             try:
-                results = db.fuzzy_query(
+                results = fuzzy.query_fuzzy(
                     query,
                     max_distance=min(max_distance, 1),  # Reduce distance for complex
                     max_variants=1000,
@@ -462,7 +462,7 @@ def parallel_batch_processing(db, query_groups: Dict[str, List[str]],
 
         for query in queries:
             try:
-                results = db.fuzzy_query(query, max_distance=max_distance)
+                results = fuzzy.query_fuzzy(query, max_distance=max_distance)
                 group_results[query] = {
                     'matches': len(results),
                     'total_count': sum(r.count for r in results),
@@ -620,7 +620,7 @@ def export_fuzzy_results(results, base_filename, query_pattern):
     }
 
 # Usage
-results = db.fuzzy_query("ATNNGTA", max_distance=2)
+results = fuzzy.query_fuzzy("ATNNGTA", max_distance=2)
 exported_files = export_fuzzy_results(results, "fuzzy_query_results", "ATNNGTA")
 ```
 
@@ -634,7 +634,7 @@ def integrate_with_sqlite(db, query_pattern, sqlite_db_path):
     import json
 
     # Perform fuzzy query
-    results = db.fuzzy_query(query_pattern, max_distance=2)
+    results = fuzzy.query_fuzzy(query_pattern, max_distance=2)
 
     # Connect to SQLite database
     conn = sqlite3.connect(sqlite_db_path)
@@ -763,7 +763,7 @@ class PrimerDesigner:
 
             # Search for matches in database
             try:
-                results = self.db.fuzzy_query(primer, max_distance=max_mismatches)
+                results = self.fuzzy.query_fuzzy(primer, max_distance=max_mismatches)
 
                 if results:
                     # Calculate binding strength metrics
@@ -944,7 +944,7 @@ def phylogenetic_distance_analysis(db, sequences, labels=None):
             for kmer in seq1_kmers:
                 try:
                     # Find close matches in database
-                    results = db.fuzzy_query(kmer, max_distance=1)
+                    results = fuzzy.query_fuzzy(kmer, max_distance=1)
                     matches = [r.kmer for r in results if r.distance <= 1]
 
                     # Check if any matches are in seq2
@@ -1058,7 +1058,7 @@ class FuzzyQueryBenchmark:
 
                 # Time the query
                 start_time = time.time()
-                results = self.db.fuzzy_query(pattern, max_variants=theoretical_variants)
+                results = self.fuzzy.query_fuzzy(pattern, max_variants=theoretical_variants)
                 end_time = time.time()
 
                 # Measure memory after query
@@ -1107,7 +1107,7 @@ class FuzzyQueryBenchmark:
 
             try:
                 start_time = time.time()
-                results = self.db.fuzzy_query(reference_sequence, max_distance=distance)
+                results = self.fuzzy.query_fuzzy(reference_sequence, max_distance=distance)
                 end_time = time.time()
 
                 query_time = end_time - start_time
@@ -1151,7 +1151,7 @@ class FuzzyQueryBenchmark:
             individual_results = []
             for query in queries:
                 try:
-                    results = self.db.fuzzy_query(query, max_distance=1)
+                    results = self.fuzzy.query_fuzzy(query, max_distance=1)
                     individual_results.append(results)
                 except:
                     individual_results.append([])

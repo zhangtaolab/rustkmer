@@ -374,152 +374,58 @@ echo "Results saved in: $OUTPUT_DIR"
 
 ## Python集成
 
-### Python包装器
+### 基本使用
 
 ```python
 #!/usr/bin/env python3
-# rustkmer_wrapper.py
+# rustkmer_basic.py
 
-import subprocess
-import tempfile
-import os
-from typing import List, Dict, Optional
+from pyrustkmer import PyCounter, PyDatabase, LoadMode
+from typing import List, Dict
 
-class RustKmer:
-    """RustKmer Python包装器"""
+# 1. 创建k-mer计数器
+print("Creating k-mer counter...")
+counter = PyCounter(k=21, canonical=True, threads=4)
 
-    def __init__(self, database_path: str):
-        self.database_path = database_path
-        self._validate_database()
+# 2. 从文件计数k-mers
+print("Counting k-mers from file...")
+counter.count_file("genome.fa")
+print(f"Unique k-mers: {counter.get_unique_count()}")
+print(f"Total k-mers: {counter.get_total_count()}")
 
-    def _validate_database(self):
-        """验证数据库文件"""
-        if not os.path.exists(self.database_path):
-            raise FileNotFoundError(f"Database not found: {self.database_path}")
+# 3. 保存到数据库
+print("Saving to database...")
+counter.save_to_database("genome.rkdb", sorted=True)
 
-    def count_kmers(self,
-                   input_file: str,
-                   kmer_size: int,
-                   output_file: str,
-                   threads: int = 8,
-                   canonical: bool = False,
-                   sort: bool = True) -> None:
-        """计数k-mers"""
-        cmd = [
-            'rustkmer', 'count',
-            '-k', str(kmer_size),
-            '-t', str(threads),
-            '-o', output_file,
-            input_file
-        ]
+# 4. 加载数据库
+print("Loading database...")
+db = PyDatabase("genome.rkdb", load_mode=LoadMode.MemoryMapped)
 
-        if canonical:
-            cmd.append('-C')
-        if sort:
-            cmd.append('--sort')
+# 5. 查询单个k-mer
+print("Single query:")
+result = db.query("ATGCGATGCTAGCGCTAGCTA")
+print(f"K-mer: {result.kmer}")
+print(f"Count: {result.count}")
+print(f"Found: {result.found}")
 
-        subprocess.run(cmd, check=True)
+# 6. 批量查询
+print("\nBatch query:")
+queries = [
+    "ATGCGATGCTAGCGCTAGCTA",
+    "GCTAGCTAGCTAGCTAGCTAC",
+    "TAGCTAGCTAGCTAGCTAGCA"
+]
+results = db.query_batch(queries)
+for result in results:
+    print(f"{result.kmer}: {result.count} (found: {result.found})")
 
-    def query_kmer(self, kmer: str) -> int:
-        """查询单个k-mer"""
-        cmd = ['rustkmer', 'query', self.database_path, kmer]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-
-        if result.stdout.strip():
-            return int(result.stdout.strip().split('\t')[1])
-        return 0
-
-    def query_kmers_batch(self, queries: List[str]) -> Dict[str, int]:
-        """批量查询k-mers"""
-        # 创建临时FASTA文件
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.fa', delete=False) as f:
-            for i, query in enumerate(queries):
-                f.write(f">query_{i+1}\n{query}\n")
-            temp_file = f.name
-
-        try:
-            # 执行查询
-            cmd = ['rustkmer', 'query', self.database_path, '--sequence', temp_file]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-
-            # 解析结果
-            results = {}
-            for line in result.stdout.strip().split('\n'):
-                if line:
-                    kmer, count = line.split('\t')
-                    results[kmer] = int(count)
-
-            return results
-        finally:
-            os.unlink(temp_file)
-
-    def query_from_file(self, query_file: str, output_file: str) -> None:
-        """从文件查询"""
-        cmd = [
-            'rustkmer', 'query',
-            self.database_path,
-            '--sequence', query_file,
-            '-o', output_file
-        ]
-        subprocess.run(cmd, check=True)
-
-    def get_database_info(self) -> Dict[str, str]:
-        """获取数据库信息"""
-        cmd = ['rustkmer', 'info', self.database_path]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-
-        info = {}
-        for line in result.stdout.strip().split('\n'):
-            if ':' in line:
-                key, value = line.split(':', 1)
-                info[key.strip()] = value.strip()
-
-        return info
-
-# 使用示例
-def example_usage():
-    """使用示例"""
-
-    # 1. 创建数据库
-    rk = RustKmer.__new__(RustKmer)  # 跳过验证（用于创建）
-
-    print("Creating database...")
-    rk.count_kmers(
-        input_file='genome.fa',
-        kmer_size=21,
-        output_file='genome.rkdb',
-        threads=8,
-        canonical=True,
-        sort=True
-    )
-
-    # 2. 初始化查询器
-    rk = RustKmer('genome.rkdb')
-
-    # 3. 单个查询
-    print("Single query:")
-    count = rk.query_kmer('ATGCGATGCTAGCGCTAGCTA')
-    print(f"ATGCGATGCTAGCGCTAGCTA: {count}")
-
-    # 4. 批量查询
-    print("Batch query:")
-    queries = [
-        'ATGCGATGCTAGCGCTAGCTA',
-        'GCTAGCTAGCTAGCTAGCTAC',
-        'TAGCTAGCTAGCTAGCTAGCA'
-    ]
-    results = rk.query_kmers_batch(queries)
-    for kmer, count in results.items():
-        print(f"{kmer}: {count}")
-
-    # 5. 数据库信息
-    print("Database info:")
-    info = rk.get_database_info()
-    for key, value in info.items():
-        print(f"{key}: {value}")
-
-if __name__ == "__main__":
-    example_usage()
+# 7. 获取数据库统计信息
+print("\nDatabase statistics:")
+stats = db.get_statistics()
+print(f"K-mer size: {stats.kmer_size}")
+print(f"Total k-mers: {stats.total_kmers}")
+print(f"Unique k-mers: {stats.unique_kmers}")
+print(f"Sorted: {stats.is_sorted}")
 ```
 
 ### 高级Python集成
@@ -530,33 +436,37 @@ if __name__ == "__main__":
 
 import pandas as pd
 import numpy as np
-from rustkmer_wrapper import RustKmer
-import multiprocessing as mp
-from functools import partial
-import time
+from pyrustkmer import PyCounter, PyDatabase, LoadMode
+from typing import List
 
-class AdvancedRustKmer(RustKmer):
-    """高级RustKmer集成"""
+class AdvancedRustKmerAnalyzer:
+    """高级RustKmer分析器"""
 
-    def __init__(self, database_path: str):
-        super().__init__(database_path)
+    def __init__(self, database_path: str, load_mode=LoadMode.MemoryMapped):
+        """初始化分析器"""
+        self.database_path = database_path
+        self.db = PyDatabase(database_path, load_mode=load_mode)
         self.cache = {}  # 简单查询缓存
 
     def analyze_kmer_distribution(self, queries: List[str]) -> pd.DataFrame:
         """分析k-mer分布"""
+        import time
         start_time = time.time()
-        results = self.query_kmers_batch(queries)
-        end_time = time.time()
+
+        # 批量查询
+        results = self.db.query_batch(queries)
 
         # 转换为DataFrame
-        df = pd.DataFrame([
-            {'kmer': kmer, 'count': count}
-            for kmer, count in results.items()
-        ])
+        data = [
+            {'kmer': r.kmer, 'count': r.count, 'found': r.found}
+            for r in results
+        ]
+        df = pd.DataFrame(data)
 
         # 添加统计信息
         df['log_count'] = np.log10(df['count'] + 1)
 
+        end_time = time.time()
         print(f"Processed {len(queries)} k-mers in {end_time - start_time:.2f} seconds")
         print(f"K-mers with count > 0: {(df['count'] > 0).sum()}")
         print(f"Mean count: {df['count'].mean():.2f}")
@@ -564,43 +474,24 @@ class AdvancedRustKmer(RustKmer):
 
         return df
 
-    def parallel_query_chunks(self, queries: List[str],
-                            chunk_size: int = 10000,
-                            processes: int = 4) -> Dict[str, int]:
-        """并行分块查询"""
-        chunks = [
-            queries[i:i + chunk_size]
-            for i in range(0, len(queries), chunk_size)
+    def find_most_abundant_kmers(self, queries: List[str], top_n: int = 10) -> pd.DataFrame:
+        """找到最丰富的k-mers"""
+        results = self.db.query_batch(queries)
+        sorted_results = sorted(results, key=lambda r: r.count, reverse=True)
+
+        top_data = [
+            {'rank': i+1, 'kmer': r.kmer, 'count': r.count}
+            for i, r in enumerate(sorted_results[:top_n])
         ]
+        return pd.DataFrame(top_data)
 
-        print(f"Processing {len(queries)} queries in {len(chunks)} chunks...")
-
-        with mp.Pool(processes=processes) as pool:
-            chunk_results = pool.map(self._process_query_chunk, chunks)
-
-        # 合并结果
-        final_results = {}
-        for chunk_result in chunk_results:
-            final_results.update(chunk_result)
-
-        return final_results
-
-    def _process_query_chunk(self, queries: List[str]) -> Dict[str, int]:
-        """处理查询块"""
-        return self.query_kmers_batch(queries)
-
-    def export_results_to_csv(self, results: Dict[str, int],
-                            output_file: str) -> None:
+    def export_results_to_csv(self, results: pd.DataFrame, output_file: str) -> None:
         """导出结果到CSV"""
-        df = pd.DataFrame([
-            {'kmer': kmer, 'count': count}
-            for kmer, count in results.items()
-        ])
-
         # 排序
-        df = df.sort_values('count', ascending=False)
+        df = results.sort_values('count', ascending=False)
 
         # 添加统计列
+        df = df.reset_index(drop=True)
         df['rank'] = range(1, len(df) + 1)
         df['percentile'] = df['rank'] / len(df) * 100
 
@@ -612,22 +503,27 @@ def advanced_example():
     """高级使用示例"""
 
     # 初始化
-    rk = AdvancedRustKmer('genome_k21.rkdb')
+    analyzer = AdvancedRustKmerAnalyzer('genome_k21.rkdb')
 
     # 生成测试查询
     print("Generating test queries...")
     test_queries = [
         ''.join(np.random.choice(list('ATGC'), 21))
-        for _ in range(100000)
+        for _ in range(10000)
     ]
 
     # 分析分布
     print("Analyzing k-mer distribution...")
-    df = rk.analyze_kmer_distribution(test_queries[:10000])  # 先测试1万个
+    df = analyzer.analyze_kmer_distribution(test_queries)
 
     # 统计分析
     print("\nStatistical Analysis:")
     print(df['count'].describe())
+
+    # 最丰富的k-mers
+    print("\nTop 10 most abundant k-mers:")
+    top_kmers = analyzer.find_most_abundant_kmers(test_queries, top_n=10)
+    print(top_kmers)
 
     # 可视化（如果安装了matplotlib）
     try:
@@ -671,6 +567,121 @@ def advanced_example():
 
 if __name__ == "__main__":
     advanced_example()
+ ```
+
+### 批量处理与性能优化
+
+```python
+#!/usr/bin/env python3
+# batch_processing.py
+
+import pandas as pd
+import numpy as np
+from pyrustkmer import PyCounter, PyDatabase, LoadMode
+from typing import List
+import time
+
+class BatchProcessor:
+    """高性能批量处理器"""
+
+    def __init__(self, database_path: str, load_mode=LoadMode.MemoryMapped):
+        """初始化处理器"""
+        self.db = PyDatabase(database_path, load_mode=load_mode)
+
+    def process_large_batch(self, queries: List[str],
+                         batch_size: int = 10000) -> pd.DataFrame:
+        """处理大规模查询批次"""
+        print(f"Processing {len(queries)} queries in batches of {batch_size}...")
+
+        all_results = []
+        start_time = time.time()
+
+        for i in range(0, len(queries), batch_size):
+            batch = queries[i:i + batch_size]
+            batch_num = i // batch_size + 1
+            total_batches = (len(queries) + batch_size - 1) // batch_size
+
+            print(f"  Processing batch {batch_num}/{total_batches}...")
+
+            batch_start = time.time()
+            results = self.db.query_batch(batch)
+            batch_time = time.time() - batch_start
+
+            # 转换为列表
+            batch_data = [
+                {'kmer': r.kmer, 'count': r.count, 'found': r.found}
+                for r in results
+            ]
+            all_results.extend(batch_data)
+
+            print(f"    Batch time: {batch_time:.2f}s, "
+                  f"Queries/sec: {len(batch)/batch_time:.0f}")
+
+        total_time = time.time() - start_time
+        df = pd.DataFrame(all_results)
+
+        print(f"\nTotal time: {total_time:.2f}s")
+        print(f"Overall throughput: {len(queries)/total_time:.0f} queries/sec")
+        print(f"Found k-mers: {(df['count'] > 0).sum()}")
+
+        return df
+
+    def filter_and_export(self, df: pd.DataFrame,
+                       min_count: int = 10,
+                       output_file: str = None) -> pd.DataFrame:
+        """过滤和导出结果"""
+        # 过滤
+        filtered = df[df['count'] >= min_count].copy()
+
+        # 排序
+        filtered = filtered.sort_values('count', ascending=False)
+
+        # 添加排名
+        filtered = filtered.reset_index(drop=True)
+        filtered['rank'] = range(1, len(filtered) + 1)
+
+        if output_file:
+            filtered.to_csv(output_file, index=False)
+            print(f"Exported {len(filtered)} results to {output_file}")
+
+        return filtered
+
+# 使用示例
+def batch_processing_example():
+    """批量处理示例"""
+
+    # 初始化
+    processor = BatchProcessor('genome_k21.rkdb')
+
+    # 生成大规模测试数据
+    print("Generating large-scale test data...")
+    large_queries = [
+        ''.join(np.random.choice(list('ATGC'), 21))
+        for _ in range(100000)  # 10万查询
+    ]
+
+    # 批量处理
+    print("\nStarting batch processing...")
+    results_df = processor.process_large_batch(large_queries, batch_size=5000)
+
+    # 过滤和导出
+    print("\nFiltering and exporting...")
+    filtered = processor.filter_and_export(
+        results_df,
+        min_count=5,
+        output_file='filtered_results.csv'
+    )
+
+    # 显示统计
+    print(f"\nResults summary:")
+    print(f"  Total queries: {len(large_queries)}")
+    print(f"  Unique k-mers found: {(results_df['count'] > 0).sum()}")
+    print(f"  After filtering (count >= 5): {len(filtered)}")
+    print(f"  Top 5 most abundant:")
+    print(filtered.head(5).to_string(index=False))
+
+if __name__ == "__main__":
+    batch_processing_example()
 ```
 
 ## 常见问题

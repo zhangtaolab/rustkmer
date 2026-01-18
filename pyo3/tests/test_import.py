@@ -28,7 +28,7 @@ class TestModuleImport:
             "PyDatabase",
             "PyDatabaseStats",
             "PyQueryResult",
-            "PyKmerCounter",
+            "PyCounter",
             "PyCounterStats",
             "PyFuzzyQuery",
             "PyFuzzyResult",

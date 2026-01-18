@@ -38,10 +38,10 @@ with open("AAATT_kmers.txt", "w") as f:
 
 ### 基本用法
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 
 # 加载数据库
-db = rustkmer_pyo3.PyDatabase("database.rkdb", rustkmer_pyo3.LoadMode.Preload)
+db = rustkmer_pyo3.PyDatabase("database.rkdb", LoadMode.Preload)
 
 # 提取以"AAATT"开头的k-mer
 prefix_results = db.extract_by_prefix("AAATT")

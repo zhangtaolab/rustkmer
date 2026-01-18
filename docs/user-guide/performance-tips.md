@@ -78,7 +78,7 @@ rustkmer count -i input.fa -o output.rkdb --sorted
 ### Batch Processing
 ```python
 import os
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 
 def process_large_dataset(input_files, k=21, batch_size=1000000):
     """Process large genomic datasets in batches."""
@@ -87,29 +87,29 @@ def process_large_dataset(input_files, k=21, batch_size=1000000):
         print(f"Processing file {i+1}/{len(input_files)}: {file}")
 
         # Create counter with memory-efficient settings
-        counter = KmerCounter(k=k, canonical=True)
+        counter = PyCounter(k, canonical=True)
 
         # Process in chunks if very large
         if os.path.getsize(file) > 1_000_000_000:  # 1GB
-            counter.count_file(file, chunk_size=1000000)
+            counter.add_from_fasta(file, chunk_size=1000000)
         else:
-            counter.count_file(file)
+            counter.add_from_fasta(file)
 
         # Save intermediate results
         output_file = f"batch_{i+1:03d}.rkdb"
-        counter.save_to_database(output_file)
+        counter.save_database(output_file)
 
         print(f"Saved: {output_file}")
 ```
 
 ### Streaming Processing
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 
 def stream_process_fasta(fasta_file, k=21):
     """Stream large FASTA files without loading entirely into memory."""
 
-    counter = KmerCounter(k=k, canonical=True)
+    counter = PyCounter(k, canonical=True)
 
     # Process file in streaming mode
     with open(fasta_file, 'r') as f:
@@ -132,7 +132,7 @@ rustkmer count -i input.fa -o output.rkdb --indexed
 
 ### Batch Querying
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 import time
 
 def batch_query_examples():
@@ -144,7 +144,7 @@ def batch_query_examples():
         # ... thousands more queries
     ]
 
-    with Database() as db:
+    # PyDatabase doesn't use context manager
         db.load("large_database.rkdb")
 
         # Batch query (much faster)
@@ -161,23 +161,23 @@ def batch_query_examples():
 
 ### Fuzzy Query Optimization
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 
 def optimize_fuzzy_queries():
     """Optimize fuzzy search parameters for speed vs accuracy."""
 
-    with Database() as db:
+    # PyDatabase doesn't use context manager
         db.load("database.rkdb")
 
         # Fast fuzzy search (less accurate)
-        results = db.fuzzy_query(
+        results = fuzzy.query_fuzzy(
             pattern="ATCGATCGATCGATCGATCG",
             max_distance=2,
             max_results=100
         )
 
         # Comprehensive fuzzy search (slower, more accurate)
-        results = db.fuzzy_query(
+        results = fuzzy.query_fuzzy(
             pattern="ATCGATCGATCGATCGATCG",
             max_distance=3,
             max_results=1000,
@@ -210,17 +210,17 @@ rustkmer count -i input.fa -o /fast/storage/output.rkdb
 
 ### Memory Mapping
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 
 def use_memory_mapping():
     """Enable memory mapping for large databases."""
 
-    with Database() as db:
+    # PyDatabase doesn't use context manager
         # Use memory-mapped access for large files
         db.load("large_database.rkdb", memory_mapped=True)
 
         # Queries will be much faster for repeated access
-        result = db.query("ATCGATCGATCGATCGATCG")
+        result = db.query_exact("ATCGATCGATCGATCGATCG")
 ```
 
 ## Benchmarking Your System
@@ -229,7 +229,7 @@ def use_memory_mapping():
 ```python
 import time
 import psutil
-from rustkmer import KmerCounter, Database
+from pyrustkmer import KmerCounter, Database
 
 def benchmark_system():
     """Benchmark RustKmer performance on your system."""
@@ -249,11 +249,11 @@ def benchmark_system():
         print(f"\n🧬 Testing k={k}")
 
         start_time = time.time()
-        counter = KmerCounter(k=k, canonical=True)
-        counter.count_file(test_file)
+        counter = PyCounter(k, canonical=True)
+        counter.add_from_fasta(test_file)
         count_time = time.time() - start_time
 
-        total_kmers = counter.get_total_count()
+        total_kmers = counter.get_stats().total_kmers)
         unique_kmers = counter.get_unique_count()
 
         print(f"   Counting time: {count_time:.2f}s")
@@ -268,12 +268,12 @@ def benchmark_system():
     db_file = "test_database.rkdb"
     queries = ["ATCGATCGATCGATCGATCG"] * 10000  # 10k queries
 
-    with Database() as db:
+    # PyDatabase doesn't use context manager
         db.load(db_file)
 
         start_time = time.time()
         for query in queries:
-            db.query(query)
+            db.query_exact(query)
         query_time = time.time() - start_time
 
         print(f"   Query time: {query_time:.2f}s")
