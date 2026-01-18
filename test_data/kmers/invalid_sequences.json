@@ -1,0 +1,29 @@
+{
+  "invalid_characters": [
+    "ATCGXATCGATCGATCGATCGATC",
+    "ATCGATCGATCGATCGATCGATCN",
+    "ATCGATCGATCGATCGATCGATCB",
+    "ATCGATCGATCGATCGATCGATC123",
+    "ATCGATCGATCGATCGATCGATC!"
+  ],
+  "wrong_lengths": [
+    "",
+    "A",
+    "AT",
+    "ATCG",
+    "ATCGA",
+    "ATCGAT"
+  ],
+  "lowercase": [
+    "atcgatcgatcgatcgatcgatc",
+    "ATCGatcgATCGatcgATCGATC",
+    "atcgATCGatcgATCGatcgATCG"
+  ],
+  "mixed_with_whitespace": [
+    "ATCG ATCG ATCG ATCG",
+    "ATCGATCGATCGATCGATCG ",
+    " ATCGATCGATCGATCGATCGATC",
+    "ATCGATCGATCGATCGATCGATC\n"
+  ],
+  "description": "Invalid sequences for testing error handling"
+}
