@@ -1,6 +1,6 @@
 [package]
 name = "rustkmer-pyo3"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 authors = ["RustKmer Team <team@rustkmer.org>"]
 description = "High-performance PyO3 Python bindings for rustkmer k-mer library"
