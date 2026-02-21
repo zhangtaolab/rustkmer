@@ -2,10 +2,10 @@
 name = "rustkmer"
 version = "0.5.1"
 edition = "2021"
-authors = ["Forrest Li <forrest@example.com>"]
+authors = ["Zhang Tao <forrest_zhang@163.com>"]
 description = "High-performance k-mer counting tool in Rust"
 license = "MIT"
-repository = "https://github.com/yourusername/rustkmer"
+repository = "https://github.com/zhangtaolab/rustkmer"
 keywords = ["bioinformatics", "genomics", "kmer", "sequencing"]
 categories = ["science", "command-line-utilities"]
 
