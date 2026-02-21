@@ -12,7 +12,8 @@ All rustkmer-specific exceptions inherit from this class, allowing users to catc
 
 ```python
 try:
-    db = Database("nonexistent.rkdb")
+    db = PyDatabase("nonexistent.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 except RustKmerError as e:
     print(f"rustkmer error occurred: {e}")
 ```
@@ -27,7 +28,8 @@ Base class for all database-related errors.
 
 ```python
 try:
-    db = Database("invalid.rkdb", validate=True)
+    db = PyDatabase("invalid.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 except DatabaseError as e:
     print(f"Database error: {e}")
 ```
@@ -41,7 +43,8 @@ Raised when a database file cannot be found at the specified path.
 
 ```python
 try:
-    db = Database("/nonexistent/path/database.rkdb")
+    db = PyDatabase("/nonexistent/path/database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 except DatabaseNotFoundError as e:
     print(f"Database not found at: {e.path}")
     print(f"Error: {e}")
@@ -57,7 +60,8 @@ Raised when a file exists but is not a valid rustkmer database.
 
 ```python
 try:
-    db = Database("/path/to/wrong_format.txt", validate=True)
+    db = PyDatabase("/path/to/wrong_format.txt", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 except InvalidDatabaseError as e:
     print(f"Invalid database: {e.reason}")
     print(f"File path: {e.path}")
@@ -72,7 +76,8 @@ Raised when a database file appears to be corrupted or unreadable.
 
 ```python
 try:
-    db = Database("/path/to/corrupted.rkdb")
+    db = PyDatabase("/path/to/corrupted.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 except DatabaseCorruptedError as e:
     print(f"Database corrupted: {e.path}")
     # Try to recover or use backup
@@ -88,7 +93,7 @@ Base class for all query-related errors.
 
 ```python
 try:
-    result = db.query("INVALID")
+    result = db.query_exact("INVALID")
 except QueryError as e:
     print(f"Query failed: {e}")
 ```
@@ -103,7 +108,7 @@ Raised when an invalid k-mer sequence is provided.
 
 ```python
 try:
-    result = db.query("ATXG")  # Invalid character X
+    result = db.query_exact("ATXG")  # Invalid character X
 except InvalidKmerError as e:
     print(f"Invalid k-mer: {e.kmer}")
     print(f"Reason: {e.reason}")
@@ -119,7 +124,7 @@ Raised when k-mer length doesn't match database k-mer size.
 
 ```python
 try:
-    result = db.query("ATCG")  # Too short for k=31 database
+    result = db.query_exact("ATCG")  # Too short for k=31 database
 except KmerLengthError as e:
     print(f"Expected length: {e.expected_length}")
     print(f"Actual length: {e.actual_length}")
@@ -136,7 +141,7 @@ Base exception for fuzzy query operations.
 
 ```python
 try:
-    result = db.fuzzy_query("ATCG", mutations=10)  # Too high
+    result = fuzzy.query_fuzzy("ATCG", mutations=10)  # Too high
 except FuzzyQueryError as e:
     print(f"Fuzzy query error: {e}")
 ```
@@ -147,7 +152,7 @@ Raised when mutation tolerance is out of valid range.
 
 ```python
 try:
-    result = db.fuzzy_query("ATCG", mutations=10)  # Too high
+    result = fuzzy.query_fuzzy("ATCG", mutations=10)  # Too high
 except InvalidMutationToleranceError as e:
     print("Mutation tolerance too high")
     print("Use a smaller value (0-5)")
@@ -162,7 +167,7 @@ Raised when position-mutations parameter has invalid format or values.
 
 ```python
 try:
-    result = db.fuzzy_query("ATCG", position_mutations="invalid")
+    result = fuzzy.query_fuzzy("ATCG", position_mutations="invalid")
 except InvalidPositionMutationError as e:
     print(f"Invalid format: {e.position_config}")
     print("Use format like '3,4:1' or '2-5:2'")
@@ -180,11 +185,11 @@ Raised when fuzzy query would generate too many variants.
 
 ```python
 try:
-    result = db.fuzzy_query("ATCGATCGATCG", mutations=5)
+    result = fuzzy.query_fuzzy("ATCGATCGATCG", mutations=5)
 except CombinatorialExplosionError as e:
     print("Too many variants would be generated")
     # Try reducing mutations or using max_variants parameter
-    result = db.fuzzy_query("ATCGATCGATCG", mutations=3, max_variants=1000)
+    result = fuzzy.query_fuzzy("ATCGATCGATCG", mutations=3, max_variants=1000)
 ```
 
 ### `BatchQueryError`
@@ -199,31 +204,11 @@ except BatchQueryError as e:
     # Process queries individually to identify the problem
     for kmer in ["ATCG", "GCTA", "INVALID"]:
         try:
-            result = db.fuzzy_query(kmer)
+            result = fuzzy.query_fuzzy(kmer)
         except FuzzyQueryError as query_error:
             print(f"Query {kmer} failed: {query_error}")
 ```
 
-## System Errors
-
-### `SubprocessError`
-
-Raised when subprocess calls to rustkmer CLI fail.
-
-**Attributes:**
-- `command`: The full command that was attempted
-- `returncode`: The exit code returned by the subprocess
-- `stderr`: Standard error output from the failed command
-
-```python
-try:
-    result = db.query("ATCG")  # This calls rustkmer CLI internally
-except SubprocessError as e:
-    print(f"Command failed: {e.command}")
-    print(f"Exit code: {e.returncode}")
-    if e.stderr:
-        print(f"Error output: {e.stderr}")
-```
 
 ### `ConfigurationError`
 
@@ -231,7 +216,8 @@ Raised when there's a configuration issue with the rustkmer package.
 
 ```python
 try:
-    db = Database("database.rkdb")  # May trigger config validation
+    db = PyDatabase("database.rkdb")
+fuzzy = PyFuzzyQuery(db)  # May trigger config validation
 except ConfigurationError as e:
     print(f"Configuration issue: {e}")
     print("Check rustkmer installation and environment")
@@ -244,7 +230,8 @@ except ConfigurationError as e:
 ```python
 # Handle specific errors appropriately
 try:
-    db = Database("database.rkdb")
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 except DatabaseNotFoundError:
     print("Database not found. Check the file path.")
     sys.exit(1)
@@ -258,7 +245,7 @@ except InvalidDatabaseError:
 ```python
 # Catch all rustkmer errors
 try:
-    result = db.fuzzy_query("ATCG", mutations=2)
+    result = fuzzy.query_fuzzy("ATCG", mutations=2)
 except RustKmerError as e:
     print(f"rustkmer error: {e}")
     # Handle or log the error appropriately
@@ -271,7 +258,7 @@ def safe_query_with_retry(db, kmer, max_retries=3):
     """Query with retry logic for common errors."""
     for attempt in range(max_retries):
         try:
-            return db.query(kmer)
+            return db.query_exact(kmer)
         except DatabaseNotFoundError:
             # File doesn't exist, no point retrying
             raise
@@ -310,6 +297,6 @@ from rustkmer.exceptions import (
     DatabaseError, QueryError, InvalidKmerError,
     DatabaseNotFoundError, InvalidDatabaseError,
     FuzzyQueryError, InvalidMutationToleranceError,
-    SubprocessError, ConfigurationError
+    ConfigurationError
 )
 ```

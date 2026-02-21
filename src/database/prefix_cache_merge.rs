@@ -27,6 +27,7 @@ pub struct ExternalSortMerger {
     pub keep_intermediate: bool,
 }
 
+#[allow(dead_code)]
 impl ExternalSortMerger {
     pub fn new(
         input_files: Vec<PathBuf>,

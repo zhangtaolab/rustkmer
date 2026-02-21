@@ -103,9 +103,9 @@ def decide_strategy(pattern, n_positions, total_variants):
 
 ### 实际使用示例
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 
-db = rustkmer_pyo3.PyDatabase("database.rkdb")
+db = rustkmer_pyo3.PyDatabase("database.rkdb", LoadMode.Preload)
 
 # 场景1: AAAANNN - 自动选择前缀匹配
 results = db.smart_wildcard_query("AAAANNN")

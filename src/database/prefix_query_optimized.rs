@@ -42,16 +42,39 @@ pub fn extract_prefix_optimized(
 
     let start_time = Instant::now();
 
+    let kmer_size = database.kmer_size();
+
+    // Validate prefix length to prevent overflow
+    if prefix.len() > kmer_size {
+        return Ok(OptimizedPrefixResult {
+            matches: vec![],
+            memory_block: MemoryBlockInfo {
+                start_index: 0,
+                end_index: 0,
+                block_size: 0,
+                is_sorted: database.header.sorted,
+            },
+            total_matches: 0,
+            query_time_ms: start_time.elapsed().as_millis() as u64,
+        });
+    }
+
     // Validate prefix
     if prefix.is_empty() {
-        return Err(crate::error::KmerError::InvalidParameters(
-            "Prefix cannot be empty".to_string(),
-        )
-        .into());
+        return Ok(OptimizedPrefixResult {
+            matches: vec![],
+            memory_block: MemoryBlockInfo {
+                start_index: 0,
+                end_index: 0,
+                block_size: 0,
+                is_sorted: database.header.sorted,
+            },
+            total_matches: 0,
+            query_time_ms: start_time.elapsed().as_millis() as u64,
+        });
     }
 
     let prefix_upper = prefix.to_uppercase();
-    let kmer_size = database.kmer_size();
 
     // Encode prefix to get search range
     let prefix_encoded = encode_prefix_to_range(&prefix_upper, kmer_size)?;

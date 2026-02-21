@@ -226,13 +226,13 @@ Error: File not found: nonexistent.rkdb
 ### Using the Python Interface
 
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode
 
 # Load database
-db = rustkmer_pyo3.PyDatabase("database.rkdb")
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 
 # Extract by prefix
-results = db.extract_by_prefix("ATG")
+results = db.query_prefix("ATG")
 
 # Results format: {"kmer": "ATG...", "count": N}
 for kmer, count in results.items():

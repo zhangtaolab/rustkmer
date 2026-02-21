@@ -29,18 +29,18 @@ export PYTHONPATH="/Users/forrest/Github/rustkmer/pyo3/target/debug:$PYTHONPATH"
 
 ### 方法3: 在Python代码中使用统一接口
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 
 # 创建统一数据库接口
-engine = rustkmer_pyo3.PyDatabase(
+engine = PyDatabase(
     "python/tests/test_data/small_test.rkdb", 
-    rustkmer_pyo3.LoadMode.Preload
+    LoadMode.Preload
 )
 
 print(f"数据库信息: kmer_size={engine.kmer_size}, total_kmers={engine.total_kmers}")
 
 # 精确查询
-result = engine.query("GCCGCGG")
+result = engine.query_exact("GCCGCGG")
 if result.found:
     print(f"GCCGCGG: 找到 {result.count} 次")
 else:
@@ -86,8 +86,8 @@ print(f"数据库统计: kmer_size={stats.kmer_size}, unique_kmers={stats.unique
 ### 文档和报告
 - `docs/guides/pyo3-binding-guide.md` - 详细使用指南 ✅ 已更新
 - `docs/guides/pyo3-binding-readme.md` - 本快速指南 ✅ 已更新
-- `FINAL_UNIFIED_INTERFACE_REPORT.md` - 完整实现报告 ✅
-- `PYO3_UNIFIED_INTERFACE_PLAN.md` - 实施计划
+- `docs/guides/FINAL_UNIFIED_INTERFACE_REPORT.md` - 完整实现报告 ✅
+- `docs/guides/PYO3_UNIFIED_INTERFACE_PLAN.md` - 实施计划
 
 ## ⚙️ 构建状态
 
@@ -132,12 +132,12 @@ print(f"数据库统计: kmer_size={stats.kmer_size}, unique_kmers={stats.unique
 - `LoadMode.Lazy` - 懒加载模式 (最低内存占用)
 
 ### 传统接口 (兼容)
-- `PyPrefixQuery` - 基础前缀查询引擎 (逐步弃用)
+- `PyDatabase` - 基础前缀查询引擎 (逐步弃用)
 - `PyFuzzyQuery` - 模糊查询引擎 (逐步弃用)
 - `PyKmerCounter` - K-mer计数工具
 - `PyDatabaseStats` - 数据库统计类
 - `PyQueryResult` - 查询结果类
-- `PyPrefixQueryResult` - 前缀查询结果类
+- `PyDatabaseResult` - 前缀查询结果类
 - `PyFuzzyResult` - 模糊查询结果类
 
 ## 🔧 环境要求
@@ -157,7 +157,7 @@ export PYTHONPATH="/Users/forrest/Github/rustkmer/pyo3/target/debug:$PYTHONPATH"
 
 ### 3. 测试导入
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 print("Available classes:", [x for x in dir(rustkmer_pyo3) if not x.startswith('_')])
 ```
 
@@ -217,16 +217,16 @@ export PYTHONPATH="/Users/forrest/Github/rustkmer/pyo3/target/debug:$PYTHONPATH"
 
 ### 🎯 统一接口使用示例
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 
 # 创建统一数据库接口
-engine = rustkmer_pyo3.PyDatabase(
+engine = PyDatabase(
     "python/tests/test_data/small_test.rkdb", 
-    rustkmer_pyo3.LoadMode.Preload
+    LoadMode.Preload
 )
 
 # 所有查询功能都通过同一个实例
-exact_result = engine.query("GCCGCGG")                    # 精确查询
+exact_result = engine.query_exact("GCCGCGG")                    # 精确查询
 prefix_result = engine.query_prefix_optimized("GCC")      # 前缀查询
 hybrid_result = engine.query_hybrid("GCC{N3}CGG")         # 混合查询
 fuzzy_result = engine.fuzzy_query("GCCGCN", 1)            # 模糊查询

@@ -46,20 +46,20 @@ EOF
 ### Python Implementation
 
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import PyCounter
 
 # Create a k-mer counter
 print("🧬 Creating k-mer counter...")
-counter = KmerCounter(k=21, canonical=True)
+counter = PyCounter(21, canonical=True)
 print(f"   K-mer size: {counter.k}")
 print(f"   Canonical mode: {counter.canonical}")
 
 # Count k-mers from file
 print("📊 Counting k-mers from file...")
-counter.count_file("sample.fa")
+counter.add_from_fasta("sample.fa")
 
 # Get results
-total_kmers = counter.get_total_count()
+total_kmers = counter.get_stats().total_kmers
 unique_kmers = counter.get_unique_count()
 
 print(f"✅ Counting complete!")
@@ -99,12 +99,11 @@ Now let's query the database we created:
 ### Python Querying
 
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
-# Load the database (preload=False for memory efficiency)
+# Load the database
 print("🔍 Loading k-mer database...")
-db = Database()
-db.load("sample_k21.rkdb", False)
+db = PyDatabase("sample_k21.rkdb", LoadMode.Preload)
 
 # Query specific k-mers
 test_kmers = [
@@ -115,7 +114,7 @@ test_kmers = [
 
 print("🔎 Querying k-mers...")
 for kmer in test_kmers:
-    result = db.query(kmer)
+    result = db.query_exact(kmer)
     if result.found:  # Use .found instead of .exists
         print(f"   ✅ Found {result.kmer}: {result.count:,} occurrences")
     else:
@@ -128,7 +127,6 @@ print(f"   K-mer size: {stats.kmer_size}")
 print(f"   Total k-mers: {stats.total_kmers:,}")
 print(f"   Unique k-mers: {stats.unique_kmers:,}")
 
-db.close()
 ```
 
 ### Command Line Querying
@@ -162,25 +160,22 @@ RustKmer supports pattern matching with wildcards and distance-based searches.
 The examples below show the intended interface for future development.
 
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 # Load database
-db = Database()
-db.load("sample_k21.rkdb", False)
+db = PyDatabase("sample_k21.rkdb", LoadMode.Preload)
 
-# Try some wildcard patterns
+# Try some wildcard patterns using PyFuzzyQuery
 patterns = [
-    "ATN",           # A followed by any base, followed by C
-    "GCTN",          # Similar pattern
-    "ATNNT"          # Two wildcards
+    "ATCGATCGATCGATCGATCGATC",  # Original k-mer
 ]
 
 print("🔍 Fuzzy searching with wildcards...")
+fuzzy = PyFuzzyQuery(db)
 for pattern in patterns:
-    # results = db.fuzzy_query(pattern)  # Not yet implemented
-    print(f"   Pattern '{pattern}': fuzzy search coming soon!")
+    results = fuzzy.query_fuzzy(pattern, max_distance=1)
+    print(f"   Pattern '{pattern}': found {len(results)} matches within distance 1")
 
-db.close()
 ```
 
 ### Hamming Distance Search
@@ -188,22 +183,19 @@ db.close()
 **Note:** Distance-based fuzzy searching is planned for a future version.
 
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 # Load database
-db = Database()
-db.load("sample_k21.rkdb", False)
+db = PyDatabase("sample_k21.rkdb", LoadMode.Preload)
 
 # Original k-mer with some distance tolerance
 original = "ATCGATCGATCGATCGATCGATCG"
 
 print("🎯 Distance-based fuzzy searching...")
-print("   This functionality is planned for a future version!")
+fuzzy = PyFuzzyQuery(db)
+results = fuzzy.query_fuzzy(original, max_distance=2)
+print(f"   Found {len(results)} k-mers within distance 2 of '{original}'")
 
-# Future implementation will look like:
-# results = db.fuzzy_query(original, max_distance=2)
-
-db.close()
 ```
 
 ---
@@ -213,36 +205,36 @@ db.close()
 ### Processing Large Files
 
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 
 # For larger files, consider these optimizations:
 
 # 1. Use appropriate k-mer size (smaller = faster, larger = more specific)
 print("🧬 Optimizing for large file processing...")
-counter = KmerCounter(k=13, canonical=True)  # Smaller k for speed
+counter = PyCounter(13, canonical=True)  # Smaller k for speed
 
 # 2. Process in chunks if needed
-counter.count_file("large_genome.fa.gz")  # Handles gzip automatically
+counter.add_from_fasta("large_genome.fa.gz")  # Handles gzip automatically
 
 print("📊 Large file results:")
-print(f"   Total k-mers: {counter.get_total_count():,}")
+print(f"   Total k-mers: {counter.get_stats().total_kmers):,}")
 print(f"   Unique k-mmers: {counter.get_unique_count():,}")
 
 # 3. Save intermediate results
-counter.save_to_database("large_genome_k13.rkdb")
+counter.save_database("large_genome_k13.rkdb")
 print("💾 Database saved: large_genome_k13.rkdb")
 ```
 
 ### Batch Processing Multiple Files
 
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 import glob
 
 def process_multiple_files(file_pattern, k=21):
     """Process multiple files and combine results."""
 
-    counter = KmerCounter(k=k, canonical=True)
+    counter = PyCounter(k, canonical=True)
     files = glob.glob(file_pattern)
 
     print(f"📁 Processing {len(files)} files matching '{file_pattern}'")
@@ -252,8 +244,8 @@ def process_multiple_files(file_pattern, k=21):
         print(f"   [{i}/{len(files)}] Processing {filename}...")
 
         try:
-            counter.count_file(file_path)
-            print(f"      Current total: {counter.get_total_count():,}")
+            counter.add_from_fasta(file_path)
+            print(f"      Current total: {counter.get_stats().total_kmers):,}")
         except Exception as e:
             print(f"      ⚠️  Error processing {filename}: {e}")
 
@@ -269,23 +261,25 @@ def process_multiple_files(file_pattern, k=21):
 
 ### Python API
 ```python
-from rustkmer import KmerCounter, Database
+from pyrustkmer import PyCounter, PyDatabase, LoadMode, PyFuzzyQuery
 
 # Counting
-counter = KmerCounter(k=21, canonical=True)
-counter.count_file("data.fa.gz")
-total = counter.get_total_count()
+counter = PyCounter(21, canonical=True)
+counter.add_from_fasta("data.fa.gz")
+total = counter.get_stats().total_kmers
 unique = counter.get_unique_count()
 top_kmers = counter.get_top_kmers(10)
-counter.save_to_database("data.rkdb")
+counter.save_database("data.rkdb")
 
 # Querying
-db = Database()
-db.load("data.rkdb", False)  # Add preload parameter
-result = db.query("ATCGATCGATCGATCGATCGATCG")
-# fuzzy_results = db.fuzzy_query("ATN", max_distance=1)  # Not yet implemented
+db = PyDatabase("data.rkdb", LoadMode.Preload)
+result = db.query_exact("ATCGATCGATCGATCGATCGATCG")
+
+# Fuzzy querying
+fuzzy = PyFuzzyQuery(db)
+fuzzy_results = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATC", max_distance=1)
+
 stats = db.get_stats()
-db.close()
 ```
 
 ### Command Line Interface
@@ -320,12 +314,11 @@ rustkmer count --help
 
 ```python
 # For memory-constrained environments
-counter = KmerCounter(k=13)  # Smaller k = less memory
+counter = PyCounter(13)  # Smaller k = less memory
 
 # For query-heavy workloads
-db = Database()
-db.load("database.rkdb")          # Memory-mapped (default)
-# db.load("database.rkdb", preload=True)  # Preload for speed
+db = PyDatabase("database.rkdb", LoadMode.MemoryMapped)  # Memory-mapped (default)
+# db = PyDatabase("database.rkdb", LoadMode.Preload)  # Preload for speed
 ```
 
 ## Next Steps

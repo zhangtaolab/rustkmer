@@ -11,7 +11,7 @@ for data analysis and visualization:
 - Exporting results
 """
 
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -56,10 +56,10 @@ def example_1_kmer_count_matrix():
         for sample_name, db_file in sample_files.items():
             sample_row = {'Sample': sample_name}
 
-            with Database(db_file) as db:
+            db = PyDatabase(db_file, LoadMode.Preload)
                 for kmer in query_kmers:
                     try:
-                        result = db.query(kmer)
+                        result = db.query_exact(kmer)
                         sample_row[kmer] = result.count
                     except Exception as e:
                         print(f"Error querying {kmer} in {sample_name}: {e}")
@@ -139,9 +139,9 @@ def example_2_presence_absence_matrix():
         for sample_name, db_file in sample_files.items():
             row_data = {'Sample': sample_name}
 
-            with Database(db_file) as db:
+            db = PyDatabase(db_file, LoadMode.Preload)
                 for kmer in kmer_set:
-                    result = db.query(kmer)
+                    result = db.query_exact(kmer)
                     row_data[kmer] = 1 if result.is_present else 0
 
             presence_data.append(row_data)
@@ -217,7 +217,7 @@ def example_3_abundance_analysis():
         top_kmers = []
 
         print("Collecting k-mer abundance data...")
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
             for result in db.dump(limit=1000, canonical_only=True):
                 abundance_data.append({
                     'kmer': result.kmer,
@@ -531,7 +531,7 @@ def example_5_export_and_analysis():
 def create_sample_databases(database_configs):
     """Create sample databases for demonstration."""
     for db_file, sequences in database_configs.items():
-        counter = KmerCounter(k=31, canonical=True)
+        counter = PyCounter(k=31, canonical=True)
         counter.count_file_list(sequences)
         counter.save_to_database(db_file)
 
@@ -564,7 +564,7 @@ def create_abundance_database(db_path):
     ]
     sequences.extend(unique_sequences)
 
-    counter = KmerCounter(k=31, canonical=True)
+    counter = PyCounter(k=31, canonical=True)
     counter.count_file_list(sequences)
     counter.save_to_database(db_path)
 

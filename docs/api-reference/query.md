@@ -40,9 +40,9 @@ Check if the k-mer exists in the database.
 
 **Example:**
 ```python
-result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
 
-if result.is_present:
+if result.found:
     print(f"K-mer found with count: {result.count}")
 else:
     print("K-mer not found in database")
@@ -58,7 +58,7 @@ Convert the QueryResult to a dictionary representation.
 
 **Example:**
 ```python
-result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
 data = result.to_dict()
 
 print(data)
@@ -73,7 +73,7 @@ Convert the QueryResult to a JSON string.
 
 **Example:**
 ```python
-result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
 json_str = result.to_json()
 
 print(json_str)
@@ -106,7 +106,7 @@ String representation of the QueryResult.
 
 **Example:**
 ```python
-result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
 print(str(result))
 # Output: ATCGATCGATCGATCGATCGATCGATCGATCGATCG: 42
 ```
@@ -116,14 +116,14 @@ print(str(result))
 ### Basic Query Result Processing
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 
-with Database("database.rkdb") as db:
+db = PyDatabase("database.rkdb", LoadMode.Preload)
     # Query a k-mer
-    result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+    result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
 
     # Check if k-mer exists
-    if result.is_present:
+    if result.found:
         print(f"Found k-mer {result.kmer} with count {result.count}")
         print(f"Canonical form: {result.canonical}")
     else:
@@ -133,19 +133,19 @@ with Database("database.rkdb") as db:
 ### Batch Query Processing
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 
 def analyze_kmers(db_path, kmers):
     """Analyze multiple k-mers and return statistics."""
-    with Database(db_path) as db:
+    db = PyDatabase(db_path, LoadMode.Preload)
         results = []
 
         for kmer in kmers:
-            result = db.query(kmer)
+            result = db.query_exact(kmer)
             results.append(result)
 
             # Process result
-            if result.is_present:
+            if result.found:
                 print(f"{kmer}: {result.count} occurrences")
             else:
                 print(f"{kmer}: not found")
@@ -166,15 +166,15 @@ results = analyze_kmers("database.rkdb", kmers)
 
 ```python
 import json
-from rustkmer import Database
+from pyrustkmer import Database
 
 def export_query_results(db_path, kmers, output_file):
     """Export query results to JSON file."""
-    with Database(db_path) as db:
+    db = PyDatabase(db_path, LoadMode.Preload)
         all_results = []
 
         for kmer in kmers:
-            result = db.query(kmer)
+            result = db.query_exact(kmer)
             all_results.append(result.to_dict())
 
         # Save to JSON file
@@ -190,20 +190,20 @@ export_query_results("database.rkdb", kmers, "query_results.json")
 
 ```python
 import pandas as pd
-from rustkmer import Database
+from pyrustkmer import Database
 
 def create_kmer_dataframe(db_path, kmers):
     """Create a pandas DataFrame from query results."""
-    with Database(db_path) as db:
+    db = PyDatabase(db_path, LoadMode.Preload)
         results = []
 
         for kmer in kmers:
-            result = db.query(kmer)
+            result = db.query_exact(kmer)
             results.append({
                 'kmer': result.kmer,
                 'count': result.count,
                 'canonical': result.canonical,
-                'present': result.is_present
+                'present': result.found
             })
 
         return pd.DataFrame(results)
@@ -227,9 +227,9 @@ QueryResult objects are lightweight and can be stored in large quantities:
 ```python
 # Store millions of results efficiently
 all_results = []
-with Database("large_db.rkdb") as db:
+db = PyDatabase("large_db.rkdb", LoadMode.Preload)
     for kmer in many_kmers:  # Could be millions
-        result = db.query(kmer)
+        result = db.query_exact(kmer)
         all_results.append(result)  # Low memory overhead
 ```
 
@@ -240,7 +240,7 @@ Serialize frequently accessed results to avoid repeated queries:
 ```python
 import json
 import os
-from rustkmer import Database
+from pyrustkmer import Database
 
 def cached_query(db_path, kmer, cache_dir="query_cache"):
     """Query with caching to avoid repeated database access."""
@@ -253,8 +253,8 @@ def cached_query(db_path, kmer, cache_dir="query_cache"):
         return QueryResult.from_dict(data)
 
     # Perform query and cache result
-    with Database(db_path) as db:
-        result = db.query(kmer)
+    db = PyDatabase(db_path, LoadMode.Preload)
+        result = db.query_exact(kmer)
 
         # Save to cache
         os.makedirs(cache_dir, exist_ok=True)
@@ -299,12 +299,12 @@ Choose FuzzyQueryResult when:
 QueryResult itself doesn't raise exceptions, but the database operations that create it can:
 
 ```python
-from rustkmer import Database, InvalidKmerError, DatabaseError
+from pyrustkmer import Database, InvalidKmerError, DatabaseError
 
 def safe_query(db_path, kmer):
     try:
-        with Database(db_path) as db:
-            return db.query(kmer)
+        db = PyDatabase(db_path, LoadMode.Preload)
+            return db.query_exact(kmer)
 
     except InvalidKmerError as e:
         print(f"Invalid k-mer: {e.kmer} - {e.reason}")

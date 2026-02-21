@@ -127,7 +127,7 @@ import sys
 import os
 import time
 from pathlib import Path
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter, PyFuzzyQuery
 
 def main():
     # Input/output from Snakemake
@@ -144,19 +144,19 @@ def main():
     print(f"Output database: {output_database}")
 
     # Initialize k-mer counter
-    counter = KmerCounter(k=kmer_size, canonical=True)
+    counter = PyCounter(kmer_size, canonical=True)
 
     # Count k-mers
     start_time = time.time()
-    counter.count_file(fasta_file)
+    counter.add_from_fasta(fasta_file)
     processing_time = time.time() - start_time
 
     # Get statistics
-    total_kmers = counter.get_total_count()
+    total_kmers = counter.get_stats().total_kmers)
     unique_kmers = counter.get_unique_count()
 
     # Save database
-    counter.save_to_database(output_database)
+    counter.save_database(output_database)
 
     # Write statistics
     with open(output_stats, 'w') as f:
@@ -252,7 +252,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
-from rustkmer import KmerCounter, Database
+from pyrustkmer import KmerCounter, Database, PyFuzzyQuery
 from Bio import SeqIO
 import ipywidgets as widgets
 from IPython.display import display, Markdown
@@ -348,16 +348,16 @@ def count_kmers_with_progress(fasta_file, kmer_size):
 
     # Count k-mers
     start_time = time.time()
-    counter = KmerCounter(k=kmer_size, canonical=True)
+    counter = PyCounter(kmer_size, canonical=True)
 
     # Update progress
     progress.value = 25
 
-    counter.count_file(fasta_file)
+    counter.add_from_fasta(fasta_file)
     progress.value = 75
 
     # Get statistics
-    total_kmers = counter.get_total_count()
+    total_kmers = counter.get_stats().total_kmers)
     unique_kmers = counter.get_unique_count()
 
     progress.value = 100
@@ -393,7 +393,7 @@ def create_and_analyze_database(counter, sample_name="sample"):
 
     # Create database
     db_file = f"{sample_name}_k{kmer_size}.rkdb"
-    counter.save_to_database(db_file)
+    counter.save_database(db_file)
 
     db_size = os.path.getsize(db_file) / (1024*1024)  # MB
 
@@ -406,7 +406,8 @@ def create_and_analyze_database(counter, sample_name="sample"):
     # Analyze database contents
     display(Markdown("🔍 Analyzing database contents..."))
 
-    with Database(db_file) as db:
+    db = PyDatabase(db_file)
+fuzzy = PyFuzzyQuery(db) as db:
         # Get top k-mers
         top_kmers = []
         for result in db.dump(limit=50, canonical_only=True):
@@ -515,21 +516,22 @@ def query_database(b):
 
         display(Markdown(f"🔍 Querying: `{query}` with {mutations} mutations allowed..."))
 
-        with Database(db_file) as db:
+        db = PyDatabase(db_file)
+fuzzy = PyFuzzyQuery(db) as db:
             # Exact query
-            exact_result = db.query(query)
+            exact_result = db.query_exact(query)
 
             display(Markdown(f"""
             ### Exact Query Results
             - **Query**: `{query}`
-            - **Found**: {exact_result.is_present}
+            - **Found**: {exact_result.found}
             - **Count**: {exact_result.count:,}
             - **Canonical**: `{exact_result.canonical}`
             """))
 
             # Fuzzy query
             if mutations > 0:
-                fuzzy_result = db.fuzzy_query(query, mutations=mutations)
+                fuzzy_result = fuzzy.query_fuzzy(query, mutations=mutations)
 
                 display(Markdown(f"""
                 ### Fuzzy Query Results ({mutations} mutations)
@@ -568,13 +570,14 @@ def batch_analyze_kmers(kmers_list):
 
     results = []
 
-    with Database(db_file) as db:
+    db = PyDatabase(db_file)
+fuzzy = PyFuzzyQuery(db) as db:
         for i, kmer in enumerate(kmers_list):
             try:
-                result = db.query(kmer)
+                result = db.query_exact(kmer)
                 results.append({
                     'kmer': kmer,
-                    'found': result.is_present,
+                    'found': result.found,
                     'count': result.count,
                     'canonical': result.canonical
                 })
@@ -625,15 +628,16 @@ def compare_multiple_samples(sample_files):
         display(Markdown(f"Processing `{sample_name}`..."))
 
         # Count k-mers
-        counter = KmerCounter(k=kmer_size, canonical=True)
-        counter.count_file(sample_file)
+        counter = PyCounter(kmer_size, canonical=True)
+        counter.add_from_fasta(sample_file)
 
         # Get top k-mers
         sample_results = []
         temp_db = f"temp_{sample_name}.rkdb"
-        counter.save_to_database(temp_db)
+        counter.save_database(temp_db)
 
-        with Database(temp_db) as db:
+        db = PyDatabase(temp_db)
+fuzzy = PyFuzzyQuery(db) as db:
             for result in db.dump(limit=20, canonical_only=True):
                 sample_results.append({
                     'kmer': result.canonical,
@@ -772,7 +776,7 @@ process COUNT_KMERS {
     #!/usr/bin/env python3
     import os
     import time
-    from rustkmer import KmerCounter
+    from pyrustkmer import KmerCounter, PyFuzzyQuery
 
     sample_id = "${sample_id}"
     fasta_file = "${fasta_file}"
@@ -783,17 +787,17 @@ process COUNT_KMERS {
     print(f"Processing {sample_id} with k={kmer_size}")
 
     # Count k-mers
-    counter = KmerCounter(k=kmer_size, canonical=True)
+    counter = PyCounter(kmer_size, canonical=True)
     start_time = time.time()
-    counter.count_file(fasta_file)
+    counter.add_from_fasta(fasta_file)
     processing_time = time.time() - start_time
 
     # Get statistics
-    total_kmers = counter.get_total_count()
+    total_kmers = counter.get_stats().total_kmers)
     unique_kmers = counter.get_unique_count()
 
     # Save database
-    counter.save_to_database(db_file)
+    counter.save_database(db_file)
 
     # Write statistics
     with open(stats_file, 'w') as f:
@@ -824,7 +828,7 @@ process QUERY_DATABASES {
     """
     #!/usr/bin/env python3
     import pandas as pd
-    from rustkmer import Database
+    from pyrustkmer import Database, PyFuzzyQuery
     from pathlib import Path
 
     # Load queries
@@ -847,11 +851,12 @@ process QUERY_DATABASES {
         count_row = {'Sample': sample_name}
 
         try:
-            with Database(db_file) as db:
+            db = PyDatabase(db_file)
+fuzzy = PyFuzzyQuery(db) as db:
                 for query in queries:
                     try:
-                        result = db.query(query)
-                        presence_row[query] = 1 if result.is_present else 0
+                        result = db.query_exact(query)
+                        presence_row[query] = 1 if result.found else 0
                         count_row[query] = result.count
                     except Exception as e:
                         print(f"Query {query} failed for {sample_name}: {e}")
@@ -1044,7 +1049,7 @@ import json
 import os
 import tempfile
 import urllib.request
-from rustkmer import Database, KmerCounter
+from pyrustkmer import Database, KmerCounter, PyFuzzyQuery
 import boto3
 
 def lambda_handler(event, context):
@@ -1084,10 +1089,11 @@ def lambda_handler(event, context):
                 db_path = tmp_file.name
 
         # Query database
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
             if mutations > 0:
                 # Fuzzy query
-                result = db.fuzzy_query(query_kmer, mutations=mutations)
+                result = fuzzy.query_fuzzy(query_kmer, mutations=mutations)
                 response = {
                     'kmer': query_kmer,
                     'mutations_allowed': mutations,
@@ -1102,10 +1108,10 @@ def lambda_handler(event, context):
                 }
             else:
                 # Exact query
-                result = db.query(query_kmer)
+                result = db.query_exact(query_kmer)
                 response = {
                     'kmer': query_kmer,
-                    'found': result.is_present,
+                    'found': result.found,
                     'count': result.count,
                     'canonical': result.canonical
                 }
@@ -1176,7 +1182,7 @@ Flask web service for k-mer analysis.
 """
 
 from flask import Flask, request, jsonify
-from rustkmer import Database, KmerCounter
+from pyrustkmer import Database, KmerCounter, PyFuzzyQuery
 import os
 import tempfile
 import urllib.request
@@ -1229,9 +1235,10 @@ def query_kmer():
                 return jsonify({'error': 'Database not found'}), 404
 
         # Query database
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
             if mutations > 0:
-                result = db.fuzzy_query(query_kmer, mutations=mutations)
+                result = fuzzy.query_fuzzy(query_kmer, mutations=mutations)
                 response = {
                     'kmer': query_kmer,
                     'mutations_allowed': mutations,
@@ -1245,10 +1252,10 @@ def query_kmer():
                     ]
                 }
             else:
-                result = db.query(query_kmer)
+                result = db.query_exact(query_kmer)
                 response = {
                     'kmer': query_kmer,
-                    'found': result.is_present,
+                    'found': result.found,
                     'count': result.count,
                     'canonical': result.canonical
                 }
@@ -1288,19 +1295,20 @@ def count_kmers():
             fasta_path = tmp_file.name
 
         # Count k-mers
-        counter = KmerCounter(k=kmer_size, canonical=canonical)
-        counter.count_file(fasta_path)
+        counter = PyCounter(kmer_size, canonical=canonical)
+        counter.add_from_fasta(fasta_path)
 
         # Get statistics
-        total_kmers = counter.get_total_count()
+        total_kmers = counter.get_stats().total_kmers)
         unique_kmers = counter.get_unique_count()
 
         # Get top k-mers
         temp_db = tempfile.NamedTemporaryFile(suffix='.rkdb', delete=False)
-        counter.save_to_database(temp_db.name)
+        counter.save_database(temp_db.name)
 
         top_kmers = []
-        with Database(temp_db.name) as db:
+        db = PyDatabase(temp_db.name)
+fuzzy = PyFuzzyQuery(db) as db:
             for result in db.dump(limit=20, canonical_only=True):
                 top_kmers.append({
                     'kmer': result.kmer,
@@ -1344,7 +1352,7 @@ Advanced data analysis with pandas integration.
 
 import pandas as pd
 import numpy as np
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 from pathlib import Path
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -1379,11 +1387,12 @@ class KmerDataFrame:
             presence_row = {'Sample': sample_name}
             count_row = {'Sample': sample_name}
 
-            with Database(db_file) as db:
+            db = PyDatabase(db_file)
+fuzzy = PyFuzzyQuery(db) as db:
                 for query in queries:
                     try:
-                        result = db.query(query)
-                        presence_row[query] = 1 if result.is_present else 0
+                        result = db.query_exact(query)
+                        presence_row[query] = 1 if result.found else 0
                         count_row[query] = result.count
                     except:
                         presence_row[query] = 0
@@ -1610,9 +1619,10 @@ if __name__ == "__main__":
 ```python
 # Use generators for large datasets
 def query_generator(db_file, queries):
-    with Database(db_file) as db:
+    db = PyDatabase(db_file)
+fuzzy = PyFuzzyQuery(db) as db:
         for query in queries:
-            yield db.query(query)
+            yield db.query_exact(query)
 
 # Process in chunks
 def process_in_chunks(data, chunk_size=1000):
@@ -1626,8 +1636,9 @@ from functools import lru_cache
 
 @lru_cache(maxsize=1000)
 def cached_query(db_path, kmer):
-    with Database(db_path) as db:
-        return db.query(kmer)
+    db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
+        return db.query_exact(kmer)
 ```
 
 ### 3. Parallel Processing

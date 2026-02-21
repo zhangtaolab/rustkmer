@@ -122,13 +122,13 @@ rustkmer prefix-query genome.rkdb --prefix ATG
 
 ### Python API
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode
 
 # 创建数据库连接
-engine = rustkmer_pyo3.PyDatabase("genome.rkdb", rustkmer_pyo3.LoadMode.Preload)
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
 
 # 查询k-mer
-result = engine.query("ATGCGATGCTAGCGCTAGCTA")
+result = db.query_exact("ATGCGATGCTAGCGCTAGCTA")
 if result:
     print(f"找到: {result.count}")
 ```

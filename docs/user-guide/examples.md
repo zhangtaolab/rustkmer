@@ -17,17 +17,17 @@ This page provides practical examples for common RustKmer use cases.
 ### Count K-mers from a String
 
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 
 # Create counter
-counter = KmerCounter(k=21, canonical=True)
+counter = PyCounter(21, canonical=True)
 
 # Count k-mers
 sequence = "ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATC"
-counter.count_string(sequence)
+counter.add_sequence(sequence)
 
 # Get results
-total = counter.get_total_count()
+total = counter.get_stats().total_kmers)
 unique = counter.get_unique_count()
 print(f"Total: {total}, Unique: {unique}")
 ```
@@ -35,15 +35,15 @@ print(f"Total: {total}, Unique: {unique}")
 ### Query a Single K-mer
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 
 # Load database
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load("example.rkdb")
 
 # Query
 kmer = "ATCGATCGATCGATCGATCGATC"
-count = db.query(kmer)
+count = db.query_exact(kmer)
 print(f"'{kmer}' appears {count} times")
 ```
 
@@ -52,54 +52,54 @@ print(f"'{kmer}' appears {count} times")
 ### Process FASTA Files
 
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 import os
 
 # Process all FASTA files in directory
-counter = KmerCounter(k=31, canonical=True)
+counter = PyCounter(31, canonical=True)
 
 fa_files = [f for f in os.listdir("data/") if f.endswith((".fa", ".fasta"))]
 for file in fa_files:
     filepath = os.path.join("data/", file)
     print(f"Processing {file}...")
-    counter.count_file(filepath)
+    counter.add_from_fasta(filepath)
 
-print(f"\nTotal k-mers from all files: {counter.get_total_count():,}")
+print(f"\nTotal k-mers from all files: {counter.get_stats().total_kmers):,}")
 
 # Save combined results
-counter.save_to_database("combined_counts.rkdb")
+counter.save_database("combined_counts.rkdb")
 ```
 
 ### Process FASTQ Files with Quality Filtering
 
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 
 # Create counter
-counter = KmerCounter(k=21)
+counter = PyCounter(21)
 
 # Process FASTQ (quality scores ignored in counting)
-counter.count_file("reads.fastq")
+counter.add_from_fasta("reads.fastq")
 
 # For quality-based processing, filter first:
 from Bio import SeqIO
 
 quality_threshold = 30
-counter = KmerCounter(k=21)
+counter = PyCounter(21)
 
 for record in SeqIO.parse("reads.fastq", "fastq"):
     if record.letter_annotations["phred_quality"].count(lambda q: q < quality_threshold) == 0:
         # High quality read
-        counter.count_string(str(record.seq))
+        counter.add_sequence(str(record.seq))
 ```
 
 ### Handle Compressed Files
 
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 
 # RustKmer automatically handles gzip compression
-counter = KmerCounter(k=31)
+counter = PyCounter(31)
 
 # All these work transparently
 files = [
@@ -111,7 +111,7 @@ files = [
 
 for file in files:
     try:
-        counter.count_file(file)
+        counter.add_from_fasta(file)
         print(f"Processed {file}")
     except Exception as e:
         print(f"Error processing {file}: {e}")
@@ -122,18 +122,18 @@ for file in files:
 ### Create and Query Database
 
 ```python
-from rustkmer import KmerCounter, Database
+from pyrustkmer import KmerCounter, Database
 
 # Step 1: Count k-mers
-counter = KmerCounter(k=31, canonical=True)
-counter.count_file("sample.fa.gz")
+counter = PyCounter(31, canonical=True)
+counter.add_from_fasta("sample.fa.gz")
 
 # Step 2: Save to database
 database_path = "sample_k31.rkdb"
-counter.save_to_database(database_path, canonical=True)
+counter.save_database(database_path, canonical=True)
 
 # Step 3: Load and query
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load(database_path)
 
 # Query specific k-mers
@@ -143,17 +143,17 @@ test_kmers = [
 ]
 
 for kmer in test_kmers:
-    count = db.query(kmer)
+    count = db.query_exact(kmer)
     print(f"{kmer[:10]}...: {count}")
 ```
 
 ### Database Statistics
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 import json
 
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load("large_database.rkdb")
 
 # Get comprehensive statistics
@@ -176,7 +176,7 @@ if stats['total_kmers'] > 0:
 ### Merge Multiple Databases
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 
 # Create merged database from multiple sources
 databases_to_merge = [
@@ -186,7 +186,7 @@ databases_to_merge = [
 ]
 
 # Load first database
-merged_db = Database()
+merged_db = PyDatabase("database.rkdb", LoadMode.Preload)
 merged_db.load(databases_to_merge[0])
 
 # Merge remaining databases
@@ -209,11 +209,11 @@ print(f"  Unique k-mers: {stats['unique_kmers']:,}")
 ### Batch Query from List
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 import time
 
 # Load database
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load("database.rkdb")
 
 # Prepare query list
@@ -240,17 +240,17 @@ print(f"\nQueried {len(query_kmers)} k-mers in {query_time:.2f} seconds")
 ### Batch Counting Multiple Files
 
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def count_file_kmers(filepath, k=31):
     """Count k-mers in a single file"""
-    counter = KmerCounter(k=k, canonical=True)
-    counter.count_file(filepath)
+    counter = PyCounter(k, canonical=True)
+    counter.add_from_fasta(filepath)
     return {
         'file': os.path.basename(filepath),
-        'total': counter.get_total_count(),
+        'total': counter.get_stats().total_kmers),
         'unique': counter.get_unique_count()
     }
 
@@ -281,7 +281,7 @@ print(f"\nTotal k-mers across all files: {total_kmers:,}")
 ### Fuzzy Search with Wildcards
 
 ```python
-from rustkmer import FuzzyQuery
+from pyrustkmer import FuzzyQuery
 
 # Load database for fuzzy search
 fq = FuzzyQuery()
@@ -291,7 +291,7 @@ fq.load("genome.rkdb")
 print("Wildcard searches:")
 wildcard_patterns = ["AATN", "NCGA", "ATGNNNTA"]
 for pattern in wildcard_patterns:
-    results = fq.query(pattern)
+    results = fuzzy.query_fuzzy(pattern)
     print(f"Pattern '{pattern}': {len(results)} matches")
     for match, count in results[:5]:  # Show first 5
         print(f"  {match}: {count}")
@@ -300,7 +300,7 @@ for pattern in wildcard_patterns:
 ### Fuzzy Search with Mismatches
 
 ```python
-from rustkmer import FuzzyQuery
+from pyrustkmer import FuzzyQuery
 
 fq = FuzzyQuery()
 fq.load("genome.rkdb")
@@ -309,7 +309,7 @@ fq.load("genome.rkdb")
 query = "ATCGATCGATCGATCGATCGATC"
 max_mismatches = 2
 
-results = fq.query(query, max_mismatches=max_mismatches)
+results = fuzzy.query_fuzzy(query, max_mismatches=max_mismatches)
 print(f"Sequences similar to '{query[:10]}...' with ≤{max_mismatches} mismatches:")
 
 # Group by number of mismatches
@@ -327,11 +327,11 @@ for mismatches, matches in sorted(by_mismatches.items()):
 ### Complex Query Patterns
 
 ```python
-from rustkmer import Database, FuzzyQuery
+from pyrustkmer import Database, FuzzyQuery
 import re
 
 # Load databases
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load("annotations.rkdb")
 fq = FuzzyQuery()
 fq.load("genome.rkdb")
@@ -349,13 +349,13 @@ for category, pattern_list in patterns.items():
 
     # Exact matches
     for pattern in pattern_list:
-        count = db.query(pattern)
+        count = db.query_exact(pattern)
         if count > 0:
             print(f"  {pattern}: {count} exact matches")
 
     # Fuzzy matches
     for pattern in pattern_list:
-        fuzzy_results = fq.query(pattern, max_mismatches=1)
+        fuzzy_results = fuzzy.query_fuzzy(pattern, max_mismatches=1)
         if len(fuzzy_results) > 0:
             print(f"  {pattern}: {len(fuzzy_results)} similar sequences")
 ```
@@ -365,7 +365,7 @@ for category, pattern_list in patterns.items():
 ### Memory-Mapped Database Access
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 import time
 
 # Compare memory usage
@@ -374,16 +374,16 @@ large_db = "very_large_database.rkdb"
 # Without memory mapping (loads everything)
 print("Without memory mapping:")
 start_time = time.time()
-db1 = Database()
-db1.load(large_db, memory_mapped=False)
+db1 = PyDatabase("very_large_database.rkdb", LoadMode.Preload)
+
 load_time1 = time.time() - start_time
 print(f"  Load time: {load_time1:.2f} seconds")
 
 # With memory mapping (loads on demand)
 print("\nWith memory mapping:")
 start_time = time.time()
-db2 = Database()
-db2.load(large_db, memory_mapped=True)
+db2 = PyDatabase("very_large_database.rkdb", LoadMode.MemoryMapped)
+
 load_time2 = time.time() - start_time
 print(f"  Load time: {load_time2:.2f} seconds")
 
@@ -394,13 +394,13 @@ print("\nQuery performance:")
 # Time queries without memory mapping
 start_time = time.time()
 for kmer in test_kmers:
-    db1.query(kmer)
+    db1.query_exact(kmer)
 time1 = time.time() - start_time
 
 # Time queries with memory mapping
 start_time = time.time()
 for kmer in test_kmers:
-    db2.query(kmer)
+    db2.query_exact(kmer)
 time2 = time.time() - start_time
 
 print(f"  Without memory mapping: {time1*1000:.2f} ms")
@@ -410,7 +410,7 @@ print(f"  With memory mapping: {time2*1000:.2f} ms")
 ### Optimal Thread Configuration
 
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 import multiprocessing
 import time
 
@@ -427,15 +427,15 @@ for threads in thread_counts:
         continue
 
     print(f"\nTesting with {threads} threads...")
-    counter = KmerCounter(k=31, canonical=True, threads=threads)
+    counter = PyCounter(31, canonical=True, threads=threads)
 
     start_time = time.time()
-    counter.count_file(file_to_process)
+    counter.add_from_fasta(file_to_process)
     elapsed = time.time() - start_time
 
     times[threads] = elapsed
     print(f"  Time: {elapsed:.2f} seconds")
-    print(f"  K-mers: {counter.get_total_count():,}")
+    print(f"  K-mers: {counter.get_stats().total_kmers):,}")
 
 # Find optimal configuration
 optimal_threads = min(times, key=times.get)
@@ -454,10 +454,10 @@ for threads, elapsed in times.items():
 
 ```python
 import pandas as pd
-from rustkmer import Database
+from pyrustkmer import Database
 
 # Load database
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load("expression_data.rkdb")
 
 # Read query data
@@ -484,10 +484,10 @@ significant.to_csv("significant_kmers.csv", index=False)
 ```python
 import matplotlib.pyplot as plt
 import numpy as np
-from rustkmer import Database
+from pyrustkmer import Database
 
 # Load database
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load("sample.rkdb")
 
 # Get k-mer abundance distribution
@@ -497,7 +497,7 @@ kmer_counts = []
 test_kmers = [f"{'ATCG' * 5}{i:02d}" for i in range(100)]
 
 for kmer in test_kmers:
-    count = db.query(kmer)
+    count = db.query_exact(kmer)
     if count > 0:
         kmer_counts.append(count)
 
@@ -527,17 +527,17 @@ if kmer_counts:
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition import PCA
 import numpy as np
-from rustkmer import Database
+from pyrustkmer import Database
 
 # Extract features using RustKmer
 def extract_kmer_features(sequences, k=21):
     """Extract k-mer features using RustKmer"""
-    db = Database()
-    counter = KmerCounter(k=k, canonical=True)
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+    counter = PyCounter(k, canonical=True)
 
     # Count k-mers from all sequences
     for seq in sequences:
-        counter.count_string(seq)
+        counter.add_sequence(seq)
 
     # Get all unique k-mers as features
     # Note: This would need a method to get all k-mers
@@ -574,7 +574,7 @@ print(f"Explained variance ratio: {pca.explained_variance_ratio_.sum():.3f}")
 ## Complete Workflow Example
 
 ```python
-from rustkmer import KmerCounter, Database, FuzzyQuery
+from pyrustkmer import KmerCounter, Database, FuzzyQuery
 import os
 import json
 import time
@@ -595,25 +595,25 @@ def complete_genomics_workflow(input_dir, output_dir):
 
     # 2. Count k-mers from all files
     k = 31
-    counter = KmerCounter(k=k, canonical=True)
+    counter = PyCounter(k, canonical=True)
 
     print("\nCounting k-mers...")
     start_time = time.time()
 
     for file in sequence_files:
         print(f"  Processing {os.path.basename(file)}")
-        counter.count_file(file)
+        counter.add_from_fasta(file)
 
     counting_time = time.time() - start_time
     print(f"Counting completed in {counting_time:.2f} seconds")
 
     # 3. Save database
     db_path = os.path.join(output_dir, f"kmer_database_k{k}.rkdb")
-    counter.save_to_database(db_path)
+    counter.save_database(db_path)
     print(f"\nDatabase saved to {db_path}")
 
     # 4. Load database for analysis
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
     db.load(db_path)
 
     # 5. Get statistics
@@ -631,7 +631,7 @@ def complete_genomics_workflow(input_dir, output_dir):
 
     print("\nQuery Results:")
     for seq in test_sequences:
-        count = db.query(seq)
+        count = db.query_exact(seq)
         print(f"  {seq[:20]}...: {count}")
 
     # 7. Fuzzy search example
@@ -639,13 +639,13 @@ def complete_genomics_workflow(input_dir, output_dir):
     fq.load(db_path)
 
     pattern = "AATN"  # Find sequences with this pattern
-    fuzzy_results = fq.query(pattern)
+    fuzzy_results = fuzzy.query_fuzzy(pattern)
     print(f"\nFuzzy search for '{pattern}': {len(fuzzy_results)} matches")
 
     # 8. Save results
     results = {
         'statistics': stats,
-        'query_results': {seq: db.query(seq) for seq in test_sequences},
+        'query_results': {seq: db.query_exact(seq) for seq in test_sequences},
         'fuzzy_matches': len(fuzzy_results),
         'processing_time': {
             'counting': counting_time,
@@ -667,7 +667,7 @@ def complete_genomics_workflow(input_dir, output_dir):
 ## Error Handling Patterns
 
 ```python
-from rustkmer import KmerCounter, Database, SequenceError, DatabaseError
+from pyrustkmer import KmerCounter, Database, SequenceError, DatabaseError
 import logging
 
 # Configure logging
@@ -686,14 +686,14 @@ def safe_kmer_counting(file_path, k=31):
             raise ValueError(f"Invalid k-mer size: {k}. Must be between 1 and 127")
 
         # Create counter
-        counter = KmerCounter(k=k, canonical=True)
+        counter = PyCounter(k, canonical=True)
 
         # Count k-mers
         logger.info(f"Counting k-mers in {file_path}")
-        counter.count_file(file_path)
+        counter.add_from_fasta(file_path)
 
         # Get results
-        total = counter.get_total_count()
+        total = counter.get_stats().total_kmers)
         unique = counter.get_unique_count()
 
         logger.info(f"Successfully counted {total:,} total, {unique:,} unique k-mers")

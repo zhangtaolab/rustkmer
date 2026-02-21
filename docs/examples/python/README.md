@@ -123,19 +123,19 @@ pip install pandas matplotlib seaborn biopython
 
 ### Context Manager (Recommended)
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 
 # Automatically handles opening/closing
-with Database("your_database.rkdb") as db:
-    result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+db = PyDatabase("your_database.rkdb", LoadMode.Preload, LoadMode.Preload)
+    result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
     print(f"Count: {result.count}")
 ```
 
 ### Fuzzy Queries with Position Mutations
 ```python
-with Database("database.rkdb") as db:
+db = PyDatabase("database.rkdb", LoadMode.Preload, LoadMode.Preload)
     # Allow mutations at specific positions
-    result = db.fuzzy_query(
+    result = fuzzy.query_fuzzy(
         "ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
         mutations=2,
         position_mutations="10,15:1;20,25:2"  # Format: position:budget
@@ -154,7 +154,7 @@ batch_result = db.fuzzy_query_batch(
 
 ### Database Statistics
 ```python
-stats = db.stats()
+stats = db.get_stats()
 print(f"Unique k-mers: {stats.unique_kmers:,}")
 print(f"Total counts: {stats.total_counts:,}")
 print(f"File size: {stats.file_size:,} bytes")
@@ -172,23 +172,23 @@ print(f"File size: {stats.file_size:,} bytes")
 
 ### Simple K-mer Counting
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter
 
 # Create counter
 counter = KmerCounter(k=31, canonical=True)
 
 # Count from FASTA file
-counter.count_file("sequences.fasta")
+counter.add_from_fasta("sequences.fasta")
 
 # Save to database
-counter.save_to_database("output.rkdb")
+counter.save_database("output.rkdb")
 ```
 
 ### Fuzzy Search Pipeline
 ```python
-with Database("database.rkdb") as db:
+db = PyDatabase("database.rkdb", LoadMode.Preload, LoadMode.Preload)
     # Query with mutations
-    result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
+    result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
 
     # Get top matches
     top_matches = result.get_top_matches(10)
@@ -200,10 +200,10 @@ with Database("database.rkdb") as db:
 ### Integration with Pandas
 ```python
 import pandas as pd
-from rustkmer import Database
+from pyrustkmer import Database
 
 # Extract database content to DataFrame
-with Database("database.rkdb") as db:
+db = PyDatabase("database.rkdb", LoadMode.Preload, LoadMode.Preload)
     data = []
     for result in db.dump(limit=10000):
         data.append({
@@ -231,11 +231,11 @@ with Database("database.rkdb") as db:
 
 ### Error Handling
 ```python
-from rustkmer import Database, DatabaseNotFoundError, InvalidKmerError
+from pyrustkmer import Database, DatabaseNotFoundError, InvalidKmerError
 
 try:
-    with Database("database.rkdb") as db:
-        result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+    db = PyDatabase("database.rkdb", LoadMode.Preload, LoadMode.Preload)
+        result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
 except DatabaseNotFoundError:
     print("Database file not found")
 except InvalidKmerError as e:
@@ -251,13 +251,13 @@ def analyze_transcriptome(transcripts_fasta, output_dir):
 
     # Create database
     counter = KmerCounter(k=25, canonical=True)
-    counter.count_file(transcripts_fasta)
+    counter.add_from_fasta(transcripts_fasta)
     db_path = os.path.join(output_dir, "transcriptome.rkdb")
-    counter.save_to_database(db_path)
+    counter.save_database(db_path)
 
     # Analyze with pandas
     with Database(db_path) as db:
-        stats = db.stats()
+        stats = db.get_stats()
 
         # Export top k-mers
         data = []

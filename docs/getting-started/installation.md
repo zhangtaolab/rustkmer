@@ -22,7 +22,7 @@ source .venv/bin/activate
 pip install rustkmer
 
 # Verify installation
-python -c "from rustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
+python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
 
 # Deactivate when done
 deactivate
@@ -61,11 +61,11 @@ cd rustkmer-analysis
 uv add rustkmer
 
 # Run RustKmer immediately
-uv run python -c "from rustkmer import KmerCounter; print('✅ RustKmer ready with uv!')"
+uv run python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer ready with uv!')"
 
 # Create a simple analysis script
-echo 'from rustkmer import KmerCounter
-counter = KmerCounter(k=21, canonical=True)
+echo 'from pyrustkmer import KmerCounter
+counter = PyCounter(21, canonical=True)
 print("🧬 RustKmer is ready for k-mer analysis!")' > analysis.py
 
 # Run your analysis
@@ -123,12 +123,12 @@ pip install rustkmer[dev]
 
 #### Step 4: Verify Installation
 ```bash
-python -c "from rustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
+python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
 ```
 
 **Verification:**
 ```bash
-python -c "from rustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
+python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
 ```
 
 **System Requirements:**
@@ -201,7 +201,7 @@ cargo install --path .
 rustkmer --version
 
 # Test Python bindings
-python -c "from rustkmer import KmerCounter; print('✅ Build successful!')"
+python -c "from pyrustkmer import KmerCounter; print('✅ Build successful!')"
 ```
 
 ---
@@ -243,12 +243,12 @@ docker run --rm -it rustkmer:local rustkmer --version
 """Test RustKmer installation."""
 
 try:
-    from rustkmer import KmerCounter, Database
+    from pyrustkmer import KmerCounter, Database
     print("✅ Python installation successful!")
 
     # Test basic functionality
-    counter = KmerCounter(k=21, canonical=True)
-    counter.count_string("ATCGATCGATCGATCGATCG")
+    counter = PyCounter(21, canonical=True)
+    counter.add_sequence("ATCGATCGATCGATCGATCG")
 
     print(f"✅ Basic functionality working!")
     print(f"   K-mer size: 21")
@@ -441,10 +441,10 @@ Once RustKmer is installed, you're ready to start counting k-mers! Continue to [
 
 ```bash
 # Python usage
-from rustkmer import KmerCounter
-counter = KmerCounter(k=21, canonical=True)
-counter.count_file("genome.fa.gz")
-print(f"Counted {counter.get_total_count():,} k-mers!")
+from pyrustkmer import KmerCounter
+counter = PyCounter(21, canonical=True)
+counter.add_from_fasta("genome.fa.gz")
+print(f"Counted {counter.get_stats().total_kmers):,} k-mers!")
 
 # Command line usage
 rustkmer count -k 21 -i genome.fa.gz -o genome_k21.rkdb

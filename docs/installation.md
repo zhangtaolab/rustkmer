@@ -21,14 +21,14 @@ This will install the pre-compiled binary wheels for your platform.
 ### Verify Installation
 
 ```python
-from rustkmer import KmerCounter, Database, __version__
+from pyrustkmer import PyCounter, LoadMode
 
-print(f"RustKmer version: {__version__}")
+print("RustKmer imported successfully!")
 
 # Test basic functionality
-counter = KmerCounter(k=7)
-counter.count_string("ATCGATCGATCGATCGATCGATC")
-print(f"Total k-mers: {counter.get_total_count()}")
+counter = PyCounter(7)
+counter.add_sequence("ATCGATCGATCGATCGATCGATC")
+print(f"Total k-mers: {counter.get_stats().total_kmers)}")
 ```
 
 ## Platform-Specific Instructions
@@ -149,7 +149,7 @@ WORKDIR /app
 RUN pip install -e .
 
 # Example usage
-CMD ["python", "-c", "from rustkmer import KmerCounter; print('RustKmer installed successfully!')"]
+CMD ["python", "-c", "from pyrustkmer import PyCounter, LoadMode; print('RustKmer installed successfully!')"]
 ```
 
 ## Troubleshooting

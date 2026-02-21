@@ -172,24 +172,24 @@ cargo build
 export PYTHONPATH="$PWD/target/debug:$PYTHONPATH"
 
 # 测试导入
-python3 -c "import rustkmer_pyo3; print('PyO3绑定安装成功！')"
+python3 -c "from pyrustkmer import PyCounter, PyDatabase, LoadMode; print('✅ PyO3绑定安装成功！')"
 ```
 
 ### 使用Python API
 
 ```python
-import rustkmer_pyo3
+from pyrustkmer import PyDatabase, LoadMode
 
 # 加载数据库
-db = rustkmer_pyo3.PyDatabase("test.rkdb")
+db = PyDatabase("test.rkdb", LoadMode.Preload)
 
 # 查询k-mer
-result = db.query_kmer("ATG")
+result = db.query_exact("ATG")
 if result:
     print(f"ATG count: {result.count}")
 
 # 前缀查询
-prefix_results = db.extract_by_prefix("ATG")
+prefix_results = db.query_prefix("ATG")
 print(f"Found {len(prefix_results)} k-mers starting with ATG")
 ```
 
@@ -258,7 +258,7 @@ cargo build --release
 
 #### 4. Python绑定导入失败
 
-**问题**: `ModuleNotFoundError: No module named 'rustkmer_pyo3'`
+**问题**: `ModuleNotFoundError: No module named 'pyrustkmer'`
 
 **解决**:
 ```bash

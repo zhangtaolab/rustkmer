@@ -61,18 +61,18 @@ class EncodingError(RustKmerError):
 ### 1. Invalid k-mer Size
 
 ```python
-import rustkmer
+import pyrustkmer
 
 def safe_create_counter(k):
     """Safely create a k-mer counter with validation."""
     try:
-        counter = rustkmer.KmerCounter(k=k)
+        counter = rustkmer.PyCounter(k)
         return counter
     except (ValueError, OverflowError) as e:
         print(f"Invalid k-mer size {k}: {e}")
         # Fall back to default size
         print("Using default k=31")
-        return rustkmer.KmerCounter(k=31)
+        return rustkmer.PyCounter(31)
 
 # Example usage
 counter = safe_create_counter(100)  # Invalid size
@@ -107,8 +107,8 @@ def safe_count_sequence(counter, sequence):
             print(f"Warning: Sequence too short for k={counter.get_k()}")
             return None
 
-        counter.count_string(clean_seq)
-        return counter.get_total_count()
+        counter.add_sequence(clean_seq)
+        return counter.get_stats().total_kmers)
 
     except SequenceError as e:
         print(f"Sequence error: {e}")
@@ -129,7 +129,7 @@ def safe_load_database(file_path, max_retries=3):
 
     @error_context("database_load", strategies=[retry_on_io_error(max_retries)])
     def load_with_retry(path):
-        db = rustkmer.Database()
+        db = PyDatabase("database.rkdb", LoadMode.Preload)
         db.load(path)
         return db
 
@@ -177,10 +177,10 @@ def process_large_sequence(sequence, k=31, memory_limit_gb=4):
         if len(sequence) > chunk_size:
             print(f"Processing {len(sequence)} bp in chunks...")
 
-            counter = rustkmer.KmerCounter(k=k)
+            counter = rustkmer.PyCounter(k)
             for i in range(0, len(sequence), chunk_size):
                 chunk = sequence[i:i+chunk_size]
-                counter.count_string(chunk)
+                counter.add_sequence(chunk)
 
                 # Check memory usage periodically
                 if i % (chunk_size * 10) == 0:
@@ -192,8 +192,8 @@ def process_large_sequence(sequence, k=31, memory_limit_gb=4):
             return counter
         else:
             # For smaller sequences, process normally
-            counter = rustkmer.KmerCounter(k=k)
-            counter.count_string(sequence)
+            counter = rustkmer.PyCounter(k)
+            counter.add_sequence(sequence)
             return counter
 
     except MemoryError:
@@ -217,9 +217,9 @@ def safe_concurrent_query(database_path, queries, max_workers=4):
     def query_worker(query):
         """Worker function for querying."""
         try:
-            db = rustkmer.Database()
+            db = PyDatabase("database.rkdb", LoadMode.Preload)
             db.load(database_path)
-            result = db.query(query)
+            result = db.query_exact(query)
             return query, result, None
         except Exception as e:
             return query, None, str(e)
@@ -277,15 +277,15 @@ def process_file_batch(file_paths, output_dir, batch_size=10):
         for file_path in batch_files:
             try:
                 # Process individual file
-                counter = rustkmer.KmerCounter(k=31)
-                counter.count_file(file_path)
+                counter = rustkmer.PyCounter(31)
+                counter.add_from_fasta(file_path)
 
                 # Save result
                 output_path = os.path.join(
                     output_dir,
                     f"{os.path.basename(file_path)}_k31.rkdb"
                 )
-                counter.save_to_database(output_path)
+                counter.save_database(output_path)
 
                 batch_results.append(output_path)
 
@@ -315,19 +315,19 @@ def adaptive_fuzzy_query(database, query, max_distance=5):
     """Perform fuzzy query with adaptive parameters."""
 
     try:
-        db = rustkmer.Database()
+        db = PyDatabase("database.rkdb", LoadMode.Preload)
         db.load(database)
         fuzzy = rustkmer.FuzzyQuery(db)
 
         # Start with strict distance
-        results = fuzzy.query(query, max_distance=1)
+        results = fuzzy.query_exact(query, max_distance=1)
 
         # If no results, gradually increase distance
         if not results and max_distance > 1:
             print("No matches with distance=1, trying looser parameters...")
 
             for distance in range(2, max_distance + 1):
-                results = fuzzy.query(query, max_distance=distance)
+                results = fuzzy.query_exact(query, max_distance=distance)
                 if results:
                     print(f"Found {len(results)} matches with distance={distance}")
                     break
@@ -339,9 +339,9 @@ def adaptive_fuzzy_query(database, query, max_distance=5):
 
         # Fallback to exact query
         try:
-            db = rustkmer.Database()
+            db = PyDatabase("database.rkdb", LoadMode.Preload)
             db.load(database)
-            exact_result = db.query(query)
+            exact_result = db.query_exact(query)
             if exact_result > 0:
                 print(f"Fuzzy query failed, but exact match found: {exact_result}")
                 return [(query, exact_result)]
@@ -400,7 +400,7 @@ def get_validated_stats(counter_or_db):
 ## Complete Example
 
 ```python
-import rustkmer
+import pyrustkmer
 import os
 from rustkmer.error_handling import error_context, safe_execute
 
@@ -423,11 +423,11 @@ def robust_kmer_analysis(sequence_file, output_dir, k=31):
 
         # Step 2: Create counter with error handling
         with error_context("create_counter"):
-            counter = rustkmer.KmerCounter(k=k)
+            counter = rustkmer.PyCounter(k)
 
         # Step 3: Process file with monitoring
         with error_context("count_kmers"):
-            counter.count_file(sequence_file)
+            counter.add_from_fasta(sequence_file)
 
         # Step 4: Get statistics with validation
         stats = safe_execute(
@@ -445,7 +445,7 @@ def robust_kmer_analysis(sequence_file, output_dir, k=31):
         output_path = os.path.join(output_dir, f"output_k{k}.rkdb")
 
         with error_context("save_database"):
-            counter.save_to_database(output_path)
+            counter.save_database(output_path)
 
         print(f"Results saved to: {output_path}")
 

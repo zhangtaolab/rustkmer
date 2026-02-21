@@ -29,17 +29,19 @@ Initialize a database connection with optional validation.
 
 **Raises:**
 - `DatabaseNotFoundError`: If database file doesn't exist
-- `InvalidDatabaseError`: If file is not a valid database (when validate=True)
+- `InvalidDatabaseError`: If file is not a valid database format
 
 **Example:**
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 # Basic initialization (recommended for performance)
-db = Database("example.rkdb")
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 
-# Initialize with full validation
-db = Database("example.rkdb", validate=True)
+# Alternative: Use memory mapping for large databases
+db = PyDatabase("example.rkdb", LoadMode.MemoryMapped)
+fuzzy = PyFuzzyQuery(db)
 ```
 
 ### Properties
@@ -53,7 +55,8 @@ Get the path to the database file.
 
 **Example:**
 ```python
-db = Database("example.rkdb")
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 print(f"Database path: {db.path}")
 ```
 
@@ -66,7 +69,8 @@ Get the length of k-mers in the database. Returns `None` until metadata is loade
 
 **Example:**
 ```python
-db = Database("example.rkdb")
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 print(f"K-mer size: {db.kmer_size}")  # Will load metadata if needed
 ```
 
@@ -101,15 +105,16 @@ Query a single k-mer in the database for exact matches.
 
 **Example:**
 ```python
-db = Database("example.rkdb")
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 
 # Strict validation (default)
-result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
 print(f"Count: {result.count}")
 print(f"Canonical: {result.canonical}")
 
 # Non-strict validation
-result = db.query("ATXG", validate_strict=False)
+result = db.query_exact("ATXG", validate_strict=False)
 print(f"Count: {result.count}")  # Returns 0 for invalid k-mers
 ```
 
@@ -142,13 +147,14 @@ Perform a fuzzy k-mer query with mutation tolerance.
 
 **Examples:**
 ```python
-db = Database("example.rkdb")
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 
 # Exact match only
-result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=0)
+result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=0)
 
 # Allow up to 2 mutations
-result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
+result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
 print(f"Found {result.total_matches} matches")
 
 # Get top 5 most abundant matches
@@ -157,7 +163,7 @@ for match in top_matches:
     print(f"{match.kmer}: {match.count} (distance={match.distance})")
 
 # Position-specific mutations
-result = db.fuzzy_query(
+result = fuzzy.query_fuzzy(
     "ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
     position_mutations="10,15:2"  # Allow 2 mutations at positions 10 and 15
 )
@@ -180,7 +186,8 @@ Perform fuzzy queries on multiple k-mers in parallel.
 
 **Example:**
 ```python
-db = Database("example.rkdb")
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 kmers = ["ATCGATCGATCGATCGATCGATCGATCGATCGATCG", "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTA"]
 
 results = db.fuzzy_query_batch(kmers, mutations=2, max_workers=8)
@@ -199,8 +206,9 @@ Retrieve database statistics including k-mer size, total k-mers, unique k-mers, 
 
 **Example:**
 ```python
-db = Database("example.rkdb")
-stats = db.stats()
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
+stats = db.get_stats()
 print(f"K-mer size: {stats.kmer_size}")
 print(f"Total k-mers: {stats.total_kmers}")
 print(f"Unique k-mers: {stats.unique_kmers}")
@@ -221,7 +229,8 @@ Dump database contents as an iterator of k-mer results.
 
 **Example:**
 ```python
-db = Database("example.rkdb")
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 
 # Dump first 1000 k-mers
 for i, result in enumerate(db.dump(limit=1000)):
@@ -246,21 +255,22 @@ Exit the runtime context and close the database.
 
 **Example:**
 ```python
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 
 # Using context manager (recommended)
-with Database("example.rkdb") as db:
-    count = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG").count
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
+    count = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG").count
     print(f"K-mer count: {count}")
 # Database automatically closed
 
 # Manual management
-db = Database("example.rkdb")
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 try:
-    count = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG").count
+    count = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG").count
     print(f"K-mer count: {count}")
 finally:
-    db.close()
 ```
 
 #### Resource Management
@@ -271,20 +281,21 @@ Close the database and free resources. After closing, the database cannot be use
 
 **Example:**
 ```python
-db = Database("example.rkdb")
+db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 try:
-    result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+    result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
     print(f"Count: {result.count}")
 finally:
-    db.close()  # Always close to free resources
 ```
 
 ## Performance Considerations
 
 ### Database Initialization
 
-- Use `validate=False` (default) for better performance when opening databases
-- Only use `validate=True` when you need to verify database integrity
+- Use `LoadMode.Preload` for better performance with small databases
+- Use `LoadMode.MemoryMapped` for large databases to save memory
+- Use `LoadMode.Lazy` for minimal memory usage
 
 ### Query Performance
 
@@ -312,20 +323,20 @@ finally:
 ### Best Practices
 
 ```python
-from rustkmer import Database, DatabaseNotFoundError, InvalidKmerError
+from pyrustkmer import Database, DatabaseNotFoundError, InvalidKmerError, PyFuzzyQuery
 
 try:
-    db = Database("example.rkdb")
+    db = PyDatabase("example.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 
     # Handle specific errors
     try:
-        result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+        result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
         print(f"Count: {result.count}")
     except InvalidKmerError as e:
         print(f"Invalid k-mer: {e.kmer}, reason: {e.reason}")
 
 finally:
-    db.close()
 ```
 
 ## Integration Examples
@@ -334,18 +345,18 @@ finally:
 
 ```python
 import numpy as np
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 
 def analyze_kmer_frequencies(db_path: str, kmers: List[str]) -> np.ndarray:
     """Get k-mer frequencies as numpy array."""
-    db = Database(db_path)
+    db = PyDatabase(db_path)
+fuzzy = PyFuzzyQuery(db)
     frequencies = []
 
     for kmer in kmers:
-        result = db.query(kmer)
+        result = db.query_exact(kmer)
         frequencies.append(result.count)
 
-    db.close()
     return np.array(frequencies)
 ```
 
@@ -353,13 +364,14 @@ def analyze_kmer_frequencies(db_path: str, kmers: List[str]) -> np.ndarray:
 
 ```python
 from concurrent.futures import ThreadPoolExecutor
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 
 def parallel_kmer_analysis(db_path: str, kmer_lists: List[List[str]]) -> List[dict]:
     """Analyze multiple k-mer lists in parallel."""
 
     def process_kmer_list(kmers: List[str]) -> dict:
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
             results = db.fuzzy_query_batch(kmers, mutations=2)
             return {
                 'total_queries': len(kmers),
@@ -377,7 +389,7 @@ def parallel_kmer_analysis(db_path: str, kmer_lists: List[List[str]]) -> List[di
 
 ```python
 import pandas as pd
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 from pathlib import Path
 
 def analyze_multiple_samples(db_directory: str, queries: List[str]) -> pd.DataFrame:
@@ -390,10 +402,10 @@ def analyze_multiple_samples(db_directory: str, queries: List[str]) -> pd.DataFr
         sample_name = db_file.stem
         sample_data = {'Sample': sample_name}
 
-        with Database(db_file) as db:
+        db = PyDatabase(db_file, LoadMode.Preload)
             for query in queries:
                 try:
-                    result = db.query(query)
+                    result = db.query_exact(query)
                     sample_data[query] = result.count
                 except Exception as e:
                     sample_data[query] = 0
@@ -418,7 +430,7 @@ print(df.iloc[:, 1:].describe())
 #### Database Comparison and Similarity Analysis
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 import numpy as np
 from sklearn.metrics import jaccard_score
 
@@ -431,11 +443,11 @@ def compute_sample_similarity(db_files: List[str], common_kmers: List[str]) -> n
     # Extract presence data for all samples
     presence_data = []
     for db_file in db_files:
-        with Database(db_file) as db:
+        db = PyDatabase(db_file, LoadMode.Preload)
             presence = []
             for kmer in common_kmers:
-                result = db.query(kmer)
-                presence.append(1 if result.is_present else 0)
+                result = db.query_exact(kmer)
+                presence.append(1 if result.found else 0)
             presence_data.append(presence)
 
     # Compute pairwise similarities
@@ -464,7 +476,7 @@ print(similarity_matrix)
 #### Large-Scale K-mer Mining
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 from collections import Counter
 import time
 
@@ -476,7 +488,8 @@ def find_abundant_kmers(db_path: str, min_count: int = 100, max_results: int = 1
     print(f"Mining abundant k-mers from {db_path}...")
     start_time = time.time()
 
-    with Database(db_path) as db:
+    db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
         # Stream through database to find abundant k-mers
         for result in db.dump():
             if result.count >= min_count:
@@ -511,7 +524,7 @@ for i, kmer_data in enumerate(abundant_kmers[:10], 1):
 #### K-mer Pattern Discovery
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 from Bio.Seq import reverse_complement
 import re
 
@@ -520,7 +533,8 @@ def find_palindromic_kmers(db_path: str, min_count: int = 10) -> List[dict]:
 
     palindromes = []
 
-    with Database(db_path) as db:
+    db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
         for result in db.dump(canonical_only=True):
             if result.count < min_count:
                 continue
@@ -543,7 +557,8 @@ def find_repeat_motifs(db_path: str, min_repeat_length: int = 3, min_count: int 
 
     repeat_kmers = []
 
-    with Database(db_path) as db:
+    db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
         for result in db.dump(canonical_only=True):
             if result.count < min_count:
                 continue
@@ -577,7 +592,7 @@ print(f"Found {len(repeat_motifs)} k-mers with repeat motifs")
 #### Performance Benchmarking
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 import time
 import random
 import string
@@ -586,8 +601,9 @@ def benchmark_database_performance(db_path: str, num_queries: int = 10000) -> di
     """Benchmark database query performance."""
 
     # Generate random k-mers for testing
-    with Database(db_path) as db:
-        stats = db.stats()
+    db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
+        stats = db.get_stats()
         kmer_size = stats.kmer_size
 
     test_kmers = [''.join(random.choices('ATCG', k=kmer_size)) for _ in range(num_queries)]
@@ -598,9 +614,10 @@ def benchmark_database_performance(db_path: str, num_queries: int = 10000) -> di
     start_time = time.time()
     exact_results = []
 
-    with Database(db_path) as db:
+    db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
         for kmer in test_kmers:
-            result = db.query(kmer)
+            result = db.query_exact(kmer)
             exact_results.append(result.count)
 
     exact_time = time.time() - start_time
@@ -612,9 +629,10 @@ def benchmark_database_performance(db_path: str, num_queries: int = 10000) -> di
     start_time = time.time()
     fuzzy_results = []
 
-    with Database(db_path) as db:
+    db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
         for kmer in fuzzy_kmers:
-            result = db.fuzzy_query(kmer, mutations=2)
+            result = fuzzy.query_fuzzy(kmer, mutations=2)
             fuzzy_results.append(result.total_matches)
 
     fuzzy_time = time.time() - start_time
@@ -646,7 +664,7 @@ print(f"Fuzzy query performance: {benchmark_results['fuzzy_queries']['queries_pe
 #### Memory-Efficient Large Database Analysis
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database, PyFuzzyQuery
 import psutil
 import gc
 
@@ -665,9 +683,10 @@ def analyze_large_database_safely(db_path: str, progress_interval: int = 100000)
     kmer_size = None
 
     try:
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
             # Get basic stats
-            stats = db.stats()
+            stats = db.get_stats()
             kmer_size = stats.kmer_size
             unique_kmers = stats.unique_kmers
 

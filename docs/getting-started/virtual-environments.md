@@ -65,15 +65,15 @@ pip install rustkmer
 pip install rustkmer[dev]
 
 # Verify installation
-python -c "from rustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
+python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
 ```
 
 ### Step 4: Start Working
 ```bash
 # Your Python prompt should show (.venv)
 # Create a test script
-echo 'from rustkmer import KmerCounter
-counter = KmerCounter(k=21)
+echo 'from pyrustkmer import KmerCounter
+counter = PyCounter(21)
 print("🧬 RustKmer is ready!")' > test_rustkmer.py
 
 # Run it
@@ -409,7 +409,7 @@ uv add rustkmer
 uv add --dev pytest pandas matplotlib
 
 # Run Python
-uv run python -c "from rustkmer import KmerCounter; print('✅ RustKmer ready!')"
+uv run python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer ready!')"
 ```
 
 ### uv vs Traditional venv

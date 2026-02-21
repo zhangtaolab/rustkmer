@@ -100,12 +100,12 @@ Killed: 9 (out of memory)
 1. **Use smaller k-mer size:**
 ```python
 # Instead of k=31, use k=21 or k=13
-counter = KmerCounter(k=13, canonical=True)
+counter = PyCounter(13, canonical=True)
 ```
 
 2. **Process files in chunks:**
 ```python
-counter.count_file("large_file.fa", chunk_size=1000000)
+counter.add_from_fasta("large_file.fa", chunk_size=1000000)
 ```
 
 3. **Use streaming mode:**
@@ -147,7 +147,7 @@ else:
 ```python
 import os
 file_path = os.path.abspath("input.fa")
-counter.count_file(file_path)
+counter.add_from_fasta(file_path)
 ```
 
 3. **Check file permissions:**
@@ -167,11 +167,11 @@ SequenceError: Invalid nucleotide sequence
 
 1. **Validate file format:**
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter, LoadMode
 
 try:
-    counter = KmerCounter()
-    counter.count_file("suspicious_file.fa")
+    counter = PyCounter()
+    counter.add_from_fasta("suspicious_file.fa")
     print("✅ File format is valid")
 except Exception as e:
     print(f"❌ File format error: {e}")
@@ -216,24 +216,23 @@ else:
 
 2. **Verify database was created correctly:**
 ```python
-from rustkmer import KmerCounter
+from pyrustkmer import KmerCounter, LoadMode
 
 # Recreate database if needed
-counter = KmerCounter(k=21, canonical=True)
-counter.count_file("input.fa")
-counter.save_to_database("database.rkdb")
+counter = PyCounter(21, canonical=True)
+counter.add_from_fasta("input.fa")
+counter.save_database("database.rkdb")
 ```
 
 3. **Check database integrity:**
 ```python
-from rustkmer import Database
+from pyrustkmer import Database, LoadMode
 
 try:
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
     db.load("database.rkdb", False)
     stats = db.get_stats()
     print(f"✅ Database loaded: {stats.kmer_size}-mer, {stats.total_kmers} k-mers")
-    db.close()
 except Exception as e:
     print(f"❌ Database error: {e}")
 ```
@@ -245,14 +244,14 @@ except Exception as e:
 
 1. **Check if k-mer size matches database:**
 ```python
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load("database.rkdb", False)
 print(f"Database k-mer size: {db.get_kmer_size()}")
 
 # Use correct k-mer size
 kmer_size = db.get_kmer_size()
 test_kmer = "ATCG" * (kmer_size // 4) + "ATCG"[:kmer_size % 4]
-result = db.query(test_kmer)
+result = db.query_exact(test_kmer)
 ```
 
 2. **Verify database has content:**
@@ -268,7 +267,7 @@ else:
 ```python
 test_kmer = "atcgatcgatcgatcgatcg"  # Wrong case
 test_kmer = test_kmer.upper()  # Correct
-result = db.query(test_kmer)
+result = db.query_exact(test_kmer)
 ```
 
 ### Performance Issues
@@ -284,13 +283,13 @@ result = db.query(test_kmer)
 1. **Use appropriate k-mer size:**
 ```python
 # Faster but less specific (k=13)
-counter = KmerCounter(k=13, canonical=True)
+counter = PyCounter(13, canonical=True)
 
 # Balanced (k=21, recommended default)
-counter = KmerCounter(k=21, canonical=True)
+counter = PyCounter(21, canonical=True)
 
 # Slower but more specific (k=31)
-counter = KmerCounter(k=31, canonical=True)
+counter = PyCounter(31, canonical=True)
 ```
 
 2. **Optimize thread count:**
@@ -299,13 +298,13 @@ import multiprocessing
 
 # Use available CPU cores
 threads = multiprocessing.cpu_count()
-counter = KmerCounter(k=21, threads=threads)
+counter = PyCounter(21, threads=threads)
 ```
 
 3. **Enable canonical mode for genomes:**
 ```python
 # Reduces database size ~2x for genomic data
-counter = KmerCounter(k=21, canonical=True)
+counter = PyCounter(21, canonical=True)
 ```
 
 4. **Use uncompressed files for speed:**
@@ -328,7 +327,7 @@ AttributeError: 'Database' object has no attribute 'fuzzy_query'
 # Fuzzy search is planned but not yet implemented
 # Use exact queries for now:
 
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 db.load("database.rkdb", False)
 
 # Instead of fuzzy_query, try multiple exact queries:
@@ -340,7 +339,7 @@ possible_variants = [
 
 results = []
 for variant in possible_variants:
-    result = db.query(variant)
+    result = db.query_exact(variant)
     if result.found:
         results.append((variant, result.count))
 
@@ -390,10 +389,10 @@ sudo yum install python3-devel
 **Solutions:**
 ```python
 # For systems with < 4GB RAM
-counter = KmerCounter(k=13, canonical=True)  # Use smaller k
+counter = PyCounter(13, canonical=True)  # Use smaller k
 
 # Process in very small chunks
-counter.count_file("large_file.fa", chunk_size=100000)
+counter.add_from_fasta("large_file.fa", chunk_size=100000)
 
 # Use disk-based processing when possible
 ```
@@ -409,8 +408,8 @@ import os
 input_file = os.path.join("data", "input.fa")
 output_file = os.path.join("data", "output.rkdb")
 
-counter.count_file(input_file)
-counter.save_to_database(output_file)
+counter.add_from_fasta(input_file)
+counter.save_database(output_file)
 ```
 
 #### Problem: Long file names
@@ -434,8 +433,8 @@ kernel32.SetDllDirectoryW(None)
 import logging
 logging.basicConfig(level=logging.DEBUG)
 
-counter = KmerCounter(k=21, canonical=True)
-counter.count_file("input.fa")  # Will show debug info
+counter = PyCounter(21, canonical=True)
+counter.add_from_fasta("input.fa")  # Will show debug info
 ```
 
 **CLI:**
@@ -466,9 +465,9 @@ with open("test.fa", "w") as f:
     f.write(test_sequence + "\n")
 
 # Test basic functionality
-counter = KmerCounter(k=21)
-counter.count_file("test.fa")
-print(f"✅ Basic test: {counter.get_total_count()} k-mers")
+counter = PyCounter(21)
+counter.add_from_fasta("test.fa")
+print(f"✅ Basic test: {counter.get_stats().total_kmers)} k-mers")
 ```
 
 ## Getting Help
@@ -513,9 +512,9 @@ MemoryError: Unable to allocate array
 
 ## Minimal Example
 ```python
-from rustkmer import KmerCounter
-counter = KmerCounter(k=31)
-counter.count_file("large_file.fa")  # 10GB file
+from pyrustkmer import KmerCounter, LoadMode
+counter = PyCounter(31)
+counter.add_from_fasta("large_file.fa")  # 10GB file
 ```
 
 ## Expected Behavior

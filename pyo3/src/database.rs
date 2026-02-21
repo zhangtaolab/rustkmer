@@ -7,17 +7,18 @@
 #![allow(deprecated)]
 
 use pyo3::prelude::*;
-use pyo3::types::PyString;
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use pyo3::types::{PyList, PyString};
 use rustkmer::database::format::{DatabaseHeader, KmerEntry, RKDatabase};
 use rustkmer::database::prefix_query_optimized::{
     extract_hybrid_by_pattern, extract_prefix_optimized,
 };
+use rustkmer::database::MergeConfig;
 use rustkmer::kmer::canonical::canonical_kmer_u128;
-use rustkmer::kmer::encoding::encode_kmer_u128;
+use rustkmer::kmer::encoding::{decode_kmer_u128, encode_kmer_u128};
+use std::collections::{BTreeMap, HashMap};
+use std::fs::File;
+use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
+use std::path::Path;
 
 // Import PyO3 types for unified interface
 use crate::fuzzy_query::PyFuzzyResult;
@@ -27,10 +28,13 @@ use crate::fuzzy_query::PyFuzzyResult;
 #[derive(Clone, PartialEq)]
 pub enum LoadMode {
     /// Preload all k-mers into memory (fastest queries, higher memory usage)
+    #[pyo3(name = "Preload")]
     Preload,
     /// Use memory-mapped file access (balanced memory/performance)
+    #[pyo3(name = "MemoryMapped")]
     MemoryMapped,
     /// Lazy loading - load k-mers on-demand (lowest memory, slower queries)
+    #[pyo3(name = "Lazy")]
     Lazy,
 }
 
@@ -67,6 +71,37 @@ impl PyQueryResult {
             "PyQueryResult(kmer='{}', count={}, found={})",
             self.kmer, self.count, self.found
         )
+    }
+
+    // Formatter methods
+    fn to_json(&self) -> PyResult<String> {
+        Ok(format!(
+            r#"{{"kmer": "{}", "count": {}, "found": {}}}"#,
+            self.kmer, self.count, self.found
+        ))
+    }
+
+    fn to_csv(&self) -> PyResult<String> {
+        let mut csv = String::new();
+        csv.push_str("kmer,count,found\n");
+        csv.push_str(&format!("{},{},{}\n", self.kmer, self.count, self.found));
+        Ok(csv)
+    }
+
+    fn to_tsv(&self) -> PyResult<String> {
+        let mut tsv = String::new();
+        tsv.push_str("kmer\tcount\tfound\n");
+        tsv.push_str(&format!("{}\t{}\t{}\n", self.kmer, self.count, self.found));
+        Ok(tsv)
+    }
+
+    fn to_dict(&self, py: Python<'_>) -> PyResult<pyo3::PyObject> {
+        use pyo3::types::PyDict;
+        let dict = PyDict::new(py);
+        dict.set_item("kmer", &self.kmer)?;
+        dict.set_item("count", self.count)?;
+        dict.set_item("found", self.found)?;
+        Ok(dict.into())
     }
 }
 
@@ -132,6 +167,128 @@ impl PyPrefixQueryResult {
             self.is_sorted
         )
     }
+
+    // Formatter methods
+    fn to_json(&self) -> PyResult<String> {
+        let mut matches_vec: Vec<_> = self.matches.iter().collect();
+        matches_vec.sort_by_key(|&(k, _)| k);
+
+        // Convert to array of [kmer, count] for consistency with CSV/TSV format
+        let matches_json: String = matches_vec
+            .into_iter()
+            .map(|(k, v)| format!(r#"["{}", "{}"]"#, k, v))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        Ok(format!(
+            r#"{{"matches": [{}], "total_matches": {}, "start_index": {}, "end_index": {}, "block_size": {}, "is_sorted": {}, "query_time_ms": {}}}"#,
+            matches_json,
+            self.total_matches,
+            self.start_index,
+            self.end_index,
+            self.block_size,
+            self.is_sorted,
+            self.query_time_ms
+        ))
+    }
+
+    fn to_csv(&self) -> PyResult<String> {
+        let mut csv = String::new();
+        csv.push_str("kmer,count\n");
+
+        let mut matches_vec: Vec<_> = self.matches.iter().collect();
+        matches_vec.sort_by_key(|&(k, _)| k);
+
+        for (kmer, count) in matches_vec {
+            csv.push_str(&format!("{},{}\n", kmer, count));
+        }
+
+        csv.push_str(&format!("# total_matches={}\n", self.total_matches));
+        csv.push_str(&format!("# query_time_ms={}\n", self.query_time_ms));
+        csv.push_str(&format!("# start_index={}\n", self.start_index));
+        csv.push_str(&format!("# end_index={}\n", self.end_index));
+        csv.push_str(&format!("# block_size={}\n", self.block_size));
+        csv.push_str(&format!("# is_sorted={}\n", self.is_sorted));
+
+        Ok(csv)
+    }
+
+    fn to_tsv(&self) -> PyResult<String> {
+        let mut tsv = String::new();
+        tsv.push_str("kmer\tcount\n");
+
+        let mut matches_vec: Vec<_> = self.matches.iter().collect();
+        matches_vec.sort_by_key(|&(k, _)| k);
+
+        for (kmer, count) in matches_vec {
+            tsv.push_str(&format!("{}\t{}\n", kmer, count));
+        }
+
+        tsv.push_str(&format!("# total_matches={}\n", self.total_matches));
+        tsv.push_str(&format!("# query_time_ms={}\n", self.query_time_ms));
+        tsv.push_str(&format!("# start_index={}\n", self.start_index));
+        tsv.push_str(&format!("# end_index={}\n", self.end_index));
+        tsv.push_str(&format!("# block_size={}\n", self.block_size));
+        tsv.push_str(&format!("# is_sorted={}\n", self.is_sorted));
+
+        Ok(tsv)
+    }
+
+    fn to_table(&self) -> PyResult<String> {
+        let mut table = String::new();
+
+        let max_kmer_width = self
+            .matches
+            .keys()
+            .map(|k| k.len())
+            .max()
+            .unwrap_or("kmer".len())
+            .max("kmer".len());
+        let max_count_width = self
+            .matches
+            .values()
+            .map(|v| v.len())
+            .max()
+            .unwrap_or("count".len())
+            .max("count".len());
+
+        let kmer_width = max_kmer_width.max(4);
+        let count_width = max_count_width.max(5);
+
+        table.push_str(&format!("+-{:-<}-+-{:-<}-+\n", kmer_width, count_width));
+        table.push_str(&format!(
+            "| {:^width$} | {:^width2$} |\n",
+            "kmer",
+            "count",
+            width = kmer_width,
+            width2 = count_width
+        ));
+        table.push_str(&format!("+={:=<}-+={:=<}-+\n", kmer_width, count_width));
+
+        let mut matches_vec: Vec<_> = self.matches.iter().collect();
+        matches_vec.sort_by_key(|&(k, _)| k);
+
+        for (kmer, count) in matches_vec {
+            table.push_str(&format!(
+                "| {:<width$} | {:>width2$} |\n",
+                kmer,
+                count,
+                width = kmer_width,
+                width2 = count_width
+            ));
+        }
+
+        table.push_str(&format!("+-{:-<}-+-{:-<}-+\n", kmer_width, count_width));
+        table.push_str(&format!("\nTotal matches: {}\n", self.total_matches));
+        table.push_str(&format!("Query time: {}ms\n", self.query_time_ms));
+        table.push_str(&format!(
+            "Memory block: [{}, {}) size={}\n",
+            self.start_index, self.end_index, self.block_size
+        ));
+        table.push_str(&format!("Sorted: {}\n", self.is_sorted));
+
+        Ok(table)
+    }
 }
 
 /// Database statistics
@@ -189,6 +346,60 @@ impl PyDatabaseStats {
             self.kmer_size, self.total_kmers, self.unique_kmers, self.file_size, self.is_sorted, self.canonical
         )
     }
+
+    // Formatter methods
+    fn to_json(&self) -> PyResult<String> {
+        let json = format!(
+            r#"{{"kmer_size": {}, "total_kmers": {}, "unique_kmers": {}, "file_size": {}, "is_sorted": {}, "canonical": {}}}"#,
+            self.kmer_size,
+            self.total_kmers,
+            self.unique_kmers,
+            self.file_size,
+            self.is_sorted,
+            self.canonical
+        );
+        Ok(json)
+    }
+
+    fn to_csv(&self) -> PyResult<String> {
+        let mut csv = String::new();
+        csv.push_str("metric,value\n");
+
+        let stats = vec![
+            ("kmer_size", self.kmer_size.to_string()),
+            ("total_kmers", self.total_kmers.to_string()),
+            ("unique_kmers", self.unique_kmers.to_string()),
+            ("file_size", self.file_size.to_string()),
+            ("is_sorted", self.is_sorted.to_string()),
+            ("canonical", self.canonical.to_string()),
+        ];
+
+        for (metric, value) in stats {
+            csv.push_str(&format!("{},{}\n", metric, value));
+        }
+
+        Ok(csv)
+    }
+
+    fn to_tsv(&self) -> PyResult<String> {
+        let mut tsv = String::new();
+        tsv.push_str("metric\tvalue\n");
+
+        let stats = vec![
+            ("kmer_size", self.kmer_size.to_string()),
+            ("total_kmers", self.total_kmers.to_string()),
+            ("unique_kmers", self.unique_kmers.to_string()),
+            ("file_size", self.file_size.to_string()),
+            ("is_sorted", self.is_sorted.to_string()),
+            ("canonical", self.canonical.to_string()),
+        ];
+
+        for (metric, value) in stats {
+            tsv.push_str(&format!("{}\t{}\n", metric, value));
+        }
+
+        Ok(tsv)
+    }
 }
 
 /// High-performance k-mer database for Python
@@ -203,7 +414,8 @@ pub struct PyDatabase {
     /// Shared RKDatabase instance for unified queries
     pub rk_database: Option<rustkmer::database::format::RKDatabase>,
     /// In-memory cache of k-mers for fast querying (used in Preload mode)
-    pub kmer_cache: Option<HashMap<u128, u32>>,
+    /// Using BTreeMap to maintain sorted order for consistent exports
+    pub kmer_cache: Option<BTreeMap<u128, u32>>,
     /// Memory-mapped file reader (used in MemoryMapped mode)
     pub mmapped_file: Option<std::fs::File>,
     /// Memory-mapped data (used in MemoryMapped mode) - now using direct I/O
@@ -218,7 +430,6 @@ pub struct PyDatabase {
     pub cached_entries: Option<Vec<(u128, u32)>>, // (encoded_kmer, count) sorted
 }
 
-#[allow(deprecated)]
 #[pymethods]
 impl PyDatabase {
     /// Load a k-mer database from file with specified loading mode
@@ -245,8 +456,8 @@ impl PyDatabase {
 
         match load_mode {
             LoadMode::Preload => {
-                // Build k-mer cache for fast querying
-                let mut kmer_cache = HashMap::new();
+                // Build k-mer cache for fast querying using BTreeMap for sorted iteration
+                let mut kmer_cache = BTreeMap::new();
                 for entry in &database.entries {
                     kmer_cache.insert(entry.kmer, entry.count);
                 }
@@ -419,7 +630,10 @@ impl PyDatabase {
     }
 
     /// Internal implementation for batch exact k-mer query
-    fn query_exact_batch_impl(&self, kmers: Vec<String>) -> PyResult<HashMap<String, PyQueryResult>> {
+    fn query_exact_batch_impl(
+        &self,
+        kmers: Vec<String>,
+    ) -> PyResult<HashMap<String, PyQueryResult>> {
         let mut results = HashMap::new();
 
         for kmer_str in kmers {
@@ -477,10 +691,17 @@ impl PyDatabase {
     fn query_prefix_impl(&self, prefix: &str) -> PyResult<PyPrefixQueryResult> {
         let prefix_str = prefix.to_uppercase();
 
+        // Return empty result for empty prefix instead of error
         if prefix_str.trim().is_empty() {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Prefix cannot be empty",
-            ));
+            return Ok(PyPrefixQueryResult {
+                matches: std::collections::HashMap::new(),
+                start_index: 0,
+                end_index: 0,
+                block_size: 0,
+                is_sorted: true,
+                total_matches: 0,
+                query_time_ms: 0,
+            });
         }
 
         if !prefix_str
@@ -548,9 +769,11 @@ impl PyDatabase {
 
     /// Get database statistics
     fn get_stats(&self) -> PyDatabaseStats {
+        let total_kmers = self.header.total_kmers;
+
         PyDatabaseStats {
             kmer_size: self.header.kmer_size as usize,
-            total_kmers: self.header.total_kmers,
+            total_kmers,
             unique_kmers: self.header.unique_kmers,
             file_size: self.header.file_size,
             is_sorted: self.header.sorted,
@@ -702,11 +925,9 @@ impl PyDatabase {
 
         let prefix_str = prefix.to_string();
 
-        // Validate prefix format
+        // Return empty result for empty prefix instead of error
         if prefix_str.trim().is_empty() {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Prefix cannot be empty",
-            ));
+            return Ok(std::collections::HashMap::new());
         }
 
         if !prefix_str
@@ -934,7 +1155,7 @@ impl PyDatabase {
 
         for pattern_str in patterns {
             let result = pyo3::Python::with_gil(|py| {
-                let pattern_py = pyo3::types::PyString::new_bound(py, &pattern_str);
+                let pattern_py = pyo3::types::PyString::new(py, &pattern_str);
                 self.query_hybrid(&pattern_py)
                     .map_err(|e| pyo3::PyErr::from(e))
             })?;
@@ -1014,5 +1235,819 @@ impl PyDatabase {
     #[pyo3(signature = (prefix))]
     fn query_prefix(&self, prefix: &Bound<'_, PyString>) -> PyResult<PyPrefixQueryResult> {
         self.query_prefix_impl(&prefix.to_string())
+    }
+
+    /// Dump database contents with pagination support
+    ///
+    /// Args:
+    ///     limit: Maximum number of entries to return (None for all)
+    ///     offset: Number of entries to skip
+    ///
+    /// Returns:
+    ///     List of PyQueryResult objects containing k-mer, count, and found status
+    #[pyo3(signature = (limit=None, offset=0))]
+    fn dump(&self, limit: Option<usize>, offset: usize, py: Python<'_>) -> PyResult<Py<PyList>> {
+        use pyo3::types::PyList;
+
+        let mut results = Vec::new();
+
+        // Determine the actual limit to use
+        let actual_limit = limit.unwrap_or(usize::MAX);
+
+        // Handle different loading modes
+        match &self.load_mode {
+            LoadMode::Preload => {
+                // Get k-mers from the HashMap cache
+                if let Some(cache) = &self.kmer_cache {
+                    let mut count = 0;
+                    for (kmer_encoded, cnt) in cache.iter() {
+                        if count >= offset {
+                            if count >= offset + actual_limit {
+                                break;
+                            }
+                            // Convert u128 k-mer to hex string for display
+                            let kmer_hex = format!("{:x}", kmer_encoded);
+                            results.push(PyQueryResult {
+                                kmer: kmer_hex,
+                                count: *cnt,
+                                found: *cnt > 0,
+                            });
+                        }
+                        count += 1;
+                    }
+                }
+            }
+            LoadMode::Lazy => {
+                // Get k-mers from entries
+                if let Some(entries) = &self.entries {
+                    for entry in entries.iter().skip(offset).take(actual_limit) {
+                        // Convert u128 k-mer to hex string for display
+                        let kmer_hex = format!("{:x}", entry.kmer);
+                        results.push(PyQueryResult {
+                            kmer: kmer_hex,
+                            count: entry.count,
+                            found: entry.count > 0,
+                        });
+                    }
+                }
+            }
+            LoadMode::MemoryMapped => {
+                // For MemoryMapped mode, use direct file access via get_entry_by_index
+                // Start from offset and read up to limit entries
+                let end_index = offset.saturating_add(actual_limit);
+                for i in offset..end_index {
+                    match self.get_entry_by_index(i) {
+                        Ok((kmer, count)) => {
+                            // Convert u128 k-mer to hex string for display
+                            let kmer_hex = format!("{:x}", kmer);
+                            results.push(PyQueryResult {
+                                kmer: kmer_hex,
+                                count,
+                                found: count > 0,
+                            });
+                        }
+                        Err(_) => {
+                            // Reached end of database or encountered an error
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Create Python list from results manually
+        let py_list = PyList::empty(py);
+        for result in results {
+            py_list.append(Py::new(py, result)?)?;
+        }
+        Ok(py_list.unbind())
+    }
+
+    /// Merge multiple databases into a single output database
+    ///
+    /// This static method merges multiple k-mer databases into a single output database.
+    /// The merge operation automatically chooses the optimal strategy (in-memory, streaming,
+    /// or prefix cache) based on the size of the input databases and available memory.
+    ///
+    /// Args:
+    ///     databases: List of database file paths to merge
+    ///     output: Output database file path for the merged database
+    ///
+    /// Returns:
+    ///     None (the merged database is saved to the specified output path)
+    ///
+    /// Raises:
+    ///     PyValueError: If databases list is empty or files don't exist
+    ///     PyRuntimeError: If merge operation fails
+    ///
+    /// Example:
+    ///     >>> import pyrustkmer
+    ///     >>> pyrustkmer.PyDatabase.merge(
+    ///     ...     ["db1.rkdb", "db2.rkdb", "db3.rkdb"],
+    ///     ...     "merged.rkdb"
+    ///     ... )
+    #[staticmethod]
+    #[pyo3(signature = (databases, output))]
+    fn merge(databases: Vec<String>, output: String) -> PyResult<()> {
+        use std::path::PathBuf;
+
+        // Validate input: check databases list is not empty
+        if databases.is_empty() {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "databases list cannot be empty",
+            ));
+        }
+
+        // Validate all input files exist
+        for db_path in &databases {
+            if !Path::new(db_path).exists() {
+                return Err(PyErr::new::<pyo3::exceptions::PyFileNotFoundError, _>(
+                    format!("Database file not found: {}", db_path),
+                ));
+            }
+        }
+
+        // Convert to PathBuf
+        let input_paths: Vec<PathBuf> = databases.into_iter().map(|p| PathBuf::from(p)).collect();
+
+        // Create default merge configuration
+        let config = MergeConfig::default();
+
+        // Call Rust core merge functionality
+        // This automatically chooses optimal strategy (in-memory, streaming, or prefix cache)
+        let merged_db = RKDatabase::merge_databases(&input_paths, &config).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Merge operation failed: {}",
+                e
+            ))
+        })?;
+
+        // Save merged database to output file
+        let output_path = Path::new(&output);
+        merged_db.write_to_file(output_path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to save merged database to {}: {}",
+                output, e
+            ))
+        })?;
+
+        Ok(())
+    }
+
+    // ===== Database Export Methods =====
+
+    /// Export database to a text file with tab-separated format
+    ///
+    /// Exports k-mers from the database to a text file with each line containing
+    /// "kmer\\tcount". This is a streaming implementation that doesn't load all
+    /// data into memory, making it suitable for large databases.
+    ///
+    /// Args:
+    ///     output_path: Path to the output file
+    ///     limit: Optional maximum number of entries to export (None for all)
+    ///     offset: Number of entries to skip before exporting (default: 0)
+    ///     progress_callback: Optional callback function that receives progress updates
+    ///                        as (current, total) tuples
+    ///
+    /// Returns:
+    ///     Number of k-mers exported
+    ///
+    /// Raises:
+    ///     PyValueError: If database is not loaded or parameters are invalid
+    ///     PyPermissionError: If output file cannot be created or written to
+    ///
+    /// Example:
+    ///     >>> # Export first 1000 k-mers
+    ///     >>> count = db.export_to_file("output.txt", limit=1000, offset=0)
+    ///     >>> print(f"Exported {count} k-mers")
+    ///
+    ///     >>> # Export with progress tracking
+    ///     >>> def track_progress(current, total):
+    ///     ...     print(f"Progress: {current}/{total} ({current/total*100:.1f}%)")
+    ///     >>> count = db.export_to_file("output.txt", progress_callback=track_progress)
+    ///
+    ///     >>> # Export all k-mers
+    ///     >>> count = db.export_to_file("all_kmers.txt")
+    #[pyo3(signature = (output_path, limit=None, offset=0, progress_callback=None))]
+    fn export_to_file(
+        &self,
+        output_path: String,
+        limit: Option<usize>,
+        offset: usize,
+        progress_callback: Option<PyObject>,
+    ) -> PyResult<u64> {
+        if !self.is_loaded {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Database not loaded",
+            ));
+        }
+
+        let output_file = File::create(&output_path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyPermissionError, _>(format!(
+                "Cannot create output file '{}': {}",
+                output_path, e
+            ))
+        })?;
+
+        let mut writer = BufWriter::with_capacity(1024 * 1024, output_file);
+        let actual_limit = limit.unwrap_or(usize::MAX);
+        let kmer_size = self.header.kmer_size as usize;
+        let total_kmers = self.header.total_kmers;
+
+        let mut exported_count: u64 = 0;
+
+        match &self.load_mode {
+            LoadMode::Preload => {
+                if let Some(cache) = &self.kmer_cache {
+                    let mut current: u64 = 0;
+                    for (kmer_encoded, count) in cache.iter() {
+                        if (current as usize) < offset {
+                            current += 1;
+                            continue;
+                        }
+
+                        if exported_count >= actual_limit as u64 {
+                            break;
+                        }
+
+                        let kmer_seq = decode_kmer_u128(*kmer_encoded, kmer_size);
+                        writeln!(writer, "{}\t{}", kmer_seq, count).map_err(|e| {
+                            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                "Failed to write to file: {}",
+                                e
+                            ))
+                        })?;
+
+                        exported_count += 1;
+                        current += 1;
+
+                        if let Some(ref callback) = progress_callback {
+                            pyo3::Python::with_gil(|py| {
+                                callback.call1(py, (exported_count, total_kmers)).ok();
+                            });
+                        }
+                    }
+                }
+            }
+            LoadMode::Lazy => {
+                if let Some(entries) = &self.entries {
+                    for entry in entries.iter().skip(offset).take(actual_limit) {
+                        let kmer_seq = decode_kmer_u128(entry.kmer, kmer_size);
+                        writeln!(writer, "{}\t{}", kmer_seq, entry.count).map_err(|e| {
+                            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                "Failed to write to file: {}",
+                                e
+                            ))
+                        })?;
+
+                        exported_count += 1;
+
+                        if let Some(ref callback) = progress_callback {
+                            pyo3::Python::with_gil(|py| {
+                                callback.call1(py, (exported_count, total_kmers)).ok();
+                            });
+                        }
+                    }
+                }
+            }
+            LoadMode::MemoryMapped => {
+                let end_index = offset.saturating_add(actual_limit);
+                for i in offset..end_index {
+                    match self.get_entry_by_index(i) {
+                        Ok((kmer_encoded, count)) => {
+                            let kmer_seq = decode_kmer_u128(kmer_encoded, kmer_size);
+                            writeln!(writer, "{}\t{}", kmer_seq, count).map_err(|e| {
+                                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                    "Failed to write to file: {}",
+                                    e
+                                ))
+                            })?;
+
+                            exported_count += 1;
+
+                            if exported_count % 1000 == 0 {
+                                if let Some(ref callback) = progress_callback {
+                                    pyo3::Python::with_gil(|py| {
+                                        callback.call1(py, (exported_count, total_kmers)).ok();
+                                    });
+                                }
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+        }
+
+        writer.flush().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to flush output file: {}",
+                e
+            ))
+        })?;
+
+        Ok(exported_count)
+    }
+
+    /// Export database to a JSON file
+    ///
+    /// Exports k-mers from the database to a JSON file as an array of objects,
+    /// each containing "kmer" and "count" fields. This format is suitable for
+    /// machine processing and web applications.
+    ///}
+    /// Args:
+    ///     output_path: Path to the output JSON file
+    ///     limit: Optional maximum number of entries to export (None for all)
+    ///     offset: Number of entries to skip before exporting (default: 0)
+    ///     progress_callback: Optional callback function that receives progress updates
+    ///
+    /// Returns:
+    ///     Number of k-mers exported
+    ///
+    /// Raises:
+    ///     PyValueError: If database is not loaded or parameters are invalid
+    ///     PyPermissionError: If output file cannot be created or written to
+    ///
+    /// Example:
+    ///     >>> # Export to JSON
+    ///     >>> count = db.export_to_json("output.json", limit=100)
+    ///     >>> print(f"Exported {count} k-mers")
+    ///
+    ///     >>> # Load JSON in Python
+    ///     >>> import json
+    ///     >>> with open('output.json', 'r') as f:
+    ///     ...     data = json.load(f)
+    ///     >>> for entry in data:
+    ///     ...     print(f"{entry['kmer']}: {entry['count']}")
+    #[pyo3(signature = (output_path, limit=None, offset=0, progress_callback=None))]
+    fn export_to_json(
+        &self,
+        output_path: String,
+        limit: Option<usize>,
+        offset: usize,
+        progress_callback: Option<PyObject>,
+    ) -> PyResult<u64> {
+        if !self.is_loaded {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Database not loaded",
+            ));
+        }
+
+        let output_file = File::create(&output_path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyPermissionError, _>(format!(
+                "Cannot create output file '{}': {}",
+                output_path, e
+            ))
+        })?;
+
+        let mut writer = BufWriter::with_capacity(1024 * 1024, output_file);
+        let actual_limit = limit.unwrap_or(usize::MAX);
+        let kmer_size = self.header.kmer_size as usize;
+        let total_kmers = self.header.total_kmers;
+
+        let mut exported_count: u64 = 0;
+
+        writeln!(writer, "[").map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to write to file: {}",
+                e
+            ))
+        })?;
+
+        let mut is_first = true;
+
+        match &self.load_mode {
+            LoadMode::Preload => {
+                if let Some(cache) = &self.kmer_cache {
+                    let mut current: u64 = 0;
+                    for (kmer_encoded, count) in cache.iter() {
+                        if (current as usize) < offset {
+                            current += 1;
+                            continue;
+                        }
+
+                        if exported_count >= actual_limit as u64 {
+                            break;
+                        }
+
+                        let kmer_seq = decode_kmer_u128(*kmer_encoded, kmer_size);
+
+                        if is_first {
+                            write!(
+                                writer,
+                                "  {{\"kmer\": \"{}\", \"count\": {}}}\n",
+                                kmer_seq, count
+                            )
+                            .map_err(|e| {
+                                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                    "Failed to write to file: {}",
+                                    e
+                                ))
+                            })?;
+                        } else {
+                            write!(
+                                writer,
+                                ",  {{\"kmer\": \"{}\", \"count\": {}}}\n",
+                                kmer_seq, count
+                            )
+                            .map_err(|e| {
+                                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                    "Failed to write to file: {}",
+                                    e
+                                ))
+                            })?;
+                        }
+                        is_first = false;
+
+                        exported_count += 1;
+                        current += 1;
+
+                        if let Some(ref callback) = progress_callback {
+                            pyo3::Python::with_gil(|py| {
+                                callback.call1(py, (exported_count, total_kmers)).ok();
+                            });
+                        }
+                    }
+                }
+            }
+            LoadMode::Lazy => {
+                if let Some(entries) = &self.entries {
+                    for entry in entries.iter().skip(offset).take(actual_limit) {
+                        let kmer_seq = decode_kmer_u128(entry.kmer, kmer_size);
+
+                        if is_first {
+                            write!(
+                                writer,
+                                "  {{\"kmer\": \"{}\", \"count\": {}}}\n",
+                                kmer_seq, entry.count
+                            )
+                            .map_err(|e| {
+                                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                    "Failed to write to file: {}",
+                                    e
+                                ))
+                            })?;
+                        } else {
+                            write!(
+                                writer,
+                                ",  {{\"kmer\": \"{}\", \"count\": {}}}\n",
+                                kmer_seq, entry.count
+                            )
+                            .map_err(|e| {
+                                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                    "Failed to write to file: {}",
+                                    e
+                                ))
+                            })?;
+                        }
+                        is_first = false;
+
+                        exported_count += 1;
+
+                        if let Some(ref callback) = progress_callback {
+                            pyo3::Python::with_gil(|py| {
+                                callback.call1(py, (exported_count, total_kmers)).ok();
+                            });
+                        }
+                    }
+                }
+            }
+            LoadMode::MemoryMapped => {
+                let end_index = offset.saturating_add(actual_limit);
+                for i in offset..end_index {
+                    match self.get_entry_by_index(i) {
+                        Ok((kmer_encoded, count)) => {
+                            let kmer_seq = decode_kmer_u128(kmer_encoded, kmer_size);
+
+                            if is_first {
+                                write!(
+                                    writer,
+                                    "  {{\"kmer\": \"{}\", \"count\": {}}}\n",
+                                    kmer_seq, count
+                                )
+                                .map_err(|e| {
+                                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                        "Failed to write to file: {}",
+                                        e
+                                    ))
+                                })?;
+                            } else {
+                                write!(
+                                    writer,
+                                    ",  {{\"kmer\": \"{}\", \"count\": {}}}\n",
+                                    kmer_seq, count
+                                )
+                                .map_err(|e| {
+                                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                        "Failed to write to file: {}",
+                                        e
+                                    ))
+                                })?;
+                            }
+                            is_first = false;
+
+                            exported_count += 1;
+
+                            if exported_count % 1000 == 0 {
+                                if let Some(ref callback) = progress_callback {
+                                    pyo3::Python::with_gil(|py| {
+                                        callback.call1(py, (exported_count, total_kmers)).ok();
+                                    });
+                                }
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+        }
+
+        writeln!(writer, "\n]").map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to write to file: {}",
+                e
+            ))
+        })?;
+
+        writer.flush().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to flush output file: {}",
+                e
+            ))
+        })?;
+
+        Ok(exported_count)
+    }
+
+    /// Export database to a CSV file
+    ///
+    /// Exports k-mers from the database to a CSV file with header row.
+    /// Each row contains "kmer,count" in CSV format. This format is suitable
+    /// for data analysis tools like pandas, Excel, or other spreadsheet applications.
+    ///
+    /// Args:
+    ///     output_path: Path to the output CSV file
+    ///     limit: Optional maximum number of entries to export (None for all)
+    ///     offset: Number of entries to skip before exporting (default: 0)
+    ///     progress_callback: Optional callback function that receives progress updates
+    ///
+    /// Returns:
+    ///     Number of k-mers exported
+    ///
+    /// Raises:
+    ///     PyValueError: If database is not loaded or parameters are invalid
+    ///     PyPermissionError: If output file cannot be created or written to
+    ///
+    /// Example:
+    ///     >>> # Export to CSV
+    ///     >>> count = db.export_to_csv("output.csv", limit=1000)
+    ///     >>> print(f"Exported {count} k-mers")
+    ///
+    ///     >>> # Load CSV in Python with pandas
+    ///     >>> import pandas as pd
+    ///     >>> df = pd.read_csv('output.csv')
+    ///     >>> print(df.head())
+    ///
+    ///     >>> # Load CSV with standard csv module
+    ///     >>> import csv
+    ///     >>> with open('output.csv', 'r') as f:
+    ///     ...     reader = csv.DictReader(f)
+    ///     ...     for row in reader:
+    ///     ...         print(f"{row['kmer']}: {row['count']}")
+    #[pyo3(signature = (output_path, limit=None, offset=0, progress_callback=None))]
+    fn export_to_csv(
+        &self,
+        output_path: String,
+        limit: Option<usize>,
+        offset: usize,
+        progress_callback: Option<PyObject>,
+    ) -> PyResult<u64> {
+        if !self.is_loaded {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Database not loaded",
+            ));
+        }
+
+        let output_file = File::create(&output_path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyPermissionError, _>(format!(
+                "Cannot create output file '{}': {}",
+                output_path, e
+            ))
+        })?;
+
+        let mut writer = BufWriter::with_capacity(1024 * 1024, output_file);
+        let actual_limit = limit.unwrap_or(usize::MAX);
+        let kmer_size = self.header.kmer_size as usize;
+        let total_kmers = self.header.total_kmers;
+
+        let mut exported_count: u64 = 0;
+
+        writeln!(writer, "kmer,count").map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to write to file: {}",
+                e
+            ))
+        })?;
+
+        match &self.load_mode {
+            LoadMode::Preload => {
+                if let Some(cache) = &self.kmer_cache {
+                    let mut current: u64 = 0;
+                    for (kmer_encoded, count) in cache.iter() {
+                        if (current as usize) < offset {
+                            current += 1;
+                            continue;
+                        }
+
+                        if exported_count >= actual_limit as u64 {
+                            break;
+                        }
+
+                        let kmer_seq = decode_kmer_u128(*kmer_encoded, kmer_size);
+                        writeln!(writer, "{},{}", kmer_seq, count).map_err(|e| {
+                            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                "Failed to write to file: {}",
+                                e
+                            ))
+                        })?;
+
+                        exported_count += 1;
+                        current += 1;
+
+                        if let Some(ref callback) = progress_callback {
+                            pyo3::Python::with_gil(|py| {
+                                callback.call1(py, (exported_count, total_kmers)).ok();
+                            });
+                        }
+                    }
+                }
+            }
+            LoadMode::Lazy => {
+                if let Some(entries) = &self.entries {
+                    for entry in entries.iter().skip(offset).take(actual_limit) {
+                        let kmer_seq = decode_kmer_u128(entry.kmer, kmer_size);
+                        writeln!(writer, "{},{}", kmer_seq, entry.count).map_err(|e| {
+                            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                "Failed to write to file: {}",
+                                e
+                            ))
+                        })?;
+
+                        exported_count += 1;
+
+                        if let Some(ref callback) = progress_callback {
+                            pyo3::Python::with_gil(|py| {
+                                callback.call1(py, (exported_count, total_kmers)).ok();
+                            });
+                        }
+                    }
+                }
+            }
+            LoadMode::MemoryMapped => {
+                let end_index = offset.saturating_add(actual_limit);
+                for i in offset..end_index {
+                    match self.get_entry_by_index(i) {
+                        Ok((kmer_encoded, count)) => {
+                            let kmer_seq = decode_kmer_u128(kmer_encoded, kmer_size);
+                            writeln!(writer, "{},{}", kmer_seq, count).map_err(|e| {
+                                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                                    "Failed to write to file: {}",
+                                    e
+                                ))
+                            })?;
+
+                            exported_count += 1;
+
+                            if exported_count % 1000 == 0 {
+                                if let Some(ref callback) = progress_callback {
+                                    pyo3::Python::with_gil(|py| {
+                                        callback.call1(py, (exported_count, total_kmers)).ok();
+                                    });
+                                }
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+        }
+
+        writer.flush().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to flush output file: {}",
+                e
+            ))
+        })?;
+
+        Ok(exported_count)
+    }
+
+    /// Export all k-mers as a list of PyQueryResult objects with pagination
+    ///
+    /// This is an improved version of dump() that returns PyQueryResult objects
+    /// with properly decoded k-mer sequences instead of hex strings.
+    ///
+    /// Args:
+    ///     limit: Optional maximum number of entries to return (None for all)
+    ///     offset: Number of entries to skip before returning (default: 0)
+    ///
+    /// Returns:
+    ///     List of PyQueryResult objects containing decoded k-mer, count, and found status
+    ///
+    /// Raises:
+    ///     PyValueError: If database is not loaded
+    ///
+    /// Example:
+    ///     >>> # Get first 100 k-mers
+    ///     >>> kmers = db.export_all_kmers(limit=100, offset=0)
+    ///     >>> for result in kmers:
+    ///     ...     print(f"{result.kmer}: {result.count}")
+    ///
+    ///     >>> # Get k-mers in batches (pagination)
+    ///     >>> batch_size = 1000
+    ///     >>> for batch_start in range(0, 10000, batch_size):
+    ///     ...     batch = db.export_all_kmers(limit=batch_size, offset=batch_start)
+    ///     ...     print(f"Processing batch {batch_start}-{batch_start + batch_size}")
+    ///     ...     # Process batch...
+    ///
+    ///     >>> # Get all k-mers (use with caution for large databases)
+    ///     >>> all_kmers = db.export_all_kmers()
+    ///     >>> print(f"Total k-mers: {len(all_kmers)}")
+    #[pyo3(signature = (limit=None, offset=0))]
+    fn export_all_kmers(
+        &self,
+        limit: Option<usize>,
+        offset: usize,
+        py: Python<'_>,
+    ) -> PyResult<Py<PyList>> {
+        if !self.is_loaded {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Database not loaded",
+            ));
+        }
+
+        let mut results = Vec::new();
+        let actual_limit = limit.unwrap_or(usize::MAX);
+        let kmer_size = self.header.kmer_size as usize;
+
+        match &self.load_mode {
+            LoadMode::Preload => {
+                if let Some(cache) = &self.kmer_cache {
+                    let mut count: usize = 0;
+                    for (kmer_encoded, cnt) in cache.iter() {
+                        if count >= offset {
+                            // Check if we've reached the limit
+                            // actual_limit is usize::MAX when no limit is specified
+                            if let Some(limit_val) = limit {
+                                if count >= offset + limit_val {
+                                    break;
+                                }
+                            }
+                            let kmer_seq = decode_kmer_u128(*kmer_encoded, kmer_size);
+                            results.push(PyQueryResult {
+                                kmer: kmer_seq,
+                                count: *cnt,
+                                found: *cnt > 0,
+                            });
+                        }
+                        count += 1;
+                    }
+                }
+            }
+            LoadMode::Lazy => {
+                if let Some(entries) = &self.entries {
+                    for entry in entries.iter().skip(offset).take(actual_limit) {
+                        let kmer_seq = decode_kmer_u128(entry.kmer, kmer_size);
+                        results.push(PyQueryResult {
+                            kmer: kmer_seq,
+                            count: entry.count,
+                            found: entry.count > 0,
+                        });
+                    }
+                }
+            }
+            LoadMode::MemoryMapped => {
+                let end_index = offset.saturating_add(actual_limit);
+                for i in offset..end_index {
+                    match self.get_entry_by_index(i) {
+                        Ok((kmer_encoded, count)) => {
+                            let kmer_seq = decode_kmer_u128(kmer_encoded, kmer_size);
+                            results.push(PyQueryResult {
+                                kmer: kmer_seq,
+                                count,
+                                found: count > 0,
+                            });
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+        }
+
+        let py_list = PyList::empty(py);
+        for result in results {
+            py_list.append(Py::new(py, result)?)?;
+        }
+        Ok(py_list.unbind())
     }
 }

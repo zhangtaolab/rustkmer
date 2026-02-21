@@ -63,7 +63,7 @@ Convert DatabaseStats to a dictionary representation.
 
 **Example:**
 ```python
-stats = db.stats()
+stats = db.get_stats()
 data = stats.to_dict()
 
 print(data)
@@ -86,7 +86,7 @@ Convert DatabaseStats to a JSON string.
 
 **Example:**
 ```python
-stats = db.stats()
+stats = db.get_stats()
 json_str = stats.to_json()
 
 print(json_str)
@@ -123,10 +123,10 @@ print(f"Database has {stats.unique_kmers:,} unique k-mers")
 ### Basic Statistics Retrieval
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 
-with Database("genome.rkdb") as db:
-    stats = db.stats()
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
+    stats = db.get_stats()
 
     print(f"Database Statistics:")
     print(f"  K-mer size: {stats.kmer_size}")
@@ -140,15 +140,15 @@ with Database("genome.rkdb") as db:
 ### Database Comparison
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 
 def compare_databases(db_paths):
     """Compare statistics of multiple databases."""
     stats_list = []
 
     for path in db_paths:
-        with Database(path) as db:
-            stats = db.stats()
+        db = PyDatabase(path, LoadMode.Preload)
+            stats = db.get_stats()
             stats_list.append((path, stats))
 
     # Sort by unique k-mers
@@ -175,12 +175,12 @@ compare_databases(databases)
 ### Quality Assessment
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 
 def assess_database_quality(db_path):
     """Assess database quality based on statistics."""
-    with Database(db_path) as db:
-        stats = db.stats()
+    db = PyDatabase(db_path, LoadMode.Preload)
+        stats = db.get_stats()
 
     # Calculate derived metrics
     if stats.unique_kmers > 0:
@@ -224,12 +224,12 @@ assess_database_quality("genome.rkdb")
 ### Storage Efficiency Analysis
 
 ```python
-from rustkmer import Database
+from pyrustkmer import Database
 
 def analyze_storage_efficiency(db_path):
     """Analyze storage efficiency of database."""
-    with Database(db_path) as db:
-        stats = db.stats()
+    db = PyDatabase(db_path, LoadMode.Preload)
+        stats = db.get_stats()
 
     # Calculate efficiency metrics
     bytes_per_unique_kmer = stats.file_size / stats.unique_kmers
@@ -259,12 +259,12 @@ analyze_storage_efficiency("genome.rkdb")
 
 ```python
 import json
-from rustkmer import Database
+from pyrustkmer import Database
 
 def export_database_metadata(db_path, output_file):
     """Export database metadata to JSON file."""
-    with Database(db_path) as db:
-        stats = db.stats()
+    db = PyDatabase(db_path, LoadMode.Preload)
+        stats = db.get_stats()
 
     # Add additional metadata
     metadata = stats.to_dict()
@@ -294,7 +294,7 @@ export_database_metadata("genome.rkdb", "genome_metadata.json")
 
 ```python
 import pandas as pd
-from rustkmer import Database
+from pyrustkmer import Database
 
 def create_stats_dataframe(db_paths):
     """Create a pandas DataFrame with statistics for multiple databases."""
@@ -302,8 +302,8 @@ def create_stats_dataframe(db_paths):
 
     for path in db_paths:
         try:
-            with Database(path) as db:
-                stats = db.stats()
+            db = PyDatabase(path, LoadMode.Preload)
+                stats = db.get_stats()
 
                 # Add derived metrics
                 stats_dict = stats.to_dict()
@@ -332,12 +332,12 @@ print(df[['database_path', 'avg_count']].sort_values('avg_count', ascending=Fals
 
 ```python
 import numpy as np
-from rustkmer import Database
+from pyrustkmer import Database
 
 def analyze_database_distribution(db_path, sample_size=10000):
     """Analyze k-mer count distribution in database."""
-    with Database(db_path) as db:
-        stats = db.stats()
+    db = PyDatabase(db_path, LoadMode.Preload)
+        stats = db.get_stats()
 
         # Sample k-mers for distribution analysis
         samples = []
@@ -382,9 +382,9 @@ analyze_database_distribution("genome.rkdb")
 Database statistics are loaded lazily when first accessed:
 
 ```python
-db = Database("large_db.rkdb")  # Stats not loaded yet
-stats = db.stats()  # Stats loaded now
-stats2 = db.stats()  # Returns cached version
+db = PyDatabase("large_db.rkdb")  # Stats not loaded yet
+stats = db.get_stats()  # Stats loaded now
+stats2 = db.get_stats()  # Returns cached version
 ```
 
 ### Caching
@@ -393,9 +393,9 @@ Statistics are cached in the Database object after first access:
 
 ```python
 # Efficient: Stats loaded once and reused
-with Database("database.rkdb") as db:
-    stats1 = db.stats()  # Loads from disk
-    stats2 = db.stats()  # Returns cached version
+db = PyDatabase("database.rkdb", LoadMode.Preload)
+    stats1 = db.get_stats()  # Loads from disk
+    stats2 = db.get_stats()  # Returns cached version
 
     # Both operations are fast after initial load
 ```
@@ -415,7 +415,7 @@ def check_compatibility(stats):
     print(f"Database format {stats.format_version} is compatible")
 
 # Usage
-stats = db.stats()
+stats = db.get_stats()
 check_compatibility(stats)
 ```
 
@@ -430,13 +430,13 @@ check_compatibility(stats)
 ## Error Handling
 
 ```python
-from rustkmer import Database, DatabaseError
+from pyrustkmer import Database, DatabaseError
 
 def get_stats_safely(db_path):
     """Get database statistics with error handling."""
     try:
-        with Database(db_path) as db:
-            return db.stats()
+        db = PyDatabase(db_path, LoadMode.Preload)
+            return db.get_stats()
 
     except DatabaseNotFoundError:
         print(f"Database file not found: {db_path}")

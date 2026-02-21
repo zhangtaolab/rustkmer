@@ -27,27 +27,28 @@ The Rust library provides the highest performance and most comprehensive feature
 use rustkmer::KmerCounter;
 
 let mut counter = KmerCounter::new(21, true);
-counter.count_file("genome.fa.gz")?;
-println!("Total k-mers: {}", counter.get_total_count());
+counter.add_from_fasta("genome.fa.gz")?;
+println!("Total k-mers: {}", counter.get_stats().total_kmers));
 ```
 
 ### Python Bindings
 Python bindings offer easy integration with bioinformatics workflows through database queries:
 
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 # Query existing database
-with Database("genome.rkdb") as db:
-    result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
+    result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
     print(f"K-mer count: {result.count}")
 
     # Fuzzy query with mutations
-    fuzzy_result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
+    fuzzy_result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
     print(f"Found {fuzzy_result.total_matches} similar k-mers")
 
     # Database statistics
-    stats = db.stats()
+    stats = db.get_stats()
     print(f"Database contains {stats.unique_kmers:,} unique k-mers")
 ```
 
@@ -95,14 +96,15 @@ fn process_file() -> KmerResult<()> {
 
 ### Python Exceptions
 ```python
-from rustkmer import (
-    Database, DatabaseNotFoundError, InvalidKmerError,
+from pyrustkmer import (, PyFuzzyQuery
+    PyDatabase, DatabaseNotFoundError, InvalidKmerError,
     FuzzyQueryError, QueryError
 )
 
 try:
-    with Database("database.rkdb") as db:
-        result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
+        result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
 except DatabaseNotFoundError as e:
     print(f"Database not found: {e.path}")
 except InvalidKmerError as e:
@@ -130,24 +132,25 @@ except QueryError as e:
 The Python API provides a clean, object-oriented interface:
 
 ```python
-from rustkmer import (
-    Database, QueryResult, DatabaseStats,
-    FuzzyQueryResult, FuzzyMatchResult, FuzzyBatchResult
+from pyrustkmer import (, PyFuzzyQuery
+    PyDatabase, PyQueryResult, PyDatabaseStats,
+    PyFuzzyResult, PyFuzzyMatch, PyPrefixQueryResult
 )
 
 # Database class - main interface
-db = Database("database.rkdb")
+db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 
 # Query results
-result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
 print(f"Count: {result.count}")
 
 # Fuzzy queries
-fuzzy_result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
+fuzzy_result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
 top_matches = fuzzy_result.get_top_matches(5)
 
 # Database statistics
-stats = db.stats()
+stats = db.get_stats()
 print(f"K-mer size: {stats.kmer_size}")
 ```
 
@@ -156,13 +159,14 @@ print(f"K-mer size: {stats.kmer_size}")
 ### Pandas Integration
 ```python
 import pandas as pd
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 def query_dataframe(db_path, df, sequence_col='sequence'):
     """Query k-mers from a pandas DataFrame."""
-    with Database(db_path) as db:
+    db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
         df['count'] = df[sequence_col].apply(
-            lambda seq: db.query(seq).count
+            lambda seq: db.query_exact(seq).count
         )
     return df
 ```
@@ -170,31 +174,33 @@ def query_dataframe(db_path, df, sequence_col='sequence'):
 ### Biopython Integration
 ```python
 from Bio import SeqIO
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 def extract_and_query(fasta_file, db_path):
     """Extract k-mers from FASTA and query database."""
-    with Database(db_path) as db:
+    db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
         for record in SeqIO.parse(fasta_file, "fasta"):
             seq = str(record.seq).upper()
             # Extract 31-mers (example)
             for i in range(len(seq) - 31 + 1):
                 kmer = seq[i:i+31]
                 if 'N' not in kmer:
-                    result = db.query(kmer)
-                    if result.is_present:
+                    result = db.query_exact(kmer)
+                    if result.found:
                         yield record.id, kmer, result.count
 ```
 
 ### NumPy Integration
 ```python
 import numpy as np
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 def batch_query_numpy(db_path, sequences):
     """Vectorized batch querying."""
-    with Database(db_path) as db:
-        return np.array([db.query(seq).count for seq in sequences])
+    db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
+        return np.array([db.query_exact(seq).count for seq in sequences])
 ```
 
 ## Getting Help
@@ -211,7 +217,7 @@ def batch_query_numpy(db_path, sequences):
 
 | CLI Command | Python Equivalent |
 |-------------|-------------------|
-| `rustkmer query db.rkdb ATCG` | `Database("db.rkdb").query("ATCG")` |
+| `rustkmer query db.rkdb ATCG` | `Database("db.rkdb").query_exact("ATCG")` |
 | `rustkmer fuzzy-query db.rkdb ATCG --mutations 2` | `Database("db.rkdb").fuzzy_query("ATCG", mutations=2)` |
 | `rustkmer stats db.rkdb` | `Database("db.rkdb").stats()` |
 | `rustkmer dump db.rkdb --limit 1000` | `Database("db.rkdb").dump(limit=1000)` |

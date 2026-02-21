@@ -37,10 +37,11 @@ Complete guide to fuzzy searching with RustKmer, including wildcard patterns, Ha
 ### Basic Wildcard Queries
 
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 # Load database
-db = Database()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 db.load("genome_k21.rkdb")
 
 # Single wildcard (N = any base)
@@ -48,7 +49,7 @@ print("🔍 Single wildcard examples:")
 wildcard_patterns = ["ATN", "CGTN", "TTN"]
 
 for pattern in wildcard_patterns:
-    results = db.fuzzy_query(pattern)
+    results = fuzzy.query_fuzzy(pattern)
     print(f"   Pattern '{pattern}': {len(results)} matches")
 
     # Show first few matches
@@ -60,7 +61,7 @@ print("\n🔍 Multiple wildcard examples:")
 multi_patterns = ["ATNNT", "CGNNG", "ANNNNNN"]
 
 for pattern in multi_patterns:
-    results = db.fuzzy_query(pattern)
+    results = fuzzy.query_fuzzy(pattern)
     print(f"   Pattern '{pattern}': {len(results)} matches")
 ```
 
@@ -123,10 +124,11 @@ for pattern in patterns:
 def find_conserved_motifs(db_path, motif_with_wildcards):
     """Find conserved motifs with flexible positions."""
 
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     db.load(db_path)
 
-    results = db.fuzzy_query(motif_with_wildcards)
+    results = fuzzy.query_fuzzy(motif_with_wildcards)
 
     # Sort by count (most frequent first)
     results.sort(key=lambda x: x.count, reverse=True)
@@ -153,7 +155,8 @@ def find_conserved_motifs(db_path, motif_with_wildcards):
 def primer_compatibility_check(db_path, primer_sequence):
     """Check primer compatibility with 3' end flexibility."""
 
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     db.load(db_path)
 
     # Create pattern with flexible 3' end
@@ -167,7 +170,7 @@ def primer_compatibility_check(db_path, primer_sequence):
     print(f"🧪 Checking primer compatibility for: {primer_sequence}")
     print(f"Using flexible pattern: {flexible_primer}")
 
-    results = db.fuzzy_query(flexible_primer)
+    results = fuzzy.query_fuzzy(flexible_primer)
 
     # Analyze 3' end compatibility
     three_prime_bases = {}
@@ -252,19 +255,20 @@ print("Example neighbors:", neighbors[:10])
 ### Distance-Based Fuzzy Queries
 
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 def distance_based_search(db_path, query_kmer, max_distance=3):
     """Search for k-mers within specified Hamming distance."""
 
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     db.load(db_path)
 
     print(f"🎯 Distance-based search for: {query_kmer}")
     print(f"Maximum distance: {max_distance}")
 
     # Perform fuzzy search with distance constraint
-    results = db.fuzzy_query(query_kmer, max_distance=max_distance)
+    results = fuzzy.query_fuzzy(query_kmer, max_distance=max_distance)
 
     # Group results by distance
     distance_groups = {}
@@ -295,7 +299,7 @@ def variant_analysis(db_path, reference_kmer):
 
     # Test different distance thresholds
     for distance in [1, 2, 3]:
-        results = db.fuzzy_query(reference_kmer, max_distance=distance)
+        results = fuzzy.query_fuzzy(reference_kmer, max_distance=distance)
 
         # Calculate statistics
         exact_match = any(r.distance == 0 for r in results)
@@ -328,7 +332,8 @@ variant_analysis(db_path, query_kmer)
 def error_tolerant_search(db_path, queries, max_error_rate=0.1):
     """Perform error-tolerant search with adaptive distance."""
 
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     db.load(db_path)
 
     print(f"🔍 Error-tolerant search (max error rate: {max_error_rate})")
@@ -346,7 +351,7 @@ def error_tolerant_search(db_path, queries, max_error_rate=0.1):
         print(f"  Max distance: {max_distance}")
 
         # Perform search
-        results = db.fuzzy_query(query, max_distance=max_distance)
+        results = fuzzy.query_fuzzy(query, max_distance=max_distance)
 
         # Analyze results
         if results:
@@ -395,7 +400,8 @@ error_results = error_tolerant_search(db_path, test_queries, max_error_rate=0.15
 def complex_pattern_search(db_path, patterns):
     """Search for complex patterns with multiple constraints."""
 
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     db.load(db_path)
 
     print(f"🔍 Complex pattern search")
@@ -408,7 +414,7 @@ def complex_pattern_search(db_path, patterns):
         print(f"Constraints: {constraints}")
 
         # Perform fuzzy search
-        results = db.fuzzy_query(pattern)
+        results = fuzzy.query_fuzzy(pattern)
 
         # Apply additional constraints
         filtered_results = []
@@ -467,13 +473,14 @@ complex_pattern_search(db_path, complex_patterns)
 def discover_motifs(db_path, seed_pattern, min_frequency=100):
     """Discover related motifs using fuzzy search."""
 
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     db.load(db_path)
 
     print(f"🧬 Motif discovery from seed: {seed_pattern}")
 
     # Start with fuzzy search
-    initial_results = db.fuzzy_query(seed_pattern, max_distance=3)
+    initial_results = fuzzy.query_fuzzy(seed_pattern, max_distance=3)
 
     # Filter by frequency
     significant_results = [r for r in initial_results if r.count >= min_frequency]
@@ -531,7 +538,8 @@ discover_motifs(db_path, "ATGCGTA", min_frequency=50)
 def position_specific_search(db_path, pattern, position_scores):
     """Search with position-specific scoring."""
 
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     db.load(db_path)
 
     print(f"🎯 Position-specific search: {pattern}")
@@ -539,7 +547,7 @@ def position_specific_search(db_path, pattern, position_scores):
     for pos, score in position_scores.items():
         print(f"  Position {pos}: {score}")
 
-    results = db.fuzzy_query(pattern)
+    results = fuzzy.query_fuzzy(pattern)
 
     # Calculate scores for each result
     scored_results = []
@@ -593,7 +601,8 @@ import time
 def optimize_wildcard_queries(db_path, patterns):
     """Optimize wildcard queries for better performance."""
 
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     db.load(db_path)
 
     print(f"🚀 Optimizing {len(patterns)} wildcard patterns")
@@ -622,7 +631,7 @@ def optimize_wildcard_queries(db_path, patterns):
         group_results = 0
 
         for pattern in group_patterns:
-            results = db.fuzzy_query(pattern)
+            results = fuzzy.query_fuzzy(pattern)
             group_results += len(results)
 
         pattern_time = time.time() - start_time
@@ -646,7 +655,8 @@ def optimize_wildcard_queries(db_path, patterns):
 def adaptive_distance_search(db_path, query_kmer, target_result_count=1000):
     """Adaptive distance search to find target number of results."""
 
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     db.load(db_path)
 
     print(f"🎯 Adaptive distance search for: {query_kmer}")
@@ -660,7 +670,7 @@ def adaptive_distance_search(db_path, query_kmer, target_result_count=1000):
         print(f"\nTrying distance {current_distance}...")
 
         start_time = time.time()
-        distance_results = db.fuzzy_query(query_kmer, max_distance=current_distance)
+        distance_results = fuzzy.query_fuzzy(query_kmer, max_distance=current_distance)
         search_time = time.time() - start_time
 
         # Filter to only results at exactly this distance
@@ -713,7 +723,8 @@ def adaptive_distance_search(db_path, query_kmer, target_result_count=1000):
 def snp_detection(db_path, reference_kmer, frequency_threshold=0.01):
     """Detect SNPs in the population using frequency analysis."""
 
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     db.load(db_path)
 
     print(f"🧬 SNP detection for: {reference_kmer}")
@@ -723,7 +734,7 @@ def snp_detection(db_path, reference_kmer, frequency_threshold=0.01):
     variants = db.fuzzy_query(reference_kmer, max_distance=1)
 
     # Calculate total count including reference
-    reference_result = db.query(reference_kmer)
+    reference_result = db.query_exact(reference_kmer)
     total_count = reference_result.count + sum(v.count for v in variants if v.distance == 1)
 
     if total_count == 0:
@@ -775,7 +786,8 @@ snp_results = snp_detection(db_path, "ATCGATCGATCGATCGATCGA", frequency_threshol
 def tolerant_primer_design(db_path, target_region, primer_length=20):
     """Design primers with flexibility for mismatches."""
 
-    db = Database()
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
     db.load(db_path)
 
     print(f"🧪 Tolerant primer design for region: {target_region}")
@@ -790,7 +802,7 @@ def tolerant_primer_design(db_path, target_region, primer_length=20):
         primer = target_region[i:i+primer_length]
 
         # Allow up to 2 mismatches in the last 5 positions (3' end is most important)
-        results = db.fuzzy_query(primer, max_distance=2)
+        results = fuzzy.query_fuzzy(primer, max_distance=2)
 
         if results:
             # Calculate binding strength
@@ -913,13 +925,13 @@ def safe_fuzzy_search(db_path, pattern, max_distance=None):
             raise ValueError("Pattern contains invalid characters")
 
         # Load database and search
-        with Database() as db:
+        # PyDatabase doesn't use context manager
             db.load(db_path)
 
             if max_distance is None:
-                results = db.fuzzy_query(pattern)
+                results = fuzzy.query_fuzzy(pattern)
             else:
-                results = db.fuzzy_query(pattern, max_distance=max_distance)
+                results = fuzzy.query_fuzzy(pattern, max_distance=max_distance)
 
             return {
                 'success': True,
@@ -949,20 +961,20 @@ else:
 
 ### Python API
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 # Load database
-with Database() as db:
+# PyDatabase doesn't use context manager
     db.load("database.rkdb")
 
     # Wildcard search
-    results = db.fuzzy_query("ATNNGTA")
+    results = fuzzy.query_fuzzy("ATNNGTA")
 
     # Distance-based search
-    results = db.fuzzy_query("ATCGATCGATCGATCGATCG", max_distance=2)
+    results = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCG", max_distance=2)
 
     # Complex patterns
-    results = db.fuzzy_query("ANNNNNNGT")
+    results = fuzzy.query_fuzzy("ANNNNNNGT")
 ```
 
 ### Command Line

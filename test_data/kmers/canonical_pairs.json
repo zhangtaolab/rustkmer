@@ -1,0 +1,39 @@
+{
+  "canonical_pairs": {
+    "k21": [
+      {
+        "original": "ATCGATCGATCGATCGATCGATC",
+        "reverse_complement": "GATCGATCGATCGATCGATCGAT"
+      },
+      {
+        "original": "GCTAGCTAGCTAGCTAGCTAGCT",
+        "reverse_complement": "AGCTAGCTAGCTAGCTAGCTAGC"
+      },
+      {
+        "original": "AAAAAAAAAAAAAAAAAAAAAAA",
+        "reverse_complement": "TTTTTTTTTTTTTTTTTTTTTTT"
+      },
+      {
+        "original": "CCCCCCCCCCCCCCCCCCCCCC",
+        "reverse_complement": "GGGGGGGGGGGGGGGGGGGGGG"
+      }
+    ],
+    "k31": [
+      {
+        "original": "ATCGATCGATCGATCGATCGATCGATCGATCGATC",
+        "reverse_complement": "GATCGATCGATCGATCGATCGATCGATCGATCGAT"
+      },
+      {
+        "original": "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCT",
+        "reverse_complement": "AGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGC"
+      }
+    ]
+  },
+  "self_reverse_complement": [
+    "ATATATATATATATATATATATATAT",
+    "CGCGCGCGCGCGCGCGCGCGCGCGCG",
+    "ATCGATATCGATCGATCGATCGATCGAT",
+    "GCTAGGCTAGGCTAGGCTAGGCTAGCT"
+  ],
+  "description": "Canonical k-mer pairs for testing canonical encoding"
+}

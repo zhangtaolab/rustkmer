@@ -10,21 +10,22 @@ The RustKmer Python API consists of three main classes and supporting data struc
 The primary class for interacting with RKDB k-mer database files.
 
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 # Initialize database connection
-db = Database("database.rkdb")
+db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 
 # Query k-mers
-result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
 print(f"Count: {result.count}")
 
 # Fuzzy queries with mutation tolerance
-fuzzy_result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
+fuzzy_result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
 print(f"Found {fuzzy_result.total_matches} similar k-mers")
 
 # Get database statistics
-stats = db.stats()
+stats = db.get_stats()
 print(f"K-mer size: {stats.kmer_size}")
 print(f"Unique k-mers: {stats.unique_kmers}")
 ```
@@ -41,9 +42,9 @@ print(f"Unique k-mers: {stats.unique_kmers}")
 Represents the result of an exact k-mer query.
 
 ```python
-from rustkmer import QueryResult
+from pyrustkmer import PyQueryResult, PyFuzzyQuery
 
-result = QueryResult(
+result = PyQueryResult(
     kmer="ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
     count=42,
     canonical="ATCGATCGATCGATCGATCGATCGATCGATCGATCG"
@@ -51,7 +52,7 @@ result = QueryResult(
 
 print(f"K-mer: {result.kmer}")
 print(f"Count: {result.count}")
-print(f"Present: {result.is_present}")
+print(f"Present: {result.found}")
 ```
 
 **Key Features:**
@@ -64,9 +65,9 @@ print(f"Present: {result.is_present}")
 Contains statistics and metadata about a k-mer database.
 
 ```python
-from rustkmer import DatabaseStats
+from pyrustkmer import PyDatabaseStats, PyFuzzyQuery
 
-stats = DatabaseStats(
+stats = PyDatabaseStats(
     kmer_size=31,
     unique_kmers=1000000,
     total_counts=5000000,
@@ -90,18 +91,18 @@ print(f"Total occurrences: {stats.total_counts:,}")
 Classes for representing fuzzy query results with mutation tolerance.
 
 ```python
-from rustkmer import FuzzyQueryResult, FuzzyMatchResult, FuzzyBatchResult
+from pyrustkmer import PyFuzzyResult, PyFuzzyMatch, PyPrefixQueryResult, PyFuzzyQuery
 
 # Single fuzzy query result
-result = FuzzyQueryResult(
+result = PyFuzzyResult(
     query_kmer="ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
     mutations_allowed=2,
     total_matches=15,
-    matches=[...]  # List of FuzzyMatchResult objects
+    matches=[...]  # List of PyFuzzyMatch objects
 )
 
 # Batch query results
-batch_result = FuzzyBatchResult(
+batch_result = PyPrefixQueryResult(
     total_queries=10,
     successful_queries=9,
     successes={"ATCG...": result},
@@ -120,15 +121,16 @@ batch_result = FuzzyBatchResult(
 Comprehensive exception hierarchy for robust error management.
 
 ```python
-from rustkmer import Database, DatabaseNotFoundError, InvalidKmerError, FuzzyQueryError
+from pyrustkmer import PyDatabase, DatabaseNotFoundError, InvalidKmerError, FuzzyQueryError, PyFuzzyQuery
 
 try:
-    db = Database("nonexistent.rkdb")
+    db = PyDatabase("nonexistent.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 except DatabaseNotFoundError as e:
     print(f"Database not found: {e.path}")
 
 try:
-    result = db.query("INVALID")
+    result = db.query_exact("INVALID")
 except InvalidKmerError as e:
     print(f"Invalid k-mer: {e.kmer}, reason: {e.reason}")
 ```
@@ -172,35 +174,37 @@ The Python API provides 100% functional parity with CLI commands:
 ### Database Operations
 
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 # Context manager usage (recommended)
-with Database("database.rkdb") as db:
-    result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
-    stats = db.stats()
+db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
+    result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+    stats = db.get_stats()
 # Database automatically closed
 
 # Manual management
-db = Database("database.rkdb")
+db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 try:
-    result = db.query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+    result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
     process_result(result)
 finally:
-    db.close()  # Always close to free resources
 ```
 
 ### Fuzzy Querying
 
 ```python
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
-db = Database("database.rkdb")
+db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 
 # Basic fuzzy query
-result = db.fuzzy_query("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
+result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
 
 # Position-specific mutations
-result = db.fuzzy_query(
+result = fuzzy.query_fuzzy(
     "ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
     position_mutations="10,15:2"  # Allow 2 mutations at positions 10 and 15
 )
@@ -213,15 +217,16 @@ batch_result = db.fuzzy_query_batch(kmers, mutations=2, max_workers=8)
 ### Error Handling
 
 ```python
-from rustkmer import (
-    Database, DatabaseNotFoundError, InvalidKmerError,
+from pyrustkmer import (, PyFuzzyQuery
+    PyDatabase, DatabaseNotFoundError, InvalidKmerError,
     FuzzyQueryError, QueryError
 )
 
 def safe_query(db_path, kmer):
     try:
-        with Database(db_path) as db:
-            result = db.query(kmer)
+        db = PyDatabase(db_path, LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
+            result = db.query_exact(kmer)
             return result
 
     except DatabaseNotFoundError:
@@ -243,24 +248,26 @@ def safe_query(db_path, kmer):
 
 ```python
 # Fast initialization (recommended)
-db = Database("database.rkdb")  # validate=False by default
+db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)  # validate=False by default
 
 # Full validation (slower)
-db = Database("database.rkdb", validate=True)
+db = PyDatabase("database.rkdb", LoadMode.Preload)
+fuzzy = PyFuzzyQuery(db)
 ```
 
 ### Fuzzy Query Optimization
 
 ```python
 # Use position mutations to limit search space
-result = db.fuzzy_query(
+result = fuzzy.query_fuzzy(
     kmer,
     mutations=2,
     position_mutations="10,15:2"  # Much faster than allowing mutations anywhere
 )
 
 # Limit variants to prevent combinatorial explosion
-result = db.fuzzy_query(
+result = fuzzy.query_fuzzy(
     kmer,
     mutations=3,
     max_variants=1000  # Conservative limit
@@ -275,7 +282,7 @@ batch_result = db.fuzzy_query_batch(kmers, mutations=2, max_workers=8)
 ```python
 # Database automatically handles memory mapping
 # Use context managers for proper resource cleanup
-with Database("large_db.rkdb") as db:
+db = PyDatabase("large_db.rkdb", LoadMode.Preload, LoadMode.Preload)
     for result in db.dump(limit=100000):
         process_result(result)
 # Resources automatically freed
@@ -287,18 +294,18 @@ with Database("large_db.rkdb") as db:
 
 ```python
 import pandas as pd
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 def query_dataframe(db_path, df, sequence_col='sequence'):
     """Query k-mers from a pandas DataFrame."""
-    db = Database(db_path)
+    db = PyDatabase(db_path)
+fuzzy = PyFuzzyQuery(db)
 
     # Add count column
     df['count'] = df[sequence_col].apply(
-        lambda seq: db.query(seq).count
+        lambda seq: db.query_exact(seq).count
     )
 
-    db.close()
     return df
 
 # Usage
@@ -310,17 +317,17 @@ df_with_counts = query_dataframe("database.rkdb", df)
 
 ```python
 import numpy as np
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 def batch_query_numpy(db_path, sequences):
     """Vectorized batch querying."""
-    db = Database(db_path)
+    db = PyDatabase(db_path)
+fuzzy = PyFuzzyQuery(db)
 
     # Convert to array for processing
     seq_array = np.array(sequences)
-    counts = np.array([db.query(seq).count for seq in seq_array])
+    counts = np.array([db.query_exact(seq).count for seq in seq_array])
 
-    db.close()
     return counts
 
 # Usage
@@ -332,7 +339,7 @@ counts = batch_query_numpy("database.rkdb", sequences)
 
 ```python
 from Bio import SeqIO
-from rustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 def extract_kmers_from_fasta(fasta_file, k=31):
     """Extract k-mers from FASTA sequences."""
@@ -347,20 +354,20 @@ def extract_kmers_from_fasta(fasta_file, k=31):
 
 def analyze_sequences(db_path, fasta_file):
     """Analyze sequences from FASTA against database."""
-    db = Database(db_path)
+    db = PyDatabase(db_path)
+fuzzy = PyFuzzyQuery(db)
     kmers = extract_kmers_from_fasta(fasta_file)
 
     results = []
     for kmer in kmers[:1000]:  # Limit for demo
-        result = db.query(kmer)
-        if result.is_present:
+        result = db.query_exact(kmer)
+        if result.found:
             results.append({
                 'kmer': kmer,
                 'count': result.count,
                 'canonical': result.canonical
             })
 
-    db.close()
     return results
 ```
 
@@ -433,11 +440,11 @@ If you're migrating from the CLI, here's a quick reference:
 
 | CLI Command | Python Equivalent |
 |-------------|-------------------|
-| `rustkmer query database.rkdb ATCG` | `Database("database.rkdb").query("ATCG")` |
-| `rustkmer fuzzy-query database.rkdb ATCG --mutations 2` | `Database("database.rkdb").fuzzy_query("ATCG", mutations=2)` |
-| `rustkmer stats database.rkdb` | `Database("database.rkdb").stats()` |
-| `rustkmer dump database.rkdb --limit 1000` | `Database("database.rkdb").dump(limit=1000)` |
-| `rustkmer fuzzy-query database.rkdb ATCG --position-mutations "10,15:2"` | `Database("database.rkdb").fuzzy_query("ATCG", position_mutations="10,15:2")` |
+| `rustkmer query database.rkdb ATCG` | `PyDatabase("database.rkdb").query_exact("ATCG")` |
+| `rustkmer fuzzy-query database.rkdb ATCG --mutations 2` | `PyDatabase("database.rkdb").fuzzy_query("ATCG", mutations=2)` |
+| `rustkmer stats database.rkdb` | `PyDatabase("database.rkdb").stats()` |
+| `rustkmer dump database.rkdb --limit 1000` | `PyDatabase("database.rkdb").dump(limit=1000)` |
+| `rustkmer fuzzy-query database.rkdb ATCG --position-mutations "10,15:2"` | `PyDatabase("database.rkdb").fuzzy_query("ATCG", position_mutations="10,15:2")` |
 
 For detailed migration guides, see the [User Guide](../user-guide/).
 
@@ -448,7 +455,7 @@ For detailed migration guides, see the [User Guide](../user-guide/).
 - Fuzzy query with position-mutation support
 - Comprehensive exception hierarchy
 - Batch processing capabilities
-- CLI compatibility through subprocess calls
+- High-performance PyO3 native implementation
 
 ### Key Features Added
 - Position-specific mutation constraints

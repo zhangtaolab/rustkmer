@@ -10,7 +10,7 @@ This script demonstrates comprehensive database operations:
 - Large database handling
 """
 
-from rustkmer import Database, KmerCounter
+from pyrustkmer import PyDatabase, LoadMode, KmerCounter
 import os
 import sys
 import time
@@ -34,9 +34,9 @@ def example_1_database_statistics():
         create_sample_database(db_path)
 
     try:
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
             # Basic statistics
-            stats = db.stats()
+            stats = db.get_stats()
             print("Basic Statistics:")
             print(f"  K-mer size: {stats.kmer_size}")
             print(f"  Unique k-mers: {stats.unique_kmers:,}")
@@ -93,7 +93,7 @@ def example_2_database_dumping():
     db_path = "example.rkdb"
 
     try:
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
             print("Dumping database content...")
 
             # Count total entries first
@@ -263,13 +263,13 @@ def example_3_database_backup():
 def validate_database_integrity(db_path):
     """Validate database integrity and functionality."""
     try:
-        with Database(db_path) as db:
+        db = PyDatabase(db_path, LoadMode.Preload)
             # Test basic functionality
-            stats = db.stats()
+            stats = db.get_stats()
 
             # Test query functionality
             test_kmer = "A" * stats.kmer_size if stats.kmer_size else "ATCGATCGATCGATCGATCGATCGATCGATCGATCG"
-            result = db.query(test_kmer)
+            result = db.query_exact(test_kmer)
 
             # Test dump functionality
             dump_results = list(db.dump(limit=10))
@@ -303,8 +303,8 @@ def example_4_database_comparison():
 
         for name, sequences in databases.items():
             print(f"\nLoading {name}...")
-            with Database(name) as db:
-                stats = db.stats()
+            db = PyDatabase(name, LoadMode.Preload)
+                stats = db.get_stats()
                 db_data[name] = {
                     'stats': stats,
                     'db': db,
@@ -399,8 +399,8 @@ def example_5_large_database_handling():
     create_large_sample_database(large_db_path)
 
     try:
-        with Database(large_db_path) as db:
-            stats = db.stats()
+        db = PyDatabase(large_db_path, LoadMode.Preload)
+            stats = db.get_stats()
             print(f"Large database statistics:")
             print(f"  Unique k-mers: {stats.unique_kmers:,}")
             print(f"  File size: {stats.file_size / (1024*1024):.1f} MB")
@@ -486,7 +486,7 @@ def create_sample_database(db_path):
         "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
     ]
 
-    counter = KmerCounter(k=31, canonical=True)
+    counter = PyCounter(k=31, canonical=True)
     counter.count_file_list([seq for seq in sequences])
     counter.save_to_database(db_path)
 
@@ -494,7 +494,7 @@ def create_sample_database(db_path):
 def create_sample_databases(database_configs):
     """Create sample databases for comparison."""
     for db_file, sequences in database_configs.items():
-        counter = KmerCounter(k=31, canonical=True)
+        counter = PyCounter(k=31, canonical=True)
         counter.count_file_list([seq for seq in sequences])
         counter.save_to_database(db_file)
 
@@ -518,7 +518,7 @@ def create_large_sample_database(db_path):
         if i % 20 == 0:
             sequences.append("ATCG" * 10)
 
-    counter = KmerCounter(k=31, canonical=True)
+    counter = PyCounter(k=31, canonical=True)
     counter.count_file_list(sequences)
     counter.save_to_database(db_path)
 
