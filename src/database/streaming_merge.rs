@@ -414,7 +414,6 @@ impl Drop for StreamingMergeIterator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
 
     #[test]
     fn test_database_stream_iterator() {

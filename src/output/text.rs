@@ -9,7 +9,7 @@ use std::io::Write;
 
 /// Write k-mer counts in text format
 ///
-/// Each line contains: kmer_sequence<TAB>count
+/// Each line contains: `kmer_sequence<TAB>count`
 ///
 /// # Arguments
 /// * `writer` - Output writer
