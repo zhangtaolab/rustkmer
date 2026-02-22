@@ -171,3 +171,7 @@ merged_test*.rkd
 # Database files
 *.d
 *.pdb
+
+# OpenCode and Sisyphus directories
+.opencode/
+.sisyphus/
