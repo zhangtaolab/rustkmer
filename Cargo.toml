@@ -1,6 +1,6 @@
 [package]
 name = "rustkmer"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 authors = ["Zhang Tao <forrest_zhang@163.com>"]
 description = "High-performance k-mer counting tool in Rust"

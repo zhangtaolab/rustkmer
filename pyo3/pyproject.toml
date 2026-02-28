@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pyrustkmer"
-version = "0.5.1"
+version = "0.5.2"
 description = "High-performance PyO3 Python bindings for rustkmer k-mer library"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -73,7 +73,6 @@ Repository = "https://github.com/rustkmer/rustkmer.git"
 [tool.maturin]
 # Maturin build configuration
 features = ["pyo3/extension-module"]
-python-source = "."
 module-name = "pyrustkmer"
 manifest-path = "Cargo.toml"
 

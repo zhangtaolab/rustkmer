@@ -20,8 +20,8 @@ Both components should always be released with the same version number.
 ### Current Version
 
 ```
-Rust CLI: 0.5.1
-PyO3:     0.5.1
+Rust CLI: 0.5.2
+PyO3:     0.5.2
 ```
 
 ### Synchronization
@@ -61,6 +61,7 @@ When updating version, update these files:
 
 | Version | Date | Notes |
 |---------|------|-------|
+| 0.5.2 | 2026-02-28 | PyO3 count filter (-L/-U) support |
 | 0.5.1 | 2026-02-21 | Current version |
 | 0.5.0 | 2026-01-18 | Previous version |
 | 0.4.1 | 2026-01-18 | PyO3 unified API |

@@ -5,6 +5,7 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use rustkmer::hash::filtering::CountFilter;
 use rustkmer::hash::KmerCounter as RustPyCounter;
 use rustkmer::io::fasta::FastaProcessor;
 use rustkmer::io::fastq::FastqProcessor;
@@ -447,37 +448,68 @@ impl PyCounter {
     ///
     /// # Arguments
     /// * `file_path` - Path to output database file (.rkdb)
+    /// * `min_count` - Optional minimum count threshold (filters out k-mers with count < min_count)
+    /// * `max_count` - Optional maximum count threshold (filters out k-mers with count > max_count)
     ///
     /// # Notes
     /// - Creates a sorted RKDB database for fast querying
     /// - Uses canonical k-mer encoding if enabled
     /// - Database can be loaded using rustkmer.Database
+    /// - Filtering is applied before saving (similar to CLI -L/-U options)
     ///
     /// # Raises
-    /// ValueError if file cannot be written
+    /// ValueError if file cannot be written or if min_count > max_count
     ///
     /// # Example
     /// ```python
     /// counter.save_database("output.rkdb")
     ///
+    /// # Filter: keep k-mers with count between 5 and 100
+    /// counter.save_database("output.rkdb", min_count=5, max_count=100)
+    ///
+    /// # Filter: keep k-mers with count >= 10
+    /// counter.save_database("output.rkdb", min_count=10)
+    ///
     /// # Load database for querying
     /// from pyrustkmer import PyDatabase, LoadMode
     /// db = PyDatabase("output.rkdb", LoadMode.Preload)
     /// ```
-    fn save_database(&self, file_path: &Bound<'_, pyo3::types::PyString>) -> PyResult<()> {
+    #[pyo3(signature = (file_path, min_count=None, max_count=None))]
+    fn save_database(
+        &self,
+        file_path: &Bound<'_, pyo3::types::PyString>,
+        min_count: Option<u64>,
+        max_count: Option<u64>,
+    ) -> PyResult<()> {
         use rustkmer::database::format::{DatabaseHeader, RKDatabase};
         use std::fs::File;
         use std::io::BufWriter;
 
+        // Validate filter parameters
+        if let (Some(min), Some(max)) = (min_count, max_count) {
+            if min > max {
+                return Err(PyErr::new::<PyValueError, _>(
+                    "min_count cannot exceed max_count",
+                ));
+            }
+        }
+
         let path_str = file_path.to_str()?;
         let path = Path::new(path_str);
 
-        // Get all k-mer counts
-        let kmer_counts = self.counter.get_all_counts();
+        // Create filter if parameters are specified
+        let filter = if min_count.is_some() || max_count.is_some() {
+            Some(CountFilter::new(min_count, max_count))
+        } else {
+            None
+        };
+
+        // Get filtered k-mer counts
+        let kmer_counts = self.counter.get_filtered_kmers(&filter);
 
         if kmer_counts.is_empty() {
             return Err(PyErr::new::<PyValueError, _>(
-                "Cannot save empty database. Add k-mers first.",
+                "Cannot save empty database. Add k-mers first or adjust filter thresholds.",
             ));
         }
 
