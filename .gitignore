@@ -3,110 +3,14 @@ reference/
 
 # Rust build artifacts
 target/
-Cargo.lock
-**/*.rs.bk
+/target/
 debug/
 release/
 *.rlib
-
-# Python build artifacts
-python/__pycache__/
-python/*.pyc
-python/*.pyo
-python/*.pyd
-python/.pytest_cache/
-python/.coverage
-python/htmlcov/
-python/build/
-python/dist/
-python/*.egg-info/
-python/.venv
-python/venv
-python/.mypy_cache
-python/.tox
-
-# IDE files
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-*.prof*
-*.d
-*.pdb
-
-# Output files
-*.jf
-*.rk
-*.txt
-*.rkdb
-
-# Except test data files that should be tracked
-!python/tests/test_data/*.rkdb
-!python/tests/test_data/*.rk
-
-# Examples output and data
-examples/output/
-examples/data/*.fa
-examples/data/*.fa.gz
-!examples/data/small_dataset.fa
-
-# Test and temporary files (stored in /Users/forrest/Temp/demodata/)
-test_output/
-temp_files/
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# Environment files
-.env*
-!.env.example
-
-# Benchmark results
-benches/
-criterion/
-
-# Test coverage
-tarpaulin-report.html
-coverage/
-coverage.xml
-*.xml
-
-# Added by cargo
-
-/target
-
-# Rust build artifacts
-/target/
 **/*.rs.bk
 Cargo.lock
 
-# Python cache and temp files
+# Python build artifacts
 __pycache__/
 *.py[cod]
 *$py.class
@@ -128,20 +32,99 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*.whl
+wheelhouse/
 
-# Python compiled modules (including rustkmer)
+# Python project-specific build artifacts
+python/__pycache__/
+python/*.pyc
+python/*.pyo
+python/*.pyd
+python/.pytest_cache/
+python/.coverage
+python/htmlcov/
+python/build/
+python/dist/
+python/*.egg-info/
+python/.venv
+python/venv
+python/.mypy_cache
+python/.tox
 python/rustkmer/*.so
 python/rustkmer/*.cpython-*.so
-#
-.claude/
-.serena/
-.spekrit/
-.specify/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Output files
+*.jf
+*.rk
+*.rkdb
+
+# Except test data files that should be tracked
+!python/tests/test_data/*.rkdb
+!python/tests/test_data/*.rk
+
+# Examples output and data
+examples/output/
+examples/data/*.fa
+examples/data/*.fa.gz
+!examples/data/small_dataset.fa
+examples/marimo/__marimo__/
+
+# Test and temporary files
+test_output/
+temp_files/
+tmp/
+
+# Benchmark results
+benches/
+criterion/
+
+# Test coverage
+tarpaulin-report.html
+coverage/
+coverage.xml
+*.xml
+
+# Performance profiling files
+*.prof
+*.prof*
+*.profraw
 
 # Documentation build
 site/
 docs/venv/
 docs/_build/
+docs/.doctrees/
+*.doctree
+mkdocs.yml.local
 
 # Temporary scripts
 check_rustkmer_methods.py
@@ -152,66 +135,19 @@ IMPLEMENTATION_STATUS.md
 tests/python/fixtures/large_scale/sequence_xlarge.fa
 tests/python/fixtures/large_scale/rnaseq_reads.fq.gz
 
-# Benchmarks directory (removed due to non-compliant code)
-benches/
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Performance profiling files
-*.prof
-*.profraw
-
-# Backup files
-*.bak
-*.backup
-*.old
-*.orig
-*.tmp
-*.temp
-
-# Documentation build
-site/
-docs/.doctrees/
-*.doctree
-
-# MkDocs build output
-mkdocs.yml.local
-
-# Python wheel builds
-*.whl
-wheelhouse/
-
-.venv/
-examples/marimo/__marimo__/
-
-tmp/
-
-
-
-# Tool-specific cache files (can be large)
+# Tool-specific cache files
+.claude/
 .serena/
+.spekrit/
+.specify/
 .venv/
-
 .venv*/
 
-# Hypothesis testing cache (property-based testing)
+# Hypothesis testing cache
 .hypothesis/
-.pytest_cache/
-# Test databases
+
+# Test reports and databases
+tests/**/test_reports/
 *.rkd
 *.rkb
 
@@ -225,4 +161,17 @@ external_sort_*
 
 # Debug files
 *.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
 merged_test*.rkd
+
+# Database files
+*.d
+*.pdb
+
+# OpenCode and Sisyphus directories
+.opencode/
+.sisyphus/

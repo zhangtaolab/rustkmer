@@ -312,8 +312,6 @@ mod tests {
     use tempfile::NamedTempFile;
 
     fn create_test_database(kmer_size: u8, entries: Vec<(u128, u32)>) -> NamedTempFile {
-        use std::io::Write;
-
         let mut file = NamedTempFile::new().unwrap();
 
         // Use canonical: false to match the stored k-mers (which are not canonically transformed)

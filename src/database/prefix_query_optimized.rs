@@ -531,7 +531,6 @@ fn encode_prefix_to_range(prefix: &str, kmer_size: usize) -> ProcessingResult<(u
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::format::RKDatabase;
     use crate::kmer::encoding::encode_kmer_u128;
 
     #[test]

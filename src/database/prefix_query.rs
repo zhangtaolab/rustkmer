@@ -198,7 +198,6 @@ pub fn extract_kmers_by_multiple_prefixes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::format::RKDatabase;
     use crate::kmer::encoding::encode_kmer_u128;
 
     #[test]

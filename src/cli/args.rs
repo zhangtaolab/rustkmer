@@ -395,7 +395,7 @@ impl Commands {
     /// Create a count filter from the command parameters
     ///
     /// # Returns
-    /// Option<CountFilter> for the filtering parameters
+    /// `Option<CountFilter>` for the filtering parameters
     pub fn create_count_filter(&self) -> Option<crate::hash::CountFilter> {
         match self {
             Commands::Count {
@@ -416,7 +416,7 @@ impl Commands {
     /// Validate filtering parameters for the Count command
     ///
     /// # Returns
-    /// Result<(), Vec<String>> with validation errors if any
+    /// `Result<(), Vec<String>>` with validation errors if any
     pub fn validate_filtering(&self) -> Result<(), Vec<String>> {
         match self {
             Commands::Count {
@@ -473,7 +473,7 @@ impl Commands {
     /// Validate input parameters for the Count command
     ///
     /// # Returns
-    /// Result<(), Vec<String>> with validation errors if any
+    /// `Result<(), Vec<String>>` with validation errors if any
     pub fn validate_input(&self) -> Result<(), Vec<String>> {
         match self {
             Commands::Count {
