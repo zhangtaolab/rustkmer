@@ -81,17 +81,33 @@ Explicitly excluded from this milestone. Documented to prevent scope creep.
 
 ## Traceability
 
-Populated during roadmap creation (Phase 1 = Foundation, Phase 2 = Parallel Counting, Phase 3 = Memory Safety [Merge + Dense], Phase 4 = Validation). Minimizer partitioning (MINIM-*) is deferred to a v2 milestone.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| _(to be populated by gsd-roadmapper)_ | | |
+| FOUND-01 | Phase 1 | Pending |
+| FOUND-02 | Phase 1 | Pending |
+| FOUND-03 | Phase 1 | Pending |
+| FOUND-04 | Phase 1 | Pending |
+| PCOUNT-01 | Phase 2 | Pending |
+| PCOUNT-02 | Phase 2 | Pending |
+| PCOUNT-03 | Phase 2 | Pending |
+| PCOUNT-04 | Phase 2 | Pending |
+| MERGE-01 | Phase 3 | Pending |
+| MERGE-02 | Phase 3 | Pending |
+| MERGE-03 | Phase 3 | Pending |
+| MERGE-04 | Phase 3 | Pending |
+| DENSE-01 | Phase 3 | Pending |
+| DENSE-02 | Phase 3 | Pending |
+| DENSE-03 | Phase 3 | Pending |
+| BENCH-01 | Phase 4 | Pending |
+| BENCH-02 | Phase 4 | Pending |
+| BENCH-03 | Phase 4 | Pending |
+| BENCH-04 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 19 total
-- Mapped to phases: 0 _(roadmapper fills)_
-- Unmapped: 19 ⚠️ _(until roadmap creation)_
+- Mapped to phases: 19
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-30*
-*Last updated: 2026-06-30 after initial definition*
+*Last updated: 2026-07-01 after roadmap creation*

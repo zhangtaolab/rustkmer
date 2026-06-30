@@ -1,0 +1,103 @@
+# Roadmap: rustkmer Performance Milestone
+
+## Overview
+
+Transform rustkmer from a functional k-mer counting toolkit into a performance-competitive tool at human-genome scale. This milestone targets the primary bottlenecks preventing human-scale analysis: single-threaded counting, unbounded memory usage during merge, and inefficient k-mer storage. By implementing lock-free parallel counting, bounded-memory merging, and dense k-mer storage, rustkmer will match or beat Jellyfish2 on real Illumina WGS data while preserving the existing `.rkdb` format and dual-surface (CLI + Python) compatibility.
+
+## Phases
+
+**Phase Numbering:**
+- Integer phases (1, 2, 3, 4): Planned milestone work
+- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+
+Decimal phases appear between their surrounding integers in numeric order.
+
+- [ ] **Phase 1: Foundation & Quality** - Establish CI protection, consolidate format logic, and clean library I/O
+- [ ] **Phase 2: Parallel Counting** - Implement lock-free concurrent counting for multi-core speedup
+- [ ] **Phase 3: Memory Safety** - Bounded merge routing and dense k-mer storage
+- [ ] **Phase 4: Benchmark & Validation** - Reproducible harness and Jellyfish2 comparison on CRR1936095
+
+## Phase Details
+
+### Phase 1: Foundation & Quality
+**Goal**: Establish engineering infrastructure that unblocks performance work and guards against regressions
+**Depends on**: Nothing (first phase)
+**Requirements**: FOUND-01, FOUND-02, FOUND-03, FOUND-04
+**Success Criteria** (what must be TRUE):
+  1. A Rust CI workflow runs on every PR, enforcing `cargo fmt`, `cargo clippy -D warnings`, `cargo test`, and pyo3 wheel build — failing tests or new warnings block merge
+  2. Library code outside `src/cli/` emits through `log::` facade instead of direct `eprintln!`/`println!` — embedding `rustkmer` and Python bindings get clean output
+  3. The `.rkdb` write logic is consolidated into a single source of truth (`src/database/format.rs`) — `count.rs` no longer duplicates binary layout
+  4. All user-facing library output uses English strings (no hardcoded Chinese) — consistent UX and parseable logs
+**Plans**: TBD
+
+Plans:
+- [ ] 01-01: Rust CI workflow with fmt, clippy, test, and pyo3 build enforcement
+- [ ] 01-02: Replace direct console I/O in library code with log facade
+- [ ] 01-03: Consolidate duplicated `.rkdb` write logic into single source of truth
+- [ ] 01-04: Internationalize hardcoded Chinese strings to English
+
+### Phase 2: Parallel Counting
+**Goal**: Multi-core k-mer counting that scales with CPU count without lock contention
+**Depends on**: Phase 1
+**Requirements**: PCOUNT-01, PCOUNT-02, PCOUNT-03, PCOUNT-04
+**Success Criteria** (what must be TRUE):
+  1. The `count` command uses all available CPU cores by default (removes hardcoded `num_threads = 1`) — thread count configurable via `--threads` / `RUSTKMER_THREADS`
+  2. Counting uses a sharded concurrent HashMap (dashmap) instead of `RwLock<HashMap>` — throughput scales with core count without lock contention
+  3. `pyrustkmer`'s `PyCounter` delivers the same parallel speedup as the CLI — shared core library benefits both surfaces
+  4. Parallel counting produces results identical to the current sequential path — k-mer counts match exactly on the same input (correctness guard)
+**Plans**: TBD
+
+Plans:
+- [ ] 02-01: Remove hardcoded `num_threads = 1` and add `--threads` / `RUSTKMER_THREADS` configuration
+- [ ] 02-02: Replace `RwLock<HashMap>` with sharded dashmap for lock-free concurrent counting
+- [ ] 02-03: Verify `PyCounter` inherits parallel speedup through shared core library
+- [ ] 02-04: Add correctness regression tests comparing parallel vs sequential output
+
+### Phase 3: Memory Safety
+**Goal**: Bounded-memory merge operations and dense k-mer storage for the common k ≤ 32 case
+**Depends on**: Phase 2
+**Requirements**: MERGE-01, MERGE-02, MERGE-03, MERGE-04, DENSE-01, DENSE-02, DENSE-03
+**Success Criteria** (what must be TRUE):
+  1. Merge defaults to the streaming/external-sort path — human-scale merges no longer OOM the process
+  2. Merge respects a memory budget via admission control — estimates required memory and routes to streaming when budget exceeded
+  3. Failed or interrupted streaming merges clean up temporary shard files — RAII guard prevents silent disk exhaustion
+  4. K-mers for k ≤ 32 are stored as `u64` instead of `u128` — roughly halving counting memory for the common case while preserving `.rkdb` v2 compatibility
+  5. Dense storage maintains correctness — canonicalization and counts match the `u128` path exactly
+  6. `pyrustkmer`'s `PyDatabase` merge uses the same bounded path as the CLI
+**Plans**: TBD
+
+Plans:
+- [ ] 03-01: Default merge to streaming path with memory-budget admission control
+- [ ] 03-02: Implement RAII temp file guards for streaming merge cleanup
+- [ ] 03-03: Add conditional `u64` packing for k ≤ 32 (PackedKmer enum)
+- [ ] 03-04: Verify dense storage correctness and `.rkdb` v2 backward/forward compatibility
+- [ ] 03-05: Ensure `PyDatabase` merge uses bounded path via shared core
+
+### Phase 4: Benchmark & Validation
+**Goal**: Reproducible performance measurement and validation against Jellyfish2 on human-scale data
+**Depends on**: Phase 3
+**Requirements**: BENCH-01, BENCH-02, BENCH-03, BENCH-04
+**Success Criteria** (what must be TRUE):
+  1. A reproducible benchmark harness measures counting and merge wall-clock time and peak memory — runnable in CI as a regression gate
+  2. **Milestone success criterion:** rustkmer matches or beats Jellyfish2 on counting speed on the CRR1936095 human-scale dataset under fair methodology (cold cache, decompression counted, matched k/canonicalization/input settings)
+  3. The benchmark reports peak memory alongside wall-clock — memory wins (not just speed) are visible and validated
+  4. The harness degrades gracefully to a slice or synthetic input on machines without the full CRR1936095 dataset — CI can run without the full 5.2 GB data
+**Plans**: TBD
+
+Plans:
+- [ ] 04-01: Build reproducible benchmark harness with wall-clock and peak memory measurement
+- [ ] 04-02: Implement fair comparison methodology against Jellyfish2 (cold cache, matched settings)
+- [ ] 04-03: Add graceful degradation for CI environments without full CRR1936095 dataset
+- [ ] 04-04: Run milestone validation on CRR1936095 and generate performance report
+
+## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 1 → 2 → 3 → 4
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Foundation & Quality | 0/4 | Not started | - |
+| 2. Parallel Counting | 0/4 | Not started | - |
+| 3. Memory Safety | 0/5 | Not started | - |
+| 4. Benchmark & Validation | 0/4 | Not started | - |
