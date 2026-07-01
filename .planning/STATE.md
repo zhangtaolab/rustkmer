@@ -6,14 +6,14 @@ current_phase: 02
 current_phase_name: Parallel Counting
 status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-07-01T09:58:55.473Z"
+last_updated: "2026-07-01T10:19:10.069Z"
 last_activity: 2026-07-01
 last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 7
   percent: 25
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 ## Current Position
 
 Phase: 02 (Parallel Counting) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-07-01 — Phase 02 execution started
 
@@ -66,6 +66,7 @@ Progress: [████████░░] 75%
 | Phase 02 P01 | 8min | - tasks | - files |
 | Phase 02 P01 | 8min | 2 tasks | 3 files |
 | Phase 02 P04 | ~6min | 1 tasks | 7 files |
+| Phase 02 P02 | ~12 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 02-01: Split resolve_thread_count_from (pure, testable) from resolve_thread_count (env-reading wrapper) to avoid env-var races; used rayon::current_num_threads() for num_cpus fallback
 - [Phase ?]: 02-01: Centralized build_global in execute_count (let _ = discards Err); merge.rs both .expect() sites made Err-tolerant (Pitfall 3 count->merge panic mitigated)
 - [Phase ?]: 02-04: Captured 6 pre-refactor count MAPS as committed JSON baselines (D-10 golden-capture-first; k in {21,32,64} x canonical) BEFORE 02-02 dashmap swap — ground truth for 02-05 differential
+- [Phase ?]: 02-02: Swapped KmerCounter.table from parking_lot::RwLock<HashMap<u128,u32>> to dashmap::DashMap<u128,u32> (D-04/D-05) with atomic per-key entry().and_modify(flag-then-check).or_insert_with() increment; public API byte-identical; dashmap 6.2.1 pins hashbrown ^0.14.5 (no version dup)
+- [Phase ?]: 02-02: Parallelized process_fasta_file/process_fastq_file via rayon chunked par_iter (CHUNK_SIZE=4096, D-01); bypassed the process_file callback (W-3: &Record borrow tied to reader) by reading owned records directly via bio::io::Reader::records() into a bounded Vec; gzip stays single-threaded (D-02)
+- [Phase ?]: 02-02: D-09 default-sort flip landed (should_sort = !*no_sort); --sort retained as backward-compatible alias; sharded DashMap iteration is non-deterministic so default-sort restores run-to-run reproducibility
 
 ### Pending Todos
 
@@ -115,6 +119,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-01T09:58:14.855Z
+Last session: 2026-07-01T10:18:59.829Z
 Stopped at: Phase 2 context gathered
 Resume file: .planning/phases/02-parallel-counting/02-CONTEXT.md

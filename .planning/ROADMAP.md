@@ -63,7 +63,7 @@ Plans:
   3. `pyrustkmer`'s `PyCounter` delivers the same parallel speedup as the CLI — shared core library benefits both surfaces
   4. Parallel counting produces results identical to the current sequential path — k-mer counts match exactly on the same input (correctness guard)
 
-**Plans**: 2/5 plans executed
+**Plans**: 3/5 plans executed
 
 **Wave 1** *(parallel, no dependencies)*
 
@@ -72,7 +72,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 02-02-PLAN.md — DashMap swap (`RwLock<HashMap>` -> `DashMap<u128,u32>`) with atomic `entry().and_modify().or_insert()` increment preserving verbatim overflow semantics + rayon chunked `par_iter` per-record loops (gzip stays single-threaded per D-02) + D-09 default-sort flip + inline atomicity/overflow tests (Wave 2; depends on 02-01, 02-04; PCOUNT-02, PCOUNT-04)
+- [x] 02-02-PLAN.md — DashMap swap (`RwLock<HashMap>` -> `DashMap<u128,u32>`) with atomic `entry().and_modify().or_insert()` increment preserving verbatim overflow semantics + rayon chunked `par_iter` per-record loops (gzip stays single-threaded per D-02) + D-09 default-sort flip + inline atomicity/overflow tests (Wave 2; depends on 02-01, 02-04; PCOUNT-02, PCOUNT-04)
 - [ ] 02-03-PLAN.md — PyCounter GIL release: `threads` kwarg (`None` = all cores), `Arc<RustPyCounter>` field, wrap `add_from_fastq`/`add_from_fasta` in `pyo3::allow_threads` (0.27.2 API, NOT `detach`) (Wave 2; depends on 02-01; PCOUNT-03)
 
 **Wave 3** *(blocked on Wave 2)*
@@ -132,6 +132,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Quality | 4/4 | Complete    | 2026-07-01 |
-| 2. Parallel Counting | 2/5 | In Progress|  |
+| 2. Parallel Counting | 3/5 | In Progress|  |
 | 3. Memory Safety | 0/5 | Not started | - |
 | 4. Benchmark & Validation | 0/4 | Not started | - |
