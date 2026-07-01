@@ -337,16 +337,31 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
     config.merge_mode = args.merge_mode.clone();
     config.keep_intermediate = args.keep_intermediate;
 
-    // Configure thread pool from command line argument
+    // Configure thread pool from command line argument.
+    //
+    // The global-pool constructor returns Err on a second call (Pitfall 3:
+    // an earlier command in the same process — e.g. `rustkmer count ... &&
+    // rustkmer merge ...`, tests, or pyrustkmer users calling both — may
+    // already have initialized the global pool). The Err is benign: the
+    // existing pool stays in effect. We tolerate it and log under --verbose
+    // instead of panicking. The `config.num_threads` assignment stays in
+    // both branches so downstream stats reporting reflects the user's intent.
     if args.num_threads > 0 {
         config.num_threads = args.num_threads;
         if args.verbose {
             eprintln!("Using {} threads from command line", args.num_threads);
         }
-        rayon::ThreadPoolBuilder::new()
+        if let Err(e) = rayon::ThreadPoolBuilder::new()
             .num_threads(args.num_threads)
             .build_global()
-            .expect("Failed to set rayon thread pool");
+        {
+            if args.verbose {
+                eprintln!(
+                    "Note: global thread pool already initialized ({}); using existing pool",
+                    e
+                );
+            }
+        }
     } else if let Ok(num_threads_str) = std::env::var("RAYON_NUM_THREADS") {
         if let Ok(num_threads) = num_threads_str.parse::<usize>() {
             if num_threads > 0 {
@@ -354,10 +369,17 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
                 if args.verbose {
                     eprintln!("Using {} threads from RAYON_NUM_THREADS", num_threads);
                 }
-                rayon::ThreadPoolBuilder::new()
+                if let Err(e) = rayon::ThreadPoolBuilder::new()
                     .num_threads(num_threads)
                     .build_global()
-                    .expect("Failed to set rayon thread pool");
+                {
+                    if args.verbose {
+                        eprintln!(
+                            "Note: global thread pool already initialized ({}); using existing pool",
+                            e
+                        );
+                    }
+                }
             }
         }
     }
