@@ -765,7 +765,7 @@ fn decode_kmer(kmer: u128, k: usize) -> String {
 ///
 /// # Returns
 /// The resolved thread count (`>= 1`).
-fn resolve_thread_count_from(
+pub fn resolve_thread_count_from(
     args_threads: Option<usize>,
     rustkmer_threads: Option<usize>,
     rayon_num_threads: Option<usize>,
