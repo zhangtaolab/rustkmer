@@ -6,14 +6,14 @@ current_phase: 02
 current_phase_name: Parallel Counting
 status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-07-01T09:48:19.508Z"
+last_updated: "2026-07-01T09:58:55.473Z"
 last_activity: 2026-07-01
 last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 9
-  completed_plans: 5
+  completed_plans: 6
   percent: 25
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 ## Current Position
 
 Phase: 02 (Parallel Counting) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-07-01 — Phase 02 execution started
 
@@ -65,6 +65,7 @@ Progress: [████████░░] 75%
 | Phase 01 P04 | ~26 min | 2 tasks | 3 files |
 | Phase 02 P01 | 8min | - tasks | - files |
 | Phase 02 P01 | 8min | 2 tasks | 3 files |
+| Phase 02 P04 | ~6min | 1 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 02-01: Added --threads Option<usize> to Commands::Count (Option not default_value so 'unset' is distinguishable from '0' - required by D-07 precedence chain)
 - [Phase ?]: 02-01: Split resolve_thread_count_from (pure, testable) from resolve_thread_count (env-reading wrapper) to avoid env-var races; used rayon::current_num_threads() for num_cpus fallback
 - [Phase ?]: 02-01: Centralized build_global in execute_count (let _ = discards Err); merge.rs both .expect() sites made Err-tolerant (Pitfall 3 count->merge panic mitigated)
+- [Phase ?]: 02-04: Captured 6 pre-refactor count MAPS as committed JSON baselines (D-10 golden-capture-first; k in {21,32,64} x canonical) BEFORE 02-02 dashmap swap — ground truth for 02-05 differential
 
 ### Pending Todos
 
@@ -113,6 +115,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-01T09:48:19.503Z
+Last session: 2026-07-01T09:58:14.855Z
 Stopped at: Phase 2 context gathered
 Resume file: .planning/phases/02-parallel-counting/02-CONTEXT.md
