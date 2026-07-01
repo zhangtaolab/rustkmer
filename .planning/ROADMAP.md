@@ -13,7 +13,7 @@ Transform rustkmer from a functional k-mer counting toolkit into a performance-c
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation & Quality** - Establish CI protection, consolidate format logic, and clean library I/O
+- [x] **Phase 1: Foundation & Quality** - Establish CI protection, consolidate format logic, and clean library I/O (completed 2026-07-01)
 - [ ] **Phase 2: Parallel Counting** - Implement lock-free concurrent counting for multi-core speedup
 - [ ] **Phase 3: Memory Safety** - Bounded merge routing and dense k-mer storage
 - [ ] **Phase 4: Benchmark & Validation** - Reproducible harness and Jellyfish2 comparison on CRR1936095
@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The `.rkdb` write logic is consolidated into a single source of truth (`src/database/format.rs`) — `count.rs` no longer duplicates binary layout
   4. All user-facing library output uses English strings (no hardcoded Chinese) — consistent UX and parseable logs
 
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -49,7 +49,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 01-04-PLAN.md — Translate CJK string literals to English + syn-based self-enforcing CJK detection gate (Wave 4)
+- [x] 01-04-PLAN.md — Translate CJK string literals to English + syn-based self-enforcing CJK detection gate (Wave 4)
 
 ### Phase 2: Parallel Counting
 
@@ -124,7 +124,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Quality | 3/4 | In Progress|  |
+| 1. Foundation & Quality | 4/4 | Complete   | 2026-07-01 |
 | 2. Parallel Counting | 0/4 | Not started | - |
 | 3. Memory Safety | 0/5 | Not started | - |
 | 4. Benchmark & Validation | 0/4 | Not started | - |
