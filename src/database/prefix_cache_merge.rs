@@ -87,11 +87,11 @@ impl ExternalSortMerger {
     pub fn external_sort_merge(&mut self, output_path: &Path) -> ProcessingResult<()> {
         let total_start = Instant::now();
 
-        log::info!("\n🚀 开始外部排序合并");
-        log::info!("   输入文件: {} 个", self.input_files.len());
-        log::info!("   总k-mers: {} M", self.total_kmers / 1_000_000);
-        log::info!("   Canonical模式: {}", self.canonical);
-        log::info!("   前缀桶数量: {}", self.num_buckets);
+        log::info!("\n🚀 Starting external sort merge");
+        log::info!("   Input files: {}", self.input_files.len());
+        log::info!("   Total k-mers: {} M", self.total_kmers / 1_000_000);
+        log::info!("   Canonical mode: {}", self.canonical);
+        log::info!("   Prefix bucket count: {}", self.num_buckets);
 
         let phase1_start = Instant::now();
         self.split_files_by_prefix()?;
@@ -107,24 +107,30 @@ impl ExternalSortMerger {
 
         let total_time = total_start.elapsed();
 
-        log::info!("\n📊 合并完成!");
-        log::info!("   总耗时: {:.1}s", total_time.as_secs_f64());
-        log::info!("   阶段1 (分桶): {:.1}s", phase1_time.as_secs_f64());
-        log::info!("   阶段2 (合并): {:.1}s", phase2_time.as_secs_f64());
-        log::info!("   阶段3 (拼接): {:.1}s", phase3_time.as_secs_f64());
-        log::info!("   输出文件: {:?}", output_path);
+        log::info!("\n📊 Merge complete!");
+        log::info!("   Total time: {:.1}s", total_time.as_secs_f64());
+        log::info!("   Phase 1 (bucketing): {:.1}s", phase1_time.as_secs_f64());
+        log::info!("   Phase 2 (merge): {:.1}s", phase2_time.as_secs_f64());
+        log::info!(
+            "   Phase 3 (concatenate): {:.1}s",
+            phase3_time.as_secs_f64()
+        );
+        log::info!("   Output file: {:?}", output_path);
 
         Ok(())
     }
 
     fn split_files_by_prefix(&mut self) -> ProcessingResult<()> {
-        log::info!("\n📦 阶段1 - 数据分桶 (按前4个碱基分配)");
+        log::info!("\n📦 Phase 1 - data bucketing (by first 4 bases)");
 
         let num_files = self.input_files.len();
-        log::info!("   输入文件数: {}", num_files);
+        log::info!("   Input file count: {}", num_files);
 
         let num_workers = current_num_threads();
-        log::info!("   使用 {} 个工作线程并行分桶", num_workers.min(num_files));
+        log::info!(
+            "   Using {} worker threads for parallel bucketing",
+            num_workers.min(num_files)
+        );
 
         let start_time = Instant::now();
 
@@ -213,7 +219,7 @@ impl ExternalSortMerger {
         };
 
         log::info!(
-            "   ✅ 分桶完成: {} M k-mers @ {:.1} M/s (耗时 {:.1}s)",
+            "   ✅ Bucketing complete: {} M k-mers @ {:.1} M/s (took {:.1}s)",
             total_kmers / 1_000_000,
             speed,
             phase_time.as_secs_f64()
@@ -233,7 +239,7 @@ impl ExternalSortMerger {
     }
 
     fn merge_prefix_buckets(&mut self) -> ProcessingResult<()> {
-        log::info!("\n🔄 阶段2 - 前缀桶合并");
+        log::info!("\n🔄 Phase 2 - prefix bucket merge");
 
         let start_time = Instant::now();
 
@@ -263,10 +269,17 @@ impl ExternalSortMerger {
         }
 
         let non_empty_count = non_empty_prefixes.len();
-        log::info!("   非空前缀: {}/{}", non_empty_count, self.num_buckets);
+        log::info!(
+            "   Non-empty prefixes: {}/{}",
+            non_empty_count,
+            self.num_buckets
+        );
 
         let num_workers = rayon::current_num_threads();
-        log::info!("   使用 {} 个工作线程并行处理", num_workers);
+        log::info!(
+            "   Using {} worker threads for parallel processing",
+            num_workers
+        );
 
         let start_parallel = Instant::now();
 
@@ -315,7 +328,7 @@ impl ExternalSortMerger {
                 let done = completed.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
                 if result.is_ok() {
                     log::info!(
-                        "   ✅ 处理完毕: {} | 进度: {}/{} ({:.1}%)",
+                        "   ✅ Processed: {} | progress: {}/{} ({:.1}%)",
                         dna,
                         done,
                         non_empty_count,
@@ -323,7 +336,7 @@ impl ExternalSortMerger {
                     );
                 } else {
                     log::error!(
-                        "   ❌ 处理失败: {} | 错误: {}",
+                        "   ❌ Processing failed: {} | error: {}",
                         dna,
                         result.as_ref().err().unwrap()
                     );
@@ -338,7 +351,7 @@ impl ExternalSortMerger {
                         0.0
                     };
                     log::info!(
-                        "   📊 汇总: {}/{} ({:.1}%) 已用 {:.1}s 预计剩余 {:.0}s   \r",
+                        "   📊 Summary: {}/{} ({:.1}%) elapsed {:.1}s ETA {:.0}s   \r",
                         done,
                         non_empty_count,
                         done as f64 / non_empty_count as f64 * 100.0,
@@ -366,21 +379,21 @@ impl ExternalSortMerger {
         let mut error_count = 0;
         for result in results {
             if let Err(e) = result {
-                log::error!("   错误: {}", e);
+                log::error!("   error: {}", e);
                 error_count += 1;
             }
         }
 
         if error_count == 0 {
             log::info!(
-                "   ✅ 合并完成: {} 个前缀桶 (耗时 {:.1}s, 每桶 {:.2}s)",
+                "   ✅ Merge complete: {} prefix buckets (took {:.1}s, {:.2}s per bucket)",
                 non_empty_count,
                 phase_time.as_secs_f64(),
                 speed_per_prefix
             );
         } else {
             log::info!(
-                "   ⚠️ 合并完成: {} 个前缀桶, {} 个错误 (耗时 {:.1}s)",
+                "   ⚠️ Merge complete: {} prefix buckets, {} errors (took {:.1}s)",
                 non_empty_count - error_count,
                 error_count,
                 phase_time.as_secs_f64()
@@ -397,30 +410,30 @@ impl ExternalSortMerger {
         use std::collections::HashMap;
         use std::io::BufReader;
 
-        log::info!("   使用内存合并模式");
+        log::info!("   Using in-memory merge mode");
 
-        // 计算总大小
+        // Compute total size
         let total_size: u64 = files.iter().map(|(_, s)| *s).sum();
         let total_kmers = total_size / 20;
 
-        log::info!("   输入文件: {} 个", files.len());
+        log::info!("   Input files: {}", files.len());
         log::info!(
-            "   总数据量: {:.1} MB ({} k-mers)",
+            "   Total data: {:.1} MB ({} k-mers)",
             total_size as f64 / 1024.0 / 1024.0,
             total_kmers
         );
 
-        // 检查可用内存
+        // Check available memory
         if let Ok(mem_info) = sys_info::mem_info() {
             let avail_mem_mb = mem_info.avail as f64 / 1024.0 / 1024.0;
-            let required_mem_mb = total_size as f64 / 1024.0 / 1024.0 * 3.0; // 考虑HashMap开销
+            let required_mem_mb = total_size as f64 / 1024.0 / 1024.0 * 3.0; // account for HashMap overhead
 
-            log::info!("   可用内存: {:.1} MB", avail_mem_mb);
-            log::info!("   预估需要: {:.1} MB", required_mem_mb);
+            log::info!("   Available memory: {:.1} MB", avail_mem_mb);
+            log::info!("   Estimated required: {:.1} MB", required_mem_mb);
 
             if required_mem_mb > avail_mem_mb {
-                log::warn!("   ⚠️  警告: 预估内存需求超过可用内存！");
-                log::warn!("   建议: 使用 --merge-mode streaming 模式");
+                log::warn!("   ⚠️  Warning: estimated memory exceeds available memory!");
+                log::warn!("   Suggestion: use --merge-mode streaming");
             }
         }
 
@@ -437,7 +450,7 @@ impl ExternalSortMerger {
             if idx > 0 && idx % 5 == 0 {
                 if let Ok(mem_info) = sys_info::mem_info() {
                     log::info!(
-                        "   进度: {}/{} | 已处理 {} M k-mers | 可用内存: {:.1} MB",
+                        "   Progress: {}/{} | processed {} M k-mers | available memory: {:.1} MB",
                         idx,
                         files.len(),
                         processed_kmers / 1_000_000,
@@ -446,15 +459,16 @@ impl ExternalSortMerger {
                 }
             }
 
-            let file = File::open(file_path)
-                .map_err(|e| anyhow::anyhow!("无法打开文件 {}: {}", file_path.display(), e))?;
+            let file = File::open(file_path).map_err(|e| {
+                anyhow::anyhow!("Failed to open file {}: {}", file_path.display(), e)
+            })?;
 
             let mut reader = BufReader::with_capacity(1_000_000, file);
             let mut buffer = Vec::new();
 
-            reader
-                .read_to_end(&mut buffer)
-                .map_err(|e| anyhow::anyhow!("读取文件 {} 失败: {}", file_path.display(), e))?;
+            reader.read_to_end(&mut buffer).map_err(|e| {
+                anyhow::anyhow!("Failed to read file {}: {}", file_path.display(), e)
+            })?;
 
             let mut offset = 0usize;
             while offset + 20 <= buffer.len() {
@@ -474,34 +488,39 @@ impl ExternalSortMerger {
             };
 
             log::info!(
-                "   ✓ 文件 {}: {:.1} MB @ {:.1} MB/s",
+                "   ✓ file {}: {:.1} MB @ {:.1} MB/s",
                 idx + 1,
                 *file_size as f64 / 1024.0 / 1024.0,
                 speed
             );
         }
 
-        // 检查最终内存使用
+        // Check final memory usage
         if let Ok(mem_info) = sys_info::mem_info() {
             log::info!(
-                "   合并完成: {} 个唯一k-mers | 可用内存: {:.1} MB",
+                "   Merge complete: {} unique k-mers | available memory: {:.1} MB",
                 kmer_counts.len(),
                 mem_info.avail as f64 / 1024.0 / 1024.0
             );
         }
 
-        log::info!("   开始排序...");
+        log::info!("   Sorting...");
         let sort_start = std::time::Instant::now();
 
         let mut sorted_kmers: Vec<(u128, u32)> = kmer_counts.into_iter().collect();
         sorted_kmers.sort_by_key(|(k, _)| *k);
 
         let sort_time = sort_start.elapsed();
-        log::info!("   排序完成: 耗时 {:.1}s", sort_time.as_secs_f64());
+        log::info!("   Sort complete: took {:.1}s", sort_time.as_secs_f64());
 
-        log::info!("   写入输出文件...");
-        let mut output_file = File::create(output_path)
-            .map_err(|e| anyhow::anyhow!("无法创建输出文件 {}: {}", output_path.display(), e))?;
+        log::info!("   Writing output file...");
+        let mut output_file = File::create(output_path).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to create output file {}: {}",
+                output_path.display(),
+                e
+            )
+        })?;
 
         for (kmer, count) in &sorted_kmers {
             output_file.write_all(&kmer.to_le_bytes())?;
@@ -509,10 +528,10 @@ impl ExternalSortMerger {
         }
         output_file
             .sync_all()
-            .map_err(|e| anyhow::anyhow!("无法同步文件 {}: {}", output_path.display(), e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to sync file {}: {}", output_path.display(), e))?;
 
         let total_time = start_time.elapsed();
-        log::info!("   完成: 总耗时 {:.1}s", total_time.as_secs_f64());
+        log::info!("   Done: total time {:.1}s", total_time.as_secs_f64());
 
         Ok(())
     }
@@ -693,14 +712,14 @@ impl ExternalSortMerger {
     fn concatenate_final_output(&self, output_path: &Path) -> ProcessingResult<()> {
         use std::io::{BufWriter, Write};
 
-        log::info!("\n📦 阶段3 - 最终拼接 (使用RKDB标准格式)");
+        log::info!("\n📦 Phase 3 - final concatenation (using RKDB standard format)");
 
         let start_time = Instant::now();
 
-        // 监控内存使用
+        // Monitor memory usage
         if let Ok(mem_info) = sys_info::mem_info() {
             log::info!(
-                "   当前内存使用: {:.1} GB / {:.1} GB (可用 {:.1} GB)",
+                "   Current memory usage: {:.1} GB / {:.1} GB (available {:.1} GB)",
                 (mem_info.total - mem_info.avail) as f64 / 1024.0 / 1024.0 / 1024.0,
                 mem_info.total as f64 / 1024.0 / 1024.0 / 1024.0,
                 mem_info.avail as f64 / 1024.0 / 1024.0 / 1024.0
@@ -720,7 +739,7 @@ impl ExternalSortMerger {
                 let file_size = std::fs::metadata(&prefix_file)?.len();
 
                 if file_size == 0 {
-                    log::warn!("   ⚠️ 空文件: {}", dna);
+                    log::warn!("   ⚠️ empty file: {}", dna);
                     let _ = std::fs::remove_file(&prefix_file);
                     continue;
                 }
@@ -739,12 +758,12 @@ impl ExternalSortMerger {
                     let _ = std::fs::remove_file(&prefix_file);
                 }
 
-                // 每处理一个文件后报告进度和内存
+                // Report progress and memory after each file
                 let processed = prefix + 1;
                 if processed % 16 == 0 || processed == self.num_buckets {
                     if let Ok(mem_info) = sys_info::mem_info() {
                         log::info!(
-                            "   进度: {}/{} | 数据: {:.1} MB | k-mers: {} M | 可用内存: {:.1} MB",
+                            "   Progress: {}/{} | data: {:.1} MB | k-mers: {} M | available memory: {:.1} MB",
                             processed,
                             self.num_buckets,
                             data_size as f64 / 1024.0 / 1024.0,
@@ -761,31 +780,31 @@ impl ExternalSortMerger {
         let total_kmers = data_size / 20;
 
         log::info!(
-            "   开始写入RKDB格式，总计 {} M 个k-mers...",
+            "   Writing RKDB format, {} M k-mers total...",
             total_kmers / 1_000_000
         );
         log::info!(
-            "   从各文件统计: {} M 个k-mers",
+            "   Counted from files: {} M k-mers",
             total_kmers_in_files / 1_000_000
         );
 
-        // 检查是否有重复
+        // Check for duplicates
         if total_kmers != total_kmers_in_files {
-            log::warn!("   ⚠️  警告: 数据大小不一致！可能有重复或丢失");
+            log::warn!("   ⚠️  Warning: data size mismatch! Possible duplicates or loss");
         }
 
-        // 监控内存使用
+        // Monitor memory usage
         if let Ok(mem_info) = sys_info::mem_info() {
             log::info!(
-                "   当前可用内存: {:.1} GB",
+                "   Current available memory: {:.1} GB",
                 mem_info.avail as f64 / 1024.0 / 1024.0 / 1024.0
             );
         }
 
-        // 使用流式处理而不是一次性加载所有数据
+        // Use streaming rather than loading all data at once
         let mut file = File::open(&temp_data_file)?;
 
-        // 创建 RKDatabase header (data_offset 在 header 之后，通常是 42 字节)
+        // Build RKDatabase header (data_offset follows header, typically 42 bytes)
         let header = crate::database::format::DatabaseHeader {
             magic: *b"RKDB",
             version: 2,
@@ -799,15 +818,15 @@ impl ExternalSortMerger {
             index_offset: 0,           // no index for now
         };
 
-        // 创建输出文件
+        // Create output file
         let output = File::create(output_path)?;
         let mut writer = BufWriter::with_capacity(10_000_000, output);
 
-        // 写入 header
+        // Write header
         header.write_to(&mut writer)?;
 
-        // 流式读取和写入 k-mer 数据
-        let mut buffer = vec![0u8; 20 * 100_000]; // 每次 100k k-mers
+        // Stream-read and write k-mer data
+        let mut buffer = vec![0u8; 20 * 100_000]; // 100k k-mers per batch
         let mut processed_kmers = 0u64;
         let mut last_report = std::time::Instant::now();
 
@@ -819,13 +838,13 @@ impl ExternalSortMerger {
                     processed_kmers += num_kmers as u64;
                     writer.write_all(&buffer[..n])?;
 
-                    // 每 100 万 k-mers 报告进度
+                    // Report progress every 1 million k-mers
                     if processed_kmers.is_multiple_of(1_000_000)
                         || last_report.elapsed().as_secs() >= 5
                     {
                         if let Ok(mem_info) = sys_info::mem_info() {
                             log::info!(
-                                "   进度: {} M / {} M k-mers | 可用内存: {:.1} MB",
+                                "   Progress: {} M / {} M k-mers | available memory: {:.1} MB",
                                 processed_kmers / 1_000_000,
                                 total_kmers / 1_000_000,
                                 mem_info.avail as f64 / 1024.0 / 1024.0
@@ -836,7 +855,7 @@ impl ExternalSortMerger {
                 }
                 Err(e) => {
                     return Err(crate::error::ProcessingError::new(format!(
-                        "读取数据失败: {}",
+                        "Failed to read data: {}",
                         e
                     )));
                 }
@@ -846,7 +865,7 @@ impl ExternalSortMerger {
         writer.flush()?;
         drop(writer);
 
-        // 写入 metadata - 使用 create_metadata 函数
+        // Write metadata - use the create_metadata helper
         use crate::core::metadata::create_metadata;
         use std::time::SystemTime;
 
@@ -864,22 +883,24 @@ impl ExternalSortMerger {
                 .collect(),
         );
 
-        // 更新统计信息
+        // Update statistics
         metadata.total_kmers = total_kmers;
         metadata.unique_kmers = total_kmers;
         metadata.created_at = now;
         metadata.modified_at = now;
 
-        // 写入 metadata
+        // Write metadata
         let metadata_path = output_path.with_extension("json");
-        let metadata_json = serde_json::to_string_pretty(&metadata)
-            .map_err(|e| crate::error::ProcessingError::new(format!("序列化元数据失败: {}", e)))?;
-        std::fs::write(&metadata_path, metadata_json)
-            .map_err(|e| crate::error::ProcessingError::new(format!("写入元数据失败: {}", e)))?;
+        let metadata_json = serde_json::to_string_pretty(&metadata).map_err(|e| {
+            crate::error::ProcessingError::new(format!("Failed to serialize metadata: {}", e))
+        })?;
+        std::fs::write(&metadata_path, metadata_json).map_err(|e| {
+            crate::error::ProcessingError::new(format!("Failed to write metadata: {}", e))
+        })?;
 
         let phase_time = start_time.elapsed();
         log::info!(
-            "   ✅ 拼接完成: {} M 个k-mers (耗时 {:.1}s)",
+            "   ✅ Concatenation complete: {} M k-mers (took {:.1}s)",
             total_kmers / 1_000_000,
             phase_time.as_secs_f64()
         );

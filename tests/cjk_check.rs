@@ -40,17 +40,40 @@ struct CjkLiteralScanner {
     current_source: String,
     /// Accumulated hits across the whole scan.
     hits: Vec<Hit>,
+    /// True while walking inside a `#[doc = "..."]` attribute (rustc desugars
+    /// `///` and `//!` comments into these). Per SPEC boundary, CODE COMMENTS
+    /// are out of scope — only runtime string literals are gated — so doc
+    /// attribute literals must be skipped. Without this, every `/// 中文` doc
+    /// comment would false-positive as a CJK string literal.
+    in_doc_attr_stack: Vec<bool>,
 }
 
 impl<'ast> Visit<'ast> for CjkLiteralScanner {
+    /// Track entry into `#[doc = "..."]` attributes so the contained literal
+    /// is treated as a comment, not a runtime string.
+    fn visit_attribute(&mut self, i: &'ast syn::Attribute) {
+        let is_doc = i.path().is_ident("doc");
+        if is_doc {
+            self.in_doc_attr_stack.push(true);
+        }
+        syn::visit::visit_attribute(self, i);
+        if is_doc {
+            self.in_doc_attr_stack.pop();
+        }
+    }
+
     /// Catches bare string literals: `let s = "...";`, raw strings, mixed.
+    /// Skips literals inside `#[doc = "..."]` attributes (they are comments).
     fn visit_lit(&mut self, i: &'ast Lit) {
-        if let Lit::Str(ls) = i {
-            let val = ls.value();
-            if contains_cjk(&val) {
-                let line = locate_line(&self.current_source, &val);
-                self.hits
-                    .push((self.current_file.clone(), line, val.clone()));
+        let inside_doc = self.in_doc_attr_stack.last().copied().unwrap_or(false);
+        if !inside_doc {
+            if let Lit::Str(ls) = i {
+                let val = ls.value();
+                if contains_cjk(&val) {
+                    let line = locate_line(&self.current_source, &val);
+                    self.hits
+                        .push((self.current_file.clone(), line, val.clone()));
+                }
             }
         }
         syn::visit::visit_lit(self, i);
@@ -213,6 +236,7 @@ fn no_cjk_string_literals_in_scope() {
             current_file: file.clone(),
             current_source: source,
             hits: Vec::new(),
+            in_doc_attr_stack: Vec::new(),
         };
         scanner.visit_file(&syn_file);
         all_hits.extend(scanner.hits);
