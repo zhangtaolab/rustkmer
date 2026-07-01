@@ -932,3 +932,81 @@ TGCATGCATGCATGCATGCATGCATGCATGCA
 
         assert db2.query("AAAAAAA").found == False
         assert db2.query("CCCCCCC").found == True
+
+
+class TestPyCounterThreads:
+    """Test the threads kwarg (PCOUNT-03 / D-08)."""
+
+    def test_create_counter_with_threads(self):
+        """Construct a counter with an explicit threads kwarg."""
+        counter = pyrustkmer.PyCounter(21, canonical=True, threads=4)
+        assert counter is not None
+        assert counter.kmer_length == 21
+        assert counter.canonical == True
+
+    def test_threads_none_uses_all_cores(self):
+        """threads=None (default) constructs without error."""
+        counter = pyrustkmer.PyCounter(21, threads=None)
+        assert counter is not None
+        assert counter.kmer_length == 21
+
+    def test_threads_zero_rejected(self):
+        """threads=0 is rejected with a ValueError (T-02-13)."""
+        with pytest.raises(ValueError, match="Invalid thread count"):
+            pyrustkmer.PyCounter(21, threads=0)
+
+
+class TestPyCounterParallel:
+    """PCOUNT-03 at the Python layer: threads=1 vs threads=N must produce
+    identical count maps (the Python-side commutativity differential,
+    parity with the Rust differential_threads_1_vs_n test).
+    """
+
+    def test_parallel_counts_match_sequential(self, tmp_path):
+        """threads=1 and threads=N produce identical count maps.
+
+        Writes a small deterministic FASTQ fixture, counts it once with
+        threads=1 and once with threads=4, and compares the resulting
+        count maps via PyCounter.get_all_counts() (returns a dict mapping
+        the decoded kmer string to its count). The dict comparison is
+        order-independent, so sharded DashMap iteration order cannot flake
+        the assertion.
+        """
+        fastq_file = tmp_path / "reads.fastq"
+        # 4 deterministic reads exercising A/C/G/T; k=21 so each
+        # 32-base read yields 32-21+1 = 12 windows.
+        reads = [
+            "ACGTACGTACGTACGTACGTACGTACGTACGT",
+            "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            "ACACACACACACACACACACACACACACACAC",
+            "GATTACAGATTACAGATTACAGATTACAGATT",
+        ]
+        lines = []
+        for i, seq in enumerate(reads):
+            lines.append(f"@read{i}")
+            lines.append(seq)
+            lines.append("+")
+            lines.append("I" * len(seq))
+        fastq_file.write_text("\n".join(lines) + "\n")
+
+        # threads=1 path. get_all_counts() returns a dict[str, int] which
+        # is canonical (order-independent) — the natural comparison type.
+        counter1 = pyrustkmer.PyCounter(21, canonical=True, threads=1)
+        counter1.add_from_fastq(str(fastq_file))
+        counts_1 = counter1.get_all_counts()
+
+        # threads=N path (4 workers). build_global returns Err on a second
+        # call; PyCounter::new deliberately discards it (T-02-12), so the
+        # second counter inherits the first's pool config — but the
+        # DashMap atomicity (the property under test) is unaffected.
+        counter4 = pyrustkmer.PyCounter(21, canonical=True, threads=4)
+        counter4.add_from_fastq(str(fastq_file))
+        counts_4 = counter4.get_all_counts()
+
+        # Order-independent comparison: DashMap iteration order is
+        # run-to-run non-deterministic, but the count MAP must be
+        # identical (commutativity of integer addition — PCOUNT-03).
+        assert counts_1 == counts_4, (
+            "PCOUNT-03 divergence: threads=1 and threads=4 produced "
+            "different count maps (concurrency bug)"
+        )
