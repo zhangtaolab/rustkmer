@@ -63,7 +63,7 @@ Plans:
   3. `pyrustkmer`'s `PyCounter` delivers the same parallel speedup as the CLI — shared core library benefits both surfaces
   4. Parallel counting produces results identical to the current sequential path — k-mer counts match exactly on the same input (correctness guard)
 
-**Plans**: 4/5 plans executed
+**Plans**: 5/5 plans executed
 
 **Wave 1** *(parallel, no dependencies)*
 
@@ -77,7 +77,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 02-05-PLAN.md — Differential correctness gate: un-ignore the 1-vs-N commutativity differential, D-10 baseline-vs-current assertion, D-09 determinism, PCOUNT-01 precedence test, plus Python `TestPyCounterParallel` (Wave 3; depends on 02-02, 02-03; PCOUNT-01, PCOUNT-03, PCOUNT-04)
+- [x] 02-05-PLAN.md — Differential correctness gate: un-ignore the 1-vs-N commutativity differential, D-10 baseline-vs-current assertion, D-09 determinism, PCOUNT-01 precedence test, plus Python `TestPyCounterParallel` (Wave 3; depends on 02-02, 02-03; PCOUNT-01, PCOUNT-03, PCOUNT-04)
 
 ### Phase 3: Memory Safety
 
