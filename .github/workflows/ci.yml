@@ -55,7 +55,16 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-root-${{ hashFiles('Cargo.lock') }}
+          # Distinct cache namespace per job (CR-04): clippy-root and test-root
+          # run in parallel against the same `target/` dir. Sharing one cache
+          # key means whichever job finishes last overwrites the other's
+          # partial-compile artifacts, racing cargo's own single-writer
+          # invariant for `target/`. The job-name segment gives each job its
+          # own writable cache slot; the shared `restore-keys` prefix still
+          # lets a cold job warm-restore from the other job's cache (read-only
+          # restore is safe — only the post-job save writes, and it writes to
+          # the job-specific key).
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-root-
       - run: cargo clippy --all-targets -- -D warnings
 
@@ -76,7 +85,11 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-root-${{ hashFiles('Cargo.lock') }}
+          # Distinct cache namespace per job (CR-04) — see clippy-root for
+          # the rationale. test-root gets its own writable cache key; both
+          # root jobs share the `cargo-root-` restore prefix so a cold job
+          # can warm-restore from whichever root cache already exists.
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-root-
       - run: cargo test
 
