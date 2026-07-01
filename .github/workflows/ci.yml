@@ -1,0 +1,118 @@
+name: CI
+
+# Merge gate for the rustkmer CLI + pyrustkmer binding (FOUND-01).
+# Triggers on PRs and direct pushes to the protected dev/main branches.
+# Per CONTEXT D-04 / SPEC P1: any gate job failing fails the PR — there
+# is NO continue-on-error, no `|| true`, no if-guarded skip on a gate step.
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Cancel superseded runs on the same ref so force-pushes don't pile up jobs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: read-only on the repo contents. We use `pull_request`
+# (NOT `pull_request_target`) so untrusted PR code checks out with the
+# fork's read-only permissions, never the base repo's secrets (T-01-SC).
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  clippy-root:
+    name: clippy (root)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-root-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-root-
+      - run: cargo clippy --all-targets -- -D warnings
+
+  test-root:
+    name: test (root)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-root-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-root-
+      - run: cargo test
+
+  pyo3-build:
+    name: pyo3 clippy + wheel
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install maturin
+        run: pip install 'maturin>=1.0,<2.0'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            pyo3/target
+          key: ${{ runner.os }}-cargo-pyo3-${{ hashFiles('pyo3/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-pyo3-
+      - name: clippy (pyo3)
+        working-directory: pyo3
+        run: cargo clippy --all-targets -- -D warnings
+      - name: maturin build (sdist + wheel)
+        working-directory: pyo3
+        run: maturin build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.os }}
+          path: pyo3/target/wheels/*
