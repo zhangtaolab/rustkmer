@@ -58,6 +58,11 @@ parking_lot = "0.12"
 # Parallel processing
 rayon = "1.8"
 
+# Concurrent sharded hash map (Phase 2; PCOUNT-02)
+# dashmap 6.2.1 pins hashbrown ^0.14.5 — reuses the project's existing
+# hashbrown 0.14.5 with no duplicate-version bloat (RESEARCH-verified).
+dashmap = "6.2.1"
+
 # Progress reporting
 indicatif = "0.17"
 

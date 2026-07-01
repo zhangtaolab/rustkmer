@@ -3,8 +3,7 @@
 //! Provides a thread-safe hash table implementation optimized for k-mer counting
 //! with minimal contention and efficient memory usage.
 
-use parking_lot::RwLock as ParkingLotRwLock;
-use std::collections::HashMap;
+use dashmap::DashMap;
 
 use super::filtering::{CountFilter, FilteringResult};
 use crate::error::{KmerError, ProcessingError, ProcessingResult};
@@ -12,8 +11,15 @@ use crate::error::{KmerError, ProcessingError, ProcessingResult};
 /// Thread-safe k-mer counter with concurrent operations
 #[derive(Debug)]
 pub struct KmerCounter {
-    /// Core hash table storing k-mer counts (u128 for k≤64 support)
-    table: ParkingLotRwLock<HashMap<u128, u32>>,
+    /// Core hash table storing k-mer counts (u128 for k≤64 support).
+    ///
+    /// Backed by `dashmap::DashMap` (Phase 2, PCOUNT-02): internally sharded
+    /// (~4×num_cpus per-shard `RwLock`s), so increments spread across shards
+    /// and throughput scales with core count without a single global lock.
+    /// The `entry().and_modify().or_insert_with()` chain holds only the
+    /// relevant shard lock for its lifetime → atomic per-key (RESEARCH
+    /// Pattern 1), preserving the u32::MAX overflow semantics verbatim.
+    table: DashMap<u128, u32>,
     /// Total k-mers processed
     total_kmers: std::sync::atomic::AtomicU64,
     /// Number of unique k-mers
@@ -48,7 +54,7 @@ impl KmerCounter {
         }
 
         Ok(Self {
-            table: ParkingLotRwLock::new(HashMap::with_capacity(initial_capacity)),
+            table: DashMap::<u128, u32>::with_capacity(initial_capacity),
             total_kmers: std::sync::atomic::AtomicU64::new(0),
             unique_kmers: std::sync::atomic::AtomicU64::new(0),
             kmer_length,
@@ -68,25 +74,44 @@ impl KmerCounter {
         self.total_kmers
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let mut table = self.table.write();
-
-        match table.get_mut(&kmer_encoded) {
-            Some(count) => {
+        // CRITICAL (RESEARCH Pattern 1 / Pitfalls 1, 2, 6):
+        // The `entry().and_modify(..).or_insert_with(..)` chain holds the
+        // shard lock for the entry's whole lifetime, so the overflow check +
+        // increment is ATOMIC per-key — no lost update, no double count under
+        // concurrency (PCOUNT-04 invariant). Do NOT split this into
+        // `get()` + `insert()` — that both loses atomicity (TOCTOU window →
+        // lost updates) AND risks deadlock (dashmap docs.rs: "May deadlock if
+        // called when holding any sort of reference into the map").
+        //
+        // `and_modify` takes `FnOnce(&mut V) -> ()` and CANNOT return a
+        // `Result` (Pitfall 6). The flag-then-check pattern works around the
+        // signature: mutate a local `overflow` flag inside the closure, then
+        // inspect it AFTER the entry chain completes (the shard lock has been
+        // released by then, so the early-return is safe). The overflow
+        // message is preserved VERBATIM from the pre-refactor path
+        // (table.rs:76-79) — PCOUNT-04 depends on byte-identical behavior.
+        let mut overflow = false;
+        self.table
+            .entry(kmer_encoded)
+            .and_modify(|count| {
                 if *count == self.max_count {
-                    return Err(ProcessingError::new(format!(
-                        "K-mer count overflow reached maximum value {}",
-                        self.max_count
-                    )));
+                    overflow = true;
+                } else {
+                    *count += 1;
                 }
-                *count += 1;
-            }
-            None => {
-                table.insert(kmer_encoded, 1);
+            })
+            .or_insert_with(|| {
                 self.unique_kmers
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            }
-        }
+                1
+            });
 
+        if overflow {
+            return Err(ProcessingError::new(format!(
+                "K-mer count overflow reached maximum value {}",
+                self.max_count
+            )));
+        }
         Ok(())
     }
 
@@ -98,8 +123,7 @@ impl KmerCounter {
     /// # Returns
     /// Number of occurrences, or None if not found
     pub fn get_count(&self, kmer_encoded: u128) -> Option<u32> {
-        let table = self.table.read();
-        table.get(&kmer_encoded).copied()
+        self.table.get(&kmer_encoded).map(|r| *r)
     }
 
     /// Get all k-mer counts as a vector
@@ -107,8 +131,7 @@ impl KmerCounter {
     /// # Returns
     /// Vector of (kmer_encoded, count) pairs
     pub fn get_all_counts(&self) -> Vec<(u128, u32)> {
-        let table = self.table.read();
-        table.iter().map(|(&k, &v)| (k, v)).collect()
+        self.table.iter().map(|r| (*r.key(), *r.value())).collect()
     }
 
     /// Get the top N most frequent k-mers
@@ -119,8 +142,11 @@ impl KmerCounter {
     /// # Returns
     /// Vector of (kmer_encoded, count) pairs sorted by count descending
     pub fn get_top_n(&self, n: usize) -> Vec<(u128, u32)> {
-        let table = self.table.read();
-        let mut pairs: Vec<(u128, u32)> = table.iter().map(|(&k, &v)| (k, v)).collect();
+        let mut pairs: Vec<(u128, u32)> = self
+            .table
+            .iter()
+            .map(|r| (*r.key(), *r.value()))
+            .collect();
 
         // Sort by count descending, then by kmer value for deterministic ordering
         pairs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
@@ -137,11 +163,10 @@ impl KmerCounter {
     /// # Returns
     /// Vector of (kmer_encoded, count) pairs within the specified range
     pub fn filter_by_count(&self, min_count: u32, max_count: u32) -> Vec<(u128, u32)> {
-        let table = self.table.read();
-        table
+        self.table
             .iter()
-            .filter(|&(_, &count)| count >= min_count && count <= max_count)
-            .map(|(&k, &v)| (k, v))
+            .filter(|r| *r.value() >= min_count && *r.value() <= max_count)
+            .map(|r| (*r.key(), *r.value()))
             .collect()
     }
 
@@ -222,8 +247,7 @@ impl KmerCounter {
 
     /// Reset the counter to empty state
     pub fn reset(&self) {
-        let mut table = self.table.write();
-        table.clear();
+        self.table.clear();
         self.total_kmers
             .store(0, std::sync::atomic::Ordering::Relaxed);
         self.unique_kmers
@@ -235,9 +259,8 @@ impl KmerCounter {
     /// # Returns
     /// Estimated memory usage in bytes
     pub fn memory_usage(&self) -> usize {
-        let table = self.table.read();
         // Estimate: each entry uses ~24 bytes (HashMap overhead) + 20 bytes for (u128, u32)
-        table.len() * (24 + 20)
+        self.table.len() * (24 + 20)
     }
 
     /// Get statistics for the counter
@@ -288,21 +311,30 @@ impl KmerCounter {
         }
 
         let other_counts = other.get_all_counts();
-        let mut table = self.table.write();
-        let mut merged_unique = 0;
+        let mut merged_unique: u64 = 0;
 
         for (kmer, count) in other_counts {
-            match table.get_mut(&kmer) {
-                Some(existing_count) => {
-                    if *existing_count > u32::MAX - count {
-                        return Err(ProcessingError::new("Count overflow during merge"));
+            // Mirror `increment`'s flag-then-check (Pitfall 6): `and_modify`
+            // is `FnOnce(&mut V) -> ()` and cannot return `Result`. The shard
+            // lock is held for the entry's whole lifetime, so the
+            // overflow-check + add is atomic per-key (no TOCTOU window).
+            let mut overflow = false;
+            self.table
+                .entry(kmer)
+                .and_modify(|existing| {
+                    if *existing > u32::MAX - count {
+                        overflow = true;
+                    } else {
+                        *existing += count;
                     }
-                    *existing_count += count;
-                }
-                None => {
-                    table.insert(kmer, count);
+                })
+                .or_insert_with(|| {
                     merged_unique += 1;
-                }
+                    count
+                });
+
+            if overflow {
+                return Err(ProcessingError::new("Count overflow during merge"));
             }
         }
 
@@ -491,5 +523,96 @@ mod tests {
 
         assert_eq!(counter.kmer_length(), 21);
         assert!(counter.canonical_mode());
+    }
+
+    /// PCOUNT-02 / PCOUNT-04 (VALIDATION.md Wave 0): concurrent increments
+    /// on the same k-mer must produce a count equal to the number of
+    /// increments — the commutativity property at unit scale. Any divergence
+    /// is a lost-update / double-count bug (RESEARCH Pitfall 1), since integer
+    /// addition is commutative and associative.
+    ///
+    /// Uses `std::thread::scope` (Rust 1.63+; project is 1.80+) to spawn N
+    /// threads that share the SAME `&KmerCounter` (DashMap gives interior
+    /// mutability so `increment` takes `&self`). The sharded `entry()` upsert
+    /// holds only the relevant shard lock for each increment → atomic per-key.
+    #[test]
+    fn test_increment_atomic_under_concurrency() {
+        let counter = KmerCounter::new(31, false, 1000, 1).unwrap();
+        const THREADS: usize = 8;
+        const INCREMENTS_PER_THREAD: usize = 1000;
+        let kmer: u128 = 0xCAFE_BABE_DEAD_BEEF;
+
+        std::thread::scope(|s| {
+            for _ in 0..THREADS {
+                // `counter` borrows are `&` — DashMap's interior mutability
+                // makes the concurrent `increment` calls sound.
+                let counter_ref = &counter;
+                s.spawn(move || {
+                    for _ in 0..INCREMENTS_PER_THREAD {
+                        counter_ref.increment(kmer).expect("increment must not overflow");
+                    }
+                });
+            }
+        });
+
+        assert_eq!(
+            counter.get_count(kmer),
+            Some((THREADS * INCREMENTS_PER_THREAD) as u32),
+            "concurrent increments must not lose updates or double-count (PCOUNT-04)"
+        );
+        assert_eq!(
+            counter.total_kmers(),
+            (THREADS * INCREMENTS_PER_THREAD) as u64,
+            "total_kmers atomic must match the sum of all increments"
+        );
+        assert_eq!(counter.unique_kmers(), 1, "only one unique k-mer was touched");
+    }
+
+    /// PCOUNT-04 (VALIDATION.md Wave 0): the u32::MAX overflow guard must
+    /// still fire per-k-mer with the EXACT verbatim message preserved from
+    /// the pre-refactor path (table.rs:76-79). The flag-then-check pattern
+    /// inside `and_modify` preserves this byte-for-byte.
+    ///
+    /// Rather than looping `u32::MAX` times (4 billion iterations — too slow),
+    /// the test seeds the k-mer at `u32::MAX` directly via the private `table`
+    /// field (accessible because the test module is a child of the module
+    /// that owns `KmerCounter`). The next `increment` then hits the
+    /// `*count == self.max_count` branch inside `and_modify`, sets the
+    /// `overflow` flag, and the post-entry-chain check returns the verbatim
+    /// error.
+    #[test]
+    fn test_overflow_preserved() {
+        let counter = KmerCounter::new(31, false, 1000, 1).unwrap();
+        let kmer: u128 = 0xBAD_F00D;
+
+        // Seed the k-mer at the saturation ceiling WITHOUT 4 billion increments.
+        // (The test module is a child of `table`'s module, so the private
+        // `table` field is in scope.)
+        counter.table.insert(kmer, u32::MAX);
+
+        // The next increment must hit the overflow guard and return Err with
+        // the verbatim "K-mer count overflow reached maximum value 4294967295"
+        // message (PCOUNT-04 — byte-identical to the pre-refactor path).
+        let result = counter.increment(kmer);
+        assert!(result.is_err(), "increment at u32::MAX must error, not wrap");
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("K-mer count overflow reached maximum value"),
+            "overflow message must contain the verbatim prefix; got: {}",
+            msg
+        );
+        assert!(
+            msg.contains(&u32::MAX.to_string()),
+            "overflow message must contain the max value ({}) ; got: {}",
+            u32::MAX,
+            msg
+        );
+
+        // The count must NOT have advanced past the ceiling (no silent wrap).
+        assert_eq!(
+            counter.get_count(kmer),
+            Some(u32::MAX),
+            "saturated k-mer count must remain at u32::MAX, not wrap"
+        );
     }
 }
