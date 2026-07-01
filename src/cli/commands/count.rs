@@ -34,6 +34,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             verbose,
             sort,
             no_sort,
+            threads,
             min_count: _,
             max_count: _,
             show_warnings,
@@ -56,7 +57,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 );
             }
 
-            // Validate input parameters
+            // Validate input parameters (includes --threads >= 1 check, D-07)
             if let Err(errors) = args.command.validate_input() {
                 for error in errors {
                     eprintln!("Error: {}", error);
@@ -65,6 +66,17 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                     KmerError::ProcessingError("Invalid input parameters".to_string()).into(),
                 );
             }
+
+            // Resolve thread count via the D-07 precedence chain and
+            // initialize the global rayon pool ONCE, before the file loop.
+            // build_global returns Err on a second call (Pitfall 3: tests,
+            // embedded use, or a count→merge pipeline may already have
+            // initialized the pool) — the `let _ =` deliberately discards
+            // the Result. Do NOT unwrap/expect or propagate via ? here.
+            let resolved_threads = resolve_thread_count(*threads);
+            let _ = rayon::ThreadPoolBuilder::new()
+                .num_threads(resolved_threads)
+                .build_global();
 
             // Determine recursive mode
             let is_recursive = if *no_recursive { false } else { *recursive };
@@ -102,6 +114,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 eprintln!("Canonical mode: {}", canonical);
                 eprintln!("Processing mode: sequential");
                 eprintln!("Hash table size: {}", size);
+                eprintln!("Threads: {}", resolved_threads);
 
                 if directory.is_some() {
                     eprintln!("Directory: {:?}", directory);
@@ -117,9 +130,14 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 }
             }
 
-            // Create k-mer counter
+            // Create k-mer counter. The 4th param is a stats/reporting slot
+            // (table.rs `_num_threads`); the real pool config is the
+            // build_global call above (per PATTERNS.md note on table.rs:44).
             let counter = Arc::new(KmerCounter::new(
-                *k, *canonical, *size, 1, // num_threads: fixed to 1 for sequential processing
+                *k,
+                *canonical,
+                *size,
+                resolved_threads,
             )?);
 
             let start_time = Instant::now();
@@ -601,6 +619,32 @@ fn resolve_thread_count_from(
     // (documented edge case in the num_cpus docs); fall back to 1 so the
     // pool always has at least one worker.
     num_cpus.max(1)
+}
+
+/// Resolve the rayon pool thread count from the D-07 precedence chain,
+/// reading the environment for the `RUSTKMER_THREADS` and `RAYON_NUM_THREADS`
+/// tiers. Thin wrapper over [`resolve_thread_count_from`].
+///
+/// Precedence (highest wins): `--threads` > `RUSTKMER_THREADS` >
+/// `RAYON_NUM_THREADS` > all cores. Malformed env values parse to `None`
+/// (the `filter` inside the pure resolver drops `< 1`) and fall through to
+/// the next tier rather than panicking — this is the T-02-01 mitigation.
+///
+/// NOTE: `num_cpus` is a transitive dep via rayon (RESEARCH Assumption A1).
+/// We use `rayon::current_num_threads()` for the fallback because it is
+/// always reachable without a direct `num_cpus` dep and stays consistent
+/// with whatever pool rayon actually built.
+fn resolve_thread_count(args_threads: Option<usize>) -> usize {
+    resolve_thread_count_from(
+        args_threads,
+        std::env::var("RUSTKMER_THREADS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok()),
+        std::env::var("RAYON_NUM_THREADS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok()),
+        rayon::current_num_threads(),
+    )
 }
 
 #[cfg(test)]

@@ -80,6 +80,14 @@ pub enum Commands {
         #[arg(long, conflicts_with = "sort")]
         no_sort: bool,
 
+        /// Number of threads for parallel counting (default: all cores).
+        ///
+        /// Precedence (highest wins): `--threads` beats `RUSTKMER_THREADS`
+        /// which beats `RAYON_NUM_THREADS` which beats all available CPU
+        /// cores (`num_cpus`). Values < 1 are rejected at validation time.
+        #[arg(long)]
+        threads: Option<usize>,
+
         /// Minimum k-mer count threshold
         #[arg(short = 'L', long = "min-count")]
         #[arg(alias = "lower-count")]
@@ -480,6 +488,7 @@ impl Commands {
                 input,
                 directory,
                 k,
+                threads,
                 ..
             } => {
                 let mut errors = Vec::new();
@@ -494,6 +503,12 @@ impl Commands {
                 // Validate k-mer size
                 if *k == 0 || *k > 127 {
                     errors.push("K-mer size must be between 1 and 127".to_string());
+                }
+
+                // Validate thread count (D-07: reject --threads < 1; mirrors
+                // InvalidKmerSize collect-then-fail style)
+                if threads.is_some_and(|t| t < 1) {
+                    errors.push("--threads must be >= 1".to_string());
                 }
 
                 if errors.is_empty() {
