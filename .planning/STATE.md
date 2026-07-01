@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 02
 current_phase_name: Parallel Counting
 status: executing
-stopped_at: Phase 2 context gathered
-last_updated: "2026-07-01T10:19:10.069Z"
+stopped_at: Completed 02-03-PLAN.md (PyCounter threads kwarg + GIL release)
+last_updated: "2026-07-01T10:36:04.511Z"
 last_activity: 2026-07-01
 last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
   percent: 25
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 ## Current Position
 
 Phase: 02 (Parallel Counting) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-07-01 — Phase 02 execution started
 
@@ -67,6 +67,7 @@ Progress: [████████░░] 75%
 | Phase 02 P01 | 8min | 2 tasks | 3 files |
 | Phase 02 P04 | ~6min | 1 tasks | 7 files |
 | Phase 02 P02 | ~12 min | 2 tasks | 3 files |
+| Phase 02 P03 | ~10 min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -96,6 +97,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 02-02: Swapped KmerCounter.table from parking_lot::RwLock<HashMap<u128,u32>> to dashmap::DashMap<u128,u32> (D-04/D-05) with atomic per-key entry().and_modify(flag-then-check).or_insert_with() increment; public API byte-identical; dashmap 6.2.1 pins hashbrown ^0.14.5 (no version dup)
 - [Phase ?]: 02-02: Parallelized process_fasta_file/process_fastq_file via rayon chunked par_iter (CHUNK_SIZE=4096, D-01); bypassed the process_file callback (W-3: &Record borrow tied to reader) by reading owned records directly via bio::io::Reader::records() into a bounded Vec; gzip stays single-threaded (D-02)
 - [Phase ?]: 02-02: D-09 default-sort flip landed (should_sort = !*no_sort); --sort retained as backward-compatible alias; sharded DashMap iteration is non-deterministic so default-sort restores run-to-run reproducibility
+- [Phase ?]: 02-03: Used py.detach (NOT py.allow_threads) for GIL release — pyo3 0.27.2 source confirms allow_threads is #[deprecated(since=0.26.0)] and delegates to detach; RESEARCH note claiming detach is 0.28+ only was factually inverted
+- [Phase ?]: 02-03: Added rayon as direct dep to pyo3/Cargo.toml (Rule 3 — plan wrongly assumed rayon was accessible by name; it is only transitive via rustkmer path dep); used std::thread::available_parallelism() for None->all-cores (no num_cpus dep)
 
 ### Pending Todos
 
@@ -119,6 +122,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-01T10:18:59.829Z
-Stopped at: Phase 2 context gathered
+Last session: 2026-07-01T10:36:04.506Z
+Stopped at: Completed 02-03-PLAN.md (PyCounter threads kwarg + GIL release)
 Resume file: .planning/phases/02-parallel-counting/02-CONTEXT.md

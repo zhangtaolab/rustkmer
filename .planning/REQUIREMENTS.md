@@ -12,7 +12,7 @@ Requirements for this performance milestone. Each maps to a roadmap phase (trace
 
 - [x] **PCOUNT-01**: Counting uses all available CPU cores by default — the hardcoded `num_threads = 1` single-thread restriction is removed; thread count is configurable via `--threads` / `RUSTKMER_THREADS`
 - [x] **PCOUNT-02**: The counter uses a sharded / lock-free concurrent structure (dashmap) instead of a single global `RwLock<HashMap>`, so throughput scales with core count without lock contention
-- [ ] **PCOUNT-03**: `pyrustkmer`'s `PyCounter` delivers the same parallel speedup as the CLI (shared core library)
+- [x] **PCOUNT-03**: `pyrustkmer`'s `PyCounter` delivers the same parallel speedup as the CLI (shared core library)
 - [x] **PCOUNT-04**: Parallel counting produces results identical to the current sequential path — k-mer counts match exactly on the same input (correctness regression guard)
 
 ### Bounded Merge
@@ -89,7 +89,7 @@ Explicitly excluded from this milestone. Documented to prevent scope creep.
 | FOUND-04 | Phase 1 | Complete |
 | PCOUNT-01 | Phase 2 | Complete |
 | PCOUNT-02 | Phase 2 | Complete |
-| PCOUNT-03 | Phase 2 | Pending |
+| PCOUNT-03 | Phase 2 | Complete |
 | PCOUNT-04 | Phase 2 | Complete |
 | MERGE-01 | Phase 3 | Pending |
 | MERGE-02 | Phase 3 | Pending |
