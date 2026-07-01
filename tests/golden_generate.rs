@@ -107,7 +107,7 @@ fn count_input(k: usize, canonical: bool) -> rustkmer::error::ProcessingResult<V
 /// `write_u128`/`write_u32` entry loop). Do NOT delegate to `KmerEntry::write_to`
 /// — that would taint the pre-refactor baseline (D-10).
 fn write_golden_like_count_path(
-    kmers: &mut Vec<(u128, u32)>,
+    kmers: &mut [(u128, u32)],
     k: usize,
     canonical: bool,
     sorted: bool,
@@ -139,12 +139,12 @@ fn write_golden_like_count_path(
     };
 
     // --- verbatim copy of count.rs:524-526 header write ---
-    header
-        .write_to(&mut writer)
-        .map_err(|e| rustkmer::error::KmerError::FileWriteError(format!(
+    header.write_to(&mut writer).map_err(|e| {
+        rustkmer::error::KmerError::FileWriteError(format!(
             "Failed to write database header: {}",
             e
-        )))?;
+        ))
+    })?;
 
     // --- verbatim copy of count.rs:528-532 entry loop ---
     // IMPORTANT: this is the RAW write_u128/write_u32 path, NOT KmerEntry::write_to.
@@ -185,17 +185,17 @@ fn generate_golden_fixtures() -> Result<(), Box<dyn std::error::Error>> {
 
         let fname = format!("{}.rkdb", cell_name(&cell));
         let path = fixtures_dir.join(&fname);
-        write_golden_like_count_path(
-            &mut kmers,
-            cell.k,
-            cell.canonical,
-            cell.sorted,
-            &path,
-        )?;
+        write_golden_like_count_path(&mut kmers, cell.k, cell.canonical, cell.sorted, &path)?;
 
         let bytes = fs::read(&path)?;
         let hex = sha256_hex(&bytes);
-        println!("{}  {}  ({} bytes, {} kmers)", hex, fname, bytes.len(), kmers.len());
+        println!(
+            "{}  {}  ({} bytes, {} kmers)",
+            hex,
+            fname,
+            bytes.len(),
+            kmers.len()
+        );
         manifest.push((fname, hex));
     }
 

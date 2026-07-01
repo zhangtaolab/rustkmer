@@ -94,6 +94,12 @@ criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3.12"
 proptest = "1.5"
 
+# Source-tree introspection for the CJK string-literal lint (plan 01-04, D-07).
+# Added here in 01-03 because Cargo.toml is already touched; both are
+# dev-only so they do not affect the release binary.
+syn = { version = "2.0", features = ["full", "parsing"] }
+proc-macro2 = "1.0"
+
 # Random number generation
 rand = "0.8"
 rand_chacha = "0.3"

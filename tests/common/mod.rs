@@ -1,4 +1,13 @@
 //! Common utilities for testing RKDB functionality
+//!
+//! These modules are a shared test-helper library: each `tests/*.rs` binary
+//! pulls in `mod common;` and uses whichever factories it needs. Not every
+//! helper is referenced by every binary, so `dead_code` would fire per-binary
+//! for the unused subset. The idiomatic fix for shared test utility modules
+//! is to allow dead code crate-wide here (matches the localized-allow
+//! precedent set in plan 01-01).
+
+#![allow(dead_code)]
 
 pub mod memory;
 pub mod performance;

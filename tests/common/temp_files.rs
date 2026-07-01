@@ -1,4 +1,8 @@
 //! Temporary file management utilities for testing
+//!
+//! Shared test helper — see `tests/common/mod.rs` for the `dead_code` rationale.
+
+#![allow(dead_code)]
 
 use rustkmer::database::format::RKDatabase;
 use std::fs;

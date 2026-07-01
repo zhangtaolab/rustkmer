@@ -1,4 +1,8 @@
 //! Memory usage tracking utilities for testing
+//!
+//! Shared test helper — see `tests/common/mod.rs` for the `dead_code` rationale.
+
+#![allow(dead_code)]
 
 use std::time::{Duration, Instant};
 
