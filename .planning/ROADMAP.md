@@ -28,13 +28,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Library code outside `src/cli/` emits through `log::` facade instead of direct `eprintln!`/`println!` — embedding `rustkmer` and Python bindings get clean output
   3. The `.rkdb` write logic is consolidated into a single source of truth (`src/database/format.rs`) — `count.rs` no longer duplicates binary layout
   4. All user-facing library output uses English strings (no hardcoded Chinese) — consistent UX and parseable logs
-**Plans**: TBD
+**Plans**: 4 plans (sequential waves 1→4 due to shared source-file overlap)
 
 Plans:
-- [ ] 01-01: Rust CI workflow with fmt, clippy, test, and pyo3 build enforcement
-- [ ] 01-02: Replace direct console I/O in library code with log facade
-- [ ] 01-03: Consolidate duplicated `.rkdb` write logic into single source of truth
-- [ ] 01-04: Internationalize hardcoded Chinese strings to English
+- [ ] 01-01-PLAN.md — CI workflow (fmt/clippy/test/wheel-build) + fix 85 existing clippy warnings so -D warnings is green (Wave 1)
+- [ ] 01-02-PLAN.md — Migrate library console I/O to log facade + crate-level deny/cli allow attrs + parallel-merge backstop test (Wave 2)
+- [ ] 01-03-PLAN.md — Consolidate .rkdb write to single source of truth + remove data_offset clamp (golden-capture-first per D-10) (Wave 3)
+- [ ] 01-04-PLAN.md — Translate CJK string literals to English + syn-based self-enforcing CJK detection gate (Wave 4)
 
 ### Phase 2: Parallel Counting
 **Goal**: Multi-core k-mer counting that scales with CPU count without lock contention
