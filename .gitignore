@@ -59,6 +59,11 @@ yarn-error.log*
 # Except test data files that should be tracked
 !python/tests/test_data/*.rkdb
 !python/tests/test_data/*.rk
+# Golden regression fixtures (plan 01-03, decision D-11) — committed binary
+# baselines; sha256 sidecars in tests/fixtures/golden_manifest.sha256 detect
+# any tampering or byte drift at test time.
+!tests/fixtures/golden_*.rkdb
+!tests/fixtures/legacy_v2_offset42.rkdb
 
 # Examples output and data
 examples/output/
