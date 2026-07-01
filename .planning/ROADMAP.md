@@ -63,14 +63,21 @@ Plans:
   3. `pyrustkmer`'s `PyCounter` delivers the same parallel speedup as the CLI — shared core library benefits both surfaces
   4. Parallel counting produces results identical to the current sequential path — k-mer counts match exactly on the same input (correctness guard)
 
-**Plans**: TBD
+**Plans**: 5 plans
 
-Plans:
+**Wave 1** *(parallel, no dependencies)*
 
-- [ ] 02-01: Remove hardcoded `num_threads = 1` and add `--threads` / `RUSTKMER_THREADS` configuration
-- [ ] 02-02: Replace `RwLock<HashMap>` with sharded dashmap for lock-free concurrent counting
-- [ ] 02-03: Verify `PyCounter` inherits parallel speedup through shared core library
-- [ ] 02-04: Add correctness regression tests comparing parallel vs sequential output
+- [ ] 02-01-PLAN.md — Thread-count plumbing: `--threads` flag, D-07 precedence chain (`--threads > RUSTKMER_THREADS > RAYON_NUM_THREADS > num_cpus`), centralized Err-tolerant `build_global` in `execute_count`, fix merge.rs Pitfall-3 `.expect()` landmine (Wave 1; PCOUNT-01)
+- [ ] 02-04-PLAN.md — Golden-capture-first: commit pre-refactor count MAPS (JSON, D-13 matrix) to `tests/fixtures/parallel_count_baseline/` BEFORE any table.rs edit, plus the `tests/parallel_count_tests.rs` scaffold with `#[ignore]d` differential stubs (Wave 1; D-10 sequencing prereq for 02-02)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 02-02-PLAN.md — DashMap swap (`RwLock<HashMap>` -> `DashMap<u128,u32>`) with atomic `entry().and_modify().or_insert()` increment preserving verbatim overflow semantics + rayon chunked `par_iter` per-record loops (gzip stays single-threaded per D-02) + D-09 default-sort flip + inline atomicity/overflow tests (Wave 2; depends on 02-01, 02-04; PCOUNT-02, PCOUNT-04)
+- [ ] 02-03-PLAN.md — PyCounter GIL release: `threads` kwarg (`None` = all cores), `Arc<RustPyCounter>` field, wrap `add_from_fastq`/`add_from_fasta` in `pyo3::allow_threads` (0.27.2 API, NOT `detach`) (Wave 2; depends on 02-01; PCOUNT-03)
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 02-05-PLAN.md — Differential correctness gate: un-ignore the 1-vs-N commutativity differential, D-10 baseline-vs-current assertion, D-09 determinism, PCOUNT-01 precedence test, plus Python `TestPyCounterParallel` (Wave 3; depends on 02-02, 02-03; PCOUNT-01, PCOUNT-03, PCOUNT-04)
 
 ### Phase 3: Memory Safety
 
