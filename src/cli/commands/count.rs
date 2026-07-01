@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::cli::args::Args;
-use crate::database::format::{DatabaseHeader, DATABASE_MAGIC, DATABASE_VERSION};
+use crate::database::format::{DatabaseHeader, KmerEntry, DATABASE_MAGIC, DATABASE_VERSION};
 use crate::error::{KmerError, ProcessingResult};
 use crate::hash::table::KmerCounter;
 use crate::io::discovery::{DiscoveryConfig, FileDiscovery};
@@ -477,8 +477,6 @@ fn output_binary_format(
     sort: bool,
     filter: &Option<crate::hash::CountFilter>,
 ) -> ProcessingResult<()> {
-    use byteorder::{LittleEndian, WriteBytesExt};
-
     if !quiet {
         eprintln!("Writing results in RKDB database format...");
     }
@@ -500,6 +498,13 @@ fn output_binary_format(
 
     // Write RKDB database header with correct data offset
     // Header size = 4 (magic) + 2 (version) + 1 (kmer_size) + 3 (padding) + 8 (total_kmers) + 1 (flags) + 7 (padding) + 8 (data_offset) + 8 (index_offset) = 42 bytes
+    //
+    // `file_size` is left at 0 to match the canonical `RKDatabase::from_kmer_pairs`
+    // header literal (format.rs:~467). The field is in-memory only and is NOT
+    // serialized by `DatabaseHeader::write_to` (RESEARCH.md §4 verified: only
+    // magic/version/kmer_size/total_kmers/flags/data_offset/index_offset cross
+    // the wire). The golden sha256 (plan 01-03 Task 1) proves byte-identity
+    // between this delegated path and the canonical path.
     let header = DatabaseHeader {
         magic: *DATABASE_MAGIC,
         version: DATABASE_VERSION,
@@ -510,7 +515,7 @@ fn output_binary_format(
         index_offset: 0,
         canonical: counter.canonical_mode(),
         unique_kmers: kmer_count as u64, // Same as total_kmers for now
-        file_size: 42 + (kmer_count as u64 * 12), // Header + k-mer entries (8+4 bytes each)
+        file_size: 0, // In-memory only; not serialized (matches canonical writer)
     };
 
     if !quiet {
@@ -520,15 +525,18 @@ fn output_binary_format(
         );
     }
 
-    // Write header
+    // Write header — delegates to the canonical DatabaseHeader::write_to
+    // (format.rs:81), the single source of truth for the .rkdb header layout.
     header.write_to(&mut writer).map_err(|e| {
         KmerError::FileWriteError(format!("Failed to write database header: {}", e))
     })?;
 
-    // Write k-mer entries
+    // Write k-mer entries — delegates to the canonical KmerEntry::write_to
+    // (format.rs:201: u128 LE kmer + u32 LE count). This replaces the previous
+    // inline raw-byte entry loop so there is exactly one .rkdb entry writer in
+    // the codebase. Byte-identity is verified by tests/golden_tests.rs (P3).
     for (kmer, count) in kmers {
-        writer.write_u128::<LittleEndian>(kmer)?;
-        writer.write_u32::<LittleEndian>(count)?;
+        KmerEntry::new(kmer, count).write_to(&mut writer)?;
     }
 
     if !quiet {

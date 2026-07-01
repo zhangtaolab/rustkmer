@@ -74,14 +74,21 @@ impl DatabaseQuery {
         file: &mut BufReader<File>,
         header: &DatabaseHeader,
     ) -> ProcessingResult<Vec<KmerEntry>> {
-        // Defensive reconciliation of data_offset: legacy/corrupt files may carry an
-        // out-of-range value; fall back to the canonical v2 offset (42) in that case.
-        // TODO(plan 01-03): replace this silent clamp with a loud error.
-        let actual_data_offset = if (40..=1000).contains(&header.data_offset) {
-            header.data_offset
-        } else {
-            42
-        };
+        // Loud validation of data_offset (plan 01-03, foundry D-12 / SPEC P3):
+        // the .rkdb v2 format has exactly one valid data_offset (42). The
+        // previous silent clamp (if outside 40..=1000, force to 42) could mask
+        // a tampered/corrupt file as silently-garbage k-mers. Now any
+        // non-canonical offset surfaces immediately. Kept consistent with
+        // `RKDatabase::from_file_path` in format.rs — the duplication of this
+        // check across both readers is intentional (both must reject identically).
+        if header.data_offset != 42 {
+            return Err(KmerError::ProcessingError(format!(
+                "Unsupported data_offset {} (expected 42); file may be from an incompatible rustkmer version or corrupt",
+                header.data_offset
+            ))
+            .into());
+        }
+        let actual_data_offset = header.data_offset;
 
         // Seek to data section
         file.seek(SeekFrom::Start(actual_data_offset))
