@@ -566,3 +566,114 @@ fn decode_kmer(kmer: u128, k: usize) -> String {
 
     sequence.chars().rev().collect()
 }
+
+/// Pure precedence resolver for the D-07 thread-count chain.
+///
+/// Implements the precedence `--threads > RUSTKMER_THREADS > RAYON_NUM_THREADS
+/// > num_cpus` without touching the process environment, so it is unit-testable
+/// without env-var races. The env-reading wrapper [`resolve_thread_count`]
+/// supplies the `Option`/`usize` slots from `std::env::var` and `num_cpus::get`.
+///
+/// # Arguments
+/// * `args_threads` - value of the `--threads` CLI flag (`None` if unset).
+/// * `rustkmer_threads` - parsed value of `RUSTKMER_THREADS`, if present and `>= 1`.
+/// * `rayon_num_threads` - parsed value of `RAYON_NUM_THREADS`, if present and `>= 1`.
+/// * `num_cpus` - the all-cores fallback (`num_cpus::get()` / `rayon::current_num_threads()`).
+///
+/// # Returns
+/// The resolved thread count (`>= 1`).
+fn resolve_thread_count_from(
+    args_threads: Option<usize>,
+    rustkmer_threads: Option<usize>,
+    rayon_num_threads: Option<usize>,
+    num_cpus: usize,
+) -> usize {
+    if let Some(t) = args_threads.filter(|&n| n >= 1) {
+        return t;
+    }
+    if let Some(t) = rustkmer_threads.filter(|&n| n >= 1) {
+        return t;
+    }
+    if let Some(t) = rayon_num_threads.filter(|&n| n >= 1) {
+        return t;
+    }
+    // Guard against `num_cpus::get()` returning 0 on unsupported platforms
+    // (documented edge case in the num_cpus docs); fall back to 1 so the
+    // pool always has at least one worker.
+    num_cpus.max(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `--threads` wins over everything (D-07 precedence).
+    #[test]
+    fn test_args_threads_wins() {
+        assert_eq!(
+            resolve_thread_count_from(Some(4), Some(8), Some(6), 12),
+            4,
+            "--threads must take precedence over env vars and num_cpus"
+        );
+    }
+
+    /// `RUSTKMER_THREADS` wins when `--threads` is unset.
+    #[test]
+    fn test_rustkmer_threads_wins_when_args_unset() {
+        assert_eq!(
+            resolve_thread_count_from(None, Some(8), Some(6), 12),
+            8,
+            "RUSTKMER_THREADS must win over RAYON_NUM_THREADS and num_cpus"
+        );
+    }
+
+    /// `RAYON_NUM_THREADS` is the lowest-precedence env tier (merge users unaffected).
+    #[test]
+    fn test_rayon_num_threads_fallback() {
+        assert_eq!(
+            resolve_thread_count_from(None, None, Some(6), 12),
+            6,
+            "RAYON_NUM_THREADS must be honored when both higher tiers are unset"
+        );
+    }
+
+    /// All-cores fallback (D-06) when nothing is set.
+    #[test]
+    fn test_num_cpus_fallback() {
+        assert_eq!(
+            resolve_thread_count_from(None, None, None, 12),
+            12,
+            "default must be num_cpus when no flag/env is set"
+        );
+    }
+
+    /// A `--threads 0` (invalid) must NOT short-circuit precedence — it falls
+    /// through to the next tier. Validation rejects `--threads < 1` upstream,
+    /// but the resolver is defensive: it filters via `n >= 1`.
+    #[test]
+    fn test_args_threads_zero_falls_through() {
+        assert_eq!(
+            resolve_thread_count_from(Some(0), Some(8), None, 12),
+            8,
+            "--threads 0 must fall through to the next precedence tier, not panic"
+        );
+    }
+
+    /// Malformed env tiers (represented as `None` after parse failure upstream)
+    /// fall through cleanly to num_cpus.
+    #[test]
+    fn test_all_envs_none_uses_num_cpus() {
+        assert_eq!(resolve_thread_count_from(None, None, None, 16), 16);
+    }
+
+    /// `num_cpus::get()` can return 0 on unsupported platforms — the resolver
+    /// must clamp to 1 so rayon always spawns at least one worker.
+    #[test]
+    fn test_num_cpus_zero_clamped_to_one() {
+        assert_eq!(
+            resolve_thread_count_from(None, None, None, 0),
+            1,
+            "num_cpus=0 (unsupported platform) must clamp to 1"
+        );
+    }
+}
