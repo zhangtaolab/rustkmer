@@ -165,13 +165,22 @@ impl DatabaseHeader {
     }
 
     /// Validate header consistency
+    ///
+    /// Enforces the SPEC P3 invariant: the `.rkdb` v2 format has exactly one
+    /// valid `data_offset` (42 — the canonical header size written by every
+    /// writer in this crate). Any other value means the file is from an
+    /// incompatible rustkmer version or corrupt, and must surface as an error
+    /// rather than being silently clamped (which would read garbage k-mers).
     pub fn validate(&self) -> Result<(), String> {
         if self.kmer_size == 0 || self.kmer_size > 127 {
             return Err(format!("Invalid k-mer size: {}", self.kmer_size));
         }
 
-        if self.data_offset < 40 || self.data_offset > 1000 {
-            return Err(format!("Invalid data offset: {}", self.data_offset));
+        if self.data_offset != 42 {
+            return Err(format!(
+                "Invalid data offset: {} (expected 42 — the only canonical .rkdb v2 header size)",
+                self.data_offset
+            ));
         }
 
         if self.index_offset > 0 && self.index_offset <= self.data_offset {

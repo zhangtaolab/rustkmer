@@ -193,13 +193,12 @@ impl DatabaseQuery {
 
     /// Read entry at specific position
     fn read_entry_at(&mut self, index: u64) -> ProcessingResult<KmerEntry> {
-        let actual_data_offset = if (40..=1000).contains(&self.header.data_offset) {
-            self.header.data_offset
-        } else {
-            42
-        };
-
-        let entry_offset = actual_data_offset + (index * 20);
+        // `open()` already validated `data_offset == 42` via `header.validate()`,
+        // so the header offset is the canonical offset — no read-side
+        // reconciliation needed. The previous silent clamp
+        // (`if (40..=1000).contains(...) { ... } else { 42 }`) was dead
+        // defensive code that masked corrupt/tampered files (CR-01).
+        let entry_offset = self.header.data_offset + (index * 20);
 
         self.file
             .seek(SeekFrom::Start(entry_offset))

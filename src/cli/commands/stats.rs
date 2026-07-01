@@ -102,15 +102,11 @@ fn calculate_statistics(
     // Initialize statistics processor
     let mut processor = crate::database::stats::StreamingStatsProcessor::new(config.clone());
 
-    // Fix for incorrect data_offset in header (same as in query.rs)
-    let actual_data_offset = if header.data_offset < 40 || header.data_offset > 1000 {
-        42 // Use correct offset when header value is out of valid range
-    } else {
-        header.data_offset
-    };
-
-    // Seek to data section
-    file.seek(SeekFrom::Start(actual_data_offset))?;
+    // `header.validate()` (called above) already enforces `data_offset == 42`
+    // per the SPEC P3 invariant — the silent read-side reconciliation that
+    // used to live here has been removed (CR-01). The header offset is the
+    // canonical offset and is safe to use directly.
+    file.seek(SeekFrom::Start(header.data_offset))?;
 
     // Read all k-mer entries and calculate statistics
     for i in 0..header.total_kmers {

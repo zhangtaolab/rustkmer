@@ -17,7 +17,7 @@ fn test_query_kmer_with_canonical_database_should_work() {
         kmer_size: 21,
         total_kmers: 3,
         sorted: true,
-        data_offset: 40, // sizeof(DatabaseHeader)
+        data_offset: 42, // canonical .rkdb v2 header size
         index_offset: 0,
         canonical: true,
     };

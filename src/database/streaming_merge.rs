@@ -36,14 +36,21 @@ impl DatabaseStreamIterator {
             ProcessingError::io_error(format!("Failed to read database header: {}", e))
         })?;
 
-        let actual_data_offset = if (40..=1000).contains(&header.data_offset) {
-            header.data_offset
-        } else {
-            42
-        };
+        // Loud validation of data_offset (CR-01, plan 01-03, foundry D-12 / SPEC P3):
+        // the .rkdb v2 format has exactly one valid data_offset (42). The
+        // previous silent clamp (if outside 40..=1000, force to 42) could mask
+        // a tampered/corrupt file as silently-garbage k-mers. Now any
+        // non-canonical offset surfaces immediately, consistent with
+        // `RKDatabase::from_file_path` and `DatabaseQuery::open`.
+        if header.data_offset != 42 {
+            return Err(ProcessingError::new(format!(
+                "Unsupported data_offset {} (expected 42); file may be from an incompatible rustkmer version or corrupt",
+                header.data_offset
+            )));
+        }
 
         reader
-            .seek(SeekFrom::Start(actual_data_offset))
+            .seek(SeekFrom::Start(header.data_offset))
             .map_err(|e| {
                 ProcessingError::io_error(format!("Failed to seek to data section: {}", e))
             })?;
