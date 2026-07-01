@@ -87,11 +87,11 @@ impl ExternalSortMerger {
     pub fn external_sort_merge(&mut self, output_path: &Path) -> ProcessingResult<()> {
         let total_start = Instant::now();
 
-        println!("\n🚀 开始外部排序合并");
-        println!("   输入文件: {} 个", self.input_files.len());
-        println!("   总k-mers: {} M", self.total_kmers / 1_000_000);
-        println!("   Canonical模式: {}", self.canonical);
-        println!("   前缀桶数量: {}", self.num_buckets);
+        log::info!("\n🚀 开始外部排序合并");
+        log::info!("   输入文件: {} 个", self.input_files.len());
+        log::info!("   总k-mers: {} M", self.total_kmers / 1_000_000);
+        log::info!("   Canonical模式: {}", self.canonical);
+        log::info!("   前缀桶数量: {}", self.num_buckets);
 
         let phase1_start = Instant::now();
         self.split_files_by_prefix()?;
@@ -107,24 +107,24 @@ impl ExternalSortMerger {
 
         let total_time = total_start.elapsed();
 
-        println!("\n📊 合并完成!");
-        println!("   总耗时: {:.1}s", total_time.as_secs_f64());
-        println!("   阶段1 (分桶): {:.1}s", phase1_time.as_secs_f64());
-        println!("   阶段2 (合并): {:.1}s", phase2_time.as_secs_f64());
-        println!("   阶段3 (拼接): {:.1}s", phase3_time.as_secs_f64());
-        println!("   输出文件: {:?}", output_path);
+        log::info!("\n📊 合并完成!");
+        log::info!("   总耗时: {:.1}s", total_time.as_secs_f64());
+        log::info!("   阶段1 (分桶): {:.1}s", phase1_time.as_secs_f64());
+        log::info!("   阶段2 (合并): {:.1}s", phase2_time.as_secs_f64());
+        log::info!("   阶段3 (拼接): {:.1}s", phase3_time.as_secs_f64());
+        log::info!("   输出文件: {:?}", output_path);
 
         Ok(())
     }
 
     fn split_files_by_prefix(&mut self) -> ProcessingResult<()> {
-        println!("\n📦 阶段1 - 数据分桶 (按前4个碱基分配)");
+        log::info!("\n📦 阶段1 - 数据分桶 (按前4个碱基分配)");
 
         let num_files = self.input_files.len();
-        println!("   输入文件数: {}", num_files);
+        log::info!("   输入文件数: {}", num_files);
 
         let num_workers = current_num_threads();
-        println!("   使用 {} 个工作线程并行分桶", num_workers.min(num_files));
+        log::info!("   使用 {} 个工作线程并行分桶", num_workers.min(num_files));
 
         let start_time = Instant::now();
 
@@ -140,7 +140,7 @@ impl ExternalSortMerger {
             })
             .collect();
 
-        println!();
+        log::info!("");
 
         const BATCH_SIZE: usize = 10_000;
         let mut total_kmers = 0u64;
@@ -197,7 +197,7 @@ impl ExternalSortMerger {
                 0.0
             };
 
-            println!(
+            log::info!(
                 "   ✓ {}: {} M k-mers @ {:.1} M/s",
                 file_name,
                 file_kmers / 1_000_000,
@@ -212,7 +212,7 @@ impl ExternalSortMerger {
             0.0
         };
 
-        println!(
+        log::info!(
             "   ✅ 分桶完成: {} M k-mers @ {:.1} M/s (耗时 {:.1}s)",
             total_kmers / 1_000_000,
             speed,
@@ -233,7 +233,7 @@ impl ExternalSortMerger {
     }
 
     fn merge_prefix_buckets(&mut self) -> ProcessingResult<()> {
-        println!("\n🔄 阶段2 - 前缀桶合并");
+        log::info!("\n🔄 阶段2 - 前缀桶合并");
 
         let start_time = Instant::now();
 
@@ -263,10 +263,10 @@ impl ExternalSortMerger {
         }
 
         let non_empty_count = non_empty_prefixes.len();
-        println!("   非空前缀: {}/{}", non_empty_count, self.num_buckets);
+        log::info!("   非空前缀: {}/{}", non_empty_count, self.num_buckets);
 
         let num_workers = rayon::current_num_threads();
-        println!("   使用 {} 个工作线程并行处理", num_workers);
+        log::info!("   使用 {} 个工作线程并行处理", num_workers);
 
         let start_parallel = Instant::now();
 
@@ -314,7 +314,7 @@ impl ExternalSortMerger {
 
                 let done = completed.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
                 if result.is_ok() {
-                    eprintln!(
+                    log::info!(
                         "   ✅ 处理完毕: {} | 进度: {}/{} ({:.1}%)",
                         dna,
                         done,
@@ -322,7 +322,7 @@ impl ExternalSortMerger {
                         done as f64 / non_empty_count as f64 * 100.0
                     );
                 } else {
-                    eprintln!(
+                    log::error!(
                         "   ❌ 处理失败: {} | 错误: {}",
                         dna,
                         result.as_ref().err().unwrap()
@@ -337,7 +337,7 @@ impl ExternalSortMerger {
                     } else {
                         0.0
                     };
-                    eprintln!(
+                    log::info!(
                         "   📊 汇总: {}/{} ({:.1}%) 已用 {:.1}s 预计剩余 {:.0}s   \r",
                         done,
                         non_empty_count,
@@ -352,7 +352,7 @@ impl ExternalSortMerger {
             })
             .collect();
 
-        eprintln!();
+        log::info!("");
         let _ = std::io::stdout().flush();
 
         let phase_time = start_time.elapsed();
@@ -366,20 +366,20 @@ impl ExternalSortMerger {
         let mut error_count = 0;
         for result in results {
             if let Err(e) = result {
-                eprintln!("   错误: {}", e);
+                log::error!("   错误: {}", e);
                 error_count += 1;
             }
         }
 
         if error_count == 0 {
-            println!(
+            log::info!(
                 "   ✅ 合并完成: {} 个前缀桶 (耗时 {:.1}s, 每桶 {:.2}s)",
                 non_empty_count,
                 phase_time.as_secs_f64(),
                 speed_per_prefix
             );
         } else {
-            println!(
+            log::info!(
                 "   ⚠️ 合并完成: {} 个前缀桶, {} 个错误 (耗时 {:.1}s)",
                 non_empty_count - error_count,
                 error_count,
@@ -397,14 +397,14 @@ impl ExternalSortMerger {
         use std::collections::HashMap;
         use std::io::BufReader;
 
-        println!("   使用内存合并模式");
+        log::info!("   使用内存合并模式");
 
         // 计算总大小
         let total_size: u64 = files.iter().map(|(_, s)| *s).sum();
         let total_kmers = total_size / 20;
 
-        println!("   输入文件: {} 个", files.len());
-        println!(
+        log::info!("   输入文件: {} 个", files.len());
+        log::info!(
             "   总数据量: {:.1} MB ({} k-mers)",
             total_size as f64 / 1024.0 / 1024.0,
             total_kmers
@@ -415,12 +415,12 @@ impl ExternalSortMerger {
             let avail_mem_mb = mem_info.avail as f64 / 1024.0 / 1024.0;
             let required_mem_mb = total_size as f64 / 1024.0 / 1024.0 * 3.0; // 考虑HashMap开销
 
-            println!("   可用内存: {:.1} MB", avail_mem_mb);
-            println!("   预估需要: {:.1} MB", required_mem_mb);
+            log::info!("   可用内存: {:.1} MB", avail_mem_mb);
+            log::info!("   预估需要: {:.1} MB", required_mem_mb);
 
             if required_mem_mb > avail_mem_mb {
-                println!("   ⚠️  警告: 预估内存需求超过可用内存！");
-                println!("   建议: 使用 --merge-mode streaming 模式");
+                log::warn!("   ⚠️  警告: 预估内存需求超过可用内存！");
+                log::warn!("   建议: 使用 --merge-mode streaming 模式");
             }
         }
 
@@ -436,7 +436,7 @@ impl ExternalSortMerger {
             // 检查内存使用
             if idx > 0 && idx % 5 == 0 {
                 if let Ok(mem_info) = sys_info::mem_info() {
-                    println!(
+                    log::info!(
                         "   进度: {}/{} | 已处理 {} M k-mers | 可用内存: {:.1} MB",
                         idx,
                         files.len(),
@@ -473,7 +473,7 @@ impl ExternalSortMerger {
                 0.0
             };
 
-            println!(
+            log::info!(
                 "   ✓ 文件 {}: {:.1} MB @ {:.1} MB/s",
                 idx + 1,
                 *file_size as f64 / 1024.0 / 1024.0,
@@ -483,23 +483,23 @@ impl ExternalSortMerger {
 
         // 检查最终内存使用
         if let Ok(mem_info) = sys_info::mem_info() {
-            println!(
+            log::info!(
                 "   合并完成: {} 个唯一k-mers | 可用内存: {:.1} MB",
                 kmer_counts.len(),
                 mem_info.avail as f64 / 1024.0 / 1024.0
             );
         }
 
-        println!("   开始排序...");
+        log::info!("   开始排序...");
         let sort_start = std::time::Instant::now();
 
         let mut sorted_kmers: Vec<(u128, u32)> = kmer_counts.into_iter().collect();
         sorted_kmers.sort_by_key(|(k, _)| *k);
 
         let sort_time = sort_start.elapsed();
-        println!("   排序完成: 耗时 {:.1}s", sort_time.as_secs_f64());
+        log::info!("   排序完成: 耗时 {:.1}s", sort_time.as_secs_f64());
 
-        println!("   写入输出文件...");
+        log::info!("   写入输出文件...");
         let mut output_file = File::create(output_path)
             .map_err(|e| anyhow::anyhow!("无法创建输出文件 {}: {}", output_path.display(), e))?;
 
@@ -512,7 +512,7 @@ impl ExternalSortMerger {
             .map_err(|e| anyhow::anyhow!("无法同步文件 {}: {}", output_path.display(), e))?;
 
         let total_time = start_time.elapsed();
-        println!("   完成: 总耗时 {:.1}s", total_time.as_secs_f64());
+        log::info!("   完成: 总耗时 {:.1}s", total_time.as_secs_f64());
 
         Ok(())
     }
@@ -693,13 +693,13 @@ impl ExternalSortMerger {
     fn concatenate_final_output(&self, output_path: &Path) -> ProcessingResult<()> {
         use std::io::{BufWriter, Write};
 
-        println!("\n📦 阶段3 - 最终拼接 (使用RKDB标准格式)");
+        log::info!("\n📦 阶段3 - 最终拼接 (使用RKDB标准格式)");
 
         let start_time = Instant::now();
 
         // 监控内存使用
         if let Ok(mem_info) = sys_info::mem_info() {
-            println!(
+            log::info!(
                 "   当前内存使用: {:.1} GB / {:.1} GB (可用 {:.1} GB)",
                 (mem_info.total - mem_info.avail) as f64 / 1024.0 / 1024.0 / 1024.0,
                 mem_info.total as f64 / 1024.0 / 1024.0 / 1024.0,
@@ -720,7 +720,7 @@ impl ExternalSortMerger {
                 let file_size = std::fs::metadata(&prefix_file)?.len();
 
                 if file_size == 0 {
-                    println!("   ⚠️ 空文件: {}", dna);
+                    log::warn!("   ⚠️ 空文件: {}", dna);
                     let _ = std::fs::remove_file(&prefix_file);
                     continue;
                 }
@@ -743,7 +743,7 @@ impl ExternalSortMerger {
                 let processed = prefix + 1;
                 if processed % 16 == 0 || processed == self.num_buckets {
                     if let Ok(mem_info) = sys_info::mem_info() {
-                        println!(
+                        log::info!(
                             "   进度: {}/{} | 数据: {:.1} MB | k-mers: {} M | 可用内存: {:.1} MB",
                             processed,
                             self.num_buckets,
@@ -760,23 +760,23 @@ impl ExternalSortMerger {
 
         let total_kmers = data_size / 20;
 
-        println!(
+        log::info!(
             "   开始写入RKDB格式，总计 {} M 个k-mers...",
             total_kmers / 1_000_000
         );
-        println!(
+        log::info!(
             "   从各文件统计: {} M 个k-mers",
             total_kmers_in_files / 1_000_000
         );
 
         // 检查是否有重复
         if total_kmers != total_kmers_in_files {
-            println!("   ⚠️  警告: 数据大小不一致！可能有重复或丢失");
+            log::warn!("   ⚠️  警告: 数据大小不一致！可能有重复或丢失");
         }
 
         // 监控内存使用
         if let Ok(mem_info) = sys_info::mem_info() {
-            println!(
+            log::info!(
                 "   当前可用内存: {:.1} GB",
                 mem_info.avail as f64 / 1024.0 / 1024.0 / 1024.0
             );
@@ -824,7 +824,7 @@ impl ExternalSortMerger {
                         || last_report.elapsed().as_secs() >= 5
                     {
                         if let Ok(mem_info) = sys_info::mem_info() {
-                            println!(
+                            log::info!(
                                 "   进度: {} M / {} M k-mers | 可用内存: {:.1} MB",
                                 processed_kmers / 1_000_000,
                                 total_kmers / 1_000_000,
@@ -878,7 +878,7 @@ impl ExternalSortMerger {
             .map_err(|e| crate::error::ProcessingError::new(format!("写入元数据失败: {}", e)))?;
 
         let phase_time = start_time.elapsed();
-        println!(
+        log::info!(
             "   ✅ 拼接完成: {} M 个k-mers (耗时 {:.1}s)",
             total_kmers / 1_000_000,
             phase_time.as_secs_f64()

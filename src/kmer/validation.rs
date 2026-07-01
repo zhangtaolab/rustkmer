@@ -164,29 +164,29 @@ impl ValidationReport {
 
     /// Print a formatted summary of the validation results
     pub fn print_summary(&self) {
-        println!("=== u128 Encoding Validation Report ===");
-        println!("Max k-mer length supported: {}", self.max_kmer_length);
-        println!("Total lengths tested: {}", self.total_lengths_tested);
-        println!(
+        log::info!("=== u128 Encoding Validation Report ===");
+        log::info!("Max k-mer length supported: {}", self.max_kmer_length);
+        log::info!("Total lengths tested: {}", self.total_lengths_tested);
+        log::info!(
             "Total sequences tested: {}",
             self.summary.total_sequences_tested
         );
-        println!("Total failures: {}", self.summary.total_failures);
+        log::info!("Total failures: {}", self.summary.total_failures);
 
         if self.summary.all_passed {
-            println!("✅ All validations passed!");
+            log::info!("✅ All validations passed!");
         } else {
-            println!("❌ {} length(s) had failures", self.summary.failed_lengths);
+            log::info!("❌ {} length(s) had failures", self.summary.failed_lengths);
 
             for result in &self.results {
                 if !result.all_passed {
-                    println!(
+                    log::info!(
                         "  k={} ({} failed tests):",
                         result.kmer_length,
                         result.failed_tests.len()
                     );
                     for failure in &result.failed_tests {
-                        println!("    - {}", failure);
+                        log::info!("    - {}", failure);
                     }
                 }
             }

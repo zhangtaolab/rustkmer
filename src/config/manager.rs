@@ -537,44 +537,44 @@ pub struct ConfigReport {
 impl ConfigReport {
     /// Print a formatted configuration report
     pub fn print(&self) {
-        println!("=== RustKmer Configuration Report ===");
+        log::info!("=== RustKmer Configuration Report ===");
 
         if let Some(ref file) = self.config_file {
-            println!("Config file: {}", file.display());
+            log::info!("Config file: {}", file.display());
         } else {
-            println!("No configuration file found");
+            log::info!("No configuration file found");
         }
 
-        println!("\nEnvironment overrides:");
+        log::info!("\nEnvironment overrides:");
         if self.environment_overrides.is_empty() {
-            println!("  None");
+            log::info!("  None");
         } else {
             for (key, value) in &self.environment_overrides {
-                println!("  {}: {}", key, value);
+                log::info!("  {}: {}", key, value);
             }
         }
 
-        println!("\nCurrent configuration:");
-        println!(
+        log::info!("\nCurrent configuration:");
+        log::info!(
             "  Memory limit: {:?} MB",
             self.config.memory.memory_limit.map(|x| x / 1024 / 1024)
         );
-        println!(
+        log::info!(
             "  Memory mapping threshold: {:?} MB",
             self.config.memory.mmap_threshold.map(|x| x / 1024 / 1024)
         );
-        println!("  Default k: {:?}", self.config.kmer_counting.default_k);
-        println!("  Canonical: {:?}", self.config.kmer_counting.canonical);
-        println!("  Threads: {:?}", self.config.kmer_counting.threads);
-        println!("  Output format: {:?}", self.config.output.format);
+        log::info!("  Default k: {:?}", self.config.kmer_counting.default_k);
+        log::info!("  Canonical: {:?}", self.config.kmer_counting.canonical);
+        log::info!("  Threads: {:?}", self.config.kmer_counting.threads);
+        log::info!("  Output format: {:?}", self.config.output.format);
 
         if !self.validation_errors.is_empty() {
-            println!("\nValidation errors:");
+            log::info!("\nValidation errors:");
             for error in &self.validation_errors {
-                println!("  - {}", error);
+                log::info!("  - {}", error);
             }
         } else {
-            println!("\n✅ Configuration is valid");
+            log::info!("\n✅ Configuration is valid");
         }
     }
 

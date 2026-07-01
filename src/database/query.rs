@@ -219,7 +219,7 @@ impl DatabaseQuery {
                 Ok(None) => results.push((kmer_seq.clone(), 0)),
                 Err(e) => {
                     // For individual query errors, we return 0 count but log the error
-                    eprintln!("Warning: Failed to query k-mer '{}': {}", kmer_seq, e);
+                    log::warn!("Warning: Failed to query k-mer '{}': {}", kmer_seq, e);
                     results.push((kmer_seq.clone(), 0));
                 }
             }

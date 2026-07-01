@@ -396,7 +396,7 @@ impl Drop for StreamingMergeIterator {
         // Clean up temporary files
         for temp_file in &self._temp_files {
             if let Err(e) = std::fs::remove_file(temp_file) {
-                eprintln!(
+                log::warn!(
                     "Warning: Failed to remove temporary file {}: {}",
                     temp_file.display(),
                     e

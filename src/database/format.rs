@@ -531,10 +531,11 @@ impl RKDatabase {
         let canonical = first_db.is_canonical();
 
         if verbose {
-            eprintln!("Validating compatibility for {} databases", databases.len());
-            eprintln!(
+            log::info!("Validating compatibility for {} databases", databases.len());
+            log::info!(
                 "  Reference database: k-mer size={}, canonical={}",
-                kmer_size, canonical
+                kmer_size,
+                canonical
             );
         }
 
@@ -602,7 +603,7 @@ impl RKDatabase {
             }
 
             if verbose {
-                eprintln!(
+                log::info!(
                     "  Database {}: compatible (k-mer size={}, canonical={})",
                     i + 1,
                     db.kmer_size(),
@@ -612,7 +613,7 @@ impl RKDatabase {
         }
 
         if verbose {
-            eprintln!("All databases are compatible");
+            log::info!("All databases are compatible");
         }
 
         Ok((kmer_size, canonical))
@@ -638,9 +639,10 @@ impl RKDatabase {
         // Use prefix cache merge if enabled
         if config.use_prefix_cache {
             if config.verbose {
-                eprintln!(
+                log::info!(
                     "DEBUG: Using prefix cache merge for {} k-mers (estimated {} bytes)",
-                    total_kmers, estimated_memory
+                    total_kmers,
+                    estimated_memory
                 );
             }
             return Self::merge_databases_prefix_cache(input_paths, config);
@@ -651,17 +653,19 @@ impl RKDatabase {
 
         if use_streaming {
             if config.verbose {
-                eprintln!(
+                log::info!(
                     "DEBUG: Using streaming merge for {} k-mers (estimated {} bytes)",
-                    total_kmers, estimated_memory
+                    total_kmers,
+                    estimated_memory
                 );
             }
             Self::merge_databases_streaming(input_paths, config)
         } else {
             if config.verbose {
-                eprintln!(
+                log::info!(
                     "DEBUG: Using in-memory merge for {} k-mers (estimated {} bytes)",
-                    total_kmers, estimated_memory
+                    total_kmers,
+                    estimated_memory
                 );
             }
             Self::merge_databases_inmemory(input_paths, config)
@@ -695,7 +699,7 @@ impl RKDatabase {
         use std::time::Instant;
 
         if config.verbose {
-            eprintln!("Using streaming merge for large datasets");
+            log::info!("Using streaming merge for large datasets");
         }
 
         let start_time = Instant::now();
@@ -708,13 +712,13 @@ impl RKDatabase {
 
         for path in input_paths {
             if config.verbose {
-                eprintln!("Sorting database: {}", path.display());
+                log::info!("Sorting database: {}", path.display());
             }
             merger.sort_database(path)?;
         }
 
         if config.verbose {
-            eprintln!("Merging sorted chunks...");
+            log::info!("Merging sorted chunks...");
         }
 
         let merge_iter = merger.merge_sorted_chunks()?;
@@ -729,14 +733,14 @@ impl RKDatabase {
 
         if config.verbose {
             let stats = merger.stats();
-            eprintln!("Streaming merge stats:");
-            eprintln!("  Total k-mers read: {}", stats.total_kmers_read);
-            eprintln!("  Chunks created: {}", stats.chunks_created);
-            eprintln!("  Read time: {:?}", stats.read_time);
-            eprintln!("  Sort time: {:?}", stats.sort_time);
-            eprintln!("  Merge time: {:?}", stats.merge_time);
-            eprintln!("  Write time: {:?}", stats.write_time);
-            eprintln!("  Total time: {:?}", start_time.elapsed());
+            log::info!("Streaming merge stats:");
+            log::info!("  Total k-mers read: {}", stats.total_kmers_read);
+            log::info!("  Chunks created: {}", stats.chunks_created);
+            log::info!("  Read time: {:?}", stats.read_time);
+            log::info!("  Sort time: {:?}", stats.sort_time);
+            log::info!("  Merge time: {:?}", stats.merge_time);
+            log::info!("  Write time: {:?}", stats.write_time);
+            log::info!("  Total time: {:?}", start_time.elapsed());
         }
 
         Self::from_kmer_pairs(sorted_kmers, kmer_size as u8, canonical, true)
@@ -941,7 +945,7 @@ impl RKDatabase {
         let canonical = first_db.is_canonical();
 
         if verbose {
-            eprintln!("Validating databases for external sort merge...");
+            log::info!("Validating databases for external sort merge...");
         }
 
         let mut has_canonical = false;
@@ -983,7 +987,7 @@ impl RKDatabase {
             }
 
             if verbose {
-                eprintln!(
+                log::info!(
                     "  Database {}: compatible (k-mer size={}, canonical={})",
                     i + 1,
                     db.kmer_size(),
@@ -996,9 +1000,9 @@ impl RKDatabase {
 
         if verbose {
             if has_canonical && has_non_canonical {
-                eprintln!("  Mixed canonical modes detected - converting all to canonical mode");
+                log::info!("  Mixed canonical modes detected - converting all to canonical mode");
             }
-            eprintln!("  Final merge mode: canonical={}", final_canonical);
+            log::info!("  Final merge mode: canonical={}", final_canonical);
         }
 
         Ok((kmer_size.try_into().unwrap(), final_canonical))

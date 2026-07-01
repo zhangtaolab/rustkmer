@@ -158,7 +158,7 @@ impl FastqProcessor {
             })?;
 
             if let Err(e) = processor(&record) {
-                eprintln!("Error processing record {}: {}", record.id(), e);
+                log::error!("Error processing record {}: {}", record.id(), e);
                 return Err(e);
             }
         }
@@ -220,7 +220,7 @@ impl FastqProcessor {
             })?;
 
             if let Err(e) = processor(&record) {
-                eprintln!("Error processing record {}: {}", record.id(), e);
+                log::error!("Error processing record {}: {}", record.id(), e);
                 return Err(e);
             }
 
@@ -229,7 +229,7 @@ impl FastqProcessor {
             // Call progress callback if provided
             if let Some(ref mut callback) = progress_callback {
                 if let Err(e) = callback(record_count, total_size) {
-                    eprintln!("Error in progress callback: {}", e);
+                    log::error!("Error in progress callback: {}", e);
                     return Err(e);
                 }
             }
@@ -350,15 +350,15 @@ pub fn validate_fastq_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
 
         // Validate record structure
         if record.id().is_empty() {
-            eprintln!("Warning: Record {} has empty ID", record_count);
+            log::warn!("Warning: Record {} has empty ID", record_count);
         }
 
         if record.seq().is_empty() {
-            eprintln!("Warning: Record {} has empty sequence", record_count);
+            log::warn!("Warning: Record {} has empty sequence", record_count);
         }
 
         if record.qual().len() != record.seq().len() {
-            eprintln!(
+            log::warn!(
                 "Warning: Record {} has mismatched sequence/quality length",
                 record_count
             );

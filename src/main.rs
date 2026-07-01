@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
     if let rustkmer::cli::args::Commands::Query { .. } = &args.command {
         if let Err(errors) = rustkmer::cli::commands::query::validate_query_args(&args) {
             for error in errors {
-                eprintln!("Error: {}", error);
+                log::error!("Error: {}", error);
             }
             std::process::exit(1);
         }

@@ -59,7 +59,7 @@ impl FastaProcessor {
             })?;
 
             if let Err(e) = processor(&record) {
-                eprintln!("Error processing record {}: {}", record.id(), e);
+                log::error!("Error processing record {}: {}", record.id(), e);
                 return Err(e);
             }
         }
@@ -145,11 +145,11 @@ pub fn validate_fasta_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
 
         // Validate record structure
         if record.id().is_empty() {
-            eprintln!("Warning: Record {} has empty ID", record_count);
+            log::warn!("Warning: Record {} has empty ID", record_count);
         }
 
         if record.seq().is_empty() {
-            eprintln!("Warning: Record {} has empty sequence", record_count);
+            log::warn!("Warning: Record {} has empty sequence", record_count);
         }
 
         // Stop after reading a few records for validation

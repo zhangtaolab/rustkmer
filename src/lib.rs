@@ -1,3 +1,4 @@
+#![deny(clippy::print_stdout, clippy::print_stderr, clippy::dbg_macro)]
 //! RustKmer Library
 //!
 //! High-performance k-mer counting library for genomic data analysis.

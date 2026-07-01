@@ -51,7 +51,7 @@ pub fn extract_kmers(sequence: &str, kmer_size: usize) -> Result<Vec<u64>, KmerE
             Ok(encoded) => kmers.push(encoded),
             Err(e) => {
                 // Log the error but continue processing other k-mers
-                eprintln!("Warning: Skipping k-mer at position {}: {}", i, e);
+                log::warn!("Warning: Skipping k-mer at position {}: {}", i, e);
             }
         }
     }

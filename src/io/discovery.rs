@@ -224,7 +224,7 @@ impl FileDiscovery {
         // Sort files by path for consistent ordering
         files.sort_by(|a, b| a.path.cmp(&b.path));
 
-        println!(
+        log::info!(
             "[INFO] Found {} files in {}:",
             files.len(),
             directory.display()
@@ -235,7 +235,7 @@ impl FileDiscovery {
                 FileType::Fastq => "FASTQ",
             };
             let extensions: Vec<&str> = file_type.extensions().to_vec();
-            println!(
+            log::info!(
                 "  • {} {} files ({})",
                 count,
                 type_name,
@@ -253,7 +253,7 @@ impl FileDiscovery {
             } else {
                 format!("{}B", total_size)
             };
-            println!("  • Total size: {}", size_str);
+            log::info!("  • Total size: {}", size_str);
         }
 
         Ok(files)

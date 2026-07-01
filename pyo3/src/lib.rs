@@ -1,3 +1,4 @@
+#![deny(clippy::print_stdout, clippy::print_stderr, clippy::dbg_macro)]
 //! Enhanced PyO3 binding for RustKmer with complete query functionality
 //!
 //! This module provides Python bindings for RustKmer, a high-performance

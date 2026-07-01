@@ -331,40 +331,40 @@ impl MemoryEfficiencyReport {
 
     /// Print a formatted report
     pub fn print(&self) {
-        println!("=== Memory Efficiency Report ===");
-        println!(
+        log::info!("=== Memory Efficiency Report ===");
+        log::info!(
             "Memory limit: {} MB",
             self.config.memory_limit / 1024 / 1024
         );
-        println!(
+        log::info!(
             "Memory map threshold: {} MB",
             self.config.mmap_threshold / 1024 / 1024
         );
-        println!("Page size: {}", self.config.page_size);
-        println!("Adaptive mode: {}", self.config.adaptive);
-        println!();
+        log::info!("Page size: {}", self.config.page_size);
+        log::info!("Adaptive mode: {}", self.config.adaptive);
+        log::info!("");
 
-        println!("Current Usage:");
-        println!(
+        log::info!("Current Usage:");
+        log::info!(
             "  Total memory: {} MB",
             self.current_stats.total_used / 1024 / 1024
         );
-        println!(
+        log::info!(
             "  Mapped memory: {} MB",
             self.current_stats.mapped_size / 1024 / 1024
         );
-        println!("  Mapped files: {}", self.current_stats.mapped_files);
-        println!("  Active pages: {}", self.current_stats.active_pages);
-        println!(
+        log::info!("  Mapped files: {}", self.current_stats.mapped_files);
+        log::info!("  Active pages: {}", self.current_stats.active_pages);
+        log::info!(
             "  Peak usage: {} MB",
             self.current_stats.peak_usage / 1024 / 1024
         );
-        println!();
+        log::info!("");
 
-        println!("Efficiency Metrics:");
-        println!("  Memory efficiency: {:.2}%", self.efficiency_percentage);
-        println!("  Overhead percentage: {:.2}%", self.overhead_percentage);
-        println!("  Target met: {}", self.is_efficient());
+        log::info!("Efficiency Metrics:");
+        log::info!("  Memory efficiency: {:.2}%", self.efficiency_percentage);
+        log::info!("  Overhead percentage: {:.2}%", self.overhead_percentage);
+        log::info!("  Target met: {}", self.is_efficient());
     }
 }
 
