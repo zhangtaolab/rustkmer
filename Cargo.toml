@@ -97,7 +97,7 @@ proptest = "1.5"
 # Source-tree introspection for the CJK string-literal lint (plan 01-04, D-07).
 # Added here in 01-03 because Cargo.toml is already touched; both are
 # dev-only so they do not affect the release binary.
-syn = { version = "2.0", features = ["full", "parsing"] }
+syn = { version = "2.0", features = ["full", "extra-traits", "visit", "parsing"] }
 proc-macro2 = "1.0"
 
 # Random number generation
