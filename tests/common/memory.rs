@@ -17,6 +17,12 @@ pub struct MemoryMonitor {
     start_time: Instant,
 }
 
+impl Default for MemoryMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MemoryMonitor {
     /// Create a new memory monitor
     pub fn new() -> Self {

@@ -48,9 +48,7 @@ pub fn encode_kmer(sequence: &str) -> Result<u64, KmerError> {
 /// * `Err(KmerError)` - Error if invalid characters found
 pub fn encode_kmer_bytes(sequence: &[u8]) -> Result<u64, KmerError> {
     if sequence.len() > MAX_KMER_SIZE_IN_U64 {
-        return Err(KmerError::InvalidKmerSize(
-            (sequence.len() as u32).try_into().unwrap_or(u32::MAX),
-        ));
+        return Err(KmerError::InvalidKmerSize(sequence.len() as u32));
     }
 
     let mut encoded = 0u64;
@@ -222,9 +220,7 @@ pub fn encode_kmer_u128(sequence: &str) -> Result<u128, KmerError> {
 /// * `Err(KmerError)` - Error if invalid characters found
 pub fn encode_kmer_bytes_u128(sequence: &[u8]) -> Result<u128, KmerError> {
     if sequence.is_empty() || sequence.len() > MAX_KMER_SIZE_IN_U128 {
-        return Err(KmerError::InvalidKmerSize(
-            (sequence.len() as u32).try_into().unwrap_or(u32::MAX),
-        ));
+        return Err(KmerError::InvalidKmerSize(sequence.len() as u32));
     }
 
     let mut encoded: u128 = 0;

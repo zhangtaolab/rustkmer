@@ -233,6 +233,10 @@ pub fn expand_wildcards_streaming(
 }
 
 /// Generate wildcard combinations in batches for memory efficiency
+///
+/// `total_variants` is reserved for a future admission-control budget and is
+/// intentionally read only by callers; suppress the recursion-only lint.
+#[allow(clippy::only_used_in_recursion)]
 fn generate_wildcard_combinations_batched(
     query: &str,
     start_wildcard: usize,

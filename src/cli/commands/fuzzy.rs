@@ -442,11 +442,11 @@ fn output_tsv_format(
     for kmer_match in &result.individual_matches {
         writeln!(
             writer,
-            "{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{:?}",
             result.query_metadata.query_params.query_string,
             kmer_match.sequence,
             kmer_match.count,
-            format!("{:?}", kmer_match.match_type)
+            kmer_match.match_type
         )?;
     }
 
@@ -470,11 +470,11 @@ fn output_csv_format(
     for kmer_match in &result.individual_matches {
         writeln!(
             writer,
-            "{},{},{},{}",
+            "{},{},{},{:?}",
             result.query_metadata.query_params.query_string,
             kmer_match.sequence,
             kmer_match.count,
-            format!("{:?}", kmer_match.match_type)
+            kmer_match.match_type
         )?;
     }
 
@@ -604,14 +604,14 @@ fn output_batch_tsv(
     for (i, (query, result)) in results.iter().enumerate() {
         writeln!(
             writer,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{:?}",
             i + 1,
             query,
             result.query_metadata.variants_generated,
             result.query_metadata.query_params.mutation_tolerance,
             result.total_count,
             result.query_metadata.query_time_ms,
-            format!("{:?}", result.status)
+            result.status
         )?;
     }
 
@@ -639,14 +639,14 @@ fn output_batch_csv(
     for (i, (query, result)) in results.iter().enumerate() {
         writeln!(
             writer,
-            "{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{:?}",
             i + 1,
             query,
             result.query_metadata.variants_generated,
             result.query_metadata.query_params.mutation_tolerance,
             result.total_count,
             result.query_metadata.query_time_ms,
-            format!("{:?}", result.status)
+            result.status
         )?;
     }
 

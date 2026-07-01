@@ -74,14 +74,13 @@ impl DatabaseQuery {
         file: &mut BufReader<File>,
         header: &DatabaseHeader,
     ) -> ProcessingResult<Vec<KmerEntry>> {
-        // Fix for incorrect data_offset in header
-        // Based on analysis, data should be at offset 42 (corrected header size)
-        let actual_data_offset = if header.data_offset < 40 {
-            42 // Use correct offset when header value is too small
-        } else if header.data_offset > 1000 {
-            42 // Use correct offset when header value is too large
-        } else {
+        // Defensive reconciliation of data_offset: legacy/corrupt files may carry an
+        // out-of-range value; fall back to the canonical v2 offset (42) in that case.
+        // TODO(plan 01-03): replace this silent clamp with a loud error.
+        let actual_data_offset = if (40..=1000).contains(&header.data_offset) {
             header.data_offset
+        } else {
+            42
         };
 
         // Seek to data section
@@ -187,12 +186,10 @@ impl DatabaseQuery {
 
     /// Read entry at specific position
     fn read_entry_at(&mut self, index: u64) -> ProcessingResult<KmerEntry> {
-        let actual_data_offset = if self.header.data_offset < 40 {
-            42
-        } else if self.header.data_offset > 1000 {
-            42
-        } else {
+        let actual_data_offset = if (40..=1000).contains(&self.header.data_offset) {
             self.header.data_offset
+        } else {
+            42
         };
 
         let entry_offset = actual_data_offset + (index * 20);
@@ -312,8 +309,6 @@ mod tests {
     use tempfile::NamedTempFile;
 
     fn create_test_database(kmer_size: u8, entries: Vec<(u128, u32)>) -> NamedTempFile {
-        use std::io::Write;
-
         let mut file = NamedTempFile::new().unwrap();
 
         // Use canonical: false to match the stored k-mers (which are not canonically transformed)

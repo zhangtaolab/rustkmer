@@ -218,7 +218,7 @@ pub fn load_kmer_database(
     };
 
     // Load k-mer data
-    let kmer_counts = if data_file_path.extension().map_or(false, |ext| ext == "gz") {
+    let kmer_counts = if data_file_path.extension().is_some_and(|ext| ext == "gz") {
         load_kmer_data_compressed(&data_file_path, config.buffer_size)?
     } else {
         load_kmer_data_uncompressed(&data_file_path, config.buffer_size)?
@@ -364,7 +364,7 @@ pub fn validate_checksums(database_path: &Path) -> Result<bool, PersistenceError
             return Err(PersistenceError::ChecksumError);
         }
 
-        let actual_checksums = generate_checksums(&[(&filename, &file_path)])?;
+        let actual_checksums = generate_checksums(&[(filename, &file_path)])?;
         if let Some((_, actual_checksum)) = actual_checksums.first() {
             if actual_checksum != expected_checksum {
                 return Err(PersistenceError::ChecksumError);

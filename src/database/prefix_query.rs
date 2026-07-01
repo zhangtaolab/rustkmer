@@ -123,9 +123,7 @@ fn extract_prefix_matches_binary_search(
     };
 
     // Iterate through k-mers until we exceed range_end
-    for i in start_idx..all_kmers.len() {
-        let (encoded_kmer, count) = all_kmers[i];
-
+    for &(encoded_kmer, count) in &all_kmers[start_idx..] {
         if encoded_kmer > prefix_range.1 {
             break; // Exceeded the range
         }
@@ -198,7 +196,7 @@ pub fn extract_kmers_by_multiple_prefixes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::format::RKDatabase;
+
     use crate::kmer::encoding::encode_kmer_u128;
 
     #[test]

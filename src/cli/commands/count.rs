@@ -491,7 +491,7 @@ fn output_binary_format(
         if !quiet {
             eprintln!("Sorting {} k-mers...", kmer_count);
         }
-        kmers.sort_by(|(a, _), (b, _)| a.cmp(b));
+        kmers.sort_by_key(|(a, _)| *a);
     }
 
     let file = std::fs::File::create(output_path)

@@ -133,7 +133,7 @@ impl PyFuzzyResult {
     /// Get top matches by count (most frequent k-mers)
     fn get_top_matches(&self, limit: usize) -> Vec<PyFuzzyMatch> {
         let mut matches = self.matches.clone();
-        matches.sort_by(|a, b| b.count.cmp(&a.count));
+        matches.sort_by_key(|b| std::cmp::Reverse(b.count));
         matches.into_iter().take(limit).collect()
     }
 

@@ -303,8 +303,9 @@ mod tests {
 
     #[test]
     fn test_database_format_detection() {
-        // This would require creating test database files
-        // For now, just ensure the function exists
-        assert!(true);
+        // TODO: database format detection requires fixture .rkdb files;
+        // the function exists but is not exercised here. Tracked separately
+        // (the round-trip + legacy-readback tests in tests/ cover the format).
+        let _ = "database format detection requires fixture files";
     }
 }

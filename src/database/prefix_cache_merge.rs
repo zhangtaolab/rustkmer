@@ -52,7 +52,7 @@ impl ExternalSortMerger {
         }
 
         if kmer_sizes.iter().any(|&k| k != kmer_sizes[0]) {
-            return Err(crate::error::ProcessingError::new(&format!(
+            return Err(crate::error::ProcessingError::new(format!(
                 "K-mer size mismatch: found sizes {:?}",
                 kmer_sizes
             )));
@@ -140,7 +140,7 @@ impl ExternalSortMerger {
             })
             .collect();
 
-        println!("");
+        println!();
 
         const BATCH_SIZE: usize = 10_000;
         let mut total_kmers = 0u64;
@@ -329,7 +329,7 @@ impl ExternalSortMerger {
                     );
                 }
 
-                if done % 10 == 0 || done == non_empty_count {
+                if done.is_multiple_of(10) || done == non_empty_count {
                     let elapsed = start_parallel.elapsed();
                     let eta = if done > 0 && elapsed.as_secs_f64() > 0.0 {
                         let per_prefix = elapsed.as_secs_f64() / done as f64;
@@ -820,7 +820,9 @@ impl ExternalSortMerger {
                     writer.write_all(&buffer[..n])?;
 
                     // 每 100 万 k-mers 报告进度
-                    if processed_kmers % 1_000_000 == 0 || last_report.elapsed().as_secs() >= 5 {
+                    if processed_kmers.is_multiple_of(1_000_000)
+                        || last_report.elapsed().as_secs() >= 5
+                    {
                         if let Ok(mem_info) = sys_info::mem_info() {
                             println!(
                                 "   进度: {} M / {} M k-mers | 可用内存: {:.1} MB",
@@ -833,7 +835,7 @@ impl ExternalSortMerger {
                     }
                 }
                 Err(e) => {
-                    return Err(crate::error::ProcessingError::new(&format!(
+                    return Err(crate::error::ProcessingError::new(format!(
                         "读取数据失败: {}",
                         e
                     )));
@@ -871,9 +873,9 @@ impl ExternalSortMerger {
         // 写入 metadata
         let metadata_path = output_path.with_extension("json");
         let metadata_json = serde_json::to_string_pretty(&metadata)
-            .map_err(|e| crate::error::ProcessingError::new(&format!("序列化元数据失败: {}", e)))?;
+            .map_err(|e| crate::error::ProcessingError::new(format!("序列化元数据失败: {}", e)))?;
         std::fs::write(&metadata_path, metadata_json)
-            .map_err(|e| crate::error::ProcessingError::new(&format!("写入元数据失败: {}", e)))?;
+            .map_err(|e| crate::error::ProcessingError::new(format!("写入元数据失败: {}", e)))?;
 
         let phase_time = start_time.elapsed();
         println!(
@@ -927,7 +929,6 @@ impl ExternalSortMerger {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
 
     #[test]
     fn test_external_sort_merger_creation() {

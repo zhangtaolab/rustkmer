@@ -449,6 +449,56 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
     Ok(())
 }
 
+/// Parse memory size string like "32GB", "1TB", "512MB" into bytes
+fn parse_memory_size(size_str: &str) -> Result<usize, String> {
+    let size_str = size_str.trim().to_uppercase();
+
+    // Parse number and unit - handle multi-character units properly
+    let (number_str, unit) = if size_str.ends_with("B") {
+        if size_str.ends_with("KB") {
+            (&size_str[..size_str.len() - 2], "KB")
+        } else if size_str.ends_with("MB") {
+            (&size_str[..size_str.len() - 2], "MB")
+        } else if size_str.ends_with("GB") {
+            (&size_str[..size_str.len() - 2], "GB")
+        } else if size_str.ends_with("TB") {
+            (&size_str[..size_str.len() - 2], "TB")
+        } else if size_str.len() > 1 {
+            (&size_str[..size_str.len() - 1], "B")
+        } else {
+            return Err(format!("Invalid memory size format: {}", size_str));
+        }
+    } else {
+        (size_str.as_str(), "")
+    };
+
+    let number: usize = number_str
+        .parse()
+        .map_err(|_| format!("Invalid number: {}", number_str))?;
+
+    let bytes = match unit {
+        "B" => number,
+        "KB" => number * 1024,
+        "MB" => number * 1024 * 1024,
+        "GB" => number * 1024 * 1024 * 1024,
+        "TB" => number * 1024 * 1024 * 1024 * 1024,
+        "" => number, // Default to bytes
+        _ => return Err(format!("Unknown unit: {}", unit)),
+    };
+
+    // Validate reasonable bounds
+    if bytes < 1024 {
+        return Err("Memory size too small (minimum 1KB)".to_string());
+    }
+
+    if bytes > 1024 * 1024 * 1024 * 1024 {
+        // 1TB
+        return Err("Memory size too large (maximum 1TB)".to_string());
+    }
+
+    Ok(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -545,54 +595,4 @@ mod tests {
         assert_eq!(kmer_map.get(&0x5678), Some(&20));
         assert_eq!(kmer_map.get(&0x9ABC), Some(&15));
     }
-}
-
-/// Parse memory size string like "32GB", "1TB", "512MB" into bytes
-fn parse_memory_size(size_str: &str) -> Result<usize, String> {
-    let size_str = size_str.trim().to_uppercase();
-
-    // Parse number and unit - handle multi-character units properly
-    let (number_str, unit) = if size_str.ends_with("B") {
-        if size_str.ends_with("KB") {
-            (&size_str[..size_str.len() - 2], "KB")
-        } else if size_str.ends_with("MB") {
-            (&size_str[..size_str.len() - 2], "MB")
-        } else if size_str.ends_with("GB") {
-            (&size_str[..size_str.len() - 2], "GB")
-        } else if size_str.ends_with("TB") {
-            (&size_str[..size_str.len() - 2], "TB")
-        } else if size_str.len() > 1 {
-            (&size_str[..size_str.len() - 1], "B")
-        } else {
-            return Err(format!("Invalid memory size format: {}", size_str));
-        }
-    } else {
-        (size_str.as_str(), "")
-    };
-
-    let number: usize = number_str
-        .parse()
-        .map_err(|_| format!("Invalid number: {}", number_str))?;
-
-    let bytes = match unit {
-        "B" => number,
-        "KB" => number * 1024,
-        "MB" => number * 1024 * 1024,
-        "GB" => number * 1024 * 1024 * 1024,
-        "TB" => number * 1024 * 1024 * 1024 * 1024,
-        "" => number, // Default to bytes
-        _ => return Err(format!("Unknown unit: {}", unit)),
-    };
-
-    // Validate reasonable bounds
-    if bytes < 1024 {
-        return Err("Memory size too small (minimum 1KB)".to_string());
-    }
-
-    if bytes > 1024 * 1024 * 1024 * 1024 {
-        // 1TB
-        return Err("Memory size too large (maximum 1TB)".to_string());
-    }
-
-    Ok(bytes)
 }

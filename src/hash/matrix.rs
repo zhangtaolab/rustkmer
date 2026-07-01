@@ -120,6 +120,6 @@ mod tests {
         let kmer = 0b11; // "AT"
 
         let hash = hasher.hash(kmer);
-        assert!(hash < (1u64 << (1 * 2))); // Should be within 2^2 range
+        assert!(hash < (1u64 << 2)); // Should be within 2^2 range
     }
 }

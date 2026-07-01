@@ -100,6 +100,12 @@ pub struct MemoryStats {
     pub peak_usage: u64,
 }
 
+impl Default for MemoryStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MemoryStats {
     /// Create new memory statistics
     pub fn new() -> Self {
@@ -373,7 +379,7 @@ pub struct PageIterator<T: Clone> {
 impl<T: Clone> PageIterator<T> {
     /// Create a new page iterator
     pub fn new(items: Vec<T>, page_size: usize) -> Self {
-        let total_pages = (items.len() + page_size - 1) / page_size;
+        let total_pages = items.len().div_ceil(page_size);
         Self {
             items,
             page_size,

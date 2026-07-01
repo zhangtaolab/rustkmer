@@ -286,13 +286,13 @@ impl RKDatabase {
         let mut reader = BufReader::new(file);
         let header = DatabaseHeader::read_from(&mut reader)?;
 
-        // Fix for incorrect data_offset in header (same logic as DatabaseQuery)
-        let actual_data_offset = if header.data_offset < 40 {
-            42 // Use correct offset when header value is too small
-        } else if header.data_offset > 1000 {
-            42 // Use correct offset when header value is too large
-        } else {
+        // Defensive reconciliation of data_offset: legacy/corrupt files may carry an
+        // out-of-range value; fall back to the canonical v2 offset (42) in that case.
+        // TODO(plan 01-03): replace this silent clamp with a loud error.
+        let actual_data_offset = if (40..=1000).contains(&header.data_offset) {
             header.data_offset
+        } else {
+            42
         };
 
         // Seek to data section
@@ -813,13 +813,7 @@ impl RKDatabase {
             // Merge k-mers with overflow protection
             for (kmer, count) in db_kmers {
                 let entry = all_kmers.entry(kmer).or_insert(0);
-                *entry = match (*entry).checked_add(count) {
-                    Some(sum) => sum,
-                    None => {
-                        // Cap at u32::MAX on overflow
-                        u32::MAX
-                    }
-                };
+                *entry = (*entry).saturating_add(count);
                 _total_input_kmers += count as u64;
             }
 
@@ -910,7 +904,7 @@ impl RKDatabase {
         let db_refs_slice: Vec<&Self> = db_refs.iter().collect();
 
         // Create external sort merger
-        let merge_buffer_mb = (config.max_memory_usage / 1024 / 1024) as usize; // Convert bytes to MB
+        let merge_buffer_mb = config.max_memory_usage / 1024 / 1024; // Convert bytes to MB
 
         // Validate for external sort merge (allow mixed canonical modes)
         let (_kmer_size, _final_canonical) =
@@ -1197,7 +1191,7 @@ mod tests {
             assert!(result.is_ok());
             let (kmer_size, canonical) = result.unwrap();
             assert_eq!(kmer_size, 31);
-            assert_eq!(canonical, false);
+            assert!(!canonical);
         }
 
         #[test]
@@ -1210,7 +1204,7 @@ mod tests {
             assert!(result.is_ok());
             let (kmer_size, canonical) = result.unwrap();
             assert_eq!(kmer_size, 31);
-            assert_eq!(canonical, false);
+            assert!(!canonical);
         }
 
         #[test]
@@ -1300,7 +1294,7 @@ mod tests {
             assert!(result.is_ok());
             let (kmer_size, canonical) = result.unwrap();
             assert_eq!(kmer_size, 31);
-            assert_eq!(canonical, true);
+            assert!(canonical);
         }
     }
 }

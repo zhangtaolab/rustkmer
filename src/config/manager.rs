@@ -25,7 +25,7 @@ pub struct ConfigManager {
 }
 
 /// Global configuration loaded from file and environment variables
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GlobalConfig {
     /// Memory configuration
     pub memory: MemoryConfig,
@@ -125,18 +125,6 @@ pub struct OperationConfig {
     pub output: Option<OutputConfig>,
 }
 
-impl Default for GlobalConfig {
-    fn default() -> Self {
-        Self {
-            memory: MemoryConfig::default(),
-            kmer_counting: KmerCountingConfig::default(),
-            database: DatabaseConfig::default(),
-            output: OutputConfig::default(),
-            logging: LoggingConfig::default(),
-        }
-    }
-}
-
 impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
@@ -194,6 +182,12 @@ impl Default for LoggingConfig {
             file_path: None,
             structured: Some(false),
         }
+    }
+}
+
+impl Default for ConfigManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

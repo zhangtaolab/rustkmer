@@ -74,6 +74,12 @@ pub struct MergeStats {
     pub strategy_used: MergeStrategy,
 }
 
+impl Default for MergeStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MergeStats {
     /// Create new merge statistics
     pub fn new() -> Self {

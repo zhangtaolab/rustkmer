@@ -450,9 +450,9 @@ pub fn parse_hybrid_pattern(pattern: &str) -> ProcessingResult<HybridPattern> {
 
             // Additional validation for reasonable pattern length
             if total_length == 0 {
-                return Err(crate::error::KmerError::InvalidParameters(format!(
-                    "Pattern cannot be empty"
-                ))
+                return Err(crate::error::KmerError::InvalidParameters(
+                    "Pattern cannot be empty".to_string(),
+                )
                 .into());
             }
 
@@ -531,7 +531,7 @@ fn encode_prefix_to_range(prefix: &str, kmer_size: usize) -> ProcessingResult<(u
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::format::RKDatabase;
+
     use crate::kmer::encoding::encode_kmer_u128;
 
     #[test]

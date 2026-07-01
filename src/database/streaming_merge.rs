@@ -36,12 +36,10 @@ impl DatabaseStreamIterator {
             ProcessingError::io_error(format!("Failed to read database header: {}", e))
         })?;
 
-        let actual_data_offset = if header.data_offset < 40 {
-            42
-        } else if header.data_offset > 1000 {
-            42
-        } else {
+        let actual_data_offset = if (40..=1000).contains(&header.data_offset) {
             header.data_offset
+        } else {
+            42
         };
 
         reader
@@ -207,7 +205,7 @@ impl Eq for MergeItem {}
 
 impl PartialOrd for MergeItem {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        other.kmer.partial_cmp(&self.kmer)
+        Some(self.cmp(other))
     }
 }
 
@@ -364,10 +362,7 @@ impl Iterator for StreamingMergeIterator {
                     self.current_count = merge_item.count;
                 }
                 Some(current) if *current == merge_item.kmer => {
-                    self.current_count = match self.current_count.checked_add(merge_item.count) {
-                        Some(sum) => sum,
-                        None => u32::MAX,
-                    };
+                    self.current_count = self.current_count.saturating_add(merge_item.count);
                 }
                 Some(_) => {
                     let result = (self.current_kmer.unwrap(), self.current_count);
@@ -414,14 +409,13 @@ impl Drop for StreamingMergeIterator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
 
     #[test]
     fn test_database_stream_iterator() {
         let temp_dir = tempfile::tempdir().unwrap();
         let db_path = temp_dir.path().join("test.rkdb");
 
-        let test_entries = vec![
+        let test_entries = [
             KmerEntry::new(0x1234, 10),
             KmerEntry::new(0x5678, 20),
             KmerEntry::new(0x9ABC, 30),
@@ -465,7 +459,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let db1_path = temp_dir.path().join("db1.rkdb");
 
-        let entries1 = vec![
+        let entries1 = [
             KmerEntry::new(0x0010, 10),
             KmerEntry::new(0x0020, 20),
             KmerEntry::new(0x0030, 30),

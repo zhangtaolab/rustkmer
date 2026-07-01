@@ -254,7 +254,7 @@ fn output_csv<W: std::io::Write>(
     let mut wtr = csv::Writer::from_writer(&mut writer);
 
     // Write header
-    wtr.write_record(&[
+    wtr.write_record([
         "database_file",
         "kmer_size",
         "canonical",
@@ -271,7 +271,7 @@ fn output_csv<W: std::io::Write>(
     ])?;
 
     // Write data record
-    wtr.write_record(&[
+    wtr.write_record([
         stats.database_file.to_string_lossy().as_ref(),
         &stats.kmer_size.to_string(),
         &stats.canonical.to_string(),
@@ -308,7 +308,7 @@ fn output_tsv<W: std::io::Write>(
         .from_writer(&mut writer);
 
     // Write header
-    wtr.write_record(&[
+    wtr.write_record([
         "database_file",
         "kmer_size",
         "canonical",
@@ -325,7 +325,7 @@ fn output_tsv<W: std::io::Write>(
     ])?;
 
     // Write data record
-    wtr.write_record(&[
+    wtr.write_record([
         stats.database_file.to_string_lossy().as_ref(),
         &stats.kmer_size.to_string(),
         &stats.canonical.to_string(),
@@ -348,7 +348,7 @@ fn output_tsv<W: std::io::Write>(
     // Note: Frequency distribution is too large for standard TSV format
     // It's available in JSON format or through the text output
     if stats.frequency_distribution.is_some() {
-        wtr.write_record(&[
+        wtr.write_record([
             "frequency_distribution_available",
             "true",
             "",
@@ -385,7 +385,7 @@ fn output_frequency_distribution<W: std::io::Write>(
                 writeln!(writer, "K-mer size: {}", stats.kmer_size)?;
                 writeln!(writer, "Total k-mers: {}", stats.total_kmers)?;
                 writeln!(writer, "Unique k-mers: {}", stats.unique_kmers)?;
-                writeln!(writer, "")?;
+                writeln!(writer)?;
                 writeln!(writer, "Count	Frequency")?;
                 for (count, freq) in dist {
                     writeln!(writer, "{}	{}", count, freq)?;
@@ -404,11 +404,11 @@ fn output_frequency_distribution<W: std::io::Write>(
                 let mut wtr = csv::Writer::from_writer(&mut writer);
 
                 // Write header
-                wtr.write_record(&["Count", "Frequency"])?;
+                wtr.write_record(["Count", "Frequency"])?;
 
                 // Write data
                 for (count, freq) in dist {
-                    wtr.write_record(&[&count.to_string(), &freq.to_string()])?;
+                    wtr.write_record([&count.to_string(), &freq.to_string()])?;
                 }
 
                 wtr.flush()?;
@@ -419,11 +419,11 @@ fn output_frequency_distribution<W: std::io::Write>(
                     .from_writer(&mut writer);
 
                 // Write header
-                wtr.write_record(&["Count", "Frequency"])?;
+                wtr.write_record(["Count", "Frequency"])?;
 
                 // Write data
                 for (count, freq) in dist {
-                    wtr.write_record(&[&count.to_string(), &freq.to_string()])?;
+                    wtr.write_record([&count.to_string(), &freq.to_string()])?;
                 }
 
                 wtr.flush()?;

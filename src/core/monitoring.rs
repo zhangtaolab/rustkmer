@@ -36,17 +36,12 @@ impl Default for MonitoringConfig {
 
 /// Performance monitoring configuration (non-profiling stub)
 #[cfg(not(feature = "profiling"))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MonitoringConfig {
     pub enabled: bool,
 }
 
 #[cfg(not(feature = "profiling"))]
-impl Default for MonitoringConfig {
-    fn default() -> Self {
-        Self { enabled: false }
-    }
-}
 
 /// Core performance metrics structure
 #[cfg(feature = "profiling")]

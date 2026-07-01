@@ -103,9 +103,17 @@ mod tests {
 
     #[test]
     fn test_constants() {
-        assert!(constants::DEFAULT_MAX_VARIANTS > 0);
-        assert!(constants::DEFAULT_BATCH_SIZE > 0);
-        assert!(constants::MAX_MUTATION_RATIO > 0.0);
-        assert!(constants::MAX_MUTATION_RATIO <= 1.0);
+        // Pin the fuzzy constants to their documented contract. Bound through
+        // local bindings so clippy treats these as runtime checks (not
+        // assertions on compile-time constants).
+        let max_variants = constants::DEFAULT_MAX_VARIANTS;
+        let batch_size = constants::DEFAULT_BATCH_SIZE;
+        let max_ratio = constants::MAX_MUTATION_RATIO;
+        assert!(max_variants > 0, "DEFAULT_MAX_VARIANTS must be positive");
+        assert!(batch_size > 0, "DEFAULT_BATCH_SIZE must be positive");
+        assert!(
+            max_ratio > 0.0 && max_ratio <= 1.0,
+            "MAX_MUTATION_RATIO must be within (0.0, 1.0]"
+        );
     }
 }

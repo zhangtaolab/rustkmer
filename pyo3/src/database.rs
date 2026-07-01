@@ -1157,7 +1157,6 @@ impl PyDatabase {
             let result = pyo3::Python::with_gil(|py| {
                 let pattern_py = pyo3::types::PyString::new(py, &pattern_str);
                 self.query_hybrid(&pattern_py)
-                    .map_err(|e| pyo3::PyErr::from(e))
             })?;
             results.push(result);
         }
@@ -1259,8 +1258,7 @@ impl PyDatabase {
             LoadMode::Preload => {
                 // Get k-mers from the HashMap cache
                 if let Some(cache) = &self.kmer_cache {
-                    let mut count = 0;
-                    for (kmer_encoded, cnt) in cache.iter() {
+                    for (count, (kmer_encoded, cnt)) in cache.iter().enumerate() {
                         if count >= offset {
                             if count >= offset + actual_limit {
                                 break;
@@ -1273,7 +1271,6 @@ impl PyDatabase {
                                 found: *cnt > 0,
                             });
                         }
-                        count += 1;
                     }
                 }
             }
@@ -1368,7 +1365,7 @@ impl PyDatabase {
         }
 
         // Convert to PathBuf
-        let input_paths: Vec<PathBuf> = databases.into_iter().map(|p| PathBuf::from(p)).collect();
+        let input_paths: Vec<PathBuf> = databases.into_iter().map(PathBuf::from).collect();
 
         // Create default merge configuration
         let config = MergeConfig::default();
@@ -1525,7 +1522,7 @@ impl PyDatabase {
 
                             exported_count += 1;
 
-                            if exported_count % 1000 == 0 {
+                            if exported_count.is_multiple_of(1000) {
                                 if let Some(ref callback) = progress_callback {
                                     pyo3::Python::with_gil(|py| {
                                         callback.call1(py, (exported_count, total_kmers)).ok();
@@ -1633,9 +1630,9 @@ impl PyDatabase {
                         let kmer_seq = decode_kmer_u128(*kmer_encoded, kmer_size);
 
                         if is_first {
-                            write!(
+                            writeln!(
                                 writer,
-                                "  {{\"kmer\": \"{}\", \"count\": {}}}\n",
+                                "  {{\"kmer\": \"{}\", \"count\": {}}}",
                                 kmer_seq, count
                             )
                             .map_err(|e| {
@@ -1645,9 +1642,9 @@ impl PyDatabase {
                                 ))
                             })?;
                         } else {
-                            write!(
+                            writeln!(
                                 writer,
-                                ",  {{\"kmer\": \"{}\", \"count\": {}}}\n",
+                                ",  {{\"kmer\": \"{}\", \"count\": {}}}",
                                 kmer_seq, count
                             )
                             .map_err(|e| {
@@ -1676,9 +1673,9 @@ impl PyDatabase {
                         let kmer_seq = decode_kmer_u128(entry.kmer, kmer_size);
 
                         if is_first {
-                            write!(
+                            writeln!(
                                 writer,
-                                "  {{\"kmer\": \"{}\", \"count\": {}}}\n",
+                                "  {{\"kmer\": \"{}\", \"count\": {}}}",
                                 kmer_seq, entry.count
                             )
                             .map_err(|e| {
@@ -1688,9 +1685,9 @@ impl PyDatabase {
                                 ))
                             })?;
                         } else {
-                            write!(
+                            writeln!(
                                 writer,
-                                ",  {{\"kmer\": \"{}\", \"count\": {}}}\n",
+                                ",  {{\"kmer\": \"{}\", \"count\": {}}}",
                                 kmer_seq, entry.count
                             )
                             .map_err(|e| {
@@ -1720,9 +1717,9 @@ impl PyDatabase {
                             let kmer_seq = decode_kmer_u128(kmer_encoded, kmer_size);
 
                             if is_first {
-                                write!(
+                                writeln!(
                                     writer,
-                                    "  {{\"kmer\": \"{}\", \"count\": {}}}\n",
+                                    "  {{\"kmer\": \"{}\", \"count\": {}}}",
                                     kmer_seq, count
                                 )
                                 .map_err(|e| {
@@ -1732,9 +1729,9 @@ impl PyDatabase {
                                     ))
                                 })?;
                             } else {
-                                write!(
+                                writeln!(
                                     writer,
-                                    ",  {{\"kmer\": \"{}\", \"count\": {}}}\n",
+                                    ",  {{\"kmer\": \"{}\", \"count\": {}}}",
                                     kmer_seq, count
                                 )
                                 .map_err(|e| {
@@ -1748,7 +1745,7 @@ impl PyDatabase {
 
                             exported_count += 1;
 
-                            if exported_count % 1000 == 0 {
+                            if exported_count.is_multiple_of(1000) {
                                 if let Some(ref callback) = progress_callback {
                                     pyo3::Python::with_gil(|py| {
                                         callback.call1(py, (exported_count, total_kmers)).ok();
@@ -1918,7 +1915,7 @@ impl PyDatabase {
 
                             exported_count += 1;
 
-                            if exported_count % 1000 == 0 {
+                            if exported_count.is_multiple_of(1000) {
                                 if let Some(ref callback) = progress_callback {
                                     pyo3::Python::with_gil(|py| {
                                         callback.call1(py, (exported_count, total_kmers)).ok();
@@ -1993,8 +1990,7 @@ impl PyDatabase {
         match &self.load_mode {
             LoadMode::Preload => {
                 if let Some(cache) = &self.kmer_cache {
-                    let mut count: usize = 0;
-                    for (kmer_encoded, cnt) in cache.iter() {
+                    for (count, (kmer_encoded, cnt)) in cache.iter().enumerate() {
                         if count >= offset {
                             // Check if we've reached the limit
                             // actual_limit is usize::MAX when no limit is specified
@@ -2010,7 +2006,6 @@ impl PyDatabase {
                                 found: *cnt > 0,
                             });
                         }
-                        count += 1;
                     }
                 }
             }

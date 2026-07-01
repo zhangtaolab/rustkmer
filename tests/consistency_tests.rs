@@ -7,9 +7,8 @@ mod consistency;
 
 #[test]
 fn consistency_tests_placeholder() {
-    // TODO: Implement actual consistency tests to verify that:
-    // - u64 and u128 implementations produce identical results for comparable inputs
-    // - Edge cases are handled consistently
-    // - Performance characteristics are within expected ranges
-    assert!(true);
+    // Placeholder: actual u64/u128 consistency coverage lives under
+    // tests/consistency/* (pulled in via `mod consistency;` above).
+    // The placeholder exists so this target registers at least one test.
+    let _ = "u64/u128 consistency coverage is provided by tests/consistency/";
 }
