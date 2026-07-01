@@ -39,7 +39,7 @@ Requirements for this performance milestone. Each maps to a roadmap phase (trace
 
 <!-- Engineering prerequisites that unblock the performance phases. Observable/testable even though not end-user-facing. -->
 
-- [ ] **FOUND-01**: A Rust CI workflow runs `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, and the `pyrustkmer` wheel build on PRs — tests or new warnings cannot merge
+- [x] **FOUND-01**: A Rust CI workflow runs `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, and the `pyrustkmer` wheel build on PRs — tests or new warnings cannot merge
 - [ ] **FOUND-02**: Library code outside `src/cli/` does not write directly to stdout/stderr — it emits through the `log` facade, so machine-readable CLI output and Python embedding are not polluted
 - [ ] **FOUND-03**: The duplicated `.rkdb` write logic (`count.rs` vs `format.rs`) is consolidated into a single source of truth before dense-storage changes land
 - [ ] **FOUND-04**: User-facing library output is English (no hardcoded Chinese strings), routing through `log::`
@@ -83,7 +83,7 @@ Explicitly excluded from this milestone. Documented to prevent scope creep.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 1 | Pending |
+| FOUND-01 | Phase 1 | Complete |
 | FOUND-02 | Phase 1 | Pending |
 | FOUND-03 | Phase 1 | Pending |
 | FOUND-04 | Phase 1 | Pending |
@@ -104,6 +104,7 @@ Explicitly excluded from this milestone. Documented to prevent scope creep.
 | BENCH-04 | Phase 4 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 19 total
 - Mapped to phases: 19
 - Unmapped: 0 ✓

@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 1
+current_phase: 01
 current_phase_name: Foundation & Quality
 status: executing
 stopped_at: Phase 1 context gathered
-last_updated: "2026-07-01T01:38:04.295Z"
+last_updated: "2026-07-01T03:21:57.692Z"
 last_activity: 2026-07-01
-last_activity_desc: Roadmap created
+last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 4
+  completed_plans: 1
   percent: 0
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-30)
 
 **Core value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools, from both the CLI and Python.
-**Current focus:** Phase 1: Foundation & Quality
+**Current focus:** Phase 01 — Foundation & Quality
 
 ## Current Position
 
-Phase: 1 of 4 (Foundation & Quality)
-Plan: 0 of 4 in current phase
+Phase: 01 (Foundation & Quality) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-07-01 — Roadmap created
+Last activity: 2026-07-01 — Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 01 P01 | 25 | - tasks | - files |
 
 ## Accumulated Context
 
@@ -70,6 +71,9 @@ Recent decisions affecting current work:
 - [Initial planning]: Both CLI and Python are first-class surfaces — shared core wins flow to both
 - [Initial planning]: Breaking format/API changes are deferred to the point of decision
 - [Initial planning]: Reference comparator is Jellyfish2 for v1 (KMC3 comparison deferred to v2)
+- [Phase ?]: 01-01: Established .github/workflows/ci.yml as the FOUND-01 merge gate (fmt/clippy/test/pyo3-wheel-build on PR+push to dev/main)
+- [Phase ?]: 01-01: Cleared all 85 pre-existing clippy warnings (68 root + 17 pyo3) so -D warnings is green on both crates
+- [Phase ?]: 01-01: Distinct cargo cache keys per crate (cargo-root- / cargo-pyo3-) to prevent cache stampede across separate lockfiles
 
 ### Pending Todos
 
@@ -93,6 +97,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-01T00:29:46.098Z
+Last session: 2026-07-01T03:19:43.874Z
 Stopped at: Phase 1 context gathered
 Resume file: .planning/phases/01-foundation-quality/01-CONTEXT.md

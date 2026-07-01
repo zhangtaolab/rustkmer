@@ -32,12 +32,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The `.rkdb` write logic is consolidated into a single source of truth (`src/database/format.rs`) — `count.rs` no longer duplicates binary layout
   4. All user-facing library output uses English strings (no hardcoded Chinese) — consistent UX and parseable logs
 
-**Plans**: 4 plans (sequential waves 1→4 due to shared source-file overlap)
+**Plans**: 1/4 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — CI workflow (fmt/clippy/test/wheel-build) + fix 85 existing clippy warnings so -D warnings is green (Wave 1)
+- [x] 01-01-PLAN.md — CI workflow (fmt/clippy/test/wheel-build) + fix 85 existing clippy warnings so -D warnings is green (Wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -124,7 +124,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Quality | 0/4 | Not started | - |
+| 1. Foundation & Quality | 1/4 | In Progress|  |
 | 2. Parallel Counting | 0/4 | Not started | - |
 | 3. Memory Safety | 0/5 | Not started | - |
 | 4. Benchmark & Validation | 0/4 | Not started | - |
