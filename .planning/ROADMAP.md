@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The `.rkdb` write logic is consolidated into a single source of truth (`src/database/format.rs`) — `count.rs` no longer duplicates binary layout
   4. All user-facing library output uses English strings (no hardcoded Chinese) — consistent UX and parseable logs
 
-**Plans**: 2/4 plans executed
+**Plans**: 3/4 plans executed
 
 Plans:
 **Wave 1**
@@ -45,7 +45,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-03-PLAN.md — Consolidate .rkdb write to single source of truth + remove data_offset clamp (golden-capture-first per D-10) (Wave 3)
+- [x] 01-03-PLAN.md — Consolidate .rkdb write to single source of truth + remove data_offset clamp (golden-capture-first per D-10) (Wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -124,7 +124,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Quality | 2/4 | In Progress|  |
+| 1. Foundation & Quality | 3/4 | In Progress|  |
 | 2. Parallel Counting | 0/4 | Not started | - |
 | 3. Memory Safety | 0/5 | Not started | - |
 | 4. Benchmark & Validation | 0/4 | Not started | - |
