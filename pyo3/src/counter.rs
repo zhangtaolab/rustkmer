@@ -11,6 +11,7 @@ use rustkmer::io::fastq::FastqProcessor;
 use rustkmer::kmer::canonical::canonical_kmer_u128;
 use rustkmer::kmer::encoding::encode_kmer_bytes_u128;
 use std::path::Path;
+use std::sync::Arc;
 
 /// Statistics for Counter operations
 #[pyclass]
@@ -103,8 +104,13 @@ impl PyCounterStats {
 /// ```
 #[pyclass(name = "PyCounter")]
 pub struct PyCounter {
-    /// Internal Rust PyCounter
-    counter: RustPyCounter,
+    /// Internal Rust PyCounter, wrapped in `Arc` so it can be cloned into the
+    /// `py.allow_threads(..)` closures used by the heavy counting methods
+    /// (`add_from_fastq` / `add_from_fasta`). `RustPyCounter` (a re-export of
+    /// `rustkmer::hash::KmerCounter`) uses `dashmap::DashMap` for storage, which
+    /// gives interior mutability — so incrementing counts through `&self` is
+    /// sound under rayon's parallel workers (Phase 2, PCOUNT-03 / D-08).
+    counter: Arc<RustPyCounter>,
 }
 
 #[pymethods]
@@ -115,15 +121,23 @@ impl PyCounter {
     /// * `kmer_length` - Length of k-mers to count (1-64)
     /// * `canonical` - Whether to count canonical k-mers (forward and reverse complement merged)
     /// * `initial_capacity` - Initial hash table capacity (default: 1000)
+    /// * `threads` - Number of rayon worker threads for parallel counting
+    ///   (default `None` = all available cores). Values `< 1` are rejected.
+    ///   This is parity with the CLI's `--threads` flag (D-08, PCOUNT-03).
     ///
     /// # Returns
-    /// New PyPyCounter instance
+    /// New PyCounter instance
     ///
     /// # Raises
-    /// ValueError if kmer_length is not between 1 and 64
+    /// ValueError if kmer_length is not between 1 and 64, or if threads < 1
     #[new]
-    #[pyo3(signature = (kmer_length, canonical=false, initial_capacity=1000))]
-    fn new(kmer_length: i64, canonical: bool, initial_capacity: usize) -> PyResult<Self> {
+    #[pyo3(signature = (kmer_length, canonical=false, initial_capacity=1000, threads=None))]
+    fn new(
+        kmer_length: i64,
+        canonical: bool,
+        initial_capacity: usize,
+        threads: Option<usize>,
+    ) -> PyResult<Self> {
         // Validate that kmer_length is in the valid range (1-64)
         // Using i64 allows us to catch negative values before they overflow
         if !(1..=64).contains(&kmer_length) {
@@ -133,16 +147,50 @@ impl PyCounter {
             )));
         }
 
+        // Validate threads (T-02-13): mirror the InvalidKmerSize style. A value
+        // of Some(0) (or any Some(n) where n < 1) is rejected; None means "use
+        // all available cores" — parity with the CLI --threads default (D-08).
+        if let Some(t) = threads {
+            if t < 1 {
+                return Err(PyErr::new::<PyValueError, _>(format!(
+                    "Invalid thread count: {}. Must be >= 1",
+                    t
+                )));
+            }
+        }
+
         // Convert to usize after validation (safe because we've already checked the range)
         let kmer_length_usize = kmer_length as usize;
 
-        // Use a single thread for Python bindings (threading handled differently in Python)
-        let counter = RustPyCounter::new(kmer_length_usize, canonical, initial_capacity, 1)
+        // Resolve the thread count. `None` => all cores. We use
+        // `std::thread::available_parallelism()` (stable since Rust 1.59; the
+        // project targets 1.80+) rather than `num_cpus::get()` to avoid adding
+        // a direct `num_cpus` dependency — it is semantically equivalent
+        // (returns the number of logical CPUs the runtime considers usable)
+        // and lives in `std`. Falls back to 1 on unsupported platforms.
+        let resolved_threads = threads.unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|v| v.get())
+                .unwrap_or(1)
+        });
+
+        // Configure the global rayon pool ONCE. `build_global` returns `Err`
+        // (not a panic) if the pool was already initialized — e.g. a user
+        // constructs a second `PyCounter`, or a prior CLI command in the same
+        // process already set it. We deliberately discard the `Result`
+        // (T-02-12, Pitfall 3). This mirrors 02-01's `execute_count` idiom.
+        let _ = rayon::ThreadPoolBuilder::new()
+            .num_threads(resolved_threads)
+            .build_global();
+
+        let counter = RustPyCounter::new(kmer_length_usize, canonical, initial_capacity, resolved_threads)
             .map_err(|e| {
                 PyErr::new::<PyValueError, _>(format!("Failed to create counter: {}", e))
             })?;
 
-        Ok(Self { counter })
+        Ok(Self {
+            counter: Arc::new(counter),
+        })
     }
 
     /// Add a single k-mer to the counter
@@ -157,7 +205,10 @@ impl PyCounter {
     /// ```python
     /// counter.add_kmer("ATGCGATGCATGCGATGCAT")
     /// ```
-    fn add_kmer(&mut self, kmer: &Bound<'_, pyo3::types::PyString>) -> PyResult<()> {
+    // GIL not released: sub-millisecond workload (single k-mer encode +
+    // increment); the `py.allow_threads(..)` release/reacquire overhead would
+    // exceed the benefit. Documented per RESEARCH Open Question 1.
+    fn add_kmer(&self, kmer: &Bound<'_, pyo3::types::PyString>) -> PyResult<()> {
         let kmer_str = kmer.to_str()?;
         let kmer_bytes = kmer_str.as_bytes();
 
@@ -204,7 +255,13 @@ impl PyCounter {
     /// ```python
     /// counter.add_sequence("ATGCGATGCATGCGATGCATGCGATGCAT")
     /// ```
-    fn add_sequence(&mut self, sequence: &Bound<'_, pyo3::types::PyString>) -> PyResult<()> {
+    // GIL not released: short-sequence workload (a single string's k-mers);
+    // sub-millisecond for typical inputs. The `py.allow_threads(..)`
+    // release/reacquire overhead would exceed the benefit for anything but
+    // very long sequences, which should be loaded from a file via
+    // `add_from_fasta` / `add_from_fastq` instead (those DO release the GIL).
+    // Documented per RESEARCH Open Question 1.
+    fn add_sequence(&self, sequence: &Bound<'_, pyo3::types::PyString>) -> PyResult<()> {
         let seq_str = sequence.to_str()?;
         let k = self.counter.kmer_length();
 
@@ -267,86 +324,37 @@ impl PyCounter {
     /// counter.add_from_fasta("sequences.fasta")
     /// counter.add_from_fasta("compressed.fasta.gz")
     /// ```
-    fn add_from_fasta(&mut self, file_path: &Bound<'_, pyo3::types::PyString>) -> PyResult<()> {
-        let path_str = file_path.to_str()?;
-        let path = Path::new(path_str);
+    fn add_from_fasta(
+        &self,
+        py: Python<'_>,
+        file_path: &Bound<'_, pyo3::types::PyString>,
+    ) -> PyResult<()> {
+        // CRITICAL (T-02-11 / Pitfall 4): extract ALL Python arguments into
+        // owned, `Send` Rust types BEFORE entering the `allow_threads` closure.
+        // The closure cannot capture `&PyString` / `Bound<T>` / `PyObject` —
+        // rayon workers are OS threads without GIL access. `to_str()?.to_owned()`
+        // yields an owned `String` (Send); the `Arc<RustPyCounter>` clone is
+        // likewise Send. The closure moves both.
+        let path_str = file_path.to_str()?.to_owned();
+        let counter = self.counter.clone();
 
-        // Check file extension for compression
-        let is_compressed = path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| ext == "gz")
-            .unwrap_or(false);
-
-        let k = self.counter.kmer_length();
-
-        if is_compressed {
-            // Handle compressed FASTA using flate2
-            use flate2::read::GzDecoder;
-            use std::io::{BufRead, BufReader};
-
-            let file = std::fs::File::open(path).map_err(|e| {
-                PyErr::new::<PyValueError, _>(format!("Failed to open file: {}", e))
-            })?;
-
-            let decoder = GzDecoder::new(file);
-            let reader = BufReader::new(decoder);
-
-            let mut current_seq = Vec::new();
-
-            for line_result in reader.lines() {
-                let line = line_result.map_err(|e| {
-                    PyErr::new::<PyValueError, _>(format!("Failed to read line: {}", e))
-                })?;
-
-                let trimmed = line.trim();
-
-                if trimmed.starts_with('>') {
-                    // Process previous sequence
-                    if !current_seq.is_empty() && current_seq.len() >= k {
-                        self.process_sequence_bytes(&current_seq).map_err(|e| {
-                            PyErr::new::<PyValueError, _>(format!(
-                                "Failed to process sequence: {}",
-                                e
-                            ))
-                        })?;
-                    }
-                    current_seq.clear();
-                } else {
-                    // Collect sequence bases
-                    current_seq.extend(
-                        trimmed.bytes().filter(|&b| {
-                            matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T')
-                        }),
-                    );
-                }
-            }
-
-            // Process last sequence
-            if !current_seq.is_empty() && current_seq.len() >= k {
-                self.process_sequence_bytes(&current_seq).map_err(|e| {
-                    PyErr::new::<PyValueError, _>(format!("Failed to process sequence: {}", e))
-                })?;
-            }
-        } else {
-            // Use FastaProcessor for uncompressed files
-            let processor = FastaProcessor::new(path);
-
-            processor
-                .process_file(|record| {
-                    let seq_bytes = record.seq();
-                    if seq_bytes.len() >= k {
-                        self.process_sequence_bytes(seq_bytes)
-                    } else {
-                        Ok(())
-                    }
-                })
-                .map_err(|e| {
-                    PyErr::new::<PyValueError, _>(format!("Failed to process FASTA: {}", e))
-                })?;
-        }
-
-        Ok(())
+        // Release the GIL for the duration of the file read + per-record
+        // encode/canonicalize/increment work so rayon workers actually run in
+        // parallel (D-08, PCOUNT-03). Without this release the GIL would
+        // serialize the workers and the parallel speedup would not materialize.
+        //
+        // API NOTE: pyo3 0.27.2 provides `Python::detach` as the canonical,
+        // non-deprecated GIL-release API. `Python::allow_threads` exists but is
+        // `#[deprecated(since = "0.26.0", note = "use Python::detach instead")]`
+        // in pyo3 0.27.2 (it delegates to `self.detach(f)`). The RESEARCH note
+        // that claimed `detach` is "0.28+ only" was factually inverted —
+        // `detach` is the recommended API in 0.27.2. Using `allow_threads`
+        // would fail the `-D warnings` FOUND-01 clippy gate. Both enforce the
+        // same `Ungil` (= effectively `Send`) bound on the closure.
+        py.detach(move || process_fasta_file_on_counter(&counter, &path_str))
+            .map_err(|e: rustkmer::ProcessingError| {
+                PyErr::new::<PyValueError, _>(format!("Failed to process FASTA: {}", e))
+            })
     }
 
     /// Read and process k-mers from a FASTQ file
@@ -367,80 +375,31 @@ impl PyCounter {
     /// counter.add_from_fastq("reads.fastq")
     /// counter.add_from_fastq("compressed_reads.fastq.gz")
     /// ```
-    fn add_from_fastq(&mut self, file_path: &Bound<'_, pyo3::types::PyString>) -> PyResult<()> {
-        let path_str = file_path.to_str()?;
-        let path = Path::new(path_str);
+    fn add_from_fastq(
+        &self,
+        py: Python<'_>,
+        file_path: &Bound<'_, pyo3::types::PyString>,
+    ) -> PyResult<()> {
+        // CRITICAL (T-02-11 / Pitfall 4): extract ALL Python arguments into
+        // owned, `Send` Rust types BEFORE entering the `allow_threads` closure.
+        // The closure cannot capture `&PyString` / `Bound<T>` / `PyObject` —
+        // rayon workers are OS threads without GIL access. `to_str()?.to_owned()`
+        // yields an owned `String` (Send); the `Arc<RustPyCounter>` clone is
+        // likewise Send. The closure moves both.
+        let path_str = file_path.to_str()?.to_owned();
+        let counter = self.counter.clone();
 
-        // Check file extension for compression
-        let is_compressed = path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| ext == "gz")
-            .unwrap_or(false);
-
-        let k = self.counter.kmer_length();
-
-        if is_compressed {
-            // Handle compressed FASTQ
-            use flate2::read::GzDecoder;
-            use std::io::{BufRead, BufReader};
-
-            let file = std::fs::File::open(path).map_err(|e| {
-                PyErr::new::<PyValueError, _>(format!("Failed to open file: {}", e))
-            })?;
-
-            let decoder = GzDecoder::new(file);
-            let reader = BufReader::new(decoder);
-
-            let mut line_num = 0;
-
-            for line_result in reader.lines() {
-                let line = line_result.map_err(|e| {
-                    PyErr::new::<PyValueError, _>(format!("Failed to read line: {}", e))
-                })?;
-
-                line_num += 1;
-                let line_mod = line_num % 4;
-
-                // FASTQ format: line 1 = header (@...), line 2 = sequence, line 3 = +, line 4 = quality
-                if line_mod == 2 {
-                    let trimmed = line.trim();
-
-                    // Process sequence
-                    let seq_bytes: Vec<u8> = trimmed
-                        .bytes()
-                        .filter(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T'))
-                        .collect();
-
-                    if seq_bytes.len() >= k {
-                        self.process_sequence_bytes(&seq_bytes).map_err(|e| {
-                            PyErr::new::<PyValueError, _>(format!(
-                                "Failed to process FASTQ sequence: {}",
-                                e
-                            ))
-                        })?;
-                    }
-                }
-            }
-        } else {
-            // Use FastqProcessor for uncompressed files
-            let processor = FastqProcessor::new(path);
-
-            processor
-                .process_file(|record| {
-                    let seq_bytes = record.seq();
-                    if seq_bytes.len() >= k {
-                        self.process_sequence_bytes(seq_bytes)
-                    } else {
-                        Ok(())
-                    }
-                })
-                .map_err(|e| {
-                    PyErr::new::<PyValueError, _>(format!("Failed to process FASTQ: {}", e))
-                })?;
-        }
-
-        Ok(())
+        // Release the GIL for the duration of the file read + per-record
+        // encode/canonicalize/increment work so rayon workers actually run in
+        // parallel (D-08, PCOUNT-03). Without this release the GIL would
+        // serialize the workers and the parallel speedup would not materialize.
+        //
+        // API NOTE: see `add_from_fasta` for the `py.detach` (not the
+        // deprecated `allow_threads`) rationale — pyo3 0.27.2.
+        py.detach(move || process_fastq_file_on_counter(&counter, &path_str))
+            .map_err(|e: rustkmer::ProcessingError| {
+                PyErr::new::<PyValueError, _>(format!("Failed to process FASTQ: {}", e))
+            })
     }
 
     /// Save k-mer counts to an RKDB database file
@@ -620,7 +579,7 @@ impl PyCounter {
     /// counter.reset()
     /// # Counter is now empty
     /// ```
-    fn reset(&mut self) {
+    fn reset(&self) {
         self.counter.reset();
     }
 
@@ -663,40 +622,220 @@ impl PyCounter {
     }
 }
 
-impl PyCounter {
-    /// Helper function to process sequence bytes and count k-mers
-    fn process_sequence_bytes(
-        &mut self,
-        seq_bytes: &[u8],
-    ) -> Result<(), rustkmer::ProcessingError> {
-        let k = self.counter.kmer_length();
+/// Count all k-mers in `seq_bytes` against `counter`.
+///
+/// This is a free function (not a method on `PyCounter`) so it can be called
+/// from inside a `py.allow_threads(move || { .. })` closure, which may only
+/// capture `Send` types. The closure clones the `Arc<RustPyCounter>` and moves
+/// it in, then passes a `&RustPyCounter` here. `RustPyCounter` uses
+/// `dashmap::DashMap` for storage, so `increment` takes `&self` and is sound
+/// under rayon's parallel workers (Phase 2, PCOUNT-03 / D-08).
+///
+/// Invalid bases (anything outside A/C/G/T after uppercasing) are skipped at
+/// the k-mer extraction step via `encode_kmer_bytes_u128` returning `Err`;
+/// canonical computation errors likewise `continue`. The overflow semantics
+/// (error on `u32::MAX` per k-mer) are inherited verbatim from
+/// `RustPyCounter::increment` (PCOUNT-04).
+fn process_sequence_on_counter(
+    counter: &RustPyCounter,
+    seq_bytes: &[u8],
+) -> Result<(), rustkmer::ProcessingError> {
+    let k = counter.kmer_length();
+    if seq_bytes.len() < k {
+        return Ok(());
+    }
 
-        // Extract k-mers from sequence
-        for i in 0..=(seq_bytes.len() - k) {
-            let kmer = &seq_bytes[i..i + k];
+    // Extract k-mers from sequence
+    for i in 0..=(seq_bytes.len() - k) {
+        let kmer = &seq_bytes[i..i + k];
 
-            // Encode k-mer
-            if let Ok(encoded) = encode_kmer_bytes_u128(kmer) {
-                // Apply canonical transformation if needed
-                let encoded_to_add = if self.counter.canonical_mode() {
-                    match canonical_kmer_u128(encoded, k) {
-                        Ok(canonical) => canonical,
-                        Err(_) => continue,
-                    }
-                } else {
-                    encoded
-                };
-
-                // Increment count
-                if let Err(e) = self.counter.increment(encoded_to_add) {
-                    return Err(rustkmer::ProcessingError::with_context(
-                        "Failed to increment k-mer count",
-                        Box::new(e),
-                    ));
+        // Encode k-mer
+        if let Ok(encoded) = encode_kmer_bytes_u128(kmer) {
+            // Apply canonical transformation if needed
+            let encoded_to_add = if counter.canonical_mode() {
+                match canonical_kmer_u128(encoded, k) {
+                    Ok(canonical) => canonical,
+                    Err(_) => continue,
                 }
+            } else {
+                encoded
+            };
+
+            // Increment count
+            if let Err(e) = counter.increment(encoded_to_add) {
+                return Err(rustkmer::ProcessingError::with_context(
+                    "Failed to increment k-mer count",
+                    Box::new(e),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Count all k-mers in a FASTA file (gzip or plain) against `counter`.
+///
+/// Designed to run inside a `py.allow_threads(..)` closure: takes only `Send`
+/// types (an `&Arc<RustPyCounter>` and a `&str` path). Reads the file,
+/// decompresses gzip if the path ends in `.gz`, and accumulates each record's
+/// sequence into the shared counter. Errors are returned as
+/// `rustkmer::ProcessingError` so the caller (which holds the GIL again after
+/// `allow_threads` returns) can map them to `PyErr`.
+fn process_fasta_file_on_counter(
+    counter: &Arc<RustPyCounter>,
+    path: &str,
+) -> Result<(), rustkmer::ProcessingError> {
+    let path = Path::new(path);
+
+    // Check file extension for compression
+    let is_compressed = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext == "gz")
+        .unwrap_or(false);
+
+    let k = counter.kmer_length();
+
+    if is_compressed {
+        // Handle compressed FASTA using flate2
+        use flate2::read::GzDecoder;
+        use std::io::{BufRead, BufReader};
+
+        let file = std::fs::File::open(path).map_err(|e| {
+            rustkmer::ProcessingError::with_context("Failed to open FASTA file", Box::new(e))
+        })?;
+
+        let decoder = GzDecoder::new(file);
+        let reader = BufReader::new(decoder);
+
+        let mut current_seq = Vec::new();
+
+        for line_result in reader.lines() {
+            let line = line_result.map_err(|e| {
+                rustkmer::ProcessingError::with_context("Failed to read FASTA line", Box::new(e))
+            })?;
+
+            let trimmed = line.trim();
+
+            if trimmed.starts_with('>') {
+                // Process previous sequence
+                if !current_seq.is_empty() && current_seq.len() >= k {
+                    process_sequence_on_counter(counter, &current_seq)?;
+                }
+                current_seq.clear();
+            } else {
+                // Collect sequence bases
+                current_seq.extend(
+                    trimmed
+                        .bytes()
+                        .filter(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T')),
+                );
             }
         }
 
-        Ok(())
+        // Process last sequence
+        if !current_seq.is_empty() && current_seq.len() >= k {
+            process_sequence_on_counter(counter, &current_seq)?;
+        }
+    } else {
+        // Use FastaProcessor for uncompressed files
+        let processor = FastaProcessor::new(path);
+
+        processor
+            .process_file(|record| {
+                let seq_bytes = record.seq();
+                if seq_bytes.len() >= k {
+                    process_sequence_on_counter(counter, seq_bytes)
+                } else {
+                    Ok(())
+                }
+            })
+            .map_err(|e| {
+                rustkmer::ProcessingError::with_context("Failed to process FASTA", Box::new(e))
+            })?;
     }
+
+    Ok(())
+}
+
+/// Count all k-mers in a FASTQ file (gzip or plain) against `counter`.
+///
+/// Designed to run inside a `py.allow_threads(..)` closure: takes only `Send`
+/// types (an `&Arc<RustPyCounter>` and a `&str` path). Reads the file,
+/// decompresses gzip if the path ends in `.gz`, and accumulates each record's
+/// sequence into the shared counter. Errors are returned as
+/// `rustkmer::ProcessingError` so the caller (which holds the GIL again after
+/// `allow_threads` returns) can map them to `PyErr`.
+fn process_fastq_file_on_counter(
+    counter: &Arc<RustPyCounter>,
+    path: &str,
+) -> Result<(), rustkmer::ProcessingError> {
+    let path = Path::new(path);
+
+    // Check file extension for compression
+    let is_compressed = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext == "gz")
+        .unwrap_or(false);
+
+    let k = counter.kmer_length();
+
+    if is_compressed {
+        // Handle compressed FASTQ
+        use flate2::read::GzDecoder;
+        use std::io::{BufRead, BufReader};
+
+        let file = std::fs::File::open(path).map_err(|e| {
+            rustkmer::ProcessingError::with_context("Failed to open FASTQ file", Box::new(e))
+        })?;
+
+        let decoder = GzDecoder::new(file);
+        let reader = BufReader::new(decoder);
+
+        let mut line_num = 0;
+
+        for line_result in reader.lines() {
+            let line = line_result.map_err(|e| {
+                rustkmer::ProcessingError::with_context("Failed to read FASTQ line", Box::new(e))
+            })?;
+
+            line_num += 1;
+            let line_mod = line_num % 4;
+
+            // FASTQ format: line 1 = header (@...), line 2 = sequence, line 3 = +, line 4 = quality
+            if line_mod == 2 {
+                let trimmed = line.trim();
+
+                // Process sequence
+                let seq_bytes: Vec<u8> = trimmed
+                    .bytes()
+                    .filter(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T'))
+                    .collect();
+
+                if seq_bytes.len() >= k {
+                    process_sequence_on_counter(counter, &seq_bytes)?;
+                }
+            }
+        }
+    } else {
+        // Use FastqProcessor for uncompressed files
+        let processor = FastqProcessor::new(path);
+
+        processor
+            .process_file(|record| {
+                let seq_bytes = record.seq();
+                if seq_bytes.len() >= k {
+                    process_sequence_on_counter(counter, seq_bytes)
+                } else {
+                    Ok(())
+                }
+            })
+            .map_err(|e| {
+                rustkmer::ProcessingError::with_context("Failed to process FASTQ", Box::new(e))
+            })?;
+    }
+
+    Ok(())
 }

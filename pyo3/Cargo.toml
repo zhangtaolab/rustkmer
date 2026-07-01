@@ -42,6 +42,12 @@ thiserror = "2.0"
 parking_lot = "0.12"
 hashbrown = "0.14"
 
+# Parallel processing — PyCounter::new configures the global rayon pool
+# (parity with the CLI --threads flag, D-08/PCOUNT-03). Already a transitive
+# dependency via the rustkmer path dep, so declaring it here is an honest
+# no-bloat direct declaration (the lockfile entry is shared).
+rayon = "1.8"
+
 # Compression support
 flate2 = "1.0"
 
