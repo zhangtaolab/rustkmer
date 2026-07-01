@@ -51,7 +51,7 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 
 **Reference comparators.** KMC (disk-backed, memory-efficient, minimizer-partitioned) and Jellyfish (in-memory, fast, lock-free counters) are the standard human-scale k-mer tools. Pinning which to compete against (or both) determines whether the milestone optimizes for memory efficiency or raw speed.
 
-**Existing perf infrastructure.** `criterion` benchmarks exist (the `python_cli_comparison` bench is currently commented out in `Cargo.toml`); `.github/workflows/performance-regression.yml` is present; there is no Rust CI workflow running `cargo test` / `clippy` / `fmt`. The merge path has untested error/cleanup branches (see CONCERNS.md) that become higher-risk once it is the default.
+**Existing perf infrastructure.** `criterion` benchmarks exist (the `python_cli_comparison` bench is currently commented out in `Cargo.toml`); `.github/workflows/performance-regression.yml` is present. **Phase 1 (Foundation & Quality) shipped `.github/workflows/ci.yml`** — a merge gate running `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, and the `maturin` wheel build on every PR (ubuntu + macOS matrix). Library code now emits through the `log` facade (no direct `println!`/`eprintln!`/`dbg!` outside `src/cli/`), the `.rkdb` write logic is consolidated to a single source of truth in `format.rs`, and user-facing library strings are English-only (CJK denied by a `syn`-based test). The merge path still has untested error/cleanup branches (see CONCERNS.md) that become higher-risk once it is the default — these belong to Phase 3.
 
 **Shared core.** Both entry points depend on the same `rustkmer` library crate; the PyO3 crate (`pyo3/`) wraps `rustkmer::hash`, `rustkmer::io`, `rustkmer::kmer`, `rustkmer::database`. Core-layer wins flow to both surfaces automatically.
 
@@ -95,4 +95,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-30 after initialization (benchmark dataset added)*
+*Last updated: 2026-07-01 after Phase 1 (Foundation & Quality) completion*
