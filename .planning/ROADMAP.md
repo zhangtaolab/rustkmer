@@ -14,7 +14,7 @@ Transform rustkmer from a functional k-mer counting toolkit into a performance-c
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Quality** - Establish CI protection, consolidate format logic, and clean library I/O (completed 2026-07-01)
-- [ ] **Phase 2: Parallel Counting** - Implement lock-free concurrent counting for multi-core speedup
+- [x] **Phase 2: Parallel Counting** - Implement lock-free concurrent counting for multi-core speedup (completed 2026-07-01)
 - [ ] **Phase 3: Memory Safety** - Bounded merge routing and dense k-mer storage
 - [ ] **Phase 4: Benchmark & Validation** - Reproducible harness and Jellyfish2 comparison on CRR1936095
 
@@ -132,6 +132,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Quality | 4/4 | Complete    | 2026-07-01 |
-| 2. Parallel Counting | 4/5 | In Progress|  |
+| 2. Parallel Counting | 5/5 | Complete    | 2026-07-01 |
 | 3. Memory Safety | 0/5 | Not started | - |
 | 4. Benchmark & Validation | 0/4 | Not started | - |
