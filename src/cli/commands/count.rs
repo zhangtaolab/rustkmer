@@ -6,6 +6,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
+use rayon::prelude::*;
+
 use crate::cli::args::Args;
 use crate::database::format::{DatabaseHeader, KmerEntry, DATABASE_MAGIC, DATABASE_VERSION};
 use crate::error::{KmerError, ProcessingResult};
@@ -15,6 +17,17 @@ use crate::io::fasta::{validate_fasta_file, FastaProcessor};
 use crate::io::fastq::{validate_fastq_file, FastqProcessor};
 use crate::kmer::canonical::canonical_kmer_u128;
 use crate::kmer::encoding::encode_kmer_bytes_u128;
+
+/// Bounded record-chunk size for the intra-file per-record rayon `par_iter`
+/// (D-01). The producer loop reads+decompresses sequentially (gzip stays
+/// single-threaded, D-02) and buffers up to `CHUNK_SIZE` records before
+/// handing the chunk to rayon workers; the chunk is drained (`clear()`'d)
+/// after each `par_iter`, bounding the additional memory to one chunk on top
+/// of the DashMap. 4096 is the RESEARCH-recommended starting point (D-
+/// discretion); Phase 4's benchmark will sweep this. Keeping it bounded (not
+/// buffer-all) is critical because the u128 HashMap is already memory-heavy
+/// (CONCERNS.md).
+const CHUNK_SIZE: usize = 4096;
 
 /// Execute the count command
 pub fn execute_count(args: &Args) -> ProcessingResult<()> {
@@ -32,7 +45,12 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             format,
             quiet,
             verbose,
-            sort,
+            // D-09: `--sort` is retained as a backward-compatible alias but no
+            // longer consulted (`should_sort = !*no_sort` is the new logic).
+            // The clap field stays so users can still pass `--sort` without an
+            // "unexpected argument" error; the binding is renamed `_sort` to
+            // satisfy `unused_variables` under `-D warnings`.
+            sort: _sort,
             no_sort,
             threads,
             min_count: _,
@@ -44,8 +62,14 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 return Err(KmerError::InvalidKmerSize(*k as u32).into());
             }
 
-            // Determine if we should sort the output
-            let should_sort = if *no_sort { false } else { *sort };
+            // Determine if we should sort the output.
+            // D-09: sorted output is the DEFAULT (sharded DashMap iteration
+            // is run-to-run non-deterministic; default-sort restores
+            // reproducible output and aligns with Jellyfish2's sorted output
+            // for fair Phase-4 comparison). `--no-sort` is the sole opt-out;
+            // `--sort` is retained as a backward-compatible alias (still
+            // parsed by clap, but no longer consulted here).
+            let should_sort = !*no_sort;
 
             // Validate filtering parameters
             if let Err(errors) = args.command.validate_filtering() {
@@ -112,7 +136,10 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 eprintln!("rustkmer count starting...");
                 eprintln!("K-mer size: {}", k);
                 eprintln!("Canonical mode: {}", canonical);
-                eprintln!("Processing mode: sequential");
+                eprintln!(
+                    "Processing mode: parallel ({} rayon workers, {} records/chunk)",
+                    resolved_threads, CHUNK_SIZE
+                );
                 eprintln!("Hash table size: {}", size);
                 eprintln!("Threads: {}", resolved_threads);
 
@@ -331,7 +358,78 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
     }
 }
 
-/// Process a FASTA file and count k-mers
+/// Per-record encode → canonicalize → increment body, shared by the FASTA and
+/// FASTQ parallel paths (D-01; DRY — the two former inline closures were
+/// already near-identical).
+///
+/// Runs inside a rayon worker task. `counter` is an `&Arc<KmerCounter>`;
+/// DashMap gives interior mutability so `increment` takes `&self` — no
+/// `Mutex` needed, and the `entry().and_modify().or_insert_with()` chain is
+/// atomic per-key (RESEARCH Pattern 1, PCOUNT-04 invariant).
+fn process_one_record(
+    seq: &[u8],
+    record_id: &str,
+    counter: &Arc<KmerCounter>,
+    k: usize,
+    canonical: bool,
+    show_warnings: bool,
+) -> ProcessingResult<()> {
+    // Skip sequences shorter than k
+    if seq.len() < k {
+        return Ok(());
+    }
+
+    // Extract and count k-mers
+    for i in 0..=(seq.len() - k) {
+        let kmer_seq = &seq[i..i + k];
+
+        match encode_kmer_bytes_u128(kmer_seq) {
+            Ok(encoded_kmer) => {
+                let final_kmer = if canonical {
+                    match canonical_kmer_u128(encoded_kmer, k) {
+                        Ok(canonical) => canonical,
+                        Err(_) => continue, // Skip invalid k-mers
+                    }
+                } else {
+                    encoded_kmer
+                };
+
+                counter.increment(final_kmer).map_err(|e| {
+                    KmerError::ProcessingError(format!("Failed to increment k-mer count: {}", e))
+                })?;
+            }
+            Err(_) => {
+                // Skip k-mers with invalid characters (N, etc.)
+                if show_warnings {
+                    eprintln!(
+                        "Warning: Skipping k-mer with invalid characters at position {} in sequence {}",
+                        i, record_id
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Process a FASTA file and count k-mers.
+///
+/// **Parallelization (D-01):** the producer reads records sequentially (gzip
+/// decompression stays single-threaded, D-02 — `bio`'s reader is sequential)
+/// into a bounded `Vec<Record>` of size [`CHUNK_SIZE`], then hands the chunk
+/// to rayon via `chunk.par_iter().try_for_each(..)`. After each chunk the Vec
+/// is `clear()`'d, bounding memory to one chunk on top of the DashMap.
+///
+/// **Why bypass `FastaProcessor::process_file` (W-3 / known integration
+/// issue):** `process_file` takes a `FnMut(&Record) -> ProcessingResult<()>`
+/// callback where `&Record` is borrowed for the lifetime of the reader's
+/// iterator — there is no way to move those borrowed records into a `Vec`
+/// that outlives the call so it can be `par_iter`'d. Instead we read records
+/// directly via `bio::io::fasta::Reader::new(..).records()` (which yields
+/// owned `Record`s) into our own chunk buffer, then `par_iter` the buffer.
+/// The processor is still used for path handling and compression detection
+/// upstream; only the per-record callback path is bypassed here.
 fn process_fasta_file(
     processor: &FastaProcessor,
     counter: &Arc<KmerCounter>,
@@ -341,48 +439,84 @@ fn process_fasta_file(
     _verbose: bool,
     show_warnings: bool,
 ) -> ProcessingResult<()> {
-    processor.process_file(|record| {
-        let sequence = record.seq();
+    use crate::error::ProcessingError;
+    use std::io;
 
-        // Skip sequences shorter than k
-        if sequence.len() < k {
-            return Ok(());
+    // Mirror FastaProcessor::process_file's reader setup exactly so behavior
+    // (header/record error messages, BufReader wrapping) is byte-identical.
+    // FastaProcessor currently has no compression support (uncompressed
+    // FASTA only); keep parity by reading the file directly.
+    let file = io::BufReader::new(std::fs::File::open(processor.file_path()).map_err(|e| {
+        ProcessingError::with_context(
+            format!("Failed to open FASTA file: {}", processor.file_path()),
+            e,
+        )
+    })?);
+    let reader = bio::io::fasta::Reader::new(file);
+
+    let mut chunk: Vec<bio::io::fasta::Record> = Vec::with_capacity(CHUNK_SIZE);
+
+    for record_result in reader.records() {
+        let record = record_result.map_err(|e| {
+            ProcessingError::with_context(
+                format!("Error reading FASTA record from file: {}", processor.file_path()),
+                e,
+            )
+        })?;
+
+        chunk.push(record);
+
+        if chunk.len() == CHUNK_SIZE {
+            // Hand the full chunk to rayon workers. `try_for_each` (not
+            // `for_each`) so an overflow Err from `counter.increment`
+            // short-circuits the whole chunk and propagates to the caller.
+            let chunk_ref = &chunk;
+            chunk_ref
+                .par_iter()
+                .try_for_each(|record| {
+                    process_one_record(
+                        record.seq(),
+                        record.id(),
+                        counter,
+                        k,
+                        canonical,
+                        show_warnings,
+                    )
+                })?;
+            chunk.clear();
         }
+    }
 
-        // Extract and count k-mers
-        for i in 0..=(sequence.len() - k) {
-            let kmer_seq = &sequence[i..i + k];
+    // Drain the remainder (last partial chunk).
+    if !chunk.is_empty() {
+        chunk
+            .par_iter()
+            .try_for_each(|record| {
+                process_one_record(
+                    record.seq(),
+                    record.id(),
+                    counter,
+                    k,
+                    canonical,
+                    show_warnings,
+                )
+            })?;
+    }
 
-            match encode_kmer_bytes_u128(kmer_seq) {
-                Ok(encoded_kmer) => {
-                    let final_kmer = if canonical {
-                        match canonical_kmer_u128(encoded_kmer, k) {
-                            Ok(canonical) => canonical,
-                            Err(_) => continue, // Skip invalid k-mers
-                        }
-                    } else {
-                        encoded_kmer
-                    };
-
-                    counter.increment(final_kmer).map_err(|e| {
-                        KmerError::ProcessingError(format!("Failed to increment k-mer count: {}", e))
-                    })?;
-                },
-                Err(_) => {
-                    // Skip k-mers with invalid characters (N, etc.)
-                    if show_warnings {
-                        eprintln!("Warning: Skipping k-mer with invalid characters at position {} in sequence {}",
-                                i, record.id());
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    })
+    Ok(())
 }
 
-/// Process a FASTQ file and count k-mers
+/// Process a FASTQ file and count k-mers.
+///
+/// **Parallelization (D-01):** identical chunked-`par_iter` strategy to
+/// [`process_fasta_file`] — see that function's doc comment for the full
+/// rationale (gzip stays single-threaded per D-02; only the encode/canonicalize/
+/// increment work per record is parallelized).
+///
+/// **Why bypass `FastqProcessor::process_file` (W-3):** same as FASTA — the
+/// callback receives `&Record` tied to the reader; we read owned records
+/// directly via the compression-aware reader so they can be buffered into a
+/// `Vec` and `par_iter`'d.
 fn process_fastq_file(
     processor: &FastqProcessor,
     counter: &Arc<KmerCounter>,
@@ -392,45 +526,76 @@ fn process_fastq_file(
     _verbose: bool,
     show_warnings: bool,
 ) -> ProcessingResult<()> {
-    processor.process_file(|record| {
-        let sequence = record.seq();
+    use crate::error::ProcessingError;
+    use crate::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
 
-        // Skip sequences shorter than k
-        if sequence.len() < k {
-            return Ok(());
+    // Mirror FastqProcessor::process_file's reader setup exactly so behavior
+    // (compression detection, header/record error messages) is byte-identical.
+    let (reader, compression_type) =
+        DefaultCompressedFileReader::open_compressed(std::path::Path::new(processor.file_path()))
+            .map_err(|e| {
+                ProcessingError::with_context(
+                    format!(
+                        "Failed to open FASTQ file: {} ({})",
+                        processor.file_path(),
+                        processor.compression_type().name()
+                    ),
+                    e,
+                )
+            })?;
+    let reader = bio::io::fastq::Reader::new(reader);
+
+    let mut chunk: Vec<bio::io::fastq::Record> = Vec::with_capacity(CHUNK_SIZE);
+
+    for record_result in reader.records() {
+        let record = record_result.map_err(|e| {
+            ProcessingError::with_context(
+                format!(
+                    "Error reading FASTQ record from file: {} ({})",
+                    processor.file_path(),
+                    compression_type.name()
+                ),
+                e,
+            )
+        })?;
+
+        chunk.push(record);
+
+        if chunk.len() == CHUNK_SIZE {
+            let chunk_ref = &chunk;
+            chunk_ref
+                .par_iter()
+                .try_for_each(|record| {
+                    process_one_record(
+                        record.seq(),
+                        record.id(),
+                        counter,
+                        k,
+                        canonical,
+                        show_warnings,
+                    )
+                })?;
+            chunk.clear();
         }
+    }
 
-        // Extract and count k-mers
-        for i in 0..=(sequence.len() - k) {
-            let kmer_seq = &sequence[i..i + k];
+    // Drain the remainder (last partial chunk).
+    if !chunk.is_empty() {
+        chunk
+            .par_iter()
+            .try_for_each(|record| {
+                process_one_record(
+                    record.seq(),
+                    record.id(),
+                    counter,
+                    k,
+                    canonical,
+                    show_warnings,
+                )
+            })?;
+    }
 
-            match encode_kmer_bytes_u128(kmer_seq) {
-                Ok(encoded_kmer) => {
-                    let final_kmer = if canonical {
-                        match canonical_kmer_u128(encoded_kmer, k) {
-                            Ok(canonical) => canonical,
-                            Err(_) => continue, // Skip invalid k-mers
-                        }
-                    } else {
-                        encoded_kmer
-                    };
-
-                    counter.increment(final_kmer).map_err(|e| {
-                        KmerError::ProcessingError(format!("Failed to increment k-mer count: {}", e))
-                    })?;
-                },
-                Err(_) => {
-                    // Skip k-mers with invalid characters (N, etc.)
-                    if show_warnings {
-                        eprintln!("Warning: Skipping k-mer with invalid characters at position {} in sequence {}",
-                                i, record.id());
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    })
+    Ok(())
 }
 
 /// Output results in text format
