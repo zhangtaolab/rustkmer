@@ -63,11 +63,11 @@ Plans:
   3. `pyrustkmer`'s `PyCounter` delivers the same parallel speedup as the CLI — shared core library benefits both surfaces
   4. Parallel counting produces results identical to the current sequential path — k-mer counts match exactly on the same input (correctness guard)
 
-**Plans**: 5 plans
+**Plans**: 1/5 plans executed
 
 **Wave 1** *(parallel, no dependencies)*
 
-- [ ] 02-01-PLAN.md — Thread-count plumbing: `--threads` flag, D-07 precedence chain (`--threads > RUSTKMER_THREADS > RAYON_NUM_THREADS > num_cpus`), centralized Err-tolerant `build_global` in `execute_count`, fix merge.rs Pitfall-3 `.expect()` landmine (Wave 1; PCOUNT-01)
+- [x] 02-01-PLAN.md — Thread-count plumbing: `--threads` flag, D-07 precedence chain (`--threads > RUSTKMER_THREADS > RAYON_NUM_THREADS > num_cpus`), centralized Err-tolerant `build_global` in `execute_count`, fix merge.rs Pitfall-3 `.expect()` landmine (Wave 1; PCOUNT-01)
 - [ ] 02-04-PLAN.md — Golden-capture-first: commit pre-refactor count MAPS (JSON, D-13 matrix) to `tests/fixtures/parallel_count_baseline/` BEFORE any table.rs edit, plus the `tests/parallel_count_tests.rs` scaffold with `#[ignore]d` differential stubs (Wave 1; D-10 sequencing prereq for 02-02)
 
 **Wave 2** *(blocked on Wave 1)*
@@ -132,6 +132,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Quality | 4/4 | Complete    | 2026-07-01 |
-| 2. Parallel Counting | 0/4 | Not started | - |
+| 2. Parallel Counting | 1/5 | In Progress|  |
 | 3. Memory Safety | 0/5 | Not started | - |
 | 4. Benchmark & Validation | 0/4 | Not started | - |
