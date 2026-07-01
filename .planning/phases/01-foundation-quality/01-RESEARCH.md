@@ -967,21 +967,24 @@ for (kmer, count) in &kmers {
 
 **If this table is empty:** (it is not — 5 assumptions flagged for planner/user confirmation, all low-risk.)
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`RUSTKMER_*` env vars vs `env_logger`** (A2)
    - What we know: `main.rs:13` uses `Env::default()` (reads `RUST_LOG`). The config manager reads `RUSTKMER_*` but does not bridge to the logger.
    - What's unclear: Does D-16 intend to wire `RUSTKMER_LOG_LEVEL` → `env_logger`, or just preserve the status quo (no new CLI flags)?
    - Recommendation: Default to status quo (minimal interpretation); flag for user confirmation in discuss-phase if the planner wants the bridge.
+   - RESOLVED: Status quo adopted — 01-02 Task 1 Step 4 preserves `default_filter_or("info")` and does NOT add `RUSTKMER_*`→`env_logger` bridging or any new CLI verbosity flags (D-16). P2 truth "env_logger default filter remains `\"info\"`" codifies this in the 01-02 must_haves.
 
 2. **`data_offset` clamp: hard-error vs sanity-assert vs full removal** (Claude's discretion per CONTEXT)
    - What we know: 3 sites; D-12 requires the legacy sample to read; silent-rewrite is the anti-pattern.
    - What's unclear: Does the user prefer a loud error (reject incompatible files) or a debug-assert (crash only in debug)?
    - Recommendation: Loud error (return `Err`) — surfaces incompatible files immediately rather than silently mis-reading. Planner picks the exact wording.
+   - RESOLVED: Loud `Err` path — 01-03 Task 3 Step 2 removes the silent `data_offset` clamp/rewrite in `src/database/format.rs` and `src/database/query.rs` and returns a loud `KmerError`/`ProcessingError` for incompatible files (D-12 legacy sample still reads via the dedicated legacy-readback path).
 
 3. **CJK scan: hardcoded path list vs walkdir discovery** (Claude's discretion)
    - What we know: walkdir is available; dead files must be excluded either way.
    - Recommendation: walkdir with glob excludes (`*_backup*`, `*new_approaches*`) — robust to new files being added; planner's choice.
+   - RESOLVED: walkdir + glob excludes — 01-04 Task 1 Step 3 enumerates `src/**/*.rs` (skipping `/cli/`) and `pyo3/src/**/*.rs` (skipping `*backup*`/`*new_approaches*`/`*stage1_fix_backup*`) via `walkdir::WalkDir`; the 01-04 must_haves.truths row "the dead pyo3 backup files are excluded from the scan" codifies the exclude rule (RESEARCH.md §1 A1).
 
 ## Environment Availability
 
