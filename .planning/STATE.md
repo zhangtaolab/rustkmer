@@ -6,14 +6,14 @@ current_phase: 01
 current_phase_name: Foundation & Quality
 status: executing
 stopped_at: Phase 1 context gathered
-last_updated: "2026-07-01T03:21:57.692Z"
+last_updated: "2026-07-01T03:52:17.903Z"
 last_activity: 2026-07-01
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 ## Current Position
 
 Phase: 01 (Foundation & Quality) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-01 — Phase 01 execution started
 
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01 P01 | 25 | - tasks | - files |
+| Phase 01 P02 | 16 | 2 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 01-01: Established .github/workflows/ci.yml as the FOUND-01 merge gate (fmt/clippy/test/pyo3-wheel-build on PR+push to dev/main)
 - [Phase ?]: 01-01: Cleared all 85 pre-existing clippy warnings (68 root + 17 pyo3) so -D warnings is green on both crates
 - [Phase ?]: 01-01: Distinct cargo cache keys per crate (cargo-root- / cargo-pyo3-) to prevent cache stampede across separate lockfiles
+- [Phase ?]: 01-02: Library code (src/ excl cli/ + pyo3/src/ live modules) now emits via log:: facade; clippy #![deny(print_stdout/print_stderr/dbg_macro)] in src/lib.rs + pyo3/src/lib.rs makes the gate self-enforcing; src/cli/mod.rs has the paired #![allow] exempting legitimate CLI output
+- [Phase ?]: 01-02: Channel-only migration per SPEC R2 - message text and format args preserved verbatim; CJK translation deferred to plan 01-04. pyo3 stays silent by default (no env_logger init, D-17); CLI users see log::info! diagnostics at the preserved info default filter (P2)
 
 ### Pending Todos
 
@@ -97,6 +100,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-01T03:19:43.874Z
+Last session: 2026-07-01T03:51:48.313Z
 Stopped at: Phase 1 context gathered
 Resume file: .planning/phases/01-foundation-quality/01-CONTEXT.md
