@@ -193,3 +193,17 @@ Commits in order:
 3. `68f3d31` — `refactor(01-03)`: consolidation (GREEN preserved — golden stayed green)
 
 The MVP+TDD gate was inactive (`mvp_mode: false` in STATE.md), so the behavior-adding-task gate did not apply. TDD gate compliance: satisfied in the baseline-preservation sense intended by the plan.
+
+## Self-Check: PASSED
+
+**Files created (all FOUND):**
+- tests/fixtures/golden_k21_canon_sorted.rkdb, golden_k64_noncanon_unsorted.rkdb, golden_manifest.sha256, legacy_v2_offset42.rkdb (sample of 12 + manifest + legacy)
+- tests/golden_generate.rs, tests/golden_tests.rs, tests/round_trip_tests.rs, tests/legacy_readback_tests.rs
+- .planning/phases/01-foundation-quality/01-03-SUMMARY.md
+- 12 golden `.rkdb` files confirmed via `ls tests/fixtures/golden_k*.rkdb | wc -l` = 12
+
+**Commits (all FOUND in `git log --all`):**
+- 12caa42 (Task 1: golden capture)
+- 4c1c20d (Task 2: regression tests)
+- 68f3d31 (Task 3: consolidation + clamp removal)
+- 6076ee1 (docs: SUMMARY + STATE + ROADMAP + REQUIREMENTS)
