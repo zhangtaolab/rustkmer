@@ -72,7 +72,8 @@ pub enum Commands {
         )]
         show_warnings: bool,
 
-        /// Sort output by k-mer sequence (default: sorted for optimal query performance)
+        /// Retained no-op alias: sorting is enabled by default (decision D-09).
+        /// Has no effect; pass --no-sort to disable sorted output.
         #[arg(long, default_value = "true")]
         sort: bool,
 
