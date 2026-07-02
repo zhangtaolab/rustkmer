@@ -42,12 +42,12 @@ created: 2026-07-02
 | Req ID | Behavior | Test Type | Automated Command | Test File | Status |
 |--------|----------|-----------|-------------------|-----------|--------|
 | MERGE-01 | Merge defaults to streaming; oversized estimate routes to streaming, not in-memory | unit + integration | `cargo test --test merge_routing_tests` | ❌ Wave 0 `tests/merge_routing_tests.rs` | ⬜ pending |
-| MERGE-02 | Admission control: estimate > budget hard-routes to streaming; header-only read (NO entry materialization) | unit | `cargo test --lib should_use_streaming_header_only` + `cargo test --lib estimator_does_not_materialize_entries` | ❌ Wave 0 inline `src/database/format.rs #[cfg(test)]` | ⬜ pending |
+| MERGE-02 | Admission control: estimate > budget hard-routes to streaming; header-only read (NO entry materialization) | integration | `cargo test --test merge_routing_tests -- estimator_reads_header_only_no_materialization` | ❌ Wave 0 `tests/merge_routing_tests.rs` (shared with MERGE-01) | ⬜ pending |
 | MERGE-03 | Failed/interrupted streaming merge cleans up temp shards (RAII + process-unique subdir + startup sweep) | integration | `cargo test --test merge_cleanup_tests` (panic-injection leaves no shards; orphan subdir swept on next start; concurrent merges isolated) | ❌ Wave 0 `tests/merge_cleanup_tests.rs` | ⬜ pending |
 | MERGE-04 | `PyDatabase.merge` threads `max_memory`/`merge_mode` kwargs through to the bounded core | Python contract | `(cd pyo3 && maturin develop --release && pytest tests/test_database_merge.py -k bounded_merge)` | ❌ Wave 0 `pyo3/tests/test_database_merge.py` | ⬜ pending |
 | DENSE-01 | k ≤ 32 counter uses u64 internally; `memory_usage()` reflects ~50% reduction vs u128 | unit + benchmark | `cargo test --lib dense_counter_memory` (assert k=21 `memory_usage()` ≈ half of equivalent u128 counter, within hash-overhead tolerance) | ❌ Wave 0 inline `src/hash/table.rs #[cfg(test)]` | ⬜ pending |
 | DENSE-02 | `.rkdb` v2 byte-identity preserved post-dense; golden sha256 baselines unchanged | integration (golden re-verification) | `cargo test --test golden_sha256_tests` (re-hash 12 `tests/fixtures/golden_k*.rkdb`, compare to `golden_manifest.sha256`) | ❌ Wave 0 `tests/golden_sha256_tests.rs` (reuses existing fixtures — NO new baseline capture) | ⬜ pending |
-| DENSE-03 | u64 path canonicalization + counts == u128 path (decoded-level differential, D-04/D-05) | integration + property | `cargo test --test dense_differential_tests` (D-13 matrix k ∈ {21,32,64} × canon × sorted, decoded-map equality) + `cargo test --test dense_proptest` (random small inputs) | ❌ Wave 0 `tests/dense_differential_tests.rs`, `tests/dense_proptest.rs` | ⬜ pending |
+| DENSE-03 | u64 path canonicalization + counts == u128 path (decoded-level differential, D-04/D-05) | integration + property | `cargo test --test dense_differential_tests` (D-13 matrix k ∈ {21,32,64} × canon × sorted, decoded-map equality) + `cargo test --test dense_proptest_tests` (random small inputs) | ❌ Wave 0 `tests/dense_differential_tests.rs`, `tests/dense_proptest_tests.rs` | ⬜ pending |
 
 ### Per-Task Verification Map
 
@@ -66,11 +66,10 @@ created: 2026-07-02
 - [ ] `tests/merge_routing_tests.rs` — covers MERGE-01, MERGE-02 (estimator header-only fix + hard-route)
 - [ ] `tests/merge_cleanup_tests.rs` — covers MERGE-03 (RAII + process-unique subdir + startup sweep + panic-injection)
 - [ ] `tests/dense_differential_tests.rs` — covers DENSE-03 (u64-vs-u128 decoded differential, D-13 matrix)
-- [ ] `tests/dense_proptest.rs` — covers DENSE-03 (proptest on random small inputs)
+- [ ] `tests/dense_proptest_tests.rs` — covers DENSE-03 (proptest on random small inputs)
 - [ ] `tests/golden_sha256_tests.rs` — covers DENSE-02 (re-verify 12 golden `.rkdb` sha256 unchanged post-dense)
 - [ ] `pyo3/tests/test_database_merge.py` — covers MERGE-04 (PyDatabase.merge kwargs contract)
 - [ ] Inline `#[cfg(test)]` in `src/hash/table.rs` — covers DENSE-01 (`memory_usage()` ~50% reduction assertion)
-- [ ] Inline `#[cfg(test)]` in `src/database/format.rs` — covers MERGE-02 (estimator header-only + no-materialization)
 
 *Framework check: `cargo test` already configured; `proptest 1.5` already a dev-dep; `pytest` configured in `pyo3/pyproject.toml`. No new framework install needed.*
 
