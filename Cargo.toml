@@ -49,9 +49,6 @@ itertools = "0.14"
 # Streaming quantile estimation
 tdigest = "0.2"
 
-# Property-based testing
-proptest = "1.5"
-
 # Synchronization primitives
 parking_lot = "0.12"
 
