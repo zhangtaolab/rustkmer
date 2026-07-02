@@ -142,6 +142,12 @@ fn count_input_to_map(
 /// exercises the exact same DashMap atomicity path the CLI's rayon workers
 /// rely on — making this a real commutativity differential, not a subprocess
 /// approximation.
+///
+/// IN-01: the `ScopedJoinHandle`s are now collected and joined so that a
+/// worker `Err` (e.g. an `increment` failure or a future failure mode) is
+/// propagated instead of silently swallowed. Previously the scope block
+/// waited for threads to finish but discarded their results, so a worker
+/// failure would produce a false-PASS on the differential.
 fn count_input_with_workers(
     k: usize,
     canonical: bool,
@@ -158,7 +164,9 @@ fn count_input_with_workers(
         let workers = num_workers.max(1).min(total_windows);
         let per_worker = total_windows.div_ceil(workers);
 
-        std::thread::scope(|s| {
+        std::thread::scope(|s| -> ProcessingResult<()> {
+            let mut handles: Vec<std::thread::ScopedJoinHandle<ProcessingResult<()>>> =
+                Vec::new();
             for worker_idx in 0..workers {
                 let start = worker_idx * per_worker;
                 let end = ((worker_idx + 1) * per_worker).min(total_windows);
@@ -167,7 +175,7 @@ fn count_input_with_workers(
                 }
                 let counter_ref = &counter;
                 let bytes_ref = bytes;
-                s.spawn(move || -> ProcessingResult<()> {
+                handles.push(s.spawn(move || -> ProcessingResult<()> {
                     for i in start..end {
                         let window = &bytes_ref[i..i + k];
                         let kmer = encode_kmer_bytes_u128(window).map_err(|e| {
@@ -183,9 +191,19 @@ fn count_input_with_workers(
                         counter_ref.increment(final_kmer)?;
                     }
                     Ok(())
-                });
+                }));
             }
-        });
+
+            // IN-01: join every handle inside the scope so the first worker
+            // Err propagates. A panic inside a worker is surfaced via
+            // `join().expect(..)` (no reasonable recovery from a panic in the
+            // differential harness).
+            for h in handles {
+                h.join()
+                    .expect("worker thread panicked in count_input_with_workers")?;
+            }
+            Ok(())
+        })?;
     }
 
     Ok(counter.get_all_counts().into_iter().collect::<BTreeMap<_, _>>())
