@@ -56,6 +56,13 @@ flate2 = "1.0"
 # declaring it here shares the lockfile entry (no version bloat).
 log = "0.4"
 
+# bzip2 / xz decoders for `.bz2` / `.xz` FASTA/FASTQ inputs in the PyO3
+# bindings (WR-05: CLI-vs-Python parity — the CLI uses
+# DefaultCompressedFileReader which handles all three formats; the PyO3
+# path previously detected only `.gz`).
+bzip2 = "0.4"
+xz2 = "0.1"
+
 [build-dependencies]
 pyo3-build-config = "0.22"
 

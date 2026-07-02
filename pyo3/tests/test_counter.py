@@ -481,6 +481,40 @@ ACGTACGTACGTACGTACGTACGTACGTACGT
         assert stats.total_kmers > 0
         assert stats.unique_kmers > 0
 
+    def test_add_from_fasta_bz2_compressed(self, tmp_path):
+        """WR-05 regression: bzip2-compressed FASTA must be read correctly."""
+        bz2 = pytest.importorskip("bz2")
+        fasta_file = tmp_path / "test.fasta.bz2"
+        fasta_content = b""">seq1
+ACGTACGTACGTACGTACGTACGTACGTACGT
+"""
+        with bz2.open(fasta_file, "wb") as f:
+            f.write(fasta_content)
+
+        counter = pyrustkmer.PyCounter(21)
+        counter.add_from_fasta(str(fasta_file))
+
+        stats = counter.get_stats()
+        assert stats.total_kmers > 0
+        assert stats.unique_kmers > 0
+
+    def test_add_from_fasta_xz_compressed(self, tmp_path):
+        """WR-05 regression: xz-compressed FASTA must be read correctly."""
+        lzma = pytest.importorskip("lzma")
+        fasta_file = tmp_path / "test.fasta.xz"
+        fasta_content = b""">seq1
+ACGTACGTACGTACGTACGTACGTACGTACGT
+"""
+        with lzma.open(fasta_file, "wb") as f:
+            f.write(fasta_content)
+
+        counter = pyrustkmer.PyCounter(21)
+        counter.add_from_fasta(str(fasta_file))
+
+        stats = counter.get_stats()
+        assert stats.total_kmers > 0
+        assert stats.unique_kmers > 0
+
     def test_add_from_fasta_all_a_sequence(self, tmp_path):
         """Test reading FASTA with all A's."""
         fasta_file = tmp_path / "test_alla.fasta"
@@ -574,6 +608,42 @@ ACGTACGTACGTACGTACGTACGTACGTACGT
 IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
 """
         with gzip.open(fastq_file, "wt") as f:
+            f.write(fastq_content)
+
+        counter = pyrustkmer.PyCounter(21)
+        counter.add_from_fastq(str(fastq_file))
+
+        stats = counter.get_stats()
+        assert stats.total_kmers > 0
+
+    def test_add_from_fastq_bz2_compressed(self, tmp_path):
+        """WR-05 regression: bzip2-compressed FASTQ must be read correctly."""
+        bz2 = pytest.importorskip("bz2")
+        fastq_file = tmp_path / "test.fastq.bz2"
+        fastq_content = b"""@read1
+ACGTACGTACGTACGTACGTACGTACGTACGT
++
+IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
+"""
+        with bz2.open(fastq_file, "wb") as f:
+            f.write(fastq_content)
+
+        counter = pyrustkmer.PyCounter(21)
+        counter.add_from_fastq(str(fastq_file))
+
+        stats = counter.get_stats()
+        assert stats.total_kmers > 0
+
+    def test_add_from_fastq_xz_compressed(self, tmp_path):
+        """WR-05 regression: xz-compressed FASTQ must be read correctly."""
+        lzma = pytest.importorskip("lzma")
+        fastq_file = tmp_path / "test.fastq.xz"
+        fastq_content = b"""@read1
+ACGTACGTACGTACGTACGTACGTACGTACGT
++
+IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII
+"""
+        with lzma.open(fastq_file, "wb") as f:
             f.write(fastq_content)
 
         counter = pyrustkmer.PyCounter(21)

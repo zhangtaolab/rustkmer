@@ -6,8 +6,6 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rustkmer::hash::KmerCounter as RustPyCounter;
-use rustkmer::io::fasta::FastaProcessor;
-use rustkmer::io::fastq::FastqProcessor;
 use rustkmer::kmer::canonical::canonical_kmer_u128;
 use rustkmer::kmer::encoding::encode_kmer_bytes_u128;
 use std::path::Path;
@@ -689,167 +687,123 @@ fn process_sequence_on_counter(
     Ok(())
 }
 
-/// Count all k-mers in a FASTA file (gzip or plain) against `counter`.
+/// Count all k-mers in a FASTA file (gzip/bzip2/xz/plain) against `counter`.
 ///
 /// Designed to run inside a `py.allow_threads(..)` closure: takes only `Send`
 /// types (an `&Arc<RustPyCounter>` and a `&str` path). Reads the file,
-/// decompresses gzip if the path ends in `.gz`, and accumulates each record's
-/// sequence into the shared counter. Errors are returned as
-/// `rustkmer::ProcessingError` so the caller (which holds the GIL again after
-/// `allow_threads` returns) can map them to `PyErr`.
+/// decompresses it transparently if the extension is `.gz` / `.bz2` / `.xz`
+/// (WR-05: previously only `.gz` was detected; `.bz2` / `.xz` were silently
+/// mis-parsed), and accumulates each record's sequence into the shared
+/// counter. Errors are returned as `rustkmer::ProcessingError` so the caller
+/// (which holds the GIL again after `allow_threads` returns) can map them to
+/// `PyErr`.
 fn process_fasta_file_on_counter(
     counter: &Arc<RustPyCounter>,
     path: &str,
 ) -> Result<(), rustkmer::ProcessingError> {
+    use rustkmer::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
+    use std::io::{BufRead, BufReader};
+
     let path = Path::new(path);
 
-    // Check file extension for compression
-    let is_compressed = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext == "gz")
-        .unwrap_or(false);
-
-    let k = counter.kmer_length();
-
-    if is_compressed {
-        // Handle compressed FASTA using flate2
-        use flate2::read::GzDecoder;
-        use std::io::{BufRead, BufReader};
-
-        let file = std::fs::File::open(path).map_err(|e| {
+    // WR-05: route through the shared compression-aware opener (the same one
+    // the CLI path uses) so `.bz2` / `.xz` inputs are decompressed correctly.
+    // Previously this branch detected only `.gz` inline and silently fell
+    // through to raw-byte parsing for the other two formats.
+    let (file, _compression) =
+        DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
             rustkmer::ProcessingError::with_context("Failed to open FASTA file", Box::new(e))
         })?;
+    let reader = BufReader::new(file);
 
-        let decoder = GzDecoder::new(file);
-        let reader = BufReader::new(decoder);
+    let k = counter.kmer_length();
+    let mut current_seq = Vec::new();
 
-        let mut current_seq = Vec::new();
+    for line_result in reader.lines() {
+        let line = line_result.map_err(|e| {
+            rustkmer::ProcessingError::with_context("Failed to read FASTA line", Box::new(e))
+        })?;
 
-        for line_result in reader.lines() {
-            let line = line_result.map_err(|e| {
-                rustkmer::ProcessingError::with_context("Failed to read FASTA line", Box::new(e))
-            })?;
+        let trimmed = line.trim();
 
-            let trimmed = line.trim();
-
-            if trimmed.starts_with('>') {
-                // Process previous sequence
-                if !current_seq.is_empty() && current_seq.len() >= k {
-                    process_sequence_on_counter(counter, &current_seq)?;
-                }
-                current_seq.clear();
-            } else {
-                // Collect sequence bases
-                current_seq.extend(
-                    trimmed
-                        .bytes()
-                        .filter(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T')),
-                );
+        if trimmed.starts_with('>') {
+            // Process previous sequence
+            if !current_seq.is_empty() && current_seq.len() >= k {
+                process_sequence_on_counter(counter, &current_seq)?;
             }
+            current_seq.clear();
+        } else {
+            // Collect sequence bases
+            current_seq.extend(
+                trimmed
+                    .bytes()
+                    .filter(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T')),
+            );
         }
+    }
 
-        // Process last sequence
-        if !current_seq.is_empty() && current_seq.len() >= k {
-            process_sequence_on_counter(counter, &current_seq)?;
-        }
-    } else {
-        // Use FastaProcessor for uncompressed files
-        let processor = FastaProcessor::new(path);
-
-        processor
-            .process_file(|record| {
-                let seq_bytes = record.seq();
-                if seq_bytes.len() >= k {
-                    process_sequence_on_counter(counter, seq_bytes)
-                } else {
-                    Ok(())
-                }
-            })
-            .map_err(|e| {
-                rustkmer::ProcessingError::with_context("Failed to process FASTA", Box::new(e))
-            })?;
+    // Process last sequence
+    if !current_seq.is_empty() && current_seq.len() >= k {
+        process_sequence_on_counter(counter, &current_seq)?;
     }
 
     Ok(())
 }
 
-/// Count all k-mers in a FASTQ file (gzip or plain) against `counter`.
+/// Count all k-mers in a FASTQ file (gzip/bzip2/xz/plain) against `counter`.
 ///
 /// Designed to run inside a `py.allow_threads(..)` closure: takes only `Send`
 /// types (an `&Arc<RustPyCounter>` and a `&str` path). Reads the file,
-/// decompresses gzip if the path ends in `.gz`, and accumulates each record's
-/// sequence into the shared counter. Errors are returned as
-/// `rustkmer::ProcessingError` so the caller (which holds the GIL again after
-/// `allow_threads` returns) can map them to `PyErr`.
+/// decompresses it transparently if the extension is `.gz` / `.bz2` / `.xz`
+/// (WR-05: previously only `.gz` was detected; `.bz2` / `.xz` were silently
+/// mis-parsed), and accumulates each record's sequence into the shared
+/// counter. Errors are returned as `rustkmer::ProcessingError` so the caller
+/// (which holds the GIL again after `allow_threads` returns) can map them to
+/// `PyErr`.
 fn process_fastq_file_on_counter(
     counter: &Arc<RustPyCounter>,
     path: &str,
 ) -> Result<(), rustkmer::ProcessingError> {
+    use rustkmer::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
+    use std::io::{BufRead, BufReader};
+
     let path = Path::new(path);
 
-    // Check file extension for compression
-    let is_compressed = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext == "gz")
-        .unwrap_or(false);
-
-    let k = counter.kmer_length();
-
-    if is_compressed {
-        // Handle compressed FASTQ
-        use flate2::read::GzDecoder;
-        use std::io::{BufRead, BufReader};
-
-        let file = std::fs::File::open(path).map_err(|e| {
+    // WR-05: route through the shared compression-aware opener (the same one
+    // the CLI path uses) so `.bz2` / `.xz` inputs are decompressed correctly.
+    // Previously this branch detected only `.gz` inline and silently fell
+    // through to raw-byte parsing for the other two formats.
+    let (file, _compression) =
+        DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
             rustkmer::ProcessingError::with_context("Failed to open FASTQ file", Box::new(e))
         })?;
+    let reader = BufReader::new(file);
 
-        let decoder = GzDecoder::new(file);
-        let reader = BufReader::new(decoder);
+    let k = counter.kmer_length();
+    let mut line_num = 0;
 
-        let mut line_num = 0;
+    for line_result in reader.lines() {
+        let line = line_result.map_err(|e| {
+            rustkmer::ProcessingError::with_context("Failed to read FASTQ line", Box::new(e))
+        })?;
 
-        for line_result in reader.lines() {
-            let line = line_result.map_err(|e| {
-                rustkmer::ProcessingError::with_context("Failed to read FASTQ line", Box::new(e))
-            })?;
+        line_num += 1;
+        let line_mod = line_num % 4;
 
-            line_num += 1;
-            let line_mod = line_num % 4;
+        // FASTQ format: line 1 = header (@...), line 2 = sequence, line 3 = +, line 4 = quality
+        if line_mod == 2 {
+            let trimmed = line.trim();
 
-            // FASTQ format: line 1 = header (@...), line 2 = sequence, line 3 = +, line 4 = quality
-            if line_mod == 2 {
-                let trimmed = line.trim();
+            // Process sequence
+            let seq_bytes: Vec<u8> = trimmed
+                .bytes()
+                .filter(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T'))
+                .collect();
 
-                // Process sequence
-                let seq_bytes: Vec<u8> = trimmed
-                    .bytes()
-                    .filter(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T'))
-                    .collect();
-
-                if seq_bytes.len() >= k {
-                    process_sequence_on_counter(counter, &seq_bytes)?;
-                }
+            if seq_bytes.len() >= k {
+                process_sequence_on_counter(counter, &seq_bytes)?;
             }
         }
-    } else {
-        // Use FastqProcessor for uncompressed files
-        let processor = FastqProcessor::new(path);
-
-        processor
-            .process_file(|record| {
-                let seq_bytes = record.seq();
-                if seq_bytes.len() >= k {
-                    process_sequence_on_counter(counter, seq_bytes)
-                } else {
-                    Ok(())
-                }
-            })
-            .map_err(|e| {
-                rustkmer::ProcessingError::with_context("Failed to process FASTQ", Box::new(e))
-            })?;
     }
 
     Ok(())
