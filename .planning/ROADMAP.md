@@ -93,15 +93,18 @@ Plans:
   5. Dense storage maintains correctness — canonicalization and counts match the `u128` path exactly
   6. `pyrustkmer`'s `PyDatabase` merge uses the same bounded path as the CLI
 
-**Plans**: TBD
+**Plans**: 5 plans
 
-Plans:
+**Wave 1** *(parallel, no dependencies)*
 
-- [ ] 03-01: Default merge to streaming path with memory-budget admission control
-- [ ] 03-02: Implement RAII temp file guards for streaming merge cleanup
-- [ ] 03-03: Add conditional `u64` packing for k ≤ 32 (PackedKmer enum)
-- [ ] 03-04: Verify dense storage correctness and `.rkdb` v2 backward/forward compatibility
-- [ ] 03-05: Ensure `PyDatabase` merge uses bounded path via shared core
+- [ ] 03-01-PLAN.md — Header-only estimator + hard-route + D-02 reject branch (D-01/D-02; MERGE-01, MERGE-02)
+- [ ] 03-02-PLAN.md — RAII temp guards + process-unique subdir + startup sweep + tempfile dev→dep (D-06; MERGE-03)
+- [ ] 03-03-PLAN.md — KmerKey enum + DashMap width-swap for k ≤ 32 (D-03/D-04/D-05; DENSE-01, DENSE-02, DENSE-03)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 03-04-PLAN.md — Wave-2 gate: dense+merge end-to-end integration + full suite + clippy on both crates (depends on 03-01, 03-03; MERGE-01, MERGE-02, DENSE-02, DENSE-03)
+- [ ] 03-05-PLAN.md — `PyDatabase.merge` kwargs (`max_memory`/`merge_mode`) routing through bounded core (depends on 03-01; MERGE-04)
 
 ### Phase 4: Benchmark & Validation
 
