@@ -298,6 +298,23 @@ impl KmerCounter {
 
     /// Merge counts from another KmerCounter
     ///
+    /// On success, `total_kmers` / `unique_kmers` are updated to reflect the
+    /// merged contents.
+    ///
+    /// **Overflow poisoning (WR-02):** if any per-k-mer merge would overflow
+    /// (`existing + count > u32::MAX`), `merge` returns
+    /// [`ProcessingError`]("Count overflow during merge"). Rolling back the
+    /// partial DashMap mutation would require cloning the whole table before
+    /// the loop (prohibitively expensive for genome-scale counters), so the
+    /// counter is left **poisoned**: all k-mers processed before the
+    /// overflowing one have already been merged into `self.table`, and the
+    /// `total_kmers` / `unique_kmers` atomics are updated incrementally to
+    /// stay consistent with the (partial) table contents. Callers that
+    /// recover from this `Err` and continue to use `self` will see correct
+    /// statistics for the partial merge, but should treat the counter as
+    /// tainted (the missing post-overflow k-mers are lost). The recommended
+    /// recovery is to discard the poisoned counter.
+    ///
     /// # Arguments
     /// * `other` - Another KmerCounter to merge from
     ///
@@ -318,7 +335,15 @@ impl KmerCounter {
         }
 
         let other_counts = other.get_all_counts();
+
+        // WR-02: update total_kmers / unique_kmers incrementally inside the
+        // loop so the atomics stay consistent with the table contents at every
+        // per-k-mer boundary. Previously both atomics were updated only after
+        // the loop completed successfully, so an overflow mid-loop returned
+        // `Err` but left `self.table` mutated and the atomics reporting the
+        // pre-merge values — an internally inconsistent state.
         let mut merged_unique: u64 = 0;
+        let mut merged_total: u64 = 0;
 
         for (kmer, count) in other_counts {
             // Mirror `increment`'s flag-then-check (Pitfall 6): `and_modify`
@@ -326,6 +351,7 @@ impl KmerCounter {
             // lock is held for the entry's whole lifetime, so the
             // overflow-check + add is atomic per-key (no TOCTOU window).
             let mut overflow = false;
+            let mut delta_total: u64 = 0;
             self.table
                 .entry(kmer)
                 .and_modify(|existing| {
@@ -333,21 +359,30 @@ impl KmerCounter {
                         overflow = true;
                     } else {
                         *existing += count;
+                        delta_total = count as u64;
                     }
                 })
                 .or_insert_with(|| {
                     merged_unique += 1;
+                    delta_total = count as u64;
                     count
                 });
 
             if overflow {
+                // Publish the partial atomics before returning so the
+                // poisoned counter's stats match its (partial) contents.
+                self.total_kmers
+                    .fetch_add(merged_total, std::sync::atomic::Ordering::Relaxed);
+                self.unique_kmers
+                    .fetch_add(merged_unique, std::sync::atomic::Ordering::Relaxed);
                 return Err(ProcessingError::new("Count overflow during merge"));
             }
+            merged_total += delta_total;
         }
 
-        // Update statistics
+        // Publish the accumulated totals on success.
         self.total_kmers
-            .fetch_add(other.total_kmers(), std::sync::atomic::Ordering::Relaxed);
+            .fetch_add(merged_total, std::sync::atomic::Ordering::Relaxed);
         self.unique_kmers
             .fetch_add(merged_unique, std::sync::atomic::Ordering::Relaxed);
 
@@ -505,6 +540,80 @@ mod tests {
         let result = counter1.merge(&counter2);
         assert!(result.is_err());
     }
+
+    /// WR-02 regression: when `merge` hits a per-k-mer overflow mid-loop,
+    /// the counter's `total_kmers` / `unique_kmers` atomics must reflect the
+    /// partial mutation that already landed in `self.table` (poisoned-but-
+    /// internally-consistent). Before WR-02 the atomics were updated only
+    /// after the loop completed successfully, so an overflow return left the
+    /// table mutated but the stats reporting the pre-merge values.
+    ///
+    /// Setup: `counter1` holds `0x1 -> u32::MAX`. `counter2` holds
+    /// `0x1 -> 1` (will overflow when added) and `0x2 -> 1` (will succeed
+    /// if processed before the overflow). Because `get_all_counts` iteration
+    /// order is unspecified, we assert the *weaker* invariant: after the
+    /// `Err` return, the per-atomic value must equal the sum of `count`s
+    /// that were actually merged into `self.table` — i.e. it must be
+    /// consistent with `self.get_all_counts().map(|(_, c)| c as u64).sum()`.
+    #[test]
+    fn test_merge_overflow_poisons_consistently() {
+        let counter1 = KmerCounter::new(31, false, 1000, 1).unwrap();
+        let counter2 = KmerCounter::new(31, false, 1000, 1).unwrap();
+
+        // Seed counter1's kmer at the ceiling.
+        counter1.table.insert(0x1, u32::MAX);
+        // Manually keep counter1's atomics in sync with the seed for a fair
+        // starting point (the table field is private but in-scope from this
+        // child module).
+        counter1
+            .total_kmers
+            .store(u32::MAX as u64, std::sync::atomic::Ordering::Relaxed);
+        counter1
+            .unique_kmers
+            .store(1, std::sync::atomic::Ordering::Relaxed);
+
+        // counter2 has a kmer that will overflow (0x1 += 1) and a fresh one
+        // that will succeed (0x2 -> 1).
+        counter2.increment(0x1).unwrap();
+        counter2.increment(0x2).unwrap();
+
+        let result = counter1.merge(&counter2);
+        assert!(result.is_err(), "merge that overflows must return Err");
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("Count overflow during merge"),
+            "expected verbatim overflow message; got: {}",
+            msg
+        );
+
+        // WR-02 invariant: the atomics must agree with the actual table
+        // contents. Whatever the iteration order, the sum of counts in
+        // `self.table` and `self.total_kmers()` must match.
+        let table_total: u64 = counter1
+            .get_all_counts()
+            .iter()
+            .map(|(_, c)| *c as u64)
+            .sum();
+        assert_eq!(
+            counter1.total_kmers(),
+            table_total,
+            "after poisoned merge, total_kmers must equal the sum of \
+             counts in self.table (WR-02): got total={} table_sum={}",
+            counter1.total_kmers(),
+            table_total
+        );
+        let table_unique = counter1.get_all_counts().len() as u64;
+        assert_eq!(
+            counter1.unique_kmers(),
+            table_unique,
+            "after poisoned merge, unique_kmers must equal the number of \
+             entries in self.table (WR-02)"
+        );
+
+        // The overflow target must NOT have advanced past the ceiling.
+        assert_eq!(counter1.get_count(0x1), Some(u32::MAX));
+    }
+
 
     #[test]
     fn test_reset() {
