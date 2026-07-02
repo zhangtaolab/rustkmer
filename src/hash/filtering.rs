@@ -149,7 +149,15 @@ impl CountFilterConfig {
 /// Result of applying filtering to k-mer data
 #[derive(Debug, Clone)]
 pub struct FilteringResult {
-    /// Total k-mers before filtering
+    /// Total k-mers before filtering.
+    ///
+    /// **Denominator semantics (WR-01):** when populated from
+    /// `KmerCounter::get_filtering_stats`, this is the post-WR-03
+    /// `total_kmers` value — i.e. the count of k-mers **successfully**
+    /// incremented, excluding per-k-mer overflow attempts. On a saturating
+    /// input this is smaller than the raw input-window count. Callers that
+    /// compare this value against an external "input windows" total on
+    /// saturating inputs will see a discrepancy; this is intentional.
     pub total_before: u64,
 
     /// Unique k-mers before filtering
@@ -169,7 +177,10 @@ impl FilteringResult {
     /// Create a new filtering result
     ///
     /// # Arguments
-    /// * `total_before` - Total k-mers before filtering
+    /// * `total_before` - Total k-mers before filtering. When sourced from
+    ///   `KmerCounter::get_filtering_stats`, this reflects the post-WR-03
+    ///   `total_kmers` semantics (successful increments only; see the
+    ///   `total_before` field doc and WR-01).
     /// * `unique_before` - Unique k-mers before filtering
     /// * `kept_after` - K-mers kept after filtering
     /// * `filter` - Filter that was applied

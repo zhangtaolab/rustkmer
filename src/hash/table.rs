@@ -208,6 +208,19 @@ impl KmerCounter {
     ///
     /// # Returns
     /// FilteringResult with statistics
+    ///
+    /// # Denominator note (WR-01)
+    /// `total_before` reflects the post-WR-03 `total_kmers` semantics: the
+    /// number of k-mers **successfully** counted, excluding per-k-mer overflow
+    /// attempts that returned `Err` from `increment`. On a saturating input
+    /// (one or more k-mers hit `u32::MAX`), `total_before` is therefore
+    /// smaller than the raw number of input k-mer windows. Any retention
+    /// percentage derived from this value (`FilteringResult::kept_percentage`)
+    /// is computed against the "successful k-mers" denominator, not the raw
+    /// input-window count. This is arguably the more useful numerator for
+    /// retention reporting, but it differs from the pre-WR-03 ("attempts")
+    /// denominator; the shift is intentional and documented here so callers
+    /// comparing pre/post stats on saturating inputs are not surprised.
     pub fn get_filtering_stats(&self, filter: &Option<CountFilter>) -> FilteringResult {
         let all_kmers = self.get_all_counts();
         let total_before = self.total_kmers.load(std::sync::atomic::Ordering::Relaxed);
@@ -756,6 +769,72 @@ mod tests {
             counter.total_kmers(),
             0,
             "a failed (overflow) increment must not inflate total_kmers (WR-03)"
+        );
+    }
+
+    /// WR-01 regression: after the WR-03 fix moved `total_kmers.fetch_add`
+    /// below the overflow check, the `total_before` denominator that
+    /// `get_filtering_stats` feeds into `FilteringResult::new` / `kept_percentage`
+    /// reflects "successful k-mers" rather than "attempted k-mers". This test
+    /// pins the post-overflow filtering-stats behavior so the semantic shift
+    /// is locked in and documented.
+    ///
+    /// Setup: seed one k-mer at the `u32::MAX` ceiling, then attempt one more
+    /// increment on it (which overflows and returns `Err`, so `total_kmers`
+    /// does NOT advance). Also successfully increment a second, distinct
+    /// k-mer. The post-overflow `total_kmers` is therefore 1 (only the
+    /// successful increment on the second k-mer), NOT 2 (the two attempts).
+    /// A `CountFilter` of `min_count = 1` keeps both unique k-mers, so
+    /// `kept_after == 2` and `unique_before == 2`, but `total_before == 1`.
+    #[test]
+    fn test_filtering_stats_after_overflow_uses_success_denominator() {
+        use crate::hash::CountFilter;
+
+        let counter = KmerCounter::new(31, false, 1000, 1).unwrap();
+
+        // Seed 0x1 at the ceiling so the next increment on it overflows.
+        counter.table.insert(0x1, u32::MAX);
+        counter
+            .total_kmers
+            .store(u32::MAX as u64, std::sync::atomic::Ordering::Relaxed);
+        counter
+            .unique_kmers
+            .store(1, std::sync::atomic::Ordering::Relaxed);
+
+        // Overflow attempt on 0x1 (returns Err, must NOT advance total_kmers).
+        let overflow_result = counter.increment(0x1);
+        assert!(overflow_result.is_err());
+
+        // Successful increment on a distinct k-mer 0x2 (advances total_kmers
+        // by 1 and unique_kmers by 1).
+        counter.increment(0x2).unwrap();
+
+        // After overflow: total_kmers = u32::MAX (seed) + 1 (the 0x2 success),
+        // NOT + 2 (the 0x2 success + the failed 0x1 attempt).
+        assert_eq!(
+            counter.total_kmers(),
+            u32::MAX as u64 + 1,
+            "total_kmers must reflect successful increments only (WR-03)"
+        );
+
+        // The filtering-stats denominator is `total_kmers` (WR-01): on a
+        // saturating input it is the "successful k-mers" count, not the raw
+        // input-window count. Pin the value so a future change to the
+        // denominator semantics triggers this test.
+        let filter = CountFilter::new(Some(1), None);
+        let stats = counter.get_filtering_stats(&Some(filter));
+
+        assert_eq!(
+            stats.unique_before, 2u64,
+            "both seeded k-mers (0x1 at ceiling, 0x2 at 1) are present"
+        );
+        assert_eq!(
+            stats.kept_after, 2u64,
+            "min_count=1 keeps both k-mers (0x1 has count u32::MAX >= 1)"
+        );
+        assert_eq!(
+            stats.total_before, counter.total_kmers(),
+            "FilteringResult::total_before must equal the post-WR-03 total_kmers (WR-01 denominator)"
         );
     }
 }
