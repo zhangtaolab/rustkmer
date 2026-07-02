@@ -20,7 +20,8 @@ pub struct KmerCounter {
     /// relevant shard lock for its lifetime → atomic per-key (RESEARCH
     /// Pattern 1), preserving the u32::MAX overflow semantics verbatim.
     table: DashMap<u128, u32>,
-    /// Total k-mers processed
+    /// Total k-mers successfully counted (excludes per-k-mer overflow
+    /// attempts that return `Err` from `increment`). See WR-03.
     total_kmers: std::sync::atomic::AtomicU64,
     /// Number of unique k-mers
     unique_kmers: std::sync::atomic::AtomicU64,
@@ -71,9 +72,6 @@ impl KmerCounter {
     /// # Returns
     /// Result indicating success or error
     pub fn increment(&self, kmer_encoded: u128) -> ProcessingResult<()> {
-        self.total_kmers
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
         // CRITICAL (RESEARCH Pattern 1 / Pitfalls 1, 2, 6):
         // The `entry().and_modify(..).or_insert_with(..)` chain holds the
         // shard lock for the entry's whole lifetime, so the overflow check +
@@ -112,6 +110,15 @@ impl KmerCounter {
                 self.max_count
             )));
         }
+
+        // Only count successful increments. The previous code bumped
+        // `total_kmers` BEFORE the entry chain, so a per-k-mer overflow
+        // (returning `Err`) still inflated the total — a numeric-correctness
+        // discrepancy flagged by WR-03. Moving the `fetch_add` below the
+        // overflow check ensures `total_kmers()` reflects the number of
+        // k-mers successfully counted.
+        self.total_kmers
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
 
@@ -613,6 +620,17 @@ mod tests {
             counter.get_count(kmer),
             Some(u32::MAX),
             "saturated k-mer count must remain at u32::MAX, not wrap"
+        );
+
+        // WR-03 regression: a per-k-mer overflow attempt must NOT inflate
+        // `total_kmers`. Before WR-03, `increment` bumped `total_kmers`
+        // unconditionally at the top of the function, so this overflow attempt
+        // would have reported `total_kmers == 1` despite the increment
+        // failing and the per-k-mer count not advancing.
+        assert_eq!(
+            counter.total_kmers(),
+            0,
+            "a failed (overflow) increment must not inflate total_kmers (WR-03)"
         );
     }
 }
