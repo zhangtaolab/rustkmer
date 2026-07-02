@@ -317,6 +317,20 @@ impl KmerCounter {
     /// tainted (the missing post-overflow k-mers are lost). The recommended
     /// recovery is to discard the poisoned counter.
     ///
+    /// **Thread safety (WR-04):** the DashMap table is safe under concurrent
+    /// `increment`, but `merge` MUST NOT run concurrently with `increment` or
+    /// another `merge` on the same `KmerCounter`. `merge` takes `&self` so
+    /// the compiler permits it, but the per-loop-iteration atomic-publish of
+    /// `total_kmers` / `unique_kmers` (the WR-02 fix) is only guaranteed to
+    /// stay consistent with the table contents when observed single-threaded:
+    /// a concurrent `increment` that completes during `merge`'s loop can land
+    /// its own `fetch_add` between `merge`'s local accumulator and the final
+    /// `fetch_add`, transiently under-reporting `total_kmers()` relative to
+    /// the table. The values eventually converge (addition commutes), but the
+    /// transient window is observable. The recommended pattern is to merge
+    /// into a counter that is not currently being incremented, or to hold an
+    /// external mutex around `merge`.
+    ///
     /// # Arguments
     /// * `other` - Another KmerCounter to merge from
     ///
