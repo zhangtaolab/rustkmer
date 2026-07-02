@@ -51,6 +51,11 @@ rayon = "1.8"
 # Compression support
 flate2 = "1.0"
 
+# Logging — surfaces the discarded `build_global` Err under RUST_LOG=warn
+# (IN-04). Already a transitive dependency via the rustkmer path dep, so
+# declaring it here shares the lockfile entry (no version bloat).
+log = "0.4"
+
 [build-dependencies]
 pyo3-build-config = "0.22"
 

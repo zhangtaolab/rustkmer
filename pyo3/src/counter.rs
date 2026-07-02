@@ -179,9 +179,24 @@ impl PyCounter {
         // constructs a second `PyCounter`, or a prior CLI command in the same
         // process already set it. We deliberately discard the `Result`
         // (T-02-12, Pitfall 3). This mirrors 02-01's `execute_count` idiom.
-        let _ = rayon::ThreadPoolBuilder::new()
+        //
+        // IN-04: on the *first* construction the discard can silently swallow
+        // a real pool-construction failure (e.g. restrictive cgroups/ulimits
+        // rejecting the requested thread count). Surface it under
+        // `RUST_LOG=warn` so the silent-success contract (no hard error) is
+        // preserved while still giving users a diagnostic. The second-call
+        // case is also logged — harmless, and indistinguishable from a
+        // genuine failure without inspecting the message.
+        if let Err(e) = rayon::ThreadPoolBuilder::new()
             .num_threads(resolved_threads)
-            .build_global();
+            .build_global()
+        {
+            log::warn!(
+                "could not configure global rayon pool (threads={}): {}",
+                resolved_threads,
+                e
+            );
+        }
 
         let counter = RustPyCounter::new(kmer_length_usize, canonical, initial_capacity, resolved_threads)
             .map_err(|e| {
