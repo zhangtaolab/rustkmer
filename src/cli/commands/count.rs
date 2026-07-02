@@ -440,19 +440,31 @@ fn process_fasta_file(
     show_warnings: bool,
 ) -> ProcessingResult<()> {
     use crate::error::ProcessingError;
-    use std::io;
+    use crate::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
 
-    // Mirror FastaProcessor::process_file's reader setup exactly so behavior
-    // (header/record error messages, BufReader wrapping) is byte-identical.
-    // FastaProcessor currently has no compression support (uncompressed
-    // FASTA only); keep parity by reading the file directly.
-    let file = io::BufReader::new(std::fs::File::open(processor.file_path()).map_err(|e| {
-        ProcessingError::with_context(
-            format!("Failed to open FASTA file: {}", processor.file_path()),
-            e,
-        )
-    })?);
-    let reader = bio::io::fasta::Reader::new(file);
+    // WR-01: route the FASTA path through the same compression-aware opener
+    // the FASTQ sibling path uses (`DefaultCompressedFileReader::open_compressed`
+    // transparently handles gzip/bzip2/xz, and for an uncompressed file just
+    // returns a plain BufReader). Previously this branch opened the file via
+    // plain `File::open` + `BufReader`, so a `.fa.gz` / `.fasta.gz` /
+    // `.fna.gz` / `.ffn.gz` input would be parsed as raw deflate bytes by
+    // `bio`'s reader — silently producing garbage sequences and 0 counted
+    // k-mers, or erroring out on the first "record". The CLI file-type
+    // router already dispatches those extensions to this branch, so the
+    // silent-wrong-results bug was reachable from a normal `rustkmer count
+    // input.fa.gz` invocation. (`CompressedFileReader` lives in `src/io/
+    // fastq.rs` but the implementation is format-agnostic; consider
+    // relocating/renaming during a future hardening pass.)
+    let (reader, _compression) =
+        DefaultCompressedFileReader::open_compressed(processor.file_path().as_ref()).map_err(
+            |e| {
+                ProcessingError::with_context(
+                    format!("Failed to open FASTA file: {}", processor.file_path()),
+                    e,
+                )
+            },
+        )?;
+    let reader = bio::io::fasta::Reader::new(reader);
 
     let mut chunk: Vec<bio::io::fasta::Record> = Vec::with_capacity(CHUNK_SIZE);
 

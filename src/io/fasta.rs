@@ -122,10 +122,20 @@ pub fn validate_fasta_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
         )));
     }
 
-    // Try to read the first few records to validate format
-    let file = io::BufReader::new(std::fs::File::open(path).map_err(|e| {
-        ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
-    })?);
+    // WR-01: route through the compression-aware opener so that `.fa.gz` /
+    // `.fasta.gz` / `.fna.gz` / `.ffn.gz` inputs are decompressed before
+    // being handed to bio's FASTA reader. Previously this opened the file
+    // via plain `File::open`, which fed raw deflate bytes to bio and either
+    // errored on a UTF-8 decode ("stream did not contain valid UTF-8") or
+    // silently produced garbage records. The FASTQ sibling
+    // `validate_fastq_file` already used `open_compressed`; this brings the
+    // FASTA path to parity. (`CompressedFileReader` lives in `src/io/
+    // fastq.rs` but the implementation is format-agnostic.)
+    use crate::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
+    let (file, _compression) =
+        DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
+            ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
+        })?;
 
     let reader = Reader::new(file);
     let mut record_count = 0;
@@ -263,6 +273,37 @@ mod tests {
 
         let result = validate_fasta_file(temp_file.path());
         assert!(result.is_err());
+    }
+
+    /// WR-01 regression: `validate_fasta_file` must transparently decompress
+    /// gzipped inputs (`.fa.gz` etc.) before handing the bytes to bio's
+    /// FASTA reader. Previously the validator opened the file via plain
+    /// `File::open`, so a gzipped FASTA was parsed as raw deflate bytes and
+    /// either errored on UTF-8 decode or accepted garbage records.
+    #[test]
+    fn test_validate_gzipped_fasta_file() {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::fs::File;
+
+        // Write a gzipped FASTA to a temp file with a `.fa.gz` suffix so the
+        // path matches what the CLI file-type router dispatches.
+        let temp_dir = tempfile::tempdir().unwrap();
+        let gz_path = temp_dir.path().join("input.fa.gz");
+        let encoder = GzEncoder::new(File::create(&gz_path).unwrap(), Compression::default());
+        let mut writer = io::BufWriter::new(encoder);
+        writer
+            .write_all(b">seq1\nATGCATGC\n>seq2\nGCTAGCTA\n")
+            .unwrap();
+        writer.flush().unwrap();
+        drop(writer);
+
+        // The compressed validator must accept the file exactly as the
+        // uncompressed validator accepts the plain version.
+        assert!(
+            validate_fasta_file(&gz_path).is_ok(),
+            "gzipped FASTA must validate after WR-01 fix"
+        );
     }
 
     #[test]
