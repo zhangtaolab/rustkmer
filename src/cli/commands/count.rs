@@ -366,30 +366,24 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
 /// DashMap gives interior mutability so `increment` takes `&self` — no
 /// `Mutex` needed, and the `entry().and_modify().or_insert_with()` chain is
 /// atomic per-key (RESEARCH Pattern 1, PCOUNT-04 invariant).
+///
+/// Returns the number of k-mer windows skipped due to invalid characters
+/// (N, etc.) so the caller can aggregate them and emit ONE warning per chunk
+/// from the producer thread (WR-02: the previous per-record `eprintln!` ran
+/// inside the rayon worker, and concurrent workers calling `eprintln!` could
+/// interleave on stderr; moving emission to the single-threaded producer
+/// removes the cross-worker stderr race entirely).
 fn process_one_record(
     seq: &[u8],
-    record_id: &str,
     counter: &Arc<KmerCounter>,
     k: usize,
     canonical: bool,
-    show_warnings: bool,
-) -> ProcessingResult<()> {
+) -> ProcessingResult<u64> {
     // Skip sequences shorter than k
     if seq.len() < k {
-        return Ok(());
+        return Ok(0);
     }
 
-    // WR-04: aggregate skipped (invalid-base) k-mers per record and emit ONE
-    // `eprintln!` after the record's loop completes. Previously every
-    // invalid window emitted its own `eprintln!` from inside the rayon
-    // worker, and concurrent workers calling `eprintln!` simultaneously can
-    // interleave on stderr (the underlying write is line-atomic on most
-    // platforms, but Rust's `Stderr` line-buffered `write!` sequence is not
-    // guaranteed atomic under heavy contention — a record full of `N`s
-    // could flood stderr from many workers at once). The aggregate form
-    // still runs inside the worker, but it is one syscall per record rather
-    // than one per window, so the interleave window shrinks dramatically
-    // and stderr volume drops proportionally.
     let mut skipped: u64 = 0;
 
     // Extract and count k-mers
@@ -418,16 +412,7 @@ fn process_one_record(
         }
     }
 
-    if show_warnings && skipped > 0 {
-        eprintln!(
-            "Warning: Skipped {} k-mer{} with invalid characters in sequence {}",
-            skipped,
-            if skipped == 1 { "" } else { "s" },
-            record_id
-        );
-    }
-
-    Ok(())
+    Ok(skipped)
 }
 
 /// Process a FASTA file and count k-mers.
@@ -496,40 +481,51 @@ fn process_fasta_file(
         chunk.push(record);
 
         if chunk.len() == CHUNK_SIZE {
-            // Hand the full chunk to rayon workers. `try_for_each` (not
-            // `for_each`) so an overflow Err from `counter.increment`
-            // short-circuits the whole chunk and propagates to the caller.
+            // Hand the full chunk to rayon workers. `try_fold` + `try_reduce`
+            // (not `try_for_each`) so each worker's per-record skip count is
+            // aggregated into a chunk-level total (WR-02: moving the warning
+            // emission out of the worker removes the cross-worker stderr
+            // race entirely; one `eprintln!` fires per chunk from this
+            // single-threaded producer after the `par_iter` completes).
             let chunk_ref = &chunk;
-            chunk_ref
+            let chunk_skips: u64 = chunk_ref
                 .par_iter()
-                .try_for_each(|record| {
-                    process_one_record(
-                        record.seq(),
-                        record.id(),
-                        counter,
-                        k,
-                        canonical,
-                        show_warnings,
-                    )
-                })?;
+                .try_fold(
+                    || 0u64,
+                    |acc, record| {
+                        process_one_record(record.seq(), counter, k, canonical).map(|s| acc + s)
+                    },
+                )
+                .try_reduce(|| 0u64, |a, b| Ok(a + b))?;
+            if show_warnings && chunk_skips > 0 {
+                eprintln!(
+                    "Warning: Skipped {} k-mer{} with invalid characters in chunk",
+                    chunk_skips,
+                    if chunk_skips == 1 { "" } else { "s" },
+                );
+            }
             chunk.clear();
         }
     }
 
     // Drain the remainder (last partial chunk).
     if !chunk.is_empty() {
-        chunk
+        let chunk_skips: u64 = chunk
             .par_iter()
-            .try_for_each(|record| {
-                process_one_record(
-                    record.seq(),
-                    record.id(),
-                    counter,
-                    k,
-                    canonical,
-                    show_warnings,
-                )
-            })?;
+            .try_fold(
+                || 0u64,
+                |acc, record| {
+                    process_one_record(record.seq(), counter, k, canonical).map(|s| acc + s)
+                },
+            )
+            .try_reduce(|| 0u64, |a, b| Ok(a + b))?;
+        if show_warnings && chunk_skips > 0 {
+            eprintln!(
+                "Warning: Skipped {} k-mer{} with invalid characters in chunk",
+                chunk_skips,
+                if chunk_skips == 1 { "" } else { "s" },
+            );
+        }
     }
 
     Ok(())
@@ -591,37 +587,48 @@ fn process_fastq_file(
         chunk.push(record);
 
         if chunk.len() == CHUNK_SIZE {
+            // WR-02: aggregate per-record skips into a chunk-level total and
+            // emit ONE warning from this single-threaded producer after the
+            // `par_iter` completes (see process_fasta_file for full rationale).
             let chunk_ref = &chunk;
-            chunk_ref
+            let chunk_skips: u64 = chunk_ref
                 .par_iter()
-                .try_for_each(|record| {
-                    process_one_record(
-                        record.seq(),
-                        record.id(),
-                        counter,
-                        k,
-                        canonical,
-                        show_warnings,
-                    )
-                })?;
+                .try_fold(
+                    || 0u64,
+                    |acc, record| {
+                        process_one_record(record.seq(), counter, k, canonical).map(|s| acc + s)
+                    },
+                )
+                .try_reduce(|| 0u64, |a, b| Ok(a + b))?;
+            if show_warnings && chunk_skips > 0 {
+                eprintln!(
+                    "Warning: Skipped {} k-mer{} with invalid characters in chunk",
+                    chunk_skips,
+                    if chunk_skips == 1 { "" } else { "s" },
+                );
+            }
             chunk.clear();
         }
     }
 
     // Drain the remainder (last partial chunk).
     if !chunk.is_empty() {
-        chunk
+        let chunk_skips: u64 = chunk
             .par_iter()
-            .try_for_each(|record| {
-                process_one_record(
-                    record.seq(),
-                    record.id(),
-                    counter,
-                    k,
-                    canonical,
-                    show_warnings,
-                )
-            })?;
+            .try_fold(
+                || 0u64,
+                |acc, record| {
+                    process_one_record(record.seq(), counter, k, canonical).map(|s| acc + s)
+                },
+            )
+            .try_reduce(|| 0u64, |a, b| Ok(a + b))?;
+        if show_warnings && chunk_skips > 0 {
+            eprintln!(
+                "Warning: Skipped {} k-mer{} with invalid characters in chunk",
+                chunk_skips,
+                if chunk_skips == 1 { "" } else { "s" },
+            );
+        }
     }
 
     Ok(())
