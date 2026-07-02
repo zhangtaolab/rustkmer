@@ -379,6 +379,19 @@ fn process_one_record(
         return Ok(());
     }
 
+    // WR-04: aggregate skipped (invalid-base) k-mers per record and emit ONE
+    // `eprintln!` after the record's loop completes. Previously every
+    // invalid window emitted its own `eprintln!` from inside the rayon
+    // worker, and concurrent workers calling `eprintln!` simultaneously can
+    // interleave on stderr (the underlying write is line-atomic on most
+    // platforms, but Rust's `Stderr` line-buffered `write!` sequence is not
+    // guaranteed atomic under heavy contention — a record full of `N`s
+    // could flood stderr from many workers at once). The aggregate form
+    // still runs inside the worker, but it is one syscall per record rather
+    // than one per window, so the interleave window shrinks dramatically
+    // and stderr volume drops proportionally.
+    let mut skipped: u64 = 0;
+
     // Extract and count k-mers
     for i in 0..=(seq.len() - k) {
         let kmer_seq = &seq[i..i + k];
@@ -400,14 +413,18 @@ fn process_one_record(
             }
             Err(_) => {
                 // Skip k-mers with invalid characters (N, etc.)
-                if show_warnings {
-                    eprintln!(
-                        "Warning: Skipping k-mer with invalid characters at position {} in sequence {}",
-                        i, record_id
-                    );
-                }
+                skipped += 1;
             }
         }
+    }
+
+    if show_warnings && skipped > 0 {
+        eprintln!(
+            "Warning: Skipped {} k-mer{} with invalid characters in sequence {}",
+            skipped,
+            if skipped == 1 { "" } else { "s" },
+            record_id
+        );
     }
 
     Ok(())
