@@ -1,31 +1,38 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-02T02:37:51.030Z",
+  "timestamp": "2026-07-02T06:28:42.602Z",
   "phase": "02",
   "phase_name": "Parallel Counting",
-  "phase_status": "complete",
+  "phase_status": "complete (+ hardening pass this session)",
   "phase_dir": ".planning/phases/02-parallel-counting",
-  "plan": "all (5/5)",
-  "task": "n/a — phase complete",
+  "plan": "all (5/5) + code-review-fix pass (1 iteration)",
+  "task": "n/a — phase complete, hardening applied",
   "total_tasks": 5,
-  "status": "paused at phase boundary (02 complete → 03 not started)",
+  "status": "paused at phase boundary (02 complete + hardened → 03 not started)",
   "completed_tasks": [
     {"id": "02-01", "name": "Thread-count plumbing (--threads + D-07 precedence + Err-tolerant build_global + merge.rs Pitfall-3 fix)", "status": "done", "commit": "92b1010"},
     {"id": "02-04", "name": "Golden-capture-first baselines (D-10, pre-refactor count JSONs + #[ignore]d stubs)", "status": "done", "commit": "b02df33"},
     {"id": "02-02", "name": "DashMap swap (RwLock<HashMap>→DashMap) + rayon chunked par_iter + D-09 default-sort flip", "status": "done", "commit": "2511298"},
-    {"id": "02-03", "name": "PyCounter threads kwarg + py.detach GIL release (PCOUNT-03)", "status": "done", "commit": "52fcd48"},
-    {"id": "02-05", "name": "PCOUNT-04 differential correctness gate (1-vs-N commutativity + D-10 baseline match + D-09 determinism)", "status": "done", "commit": "d608939"}
+    {"id": "02-03", "name": "PyCounter threads kwarg + py.detach GIL release (PCOUNT-03)", "status": "done", "commit": "52ffd48"},
+    {"id": "02-05", "name": "PCOUNT-04 differential correctness gate (1-vs-N commutativity + D-10 baseline match + D-09 determinism)", "status": "done", "commit": "d608939"},
+    {"id": "review-fix-WR-03", "name": "WR-03: total_kmers no longer inflated on per-k-mer overflow (fetch_add moved after overflow check)", "status": "done", "commit": "7ccfd11", "needs_human_verification": true, "verification_note": "Logic-correctness fix; regression assertion added to test_overflow_preserved. Verify the new 'successful counts only' semantics are intended."},
+    {"id": "review-fix-WR-02", "name": "WR-02: KmerCounter::merge keeps stats consistent on overflow (atomics updated incrementally; poisoned-but-consistent contract documented)", "status": "done", "commit": "bc97c80", "needs_human_verification": true, "verification_note": "Logic-correctness fix; test_merge_overflow_poisons_consistently added. Partial DashMap mutation is NOT rolled back (clone-too-expensive) — caller must discard counter after Err. Confirm contract is acceptable."},
+    {"id": "review-fix-WR-01", "name": "WR-01: compressed FASTA (.fa.gz/.fasta.gz/.fna.gz/.ffn.gz) now decompressed via DefaultCompressedFileReader (process_fasta_file + validate_fasta_file)", "status": "done", "commit": "9357b89", "needs_human_verification": false, "verification_note": "End-to-end verified: identical k-mer counts across .fa/.fa.gz/.fa.bz2/.fa.xz. NOTE: touched src/io/fasta.rs validator too — not in original review File: line, but required for the fix to work (validator would have rejected gzip before processor ran)."},
+    {"id": "review-fix-WR-04", "name": "WR-04: k-mer skip warnings aggregated per-record (one eprintln! per record, not per window) to remove rayon interleave", "status": "done", "commit": "0c4f6c9", "needs_human_verification": false},
+    {"id": "review-fix-report", "name": "02-REVIEW-FIX.md (status: all_fixed, 4/4 fixed, 0 skipped)", "status": "done", "commit": "5a636b8"}
   ],
   "remaining_tasks": [
-    {"id": "phase-3", "name": "Phase 3: Memory Safety — bounded merge routing (MERGE-01..04) + dense u64 storage for k≤32 (DENSE-01..03)", "status": "not_started", "note": "No CONTEXT/SPEC/plans yet — start with /gsd-discuss-phase 3"},
-    {"id": "phase-4", "name": "Phase 4: Benchmark & Validation — reproducible harness + Jellyfish2 comparison on CRR1936095 (BENCH-01..04)", "status": "not_started"}
+    {"id": "phase-3", "name": "Phase 3: Memory Safety — bounded merge routing (MERGE-01..04) + dense u64 storage for k<=32 (DENSE-01..03)", "status": "not_started", "note": "No CONTEXT/SPEC/plans yet — start with /gsd-discuss-phase 3"},
+    {"id": "phase-4", "name": "Phase 4: Benchmark & Validation — reproducible harness + Jellyfish2 comparison on CRR1936095 (BENCH-01..04)", "status": "not_started"},
+    {"id": "info-findings-optional", "name": "5 Info findings (IN-01..IN-05) still open — out of scope for critical_warning fix run", "status": "optional", "note": "Run /gsd-code-review 2 --fix --all to address. IN-05 (proptest in both [dependencies] and [dev-dependencies]) is the most worthwhile; IN-02 (D-09 --sort alias) is intentional."}
   ],
   "blockers": [],
   "async_jobs": [],
   "human_actions_pending": [
-    {"action": "Decide whether to push the 22 Phase-2 commits on local `dev` to origin", "context": "All work is committed locally; origin/dev is behind (worktree base-check flagged HEAD divergence during execute-phase). Pushing is the user's call.", "blocking": false},
-    {"action": "Optionally run /gsd-code-review 2 --fix to clear 4 advisory review warnings", "context": "WR-01 (FASTA .fa.gz opens without gzip decompression — silent 0 k-mers, pre-existing but newly visible) is the most actionable one-line fix. WR-02/03 (overflow-path atomic inconsistency) and WR-04 (eprintln! interleave) are pre-existing parity / cosmetic.", "blocking": false},
-    {"action": "Decide on auto_advance config", "context": "workflow.auto_advance=true is set but the user drove discuss→plan→execute manually at each stage. Keep it for hands-off future phases, or /gsd-config to disable for per-step confirmation.", "blocking": false}
+    {"action": "Verify WR-02 and WR-03 logic-correctness fixes", "context": "These two fixes (merge-overflow stats consistency; total_kmers increment timing) change numeric semantics. Tests + clippy pass, but the fixer's verification tier confirms structure/compile, not intent. WR-03 now means 'successful counts only' (was 'all attempts'); WR-02 documents the counter as poisoned-but-consistent after a merge Err (no rollback). Read 02-REVIEW-FIX.md §WR-02/WR-03 + commits bc97c80/7ccfd11.", "blocking": false},
+    {"action": "Decide whether to push local dev to origin", "context": "Phase-2 (22 commits) + this session's 5 hardening commits are local on dev; origin/dev is behind. Pushing is the user's call.", "blocking": false},
+    {"action": "Optionally run /gsd-code-review 2 --fix --all for the 5 Info findings", "context": "IN-05 (move proptest to dev-deps only) is a clean win. IN-01 (test harness drops worker errors), IN-03 (_num_threads footgun), IN-04 (build_global error swallow) are smaller. IN-02 is intentional per D-09.", "blocking": false},
+    {"action": "Decide on auto_advance config", "context": "workflow.auto_advance=true is set but the user drove discuss->plan->execute manually at each stage. Keep for hands-off future phases, or /gsd-config to disable.", "blocking": false}
   ],
   "decisions": [
     {"decision": "Phase 2 parallelization: intra-file per-record rayon par_iter (not per-file); gzip decompression kept single-threaded (D-02); global record pool across files (D-03)", "rationale": "CRR1936095 ships as only 2 split parts — per-file would cap at ~2x; intra-file is the only path to near-core-count speedup", "phase": "02"},
@@ -33,9 +40,11 @@
     {"decision": "Thread precedence: --threads > RUSTKMER_THREADS > RAYON_NUM_THREADS > num_cpus (D-07)", "rationale": "New RUSTKMER_THREADS wins; RAYON_NUM_THREADS fallback preserves existing merge-tuning users", "phase": "02"},
     {"decision": "--sort flipped to DEFAULT-ON (D-09, user overrode 'keep optional' recommendation)", "rationale": "Sharded-map iteration is non-deterministic; default-sort guarantees reproducible output and aligns with Jellyfish2 sorted output for Phase 4 fairness. Cost (sort over ~3B entries) flagged for Phase 4 measurement.", "phase": "02"},
     {"decision": "Correctness via golden-capture-first + 1-vs-N commutativity differential + proptest (D-10)", "rationale": "Counting is integer addition (commutative+associative), so any 1-vs-N divergence is definitively a concurrency bug — high-signal detector", "phase": "02"},
-    {"decision": "Use pyo3 py.detach (NOT allow_threads) for GIL release", "rationale": "Executor source-grounded against installed pyo3 0.27.2: allow_threads is #[deprecated(since=0.26.0)] delegating to detach. RESEARCH and plan-checker had this INVERTED. detach is required to keep -D warnings green.", "phase": "02"}
+    {"decision": "Use pyo3 py.detach (NOT allow_threads) for GIL release", "rationale": "Executor source-grounded against installed pyo3 0.27.2: allow_threads is #[deprecated(since=0.26.0)] delegating to detach. RESEARCH and plan-checker had this INVERTED. detach is required to keep -D warnings green.", "phase": "02"},
+    {"decision": "WR-02 merge-overflow: document poisoned-but-consistent contract instead of rolling back partial mutation", "rationale": "Rolling back would require cloning the whole DashMap before the loop — prohibitively expensive at genome scale. Option (b) from the review fix sketch: update atomics incrementally so stats match the (partial) table, and document that the caller must discard the counter after Err.", "phase": "02-hardening"},
+    {"decision": "WR-01 fix touched src/io/fasta.rs validator in addition to count.rs processor", "rationale": "validate_fasta_file had the same plain File::open gap and rejected gzip inputs (UTF-8 error) before process_fasta_file ran. The fix only works end-to-end with both sites updated. Documented in 02-REVIEW-FIX.md and the commit message.", "phase": "02-hardening"}
   ],
-  "uncommitted_files": [".planning/config.json (pre-existing, not phase-2 work)", ".opencode/package-lock.json (pre-existing, untracked)"],
-  "next_action": "Start Phase 3 with /gsd-discuss-phase 3 (Memory Safety: bounded merge + dense u64 storage). Phase 3 has no CONTEXT yet. Optionally first: /gsd-code-review 2 --fix (WR-01 FASTA-gz) and/or push dev to origin.",
-  "context_notes": "Full GSD pipeline ran this session: /gsd-discuss-phase 2 → /gsd-plan-phase 2 (research+patterns+plan+verify) → /gsd-execute-phase 2 (5 plans, 3 waves, sequential due to worktree base-degrade) → code review → phase verification PASSED. Phase 2 ships lock-free parallel counting across both CLI and pyrustkmer with a proof that parallel counts == sequential counts. All 4 PCOUNT requirements validated. Milestone is performance-vs-Jellyfish2; counting parallelism is now done, memory density (Phase 3) and benchmarking (Phase 4) remain."
+  "uncommitted_files": [".planning/config.json (pre-existing, not phase work)", ".opencode/package-lock.json (pre-existing, untracked)"],
+  "next_action": "Start Phase 3 with /gsd-discuss-phase 3 (Memory Safety: bounded merge + dense u64 storage). Phase 3 has no CONTEXT yet. Before that, optionally: (a) human-verify WR-02/WR-03 logic fixes (read 02-REVIEW-FIX.md), (b) /gsd-code-review 2 --fix --all for the 5 Info findings, (c) push dev to origin.",
+  "context_notes": "Prior session ran the full GSD pipeline for Phase 2 (discuss->plan->execute->review->verify PASSED) and paused at the 02->03 boundary. THIS session executed the recommended follow-up: /gsd-code-review 2 --fix, which auto-applied all 4 Warning findings (WR-01..WR-04) as atomic commits via the gsd-code-fixer agent, plus committed 02-REVIEW-FIX.md (status all_fixed). Full suite 309 tests pass, clippy --lib clean. 5 Info findings intentionally left out of scope. WR-02 and WR-03 are logic-correctness changes flagged for human verification. The phase 02->03 boundary is otherwise unchanged: Phase 3 (Memory Safety) is next and has no CONTEXT/SPEC/plans yet."
 }
