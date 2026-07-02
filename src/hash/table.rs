@@ -40,7 +40,9 @@ impl KmerCounter {
     /// * `kmer_length` - Length of k-mers to count
     /// * `canonical_mode` - Whether to count canonical k-mers
     /// * `initial_capacity` - Initial hash table capacity
-    /// * `num_threads` - Number of threads for concurrent processing
+    /// * `_num_threads` - Currently unused; thread-pool sizing is performed by
+    ///   the caller via `rayon::ThreadPoolBuilder::build_global` (see
+    ///   `execute_count` / `PyCounter::new`). Retained for API stability.
     ///
     /// # Returns
     /// New KmerCounter instance
