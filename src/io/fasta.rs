@@ -178,16 +178,21 @@ pub fn validate_fasta_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
 /// Count sequences in a FASTA file
 ///
 /// # Arguments
-/// * `file_path` - Path to FASTA file
+/// * `file_path` - Path to FASTA file (supports `.gz` / `.bz2` / `.xz`)
 ///
 /// # Returns
 /// Number of sequences or error
 pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> {
     let path = file_path.as_ref();
 
-    let file = io::BufReader::new(std::fs::File::open(path).map_err(|e| {
-        ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
-    })?);
+    // WR-03: route through the compression-aware opener so `.fa.gz` / `.bz2` /
+    // `.xz` inputs are decompressed before bio's reader parses them. This is
+    // the same fix WR-01 applied to `validate_fasta_file`.
+    use crate::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
+    let (file, _compression) =
+        DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
+            ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
+        })?;
 
     let reader = Reader::new(file);
     let mut count = 0;
@@ -202,16 +207,21 @@ pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> 
 /// Get total sequence length in a FASTA file
 ///
 /// # Arguments
-/// * `file_path` - Path to FASTA file
+/// * `file_path` - Path to FASTA file (supports `.gz` / `.bz2` / `.xz`)
 ///
 /// # Returns
 /// Total sequence length or error
 pub fn total_sequence_length<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> {
     let path = file_path.as_ref();
 
-    let file = io::BufReader::new(std::fs::File::open(path).map_err(|e| {
-        ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
-    })?);
+    // WR-03: route through the compression-aware opener so `.fa.gz` / `.bz2` /
+    // `.xz` inputs are decompressed before bio's reader parses them. This is
+    // the same fix WR-01 applied to `validate_fasta_file`.
+    use crate::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
+    let (file, _compression) =
+        DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
+            ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
+        })?;
 
     let reader = Reader::new(file);
     let mut total_length = 0;
@@ -326,5 +336,30 @@ mod tests {
 
         let total_length = total_sequence_length(temp_file.path()).unwrap();
         assert_eq!(total_length, 16); // 8 + 8
+    }
+
+    /// WR-03 regression: `count_sequences` and `total_sequence_length` must
+    /// transparently decompress gzipped inputs. Previously both helpers used
+    /// plain `File::open`, so a `.fa.gz` was parsed as raw deflate bytes and
+    /// either errored on UTF-8 decode or silently produced wrong counts.
+    #[test]
+    fn test_count_sequences_and_total_length_gzipped() {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::fs::File;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let gz_path = temp_dir.path().join("input.fa.gz");
+        let encoder = GzEncoder::new(File::create(&gz_path).unwrap(), Compression::default());
+        let mut writer = io::BufWriter::new(encoder);
+        writer
+            .write_all(b">seq1\nATGCATGC\n>seq2\nGCTAGCTA\n>seq3\nATGCGAT\n")
+            .unwrap();
+        writer.flush().unwrap();
+        drop(writer);
+
+        // Three records, total length 8 + 8 + 7 = 23.
+        assert_eq!(count_sequences(&gz_path).unwrap(), 3);
+        assert_eq!(total_sequence_length(&gz_path).unwrap(), 23);
     }
 }
