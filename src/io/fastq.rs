@@ -150,7 +150,7 @@ impl FastqProcessor {
                 ProcessingError::with_context(
                     format!(
                         "Error reading FASTQ record from file: {} ({})",
-                        &self.file_path,
+                        self.file_path,
                         compression_type.name()
                     ),
                     e,
@@ -212,7 +212,7 @@ impl FastqProcessor {
                 ProcessingError::with_context(
                     format!(
                         "Error reading FASTQ record from file: {} ({})",
-                        &self.file_path,
+                        self.file_path,
                         compression_type.name()
                     ),
                     e,
@@ -339,7 +339,7 @@ pub fn validate_fastq_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
             ProcessingError::with_context(
                 format!(
                     "Error reading FASTQ record during validation: {:?} ({})",
-                    &path,
+                    path,
                     compression_type.name()
                 ),
                 e,

@@ -39,12 +39,13 @@
 //! side-effect discriminator — it does not depend on log capture, on
 //! `log::info!` formatting, or on a strategy value the API does not return.
 //!
-//! Plan 03-01 Task 1 is the Wave-0 scaffold: the four routing/reject tests
-//! below are `#[ignore]`d so the target compiles against the PRE-fix API
-//! (no test body may reference an API that does not exist yet). Task 2
-//! un-ignores them, lands the header-only estimator + the D-02 reject branch,
-//! and strengthens the two D-01 assertions with a direct
-//! `RKDatabase::estimate_total_kmers` call.
+//! Plan 03-01 Task 1 created this file as the Wave-0 scaffold: the four
+//! routing/reject tests began `#[ignore]`d so the target compiled against the
+//! PRE-fix API (no test body may reference an API that does not exist yet).
+//! Task 2 landed the header-only estimator + the D-02 reject branch, un-ignored
+//! all four, and strengthened the D-01 test with direct
+//! `RKDatabase::estimate_total_kmers` assertions (header value, well-formed
+//! input, `total_kmers == 0` file-size fallback, corrupt-magic fallback).
 //!
 //! No `unsafe`, no pyo3, no new dependencies.
 
@@ -143,6 +144,34 @@ fn write_truncated_oversized_db(
     Ok(path)
 }
 
+/// Write a `.rkdb` whose header reports `total_kmers == 0` (an untrustworthy /
+/// legacy value) while the body still holds `num_kmers` real entries.
+///
+/// Exercises the D-01 file-size fallback: the persisted count cannot be used,
+/// so the estimator must derive `(file_size - 42) / 20` instead.
+fn write_zero_kmers_db(dir: &Path, name: &str, num_kmers: usize) -> anyhow::Result<PathBuf> {
+    let db = create_test_database(num_kmers, K, true, true)
+        .map_err(|e| anyhow::anyhow!("failed to build synthetic input db: {}", e))?;
+    let path = dir.join(name);
+    db.to_file_path(&path)
+        .map_err(|e| anyhow::anyhow!("failed to write {}: {}", path.display(), e))?;
+
+    // total_kmers lives at [10..18) in the 42-byte .rkdb v2 header.
+    let mut f = File::options()
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|e| anyhow::anyhow!("failed to reopen {}: {}", path.display(), e))?;
+    f.seek(SeekFrom::Start(10))
+        .map_err(|e| anyhow::anyhow!("failed to seek in {}: {}", path.display(), e))?;
+    f.write_all(&0u64.to_le_bytes())
+        .map_err(|e| anyhow::anyhow!("failed to zero header of {}: {}", path.display(), e))?;
+    f.flush()
+        .map_err(|e| anyhow::anyhow!("failed to flush {}: {}", path.display(), e))?;
+
+    Ok(path)
+}
+
 /// A temp directory path that does not exist. Used as the "which merge path
 /// ran?" probe — see the module docstring.
 fn missing_temp_dir(root: &Path) -> PathBuf {
@@ -213,11 +242,7 @@ fn merge_default_routes_small_inputs_to_inmemory_or_streaming() -> anyhow::Resul
 
 /// MERGE-01 / D-01 — an over-budget `merge_mode: "auto"` merge must HARD-ROUTE
 /// to the streaming path, not warn-and-continue into the in-memory path.
-///
-/// RED until Task 2 lands the header-only estimator and the hard route.
-// TODO(03-01 Task 2): un-ignore once the estimator + hard route land.
 #[test]
-#[ignore = "RED stub — awaiting 03-01 Task 2 header-only estimator + hard route"]
 fn merge_over_budget_hard_routes_to_streaming() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let a = write_input_db(dir.path(), "a.rkdb", INPUT_KMERS)?;
@@ -267,11 +292,7 @@ fn merge_over_budget_hard_routes_to_streaming() -> anyhow::Result<()> {
 /// MERGE-02 / D-02 — an explicit `merge_mode: "memory"` merge whose estimate
 /// exceeds `max_memory_usage` must be REJECTED with a clear error, never
 /// silently OOM.
-///
-/// RED until Task 2 adds the reject branch.
-// TODO(03-01 Task 2): un-ignore once the D-02 reject branch lands.
 #[test]
-#[ignore = "RED stub — awaiting 03-01 Task 2 D-02 reject branch"]
 fn merge_explicit_memory_mode_over_budget_rejects() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let a = write_input_db(dir.path(), "a.rkdb", INPUT_KMERS)?;
@@ -316,11 +337,7 @@ fn merge_explicit_memory_mode_over_budget_rejects() -> anyhow::Result<()> {
 /// MERGE-01 — `merge_mode: "streaming"` must ALWAYS take the streaming path,
 /// regardless of the estimate. Proved with a within-budget input set and a
 /// nonexistent temp_dir: only the streaming path can fail there.
-///
-/// RED until Task 2 preserves/lands the explicit streaming short-circuit.
-// TODO(03-01 Task 2): un-ignore once the streaming short-circuit is asserted.
 #[test]
-#[ignore = "RED stub — awaiting 03-01 Task 2 streaming short-circuit assertion"]
 fn merge_explicit_streaming_mode_always_streams() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
 
@@ -366,32 +383,94 @@ fn merge_explicit_streaming_mode_always_streams() -> anyhow::Result<()> {
 
 /// MERGE-02 / D-01 — the estimator must be HEADER-ONLY: it reads the
 /// persisted `total_kmers` and never materializes entries.
-///
-/// RED until Task 2 exposes `RKDatabase::estimate_total_kmers`.
-/// TODO(03-01 Task 2): un-ignore and assert the header-only helper directly.
 #[test]
-#[ignore = "RED stub — awaiting 03-01 Task 2 RKDatabase::estimate_total_kmers"]
 fn estimator_reads_header_only_no_materialization() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
 
     // A file whose header claims 5 billion k-mers but whose body is truncated
-    // to the bare 42-byte header. `from_file_path` cannot load this.
+    // to the bare 42-byte header. `RKDatabase::from_file_path` on this file
+    // reserves `5e9 * sizeof(KmerEntry)` and ABORTS the process on a typical
+    // CI box — that abort IS the D-01 OOM bug, which is why the premise below
+    // is checked with a SMALL declared count and the huge one is only ever
+    // handed to the header-only estimator.
     const DECLARED: u64 = 5_000_000_000;
     let path = write_truncated_oversized_db(dir.path(), "truncated.rkdb", 16, DECLARED)?;
 
-    // Premise (D-01): the materializing loader genuinely fails on this file,
-    // so a test that can still read the estimate has proven header-only
-    // behavior. This assertion is independent of the fix and stays meaningful
-    // afterwards.
-    let materialize = RKDatabase::from_file_path(&path);
+    // Premise (D-01): the materializing loader genuinely fails when the
+    // header promises entries the body does not contain — so an estimator
+    // that still returns a number on such a file has, by construction, not
+    // materialized anything. A small declared count keeps this Err rather
+    // than an allocation abort.
+    const DECLARED_SMALL: u64 = 1_000;
+    let small =
+        write_truncated_oversized_db(dir.path(), "truncated_small.rkdb", 0, DECLARED_SMALL)?;
+    let materialize = RKDatabase::from_file_path(&small);
     assert!(
         materialize.is_err(),
         "premise: from_file_path must fail on a truncated body (it materializes entries): {:?}",
         materialize.err()
     );
 
-    // Task 2 replaces this block with a direct assertion on the header-only
-    // helper: `RKDatabase::estimate_total_kmers(&path) == DECLARED`, which
-    // only holds if the 42-byte header is read and the body is never touched.
+    // The D-01 assertion: the header-only estimator reads the persisted
+    // `total_kmers` straight out of the 42-byte header. It returns DECLARED
+    // instantly even though the body is empty AND the declared count would
+    // need 100 GB of RAM to materialize — which is only possible if it never
+    // touched an entry.
+    let estimated = RKDatabase::estimate_total_kmers(&path)
+        .map_err(|e| anyhow::anyhow!("header-only estimate must succeed: {}", e))?;
+    assert_eq!(
+        estimated, DECLARED,
+        "estimator must return the header's persisted total_kmers, not a materialization-derived count"
+    );
+
+    // A well-formed file must yield exactly its own entry count, so the
+    // estimate is not merely "some large number".
+    let ok_path = write_input_db(dir.path(), "ok.rkdb", 37)?;
+    let ok_estimated = RKDatabase::estimate_total_kmers(&ok_path)
+        .map_err(|e| anyhow::anyhow!("estimate on a well-formed db must succeed: {}", e))?;
+    assert_eq!(
+        ok_estimated, 37,
+        "estimator must return the header total_kmers of a well-formed input"
+    );
+
+    // D-01 fallback: a header reporting total_kmers == 0 is untrustworthy, so
+    // the estimate must come from the file size instead — and must
+    // over-estimate (never under-estimate into an unsafe in-memory admission).
+    let zeroed = write_zero_kmers_db(dir.path(), "zeroed.rkdb", 25)?;
+    let fallback = RKDatabase::estimate_total_kmers(&zeroed)
+        .map_err(|e| anyhow::anyhow!("estimate on a zero-total_kmers db must succeed: {}", e))?;
+    let actual_len = std::fs::metadata(&zeroed)?.len();
+    let size_bound = actual_len.saturating_sub(42) / 20;
+    assert_eq!(
+        fallback, size_bound,
+        "a zero total_kmers must fall back to (file_size - 42) / 20"
+    );
+    assert_eq!(
+        fallback, 25,
+        "for this input the file-size fallback must recover the true entry count"
+    );
+
+    // Corrupt magic: the header is untrustworthy, so the estimator must still
+    // return a conservative (file-size-derived) upper bound rather than
+    // failing the merge outright or reporting 0.
+    let corrupt = dir.path().join("corrupt.rkdb");
+    std::fs::copy(&ok_path, &corrupt)?;
+    {
+        use std::io::Seek;
+        let mut f = File::options().write(true).open(&corrupt)?;
+        f.seek(SeekFrom::Start(0))?;
+        f.write_all(b"XXXX")?;
+        f.flush()?;
+    }
+    let corrupt_estimate = RKDatabase::estimate_total_kmers(&corrupt).map_err(|e| {
+        anyhow::anyhow!("estimate on a corrupt-header db must not hard-fail: {}", e)
+    })?;
+    let corrupt_len = std::fs::metadata(&corrupt)?.len();
+    assert_eq!(
+        corrupt_estimate,
+        corrupt_len.saturating_sub(42) / 20,
+        "a corrupt header must fall back to the file-size upper bound (threat T-03-01)"
+    );
+
     Ok(())
 }

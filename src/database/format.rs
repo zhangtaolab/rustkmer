@@ -636,22 +636,93 @@ impl RKDatabase {
         Ok((kmer_size, canonical))
     }
 
+    /// Estimate the number of k-mers an input `.rkdb` holds WITHOUT
+    /// materializing any of its entries.
+    ///
+    /// This is the D-01 fix for the OOM-on-estimate bug. The pre-fix estimator
+    /// called `RKDatabase::from_file_path(path)` per input purely to read
+    /// `total_kmers` — which loads **every** entry into RAM, so on a
+    /// human-scale merge the process exhausted memory *during the estimate*,
+    /// before a merge strategy had even been chosen. The function whose whole
+    /// job is to prevent OOM was itself the OOM.
+    ///
+    /// The fix reads the persisted `total_kmers` out of the 42-byte `.rkdb`
+    /// header via [`DatabaseHeader::read_from`], which validates the magic
+    /// bytes and format version before any field is trusted, and returns
+    /// without touching a single `KmerEntry`. Cost is O(42 bytes) per input
+    /// instead of O(entries).
+    ///
+    /// # Fallback
+    ///
+    /// If the header is unreadable (corrupt magic, unsupported version) **or**
+    /// reports `total_kmers == 0` (an untrustworthy/legacy value), fall back to
+    /// the file size: `(file_size - HEADER_SIZE) / RECORD_SIZE`. That is a
+    /// coarse *upper* bound on the entry count, and over-estimating is the safe
+    /// direction — it routes the merge to the streaming path conservatively
+    /// rather than admitting an in-memory merge that would OOM (threat
+    /// register T-03-01).
+    ///
+    /// A merely-unreadable header is not itself an error: a corrupt input
+    /// still merges through the streaming path, which does its own per-chunk
+    /// validation and surfaces the real corruption.
+    pub fn estimate_total_kmers(path: &std::path::Path) -> crate::error::ProcessingResult<u64> {
+        use std::fs::File;
+        use std::io::BufReader;
+
+        // `.rkdb` v2 on-disk constants — 42-byte header, 20-byte entries.
+        // Kept as local consts (not derived from the structs) so the fallback
+        // arithmetic cannot silently drift if a struct field is ever added.
+        const HEADER_SIZE: u64 = 42;
+        const RECORD_SIZE: u64 = 20;
+
+        let header_kmers = (|| -> crate::error::ProcessingResult<u64> {
+            let file = File::open(path)
+                .map_err(|e| crate::error::ProcessingError::io_error(e.to_string()))?;
+            let mut reader = BufReader::new(file);
+            // Reads exactly 42 bytes and returns — no `KmerEntry` is created.
+            let header = DatabaseHeader::read_from(&mut reader)?;
+            Ok(header.total_kmers)
+        })();
+
+        // On a bad header, over-estimate from the file size and let the merge
+        // path surface any real corruption.
+        let fallback = |reason: String| -> crate::error::ProcessingResult<u64> {
+            let meta = std::fs::metadata(path)
+                .map_err(|e| crate::error::ProcessingError::io_error(e.to_string()))?;
+            let entries = meta.len().saturating_sub(HEADER_SIZE) / RECORD_SIZE;
+            log::warn!(
+                "Header unusable for {} ({}); falling back to file-size estimate ({} entries)",
+                path.display(),
+                reason,
+                entries
+            );
+            Ok(entries)
+        };
+
+        match header_kmers {
+            Ok(total) if total > 0 => Ok(total),
+            // total_kmers == 0: the persisted value is untrustworthy.
+            Ok(_) => fallback("total_kmers == 0".to_string()),
+            Err(e) => fallback(e.to_string()),
+        }
+    }
+
     /// - Memory is insufficient for the operation
     pub fn merge_databases(
         input_paths: &[std::path::PathBuf],
         config: &crate::database::MergeConfig,
     ) -> crate::error::ProcessingResult<Self> {
+        // D-01: header-only estimate. The pre-fix loop called
+        // `Self::from_file_path(path)` per input, materializing every entry
+        // into RAM just to read `total_kmers` — OOMing during the estimate.
         let total_kmers: u64 = input_paths
             .iter()
-            .map(|path| {
-                let db = Self::from_file_path(path)?;
-                Ok(db.total_kmers())
-            })
+            .map(|path| Self::estimate_total_kmers(path))
             .collect::<crate::error::ProcessingResult<Vec<_>>>()?
             .iter()
             .sum();
 
-        let estimated_memory = total_kmers as usize * 24;
+        let estimated_memory = total_kmers.saturating_mul(24);
 
         // Use prefix cache merge if enabled
         if config.use_prefix_cache {
@@ -665,8 +736,49 @@ impl RKDatabase {
             return Self::merge_databases_prefix_cache(input_paths, config);
         }
 
-        // For streaming vs in-memory decision
-        let use_streaming = Self::should_use_streaming(input_paths, config)?;
+        let over_budget = estimated_memory > config.max_memory_usage as u64;
+
+        // D-02: an explicit `--merge-mode memory` that cannot fit the budget is
+        // REJECTED with an actionable error rather than attempted and left to
+        // OOM the process (MERGE-01's "no longer OOM" promise). The in-memory
+        // path itself is retained — this only bounds when it may run.
+        if config.merge_mode == "memory" && over_budget {
+            return Err(crate::error::ProcessingError::new(format!(
+                "merge_mode='memory' rejected: estimated memory ({} bytes for {} k-mers) exceeds \
+                 max_memory ({} bytes); use merge_mode='streaming' (or 'auto') to merge within \
+                 the memory budget",
+                estimated_memory, total_kmers, config.max_memory_usage
+            )));
+        }
+
+        // D-01: an explicit `--merge-mode streaming` always streams,
+        // regardless of the estimate.
+        let use_streaming = if config.merge_mode == "streaming" {
+            if config.verbose {
+                log::info!(
+                    "DEBUG: Using streaming merge (explicit merge_mode='streaming') for {} k-mers (estimated {} bytes)",
+                    total_kmers,
+                    estimated_memory
+                );
+            }
+            true
+        } else {
+            // D-01 hard route (MERGE-02): over budget under 'auto' (or any
+            // other unrecognised mode, which is treated as 'auto') routes
+            // unconditionally to streaming — no warn-and-continue in-memory
+            // fallback. Within budget the existing selection is preserved,
+            // which keeps the small-input in-memory fast path (D-02).
+            let stream = Self::should_use_streaming(input_paths, config)?;
+            if stream {
+                log::info!(
+                    "Routing to streaming merge: estimated {} bytes ({} k-mers) exceeds memory budget {} bytes",
+                    estimated_memory,
+                    total_kmers,
+                    config.max_memory_usage
+                );
+            }
+            stream
+        };
 
         if use_streaming {
             if config.verbose {
@@ -689,22 +801,24 @@ impl RKDatabase {
         }
     }
 
+    /// Admission-control predicate for the default (`auto`) merge mode.
+    ///
+    /// D-01: reads each input's persisted `total_kmers` from its 42-byte
+    /// header. The pre-fix version called `RKDatabase::from_file_path(path)`,
+    /// loading every entry of every input into RAM — the OOM-on-estimate bug.
     fn should_use_streaming(
         input_paths: &[std::path::PathBuf],
         config: &crate::database::MergeConfig,
     ) -> crate::error::ProcessingResult<bool> {
-        use crate::database::format::RKDatabase;
-
         let mut total_kmers = 0u64;
 
         for path in input_paths {
-            let db = RKDatabase::from_file_path(path)?;
-            total_kmers += db.total_kmers();
+            total_kmers = total_kmers.saturating_add(Self::estimate_total_kmers(path)?);
         }
 
-        let estimated_memory = total_kmers as usize * 24;
+        let estimated_memory = total_kmers.saturating_mul(24);
 
-        Ok(estimated_memory > config.max_memory_usage)
+        Ok(estimated_memory > config.max_memory_usage as u64)
     }
 
     fn merge_databases_streaming(
@@ -1316,6 +1430,185 @@ mod tests {
             let (kmer_size, canonical) = result.unwrap();
             assert_eq!(kmer_size, 31);
             assert!(canonical);
+        }
+    }
+
+    /// D-01 / MERGE-02 admission-control unit tests.
+    ///
+    /// The routing logic is size-independent (`sum(total_kmers) * 24 >
+    /// max_memory_usage`), so it is proven here at toy scale rather than at
+    /// human scale, and the header-only property is proven structurally: a
+    /// file whose header promises far more entries than its body holds can
+    /// still be estimated, which a materializing reader could never do.
+    mod merge_admission_control {
+        use super::*;
+        use std::fs::File;
+        use std::io::{Seek, SeekFrom, Write};
+        use std::path::PathBuf;
+
+        /// `.rkdb` v2 header: total_kmers is the u64 at byte offset 10.
+        const TOTAL_KMERS_OFFSET: u64 = 10;
+        const HEADER_SIZE: u64 = 42;
+        const RECORD_SIZE: u64 = 20;
+
+        fn write_db(dir: &std::path::Path, name: &str, n: u64) -> PathBuf {
+            let kmers: Vec<(u128, u32)> =
+                (0..n).map(|i| ((i as u128) << 1, (i as u32) + 1)).collect();
+            let db = RKDatabase::from_kmer_pairs(kmers, 31, true, true).unwrap();
+            let path = dir.join(name);
+            db.to_file_path(&path).unwrap();
+            path
+        }
+
+        /// Overwrite the header's `total_kmers` and truncate the body away.
+        fn truncate_body(dir: &std::path::Path, name: &str, n: u64, declared: u64) -> PathBuf {
+            let path = write_db(dir, name, n);
+            let mut f = File::options().read(true).write(true).open(&path).unwrap();
+            f.seek(SeekFrom::Start(TOTAL_KMERS_OFFSET)).unwrap();
+            f.write_all(&declared.to_le_bytes()).unwrap();
+            f.set_len(HEADER_SIZE).unwrap();
+            f.flush().unwrap();
+            path
+        }
+
+        /// The estimator reads the persisted header value without touching the
+        /// body — the D-01 fix, asserted directly.
+        #[test]
+        fn estimate_total_kmers_reads_header_only() {
+            let dir = tempdir().unwrap();
+
+            // 5 billion declared k-mers over an empty body: materializing this
+            // would need ~100 GB of RAM, reading the header needs 42 bytes.
+            let path = truncate_body(dir.path(), "truncated.rkdb", 8, 5_000_000_000);
+            let estimated = RKDatabase::estimate_total_kmers(&path).unwrap();
+            assert_eq!(estimated, 5_000_000_000);
+
+            // A well-formed file returns exactly its own entry count.
+            let ok = write_db(dir.path(), "ok.rkdb", 37);
+            assert_eq!(RKDatabase::estimate_total_kmers(&ok).unwrap(), 37);
+        }
+
+        /// `total_kmers == 0` is untrustworthy; the estimate must come from the
+        /// file size and must not under-estimate.
+        #[test]
+        fn estimate_total_kmers_falls_back_to_file_size() {
+            let dir = tempdir().unwrap();
+            let path = truncate_body(dir.path(), "zeroed.rkdb", 25, 0);
+            let len = std::fs::metadata(&path).unwrap().len();
+            let expected = len.saturating_sub(HEADER_SIZE) / RECORD_SIZE;
+            assert_eq!(RKDatabase::estimate_total_kmers(&path).unwrap(), expected);
+        }
+
+        /// A corrupt header must not hard-fail the merge: the estimator
+        /// over-estimates from the file size so the merge routes conservatively
+        /// (threat register T-03-01).
+        #[test]
+        fn estimate_total_kmers_tolerates_corrupt_header() {
+            let dir = tempdir().unwrap();
+            let path = write_db(dir.path(), "corrupt.rkdb", 10);
+            {
+                let mut f = File::options().write(true).open(&path).unwrap();
+                f.seek(SeekFrom::Start(0)).unwrap();
+                f.write_all(b"XXXX").unwrap();
+                f.flush().unwrap();
+            }
+            let len = std::fs::metadata(&path).unwrap().len();
+            assert_eq!(
+                RKDatabase::estimate_total_kmers(&path).unwrap(),
+                len.saturating_sub(HEADER_SIZE) / RECORD_SIZE
+            );
+        }
+
+        /// The admission predicate flips exactly at the budget boundary, and
+        /// does so from header metadata alone.
+        ///
+        /// Named `should_use_streaming` so the plan's
+        /// `cargo test --lib -- --exact should_use_streaming` verification
+        /// command actually selects it.
+        #[test]
+        fn should_use_streaming() {
+            let dir = tempdir().unwrap();
+            let a = write_db(dir.path(), "a.rkdb", 100);
+            let b = write_db(dir.path(), "b.rkdb", 100);
+            let paths = vec![a, b];
+
+            // 200 k-mers * 24 B/entry = 4800 bytes estimated.
+            let tight = crate::database::MergeConfig {
+                max_memory_usage: 1024,
+                ..Default::default()
+            };
+            assert!(
+                RKDatabase::should_use_streaming(&paths, &tight).unwrap(),
+                "4800 bytes must exceed a 1024-byte budget"
+            );
+
+            let loose = crate::database::MergeConfig {
+                max_memory_usage: 1_000_000,
+                ..Default::default()
+            };
+            assert!(
+                !RKDatabase::should_use_streaming(&paths, &loose).unwrap(),
+                "4800 bytes must fit a 1 MB budget"
+            );
+
+            // A header promising 5 billion k-mers over an empty body still
+            // yields a verdict — the pre-fix estimator would have tried to
+            // materialize those entries and died here.
+            let bomb = vec![truncate_body(dir.path(), "bomb.rkdb", 4, 5_000_000_000)];
+            assert!(
+                RKDatabase::should_use_streaming(&bomb, &loose).unwrap(),
+                "a 5e9 k-mer header must be admitted as over budget without materializing"
+            );
+        }
+
+        /// D-02: explicit `merge_mode = "memory"` over budget is rejected with
+        /// an actionable message instead of being attempted in-memory.
+        #[test]
+        fn memory_mode_over_budget_is_rejected() {
+            let dir = tempdir().unwrap();
+            let a = write_db(dir.path(), "a.rkdb", 100);
+            let b = write_db(dir.path(), "b.rkdb", 100);
+
+            let config = crate::database::MergeConfig {
+                max_memory_usage: 1024,
+                merge_mode: "memory".to_string(),
+                temp_dir: dir.path().to_path_buf(),
+                ..Default::default()
+            };
+            let err = RKDatabase::merge_databases(&[a.clone(), b.clone()], &config).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("memory"),
+                "message must name the mode: {}",
+                msg
+            );
+            assert!(
+                msg.contains("streaming"),
+                "message must point at the streaming mode: {}",
+                msg
+            );
+
+            // Within budget the same explicit mode still merges.
+            let ok_config = crate::database::MergeConfig {
+                max_memory_usage: 1_000_000,
+                ..config.clone()
+            };
+            let merged = RKDatabase::merge_databases(&[a, b], &ok_config).unwrap();
+            // Both inputs carry the SAME 100 k-mers, so the union is 100
+            // unique k-mers with summed counts (200 total input observations).
+            assert_eq!(merged.total_kmers(), 100);
+            // Input k-mer i carries count `i + 1` in BOTH files, so the merged
+            // count is exactly `2 * (i + 1)`.
+            let merged_kmers: std::collections::HashMap<u128, u32> =
+                merged.all_kmers().unwrap().into_iter().collect();
+            for i in 0..100u128 {
+                assert_eq!(
+                    merged_kmers.get(&(i << 1)).copied(),
+                    Some(2 * (i as u32 + 1)),
+                    "k-mer {} must carry the summed count of both inputs",
+                    i
+                );
+            }
         }
     }
 }

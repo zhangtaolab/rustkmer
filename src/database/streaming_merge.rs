@@ -115,6 +115,16 @@ pub struct TempFileManager {
     files: Vec<PathBuf>,
     prefix: String,
     auto_cleanup: bool,
+    /// Monotonic per-manager counter used to make chunk file names unique.
+    ///
+    /// Chunk files used to be named from `SystemTime::now().as_micros()` alone.
+    /// The system clock is not monotonic at microsecond granularity — several
+    /// `create_temp_file` calls in a tight loop routinely land on the same
+    /// microsecond — so `File::create` truncated and overwrote a sibling chunk.
+    /// That silently destroyed sorted runs and dropped k-mers from the merged
+    /// output (measured: 200 k-mers in → 5 out). The counter makes every chunk
+    /// name unique within the process; the timestamp is kept for readability.
+    next_file_id: u64,
 }
 
 impl TempFileManager {
@@ -125,6 +135,7 @@ impl TempFileManager {
             files: Vec::new(),
             prefix,
             auto_cleanup: true,
+            next_file_id: 0,
         }
     }
 
@@ -136,10 +147,14 @@ impl TempFileManager {
     pub fn create_temp_file(&mut self) -> Result<(PathBuf, BufWriter<File>), ProcessingError> {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_micros();
+            .map(|d| d.as_micros())
+            .unwrap_or(0);
 
-        let file_name = format!("{}_{}.chunk", self.prefix, timestamp);
+        // `next_file_id` guarantees uniqueness; the timestamp is informational.
+        let file_id = self.next_file_id;
+        self.next_file_id += 1;
+
+        let file_name = format!("{}_{}_{}.chunk", self.prefix, timestamp, file_id);
         let file_path = self.temp_dir.join(&file_name);
 
         let file = File::create(&file_path).map_err(|e| {
@@ -362,28 +377,42 @@ impl Iterator for StreamingMergeIterator {
     type Item = Result<(u128, u32), ProcessingError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(mut merge_item) = self.heap.pop() {
+        while let Some(merge_item) = self.heap.pop() {
+            let kmer = merge_item.kmer;
+            let count = merge_item.count;
+
+            // Advance this run's reader and re-queue its successor BEFORE
+            // deciding what to emit.
+            //
+            // The emit branch below returns early, so a refill placed after
+            // the match would be skipped on every k-mer boundary: the popped
+            // item would be consumed for the emit and its successor would
+            // never be read, silently truncating that run. Measured impact of
+            // the old ordering: a 10-entry database merged to 2 k-mers, a
+            // 200-entry database to 5.
+            let reader = &mut self.file_readers[merge_item.file_index];
+            if let Ok(next_entry) = KmerEntry::read_from(reader) {
+                self.heap.push(MergeItem {
+                    kmer: next_entry.kmer,
+                    count: next_entry.count,
+                    file_index: merge_item.file_index,
+                });
+            }
+
             match &self.current_kmer {
                 None => {
-                    self.current_kmer = Some(merge_item.kmer);
-                    self.current_count = merge_item.count;
+                    self.current_kmer = Some(kmer);
+                    self.current_count = count;
                 }
-                Some(current) if *current == merge_item.kmer => {
-                    self.current_count = self.current_count.saturating_add(merge_item.count);
+                Some(current) if *current == kmer => {
+                    self.current_count = self.current_count.saturating_add(count);
                 }
                 Some(_) => {
                     let result = (self.current_kmer.unwrap(), self.current_count);
-                    self.current_kmer = Some(merge_item.kmer);
-                    self.current_count = merge_item.count;
+                    self.current_kmer = Some(kmer);
+                    self.current_count = count;
                     return Some(Ok(result));
                 }
-            }
-
-            let reader = &mut self.file_readers[merge_item.file_index];
-            if let Ok(next_entry) = KmerEntry::read_from(reader) {
-                merge_item.kmer = next_entry.kmer;
-                merge_item.count = next_entry.count;
-                self.heap.push(merge_item);
             }
         }
 

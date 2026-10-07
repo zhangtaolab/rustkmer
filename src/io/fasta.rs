@@ -53,7 +53,7 @@ impl FastaProcessor {
         for record_result in reader.records() {
             let record = record_result.map_err(|e| {
                 ProcessingError::with_context(
-                    format!("Error reading FASTA record from file: {}", &self.file_path),
+                    format!("Error reading FASTA record from file: {}", self.file_path),
                     e,
                 )
             })?;
@@ -132,10 +132,9 @@ pub fn validate_fasta_file<P: AsRef<Path>>(file_path: P) -> ProcessingResult<()>
     // FASTA path to parity. (`CompressedFileReader` lives in `src/io/
     // fastq.rs` but the implementation is format-agnostic.)
     use crate::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
-    let (file, _compression) =
-        DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
-            ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
-        })?;
+    let (file, _compression) = DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
+        ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
+    })?;
 
     let reader = Reader::new(file);
     let mut record_count = 0;
@@ -189,10 +188,9 @@ pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> 
     // `.xz` inputs are decompressed before bio's reader parses them. This is
     // the same fix WR-01 applied to `validate_fasta_file`.
     use crate::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
-    let (file, _compression) =
-        DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
-            ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
-        })?;
+    let (file, _compression) = DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
+        ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
+    })?;
 
     let reader = Reader::new(file);
     let mut count = 0;
@@ -218,10 +216,9 @@ pub fn total_sequence_length<P: AsRef<Path>>(file_path: P) -> ProcessingResult<u
     // `.xz` inputs are decompressed before bio's reader parses them. This is
     // the same fix WR-01 applied to `validate_fasta_file`.
     use crate::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
-    let (file, _compression) =
-        DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
-            ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
-        })?;
+    let (file, _compression) = DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
+        ProcessingError::with_context(format!("Failed to open FASTA file: {:?}", path), e)
+    })?;
 
     let reader = Reader::new(file);
     let mut total_length = 0;
