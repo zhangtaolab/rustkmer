@@ -128,3 +128,57 @@
   **Suggested fix:** a follow-up plan applying the same `KmerKey` pattern to
   `merge_databases_inmemory`'s accumulator, reusing `tests/dense_differential_tests.rs`'s
   decoded-level comparison as the gate.
+
+## Added by plan 03-04 (wave-merge gate)
+
+- The plan's literal acceptance-criteria grep for open stubs matches *prose*, not
+  attributes. `grep -rn '#\[ignore\]' tests/merge_routing_tests.rs
+  tests/dense_differential_tests.rs tests/dense_proptest_tests.rs
+  tests/golden_sha256_tests.rs tests/merge_cleanup_tests.rs` returns 3 hits
+  (`merge_routing_tests.rs:43`, `:181`, `golden_sha256_tests.rs:27`) — all
+  inside `//!` / `///` doc comments that *describe* the Wave-0 scaffold history
+  ("began `#[ignore]`d so the target compiled against the PRE-fix API").
+  status: open
+  **What:** There are **zero** `#[ignore]` attributes in those 5 files. The
+  attribute-shaped grep (`grep -rnE '^\s*#\s*\[\s*ignore'`) returns no matches,
+  and `cargo test --test <each>` reports `0 ignored` for all five. The only two
+  real `#[ignore = "..."]` attributes in the repo are the Phase 1/2 run-once
+  generators (`tests/golden_generate.rs:169`,
+  `tests/parallel_count_tests.rs:229`), which this plan is explicitly not
+  authorized to un-ignore.
+  **Why logged:** `/gsd-verify-work` should classify these three matches as
+  closed stubs, not open ones. Do not "fix" them by deleting the explanatory
+  doc comments — the history is worth keeping — and do not un-ignore the two
+  Phase 1/2 generators.
+
+- Verified, NOT a new defect: the streaming merge leaves **no** stray chunk
+  files in `config.temp_dir` on the normal return path. A probe merge (8
+  k-mers, `chunk_size: 2`, real temp dir) left only its input `.rkdb` behind —
+  `TempFileManager`'s `Drop` cleans up correctly.
+  status: closed
+  **What:** This closes the *normal-path* half of plan 03-02's open item that
+  "streaming_merge chunks (`rustkmer_sort_*.chunk`) land loose in temp_dir and
+  are NOT covered by the orphan sweep". Normal cleanup is fine; what remains
+  open is **only** the sweep-coverage gap — a merge SIGKILLed or
+  `panic = "abort"`ed (this project's release profile) leaves chunks in
+  `temp_dir` that `sweep_stale_merge_dirs` will never reclaim, because it only
+  removes `rustkmer-merge-*` *directories* and never looks at loose `*.chunk`
+  files. **How to reproduce:** the earlier plan 03-02 item stands; this note
+  only narrows its scope so nobody re-investigates the RAII path.
+
+- Verification technique worth reusing: a plan's "streaming route" arm is only
+  proven if the **route itself** is asserted. Plan 03-04's first draft used a
+  hard-coded `max_memory_usage: 1024`; the golden fixture's 20 unique k-mers
+  estimate to only 960 bytes, so every "streaming" arm silently ran the
+  in-memory path and the whole cross-plan composition claim was vacuous. A
+  mutation test (drop the first k-mer the streaming merge emits — the exact bug
+  class plan 03-01 shipped fixes for) passed against it, which is how the flaw
+  was found.
+  status: closed
+  **What:** `tests/dense_merge_integration_tests.rs` now derives the
+  over-budget budget from `RKDatabase::estimate_total_kmers` and *proves* the
+  route with the `temp_dir` probe `tests/merge_routing_tests.rs` established
+  (nonexistent `temp_dir` => streaming was entered, `Ok` => in-memory).
+  `assert_route` fails loudly if a future fixture-size change pushes an arm
+  back under the budget. The same trap applies to any future phase test that
+  wants to exercise a specific merge path at toy scale.
