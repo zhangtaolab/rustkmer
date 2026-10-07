@@ -4,10 +4,10 @@ milestone: v1.0
 current_phase: 03
 current_phase_name: Memory Safety
 status: executing
-stopped_at: Completed 03-01-PLAN.md
+stopped_at: Completed 03-02-PLAN.md
 last_updated: "2026-10-07T02:28:57.188Z"
 last_activity: 2026-10-07
-last_activity_desc: Phase 03 execution started
+last_activity_desc: Completed 03-02 (RAII merge temp lifecycle + orphan sweep)
 state_head: 3aa2d2ff2b96e3d456d19a7e22ce380d1c54d25b
 progress:
   total_phases: 4
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 ## Current Position
 
 Phase: 03 (Memory Safety) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: In progress
-Last activity: 2026-10-07 — Completed 03-01 (header-only merge estimator + hard admission control)
+Last activity: 2026-10-07 — Completed 03-02 (RAII merge temp lifecycle + orphan sweep)
 
-Progress: [████░░░░░░] 1/5 plans (Phase 03)
+Progress: [██████░░░░] 2/5 plans (Phase 03)
 
 ## Performance Metrics
 
@@ -75,6 +75,7 @@ Progress: [████░░░░░░] 1/5 plans (Phase 03)
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 03 P01 | 42min | 2 tasks | 6 files |
+| Phase 03 P02 | 38min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,13 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-01: Fixed two latent streaming-merge data-loss bugs (StreamingMergeIterator heap-refill strand; TempFileManager chunk-name collision) as part of this plan — MERGE-01 promotes that exact path to hard-route default. Measured 200 k-mers in -> 5 out. Shipping the hard route on top of a truncating merge would have turned a latent bug into guaranteed corruption for every over-budget merge
 - [Phase 03]: 03-01: Fixed 4 pre-existing clippy useless_borrows_in_formatting errors in src/io/{fasta,fastq}.rs (toolchain drift) to unblock the plan's -D warnings gate — Plan acceptance criteria list `cargo clippy --all-targets -- -D warnings` as blocking; logged to deferred-items.md before fixing
 
+- [Phase 03]: 03-02: The sweep's single call site is the top of RKDatabase::merge_databases (not ExternalSortMerger::new), so one placement covers all three merge strategies — the plan's key_links asked for exactly one site in the shared dispatch
+- [Phase 03]: 03-02: The per-bucket best-effort shard delete was de-gated from `result.is_ok() &&` rather than deleted outright. It is a peak-disk optimization, not the cleanup guarantee; Drop is the guarantee. Removing it would have made a long merge retain every bucket's shards until the end
+- [Phase 03]: 03-02: MERGE_TEMP_PREFIX is a pub const, not a repeated literal — subdir creation and the sweep must agree on the string or orphan cleanup silently stops working
+- [Phase 03]: 03-02: The sweep refuses symlinks carrying the prefix (entry.file_type(), not entry.metadata()) so a planted symlink in a shared temp dir cannot redirect remove_dir_all at an arbitrary tree — T-03-07 was accepted, escalating it to arbitrary-target deletion was not
+- [Phase 03]: 03-02: Two pre-existing prefix-cache bugs were logged to deferred-items.md, not fixed — external_sort_merge_output.tmp is written outside the subdir and never removed (T-03-05/T-03-06), and merge_prefix_buckets returns Ok(()) after bucket failures, producing a silent partial merge. Neither is caused by this plan and fixing the second would change merge outcomes
+- [Phase 03]: 03-02: Subdir uniqueness uses rand_bytes(8), not the PID — random bytes also survive PID reuse after a reboot, which PID-based naming does not
+
 ### Pending Todos
 
 [From .planning/todos/pending/ — ideas captured during sessions]
@@ -144,6 +152,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-07T02:28:57.101Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-10-07T03:45:00.000Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
