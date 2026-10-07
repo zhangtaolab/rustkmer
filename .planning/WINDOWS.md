@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 2
+open_count: 5
 waived_count: 3
 fixed_count: 5
-total_count: 10
-last_updated: 2026-10-07T12:55:00.000Z
+total_count: 13
+last_updated: 2026-10-07T12:52:47.343Z
 ---
 
 # Broken Windows Ledger
@@ -22,9 +22,12 @@ last_updated: 2026-10-07T12:55:00.000Z
 | 5 | 03 | deviation | pyo3/pyproject.toml |  | pyo3 pytest addopts hard-codes --cov=pyrustkmer --cov-fail-under=80, so every pyo3 pytest run exits 1 even when all tests pass (compiled extension reports 0% coverage); 03-05 ran pytest with -o addopts="". CI has no pyo3 pytest job at all | open |  | 2026-10-07T03:52:57.731Z |  |
 | 6 | 03 | stub | src/database/format.rs |  | No stubs left | fixed | Not a defect — recorded as a status note. Plan 03-07 introduced no stubs: every assertion is wired to live production code, and no #[ignore] attribute was added. | 2026-10-07T12:29:50.679Z | 2026-10-07T12:55:00.000Z |
 | 7 | 03 | deviation | src/database/streaming_merge.rs |  | EOF at a run refill is the normal end of a run, not damage; truncation is caught by a len % RECORD_SIZE check in merge_sorted_chunks | fixed | Duplicate of id 10 (two appends raced). Closed in plan 03-07: the EOF-vs-truncation distinction is implemented and covered by chunk_truncated_mid_record_is_reported_not_silently_dropped and chunk_record_count_that_is_a_whole_multiple_of_record_size_still_merges, both green. | 2026-10-07T12:29:50.953Z | 2026-10-07T12:55:00.000Z |
-| 8 | 03 | deviation | tests/merge_route_parity_tests.rs |  | Route parity asserted on decoded maps plus an exact count, because 16_777_216 was wrong on BOTH routes and equality alone stayed green | fixed | Closed in plan 03-07: route parity asserted on decoded (String,u32) maps PLUS an exact expected count, because 16_777_216 was wrong on BOTH routes. Both arms green; both observed RED against the pre-fix reader. | 2026-10-07T12:29:51.192Z | 2026-10-07T12:55:00.000Z |
+| 8 | 03 | deviation | tests/merge_route_parity_tests.rs |  | Route parity asserted on decoded maps plus an exact count, because 16_777_216 was wrong on BOTH routes and equality alone stayed green | fixed | Closed in plan 03-07: route parity is asserted on decoded (String,u32) maps PLUS an exact expected count, because 16_777_216 was wrong on BOTH routes. Both arms green; both observed RED against the pre-fix reader. | 2026-10-07T12:29:51.192Z | 2026-10-07T12:55:00.000Z |
 | 9 | 03 | deviation | .planning/phases/03-memory-safety/03-07-SUMMARY.md |  | Plan criterion grep -c 1_000_000 expecting 2 is unsatisfiable alongside step 10; reported as 3 with a discriminating '> 1_000_000' gate added | fixed | Plan-gate bookkeeping only — the code is as the plan intended. A discriminating gate (grep for the '> 1_000_000' comparison, 1 -> 0) was added and the measurement reported in the SUMMARY. | 2026-10-07T12:29:51.438Z | 2026-10-07T12:55:00.000Z |
 | 10 | 03 | deviation | src/database/streaming_merge.rs |  | EOF at a run refill is the normal end of a run, not damage; truncation is caught by a len % RECORD_SIZE check in merge_sorted_chunks | fixed | Closed in plan 03-07: EOF at a run refill is the normal end of a run; mid-record truncation is caught by a len % RECORD_SIZE check in merge_sorted_chunks, with RECORD_SIZE pinned against a real encode. | 2026-10-07T12:29:54.509Z | 2026-10-07T12:55:00.000Z |
+| 11 | 03 | unrun-verify | pyo3/tests/test_database_merge.py |  | 03-09's Python half could not be EXECUTED: pyo3/pyproject.toml sets python-source="." with module-name="pyrustkmer" while pyo3/pyrustkmer/ has never existed, so maturin build/develop both refuse; and addopts hard-codes --cov-fail-under=80 against a compiled extension, so every pytest run exits 1. test_python_budget_model_tracks_the_core and the BYTES_PER_KMER_ESTIMATE 24->96 repair are grep-verified and arithmetically verified (extension-free) only. | open |  | 2026-10-07T12:52:42.303Z |  |
+| 12 | 03 | deviation | src/database/format.rs |  | 03-09 Deviation: the plan's literal 'grep -c db_refs' gate reads 2, not 0 — both remaining occurrences are a test local for the unrelated validate_compatibility(&[&RKDatabase]) path. Renaming it to satisfy a grep would make the gate green without making the property truer, so the measurement is reported and a discriminating gate (no from_file_path and no Vec<RKDatabase> inside merge_databases_prefix_cache) is used instead. | open |  | 2026-10-07T12:52:47.081Z |  |
+| 13 | 03 | deviation | src/database/format.rs |  | 03-09 Deviation: the plan's literal 'grep -c saturating_add(total)' gate is unsatisfiable — the saturating fold is written \|total, count\| total.saturating_add(count), which cannot contain that substring. Reported as 0 with the discriminating evidence being the RED-observed unit test summing_two_near_max_headers_saturates_instead_of_panicking (pre-fix: 'attempt to add with overflow'). | open |  | 2026-10-07T12:52:47.343Z |  |
 
 ````json
 [
@@ -101,7 +104,7 @@ last_updated: 2026-10-07T12:55:00.000Z
     "line": null,
     "description": "No stubs left",
     "status": "fixed",
-    "reason": "Not a defect \u2014 recorded as a status note. Plan 03-07 introduced no stubs: every assertion is wired to live production code, and no #[ignore] attribute was added.",
+    "reason": "Not a defect — recorded as a status note. Plan 03-07 introduced no stubs: every assertion is wired to live production code, and no #[ignore] attribute was added.",
     "recorded_at": "2026-10-07T12:29:50.679Z",
     "resolved_at": "2026-10-07T12:55:00.000Z",
     "milestone": "v1.0"
@@ -140,7 +143,7 @@ last_updated: 2026-10-07T12:55:00.000Z
     "line": null,
     "description": "Plan criterion grep -c 1_000_000 expecting 2 is unsatisfiable alongside step 10; reported as 3 with a discriminating '> 1_000_000' gate added",
     "status": "fixed",
-    "reason": "Plan-gate bookkeeping only \u2014 the code is as the plan intended. A discriminating gate (grep for the '> 1_000_000' comparison, 1 -> 0) was added and the measurement reported in the SUMMARY.",
+    "reason": "Plan-gate bookkeeping only — the code is as the plan intended. A discriminating gate (grep for the '> 1_000_000' comparison, 1 -> 0) was added and the measurement reported in the SUMMARY.",
     "recorded_at": "2026-10-07T12:29:51.438Z",
     "resolved_at": "2026-10-07T12:55:00.000Z",
     "milestone": "v1.0"
@@ -156,6 +159,45 @@ last_updated: 2026-10-07T12:55:00.000Z
     "reason": "Closed in plan 03-07: EOF at a run refill is the normal end of a run; mid-record truncation is caught by a len % RECORD_SIZE check in merge_sorted_chunks, with RECORD_SIZE pinned against a real encode.",
     "recorded_at": "2026-10-07T12:29:54.509Z",
     "resolved_at": "2026-10-07T12:55:00.000Z",
+    "milestone": "v1.0"
+  },
+  {
+    "id": 11,
+    "kind": "unrun-verify",
+    "phase": "03",
+    "file": "pyo3/tests/test_database_merge.py",
+    "line": null,
+    "description": "03-09's Python half could not be EXECUTED: pyo3/pyproject.toml sets python-source=\".\" with module-name=\"pyrustkmer\" while pyo3/pyrustkmer/ has never existed, so maturin build/develop both refuse; and addopts hard-codes --cov-fail-under=80 against a compiled extension, so every pytest run exits 1. test_python_budget_model_tracks_the_core and the BYTES_PER_KMER_ESTIMATE 24->96 repair are grep-verified and arithmetically verified (extension-free) only.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-07T12:52:42.303Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 12,
+    "kind": "deviation",
+    "phase": "03",
+    "file": "src/database/format.rs",
+    "line": null,
+    "description": "03-09 Deviation: the plan's literal 'grep -c db_refs' gate reads 2, not 0 — both remaining occurrences are a test local for the unrelated validate_compatibility(&[&RKDatabase]) path. Renaming it to satisfy a grep would make the gate green without making the property truer, so the measurement is reported and a discriminating gate (no from_file_path and no Vec<RKDatabase> inside merge_databases_prefix_cache) is used instead.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-07T12:52:47.081Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 13,
+    "kind": "deviation",
+    "phase": "03",
+    "file": "src/database/format.rs",
+    "line": null,
+    "description": "03-09 Deviation: the plan's literal 'grep -c saturating_add(total)' gate is unsatisfiable — the saturating fold is written |total, count| total.saturating_add(count), which cannot contain that substring. Reported as 0 with the discriminating evidence being the RED-observed unit test summing_two_near_max_headers_saturates_instead_of_panicking (pre-fix: 'attempt to add with overflow').",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-07T12:52:47.343Z",
+    "resolved_at": null,
     "milestone": "v1.0"
   }
 ]

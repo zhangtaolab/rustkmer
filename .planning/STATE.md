@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 03
 current_phase_name: Memory Safety
 status: gap-closure-in-progress
-stopped_at: "Completed 03-08-PLAN.md (WR-03: DENSE-02 guard now drives the production write path; both new write-path tests observed RED under an injected widening)"
-last_updated: "2026-10-07T12:38:36.887Z"
+stopped_at: "Completed 03-09-PLAN.md (G2a closed: every merge route's inputs are header-only; the in-memory route is charged 96 B/k-mer derived from its three live structures; the Python copy of the model repaired and paired to the core's own echoed figures)"
+last_updated: "2026-10-07T12:58:02.459Z"
 last_activity: 2026-10-07
 last_activity_desc: "Completed 03-08 (WR-03: the DENSE-02 guard now drives the production write path; both new write-path tests observed RED under an injected u64 -> u128 widening)"
-state_head: 4e9af47acafd823d87615ba9c1e8473147e1951a
+state_head: dc1c25ae3dddff294b27e20f2e2ef42913f09615
 progress:
   total_phases: 4
   completed_phases: 2
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 
 ## Current Position
 
-Phase: 03 (Memory Safety) — GAP CLOSURE in progress (8/11 plans complete)
-Plan: 9 of 11
-Status: 03-08 closed WR-03 (the DENSE-02 golden binary now drives `KmerCounter` -> `get_all_counts` -> `to_file_path` and compares the emitted bytes against a reference the test assembles itself; both new write-path tests were observed RED under an injected `u64 -> u128` widening while the committed-fixture re-hash stayed GREEN). Remaining: 03-09..03-11, then `/gsd-verify-work 03`. Still open from 03-VERIFICATION.md: G2 (no merge strategy is memory-bounded — the phase's central deliverable).
-Last activity: 2026-10-07 — Completed 03-08 (WR-03: replaced the false "differential rather than a tautology" docstring claim with a real write-path differential; removed all four docstring mentions of the type 03-06 deleted, kept the two `KmerEntry` mentions)
+Phase: 03 (Memory Safety) — GAP CLOSURE in progress (9/11 plans complete)
+Plan: 10 of 11
+Status: 03-09 closed G2a — the HEADER half of gap G2. Every merge route now learns an input's shape from a 42-byte `read_header_of` instead of materializing a database: the streaming route no longer loads `input_paths[0]` on the over-budget path, the prefix-cache route holds `Vec<DatabaseHeader>` instead of `Vec<RKDatabase>` through the final read-back, and `ExternalSortMerger::new` no longer loads every input twice. The in-memory route is charged 96 B/k-mer derived from its three live structures, so a budget the old 24 B/k-mer model admitted in memory now hard-routes to streaming — proven with a `48 * N` budget, observed RED with the old constant restored. The `total_kmers` sum saturates (two crafted headers used to panic the admission gate in debug). `merge_databases(&[], ..)` errors instead of panicking. The prefix-cache intermediate `.rkdb` moved into the RAII subdir and the 1 GB per-bucket floor no longer overrides `--max-memory`. Remaining: 03-10 (streams the merged OUTPUT — the substantive half of G2, and the `/proc/self/status` measurement of the peak this plan's comment declines to claim), 03-11, then `/gsd-verify-work 03`.
+Last activity: 2026-10-07 — Completed 03-09 (G2a: header-only reads on all three merge routes; 24 -> 96 B/k-mer admission model derived from live structures; the Python copy of the model repaired from 24 to 96 and paired to the core's own echoed figures, after arithmetic showed the unrepaired value would have made `test_inmemory_route_never_touches_temp_dir` raise outright)
 
-Progress: [████████░░] 8/11 plans (Phase 03)
+Progress: [█████████░] 9/11 plans (Phase 03)
 
 ## Performance Metrics
 
@@ -83,6 +83,7 @@ Progress: [████████░░] 8/11 plans (Phase 03)
 | Phase 03 P07 | 34min | 3 tasks | 3 files |
 | Phase 03 P07 | 34 min | 3 tasks | 3 files |
 | Phase 03 P08 | 4 min | 1 tasks | 2 files |
+| Phase 03 P09 | 12 min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -172,6 +173,14 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-08: An input fixture's claimed property is asserted, not commented. table_is_already_canonical runs canonical_kmer_u128 over every literal table entry, so a canonicalization change fails loudly instead of silently counting a different k-mer set. Same discipline as 03-06's stored_key_bytes: observe, never restate
 - [Phase 03]: 03-08: tests/golden_tests.rs deliberately unchanged. It shares the static-fixture property, its own file comment is already candid that both binaries read the same manifest, and a duplicated DIFFERENTIAL is worse than a duplicated guard because independence is the property most easily lost by accident
 - [Phase 03]: 03-08: A test that hashes COMMITTED artifacts proves those artifacts are unchanged; it says nothing about the code that produced them. Any file whose mandate is 'no docstring may claim something false' must also drive the production path, or its own green is the tautology it accuses others of
+- [Phase 03]: 03-09: read_header_of is the single door through which every merge route learns an input's shape, and it applies from_file_path's identical data_offset != 42 rejection and error text - one rejection, two readers that cannot disagree. Routing estimate_total_kmers through it is a real behaviour change: a header carrying an unaccepted data_offset now falls back to the file-size bound with a log::warn!, which is the SAFE direction because from_file_path always refused such a file outright
+- [Phase 03]: 03-09: INMEMORY_BYTES_PER_KMER = 96 is DERIVED from the three structures the in-memory route holds live (32 for the input Vec<KmerEntry> + 32 for the hashbrown (u128,u32) bucket + 32 for the Vec drained from it), and size_of::<KmerEntry>() == size_of::<(u128,u32)>() == 32 is asserted so the derivation cannot quietly become false. The source comment makes NO direction claim about the true peak: the real peak is 32N + 64U .. 32N + 68U and 96 sits at neither end, because hashbrown's control bytes are not modelled. A false direction claim in admission-control source is the same class of error 03-06 found in key.rs
+- [Phase 03]: 03-09: the admission estimate is computed ONCE in merge_databases and handed to should_use_streaming, which is now a pure comparison. should_use_streaming previously re-derived it from a second copy of the per-k-mer constant - two sites computing the same quantity with two literals is exactly how they drifted
+- [Phase 03]: 03-09: the total_kmers sum SATURATES. .iter().sum() panicked with 'attempt to add with overflow' on two crafted headers in a debug build, i.e. the one component whose entire job is surviving hostile input was where a panic was least acceptable. Observed RED before the fix
+- [Phase 03]: 03-09: a streaming route proof is only as strong as the error it matches. 'contains("temp") || contains("No such file")' is satisfied by a k-mer-size mismatch, a bad input path and a corrupt input alike; the replacement asserts the chunk-creation operation AND the nonexistent directory's own file name, the same pair the Python test already used. Three Rust tests now use it
+- [Phase 03]: 03-09: the Python copy of the admission model was not cosmetic to repair - with BYTES_PER_KMER_ESTIMATE left at 24, _within_budget returns 5760 against the core's new 11520, so test_inmemory_route_never_touches_temp_dir would have raised the D-02 RuntimeError outright and the streaming/in-memory parity test would have silently taken the streaming route on BOTH arms. The two copies are now paired BEHAVIOURALLY by parsing the figures the core echoes in its own rejection, because two comments cannot be shown to agree
+- [Phase 03]: 03-09: WR-07's use_streaming is DOCUMENTED, not deprecated and not removed. Deprecating a public field with five construction sites would fail -D warnings in three files this plan has no business touching; removal is a breaking public-API change. IN-03's two total_kmers meanings are named at both sites for the same reason - a silent trap is now a labelled one
+- [Phase 03]: 03-09: the external-sort compatibility error strings are byte-identical by construction, but nothing asserted it - test_validate_compatibility_kmer_size_mismatch exercises the IN-MEMORY validator, not the external-sort one. Found by checking a claim the SUMMARY was about to make rather than asserting it, then closed with a real test
 
 ### Pending Todos
 
@@ -183,7 +192,8 @@ None yet.
 
 [Issues that affect future work]
 
-None yet.
+- No pyo3 test in phase 3 can be EXECUTED: pyo3/pyproject.toml sets python-source="." with module-name="pyrustkmer" while pyo3/pyrustkmer/ has never existed, so maturin build/develop both refuse (and CI's pyo3-build job runs maturin build, so that job cannot be green as configured); addopts also hard-codes --cov-fail-under=80 against a compiled extension, so every pytest run exits 1 even when green; and .github/workflows/ci.yml has no pyo3 pytest job at all. Consequence: 03-09's admission-model change and 03-10's PyDatabase::merge semantics change both ship with ZERO Python-level verification. One-line fix that would unblock all of it: delete the python-source key from [tool.maturin] (a pure-Rust extension has no Python sources to package). Carried in deferred-items.md + WINDOWS.md with open status.
+- deferred-items.md's IN-02 clippy entry is STALE and should be marked closed: the 4 `useless_borrows_in_formatting` sites it names no longer exist (src/io/fastq.rs:216 writes `self.file_path`, :343 writes `path`, src/io/fasta.rs:56 writes `self.file_path`, and fasta.rs:153 is not a `format!` at all), and `cargo clippy --all-targets -- -D warnings` — the entry's own reproduction command — exits 0. Verified by plan 03-09; the file itself was outside that plan's scope.
 
 ## Deferred Items
 
@@ -195,6 +205,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-07T12:38:36.797Z
-Stopped at: Completed 03-08-PLAN.md (WR-03: DENSE-02 guard now drives the production write path; both new write-path tests observed RED under an injected widening)
+Last session: 2026-10-07T12:57:41.364Z
+Stopped at: Completed 03-09-PLAN.md (G2a closed: every merge route's inputs are header-only; the in-memory route is charged 96 B/k-mer derived from its three live structures; the Python copy of the model repaired and paired to the core's own echoed figures)
 Resume file: None
