@@ -474,3 +474,130 @@ fn estimator_reads_header_only_no_materialization() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+/// Wave-merge cross-validation (added by plan 03-04).
+///
+/// The four routing tests above each pin the union *size* and spot-check a
+/// couple of counts. None of them pins the two whole-database invariants a
+/// merge can violate without changing either of those:
+///
+///   1. **Header accounting** — `header.total_kmers` must equal the number of
+///      records actually present. A merge that silently skips work and still
+///      returns `Ok` produces a structurally valid `.rkdb` that undercounts
+///      itself; nothing downstream notices, because every reader trusts the
+///      header. There is a live instance of this shape on the prefix-cache
+///      path (`merge_prefix_buckets` logs bucket failures but returns `Ok(())`),
+///      which is why the invariant is asserted here rather than left for a
+///      reader to discover.
+///   2. **Total-count conservation** — the merged counts must sum to the sum of
+///      the input counts. A dropped k-mer, or a count read twice, moves this
+///      total even when the k-mer *set* is unchanged.
+///
+/// Both are asserted on **both** permitted routes, since MERGE-01 promotes
+/// streaming to the default and D-02 retains in-memory for small inputs: a
+/// route that satisfied neither would defeat the hard route.
+#[test]
+fn merged_database_accounts_for_every_input_kmer_on_both_routes() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let a = write_input_db(dir.path(), "acct_a.rkdb", INPUT_KMERS)?;
+    let b = write_input_db(dir.path(), "acct_b.rkdb", INPUT_KMERS)?;
+
+    // The inputs' own accounting, read from disk rather than recomputed, so the
+    // expectation is the inputs' claim and the assertion is that the merge
+    // preserves it.
+    let input_total: u64 = [&a, &b]
+        .iter()
+        .map(|p| {
+            RKDatabase::from_file_path(p)
+                .and_then(|db| db.all_kmers())
+                .map(|pairs| pairs.iter().map(|(_, c)| *c as u64).sum::<u64>())
+                .map_err(|e| anyhow::anyhow!("failed to read input {}: {}", p.display(), e))
+        })
+        .collect::<anyhow::Result<Vec<u64>>>()?
+        .into_iter()
+        .sum();
+    assert!(
+        input_total > 0,
+        "premise: the synthetic inputs must actually carry counts"
+    );
+
+    for (label, config) in [
+        (
+            "in-memory",
+            routing_config(dir.path(), HUGE_BUDGET_BYTES, "auto"),
+        ),
+        (
+            "streaming",
+            routing_config(dir.path(), TINY_BUDGET_BYTES, "auto"),
+        ),
+    ] {
+        let merged = RKDatabase::merge_databases(&[a.clone(), b.clone()], &config)
+            .map_err(|e| anyhow::anyhow!("{} merge must succeed: {}", label, e))?;
+        let pairs = merged
+            .all_kmers()
+            .map_err(|e| anyhow::anyhow!("{}: failed to read merged k-mers: {}", label, e))?;
+
+        // (1) Header accounting.
+        assert_eq!(
+            merged.header.total_kmers,
+            pairs.len() as u64,
+            "{}: header total_kmers ({}) must equal the number of records present ({}) — \
+             a header that undercounts makes the file structurally valid but wrong",
+            label,
+            merged.header.total_kmers,
+            pairs.len()
+        );
+        assert_eq!(
+            merged.header.data_offset, 42,
+            "{}: merged output must be a canonical .rkdb v2 file",
+            label
+        );
+        assert_eq!(
+            merged.header.kmer_size, K,
+            "{}: merged output must preserve the input k-mer size",
+            label
+        );
+        assert!(
+            merged.header.sorted,
+            "{}: a merged database must be sorted — the readers' binary search \
+             depends on it",
+            label
+        );
+
+        // (2) Total-count conservation.
+        let merged_total: u64 = pairs.iter().map(|(_, c)| *c as u64).sum();
+        assert_eq!(
+            merged_total, input_total,
+            "{}: merged counts must sum to the inputs' total ({}) — a dropped or \
+             double-counted k-mer moves this even when the k-mer set is unchanged",
+            label, input_total
+        );
+
+        // The invariant must survive the write/read round trip, since the header
+        // is what a downstream reader trusts.
+        let out = dir.path().join(format!("accounted_{}.rkdb", label));
+        merged.to_file_path(&out)?;
+        let reloaded = RKDatabase::from_file_path(&out)?;
+        assert_eq!(
+            reloaded.header.total_kmers, merged.header.total_kmers,
+            "{}: header total_kmers must survive write -> read unchanged",
+            label
+        );
+        assert_eq!(
+            reloaded.all_kmers()?,
+            pairs,
+            "{}: merged records must survive write -> read unchanged",
+            label
+        );
+        assert_eq!(
+            RKDatabase::estimate_total_kmers(&out)?,
+            merged.header.total_kmers,
+            "{}: the MERGE-02 header-only estimator must agree with the record count \
+             on the written output — it reads the header, so disagreement means the \
+             header lies",
+            label
+        );
+    }
+
+    Ok(())
+}
