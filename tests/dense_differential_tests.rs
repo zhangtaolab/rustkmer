@@ -29,8 +29,8 @@
 //! | `golden_decoded_map` | the committed Phase 1/2 `.rkdb` fixtures (D-10 ground truth) | drift from the pre-refactor baseline |
 //!
 //! **D-13 coverage matrix carry-forward:** `k ∈ {21, 32, 64}` × canonical.
-//! k=21 and k=32 select the `KmerKey::U64` storage width (DENSE-01); k=64
-//! selects `KmerKey::U128` and is the *regression guard* proving the
+//! k=21 and k=32 select the dense `u64` storage width (DENSE-01); k=64
+//! selects the wide `u128` width and is the *regression guard* proving the
 //! pre-existing path is untouched.
 //!
 //! Test bodies use `anyhow::Result<()>` + `?` per the project's TESTING.md
@@ -61,15 +61,16 @@ const GOLDEN_INPUT: &[&str] = &[
     "GATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATT",
 ];
 
-/// Modelled hash/shard overhead per entry. Shared by both widths — it is not
-/// part of the key/value payload this plan narrows, which is why DENSE-01's
-/// "roughly half" is measured on the payload rather than the total.
-const HASH_OVERHEAD_PER_ENTRY: usize = 24;
-/// Modelled per-entry cost for the dense (`KmerKey::U64`) width: 24 + 8 + 4.
-/// Mirrors `src/hash/table.rs::KmerCounter::memory_usage`.
-const DENSE_BYTES_PER_ENTRY: usize = HASH_OVERHEAD_PER_ENTRY + 8 + 4;
-/// Same, for the wide (`KmerKey::U128`) width: 24 + 16 + 4.
-const WIDE_BYTES_PER_ENTRY: usize = HASH_OVERHEAD_PER_ENTRY + 16 + 4;
+/// Stored key width for the dense (`DashMap<u64, u32>`) table — DENSE-01.
+///
+/// Read from the TYPE, not hard-coded, so the assertion cannot drift from the
+/// representation it claims to observe. The live-variant assertions below
+/// compare `KmerCounter::stored_key_bytes()` against this; that accessor
+/// matches the counter's actual `CounterTable` variant.
+const DENSE_STORED_KEY_BYTES: usize = std::mem::size_of::<u64>();
+/// Stored key width for the wide (`DashMap<u128, u32>`) table — unchanged from
+/// pre-Phase-3.
+const WIDE_STORED_KEY_BYTES: usize = std::mem::size_of::<u128>();
 
 /// Which encoder family produced the integers in a count map.
 ///
@@ -144,7 +145,7 @@ fn u128_reference_map(k: usize, canonical: bool) -> Result<HashMap<String, u32>>
 /// family** — byte-for-byte the loop production runs in
 /// `src/cli/commands/count.rs` and `pyo3/src/counter.rs`.
 ///
-/// For k ≤ 32 this counter stores `KmerKey::U64` keys (the dense width); the
+/// For k ≤ 32 this counter stores `u64` keys (the dense width); the
 /// integers it is fed already fit in 64 bits because `encode_kmer_bytes_u128`
 /// is called on a k ≤ 32 window.
 fn u128_encoded_counter(k: usize, canonical: bool) -> Result<KmerCounter> {
@@ -171,7 +172,7 @@ fn u128_encoded_counter(k: usize, canonical: bool) -> Result<KmerCounter> {
 /// family** — the dense path proper, and the one DENSE-03 is about.
 ///
 /// Only valid for k ≤ 32 (`encode_kmer_bytes` rejects longer windows); the
-/// stored keys are `KmerKey::U64` because `k <= MAX_KMER_SIZE_IN_U64`.
+/// stored keys are `u64` because `k <= MAX_KMER_SIZE_IN_U64`.
 fn u64_encoded_counter(k: usize, canonical: bool) -> Result<KmerCounter> {
     let counter = KmerCounter::new(k, canonical, 4096, 1)?;
     for seq in GOLDEN_INPUT {
@@ -187,7 +188,7 @@ fn u64_encoded_counter(k: usize, canonical: bool) -> Result<KmerCounter> {
                 encoded
             };
             // `kmer` is a `u64`; the widening is the public API contract and the
-            // counter narrows it straight back to `KmerKey::U64`.
+            // counter narrows it straight back to the dense `u64` width.
             counter.increment(kmer as u128)?;
         }
     }
@@ -222,10 +223,18 @@ fn assert_dense_cell_matches(k: usize, canonical: bool) -> Result<()> {
     let label = format!("k={} {}", k, canon_label(canonical));
 
     // --- 0. The counter really is on the dense width ----------------------------
-    // `memory_usage()` is derived from the stored key width, so this is a
-    // direct observation of which `KmerKey` variant the counter selected at
-    // `new()`. Without it, a regression to the u128 key would still pass every
-    // decoded-map assertion below while silently un-doing DENSE-01.
+    // These assert the STORED representation, read from the live `CounterTable`
+    // variant via `stored_key_bytes()` / `uses_dense_storage()`. The
+    // `memory_usage()`-equals-a-model-constant assertion that used to stand here
+    // was self-fulfilling: `memory_usage()` derived its key width from
+    // `kmer_length`, so `memory_usage() == n * DENSE_BYTES_PER_ENTRY` held for
+    // ANY width and stayed green under the mutation "always store the wide
+    // variant" (03-VERIFICATION.md §Nyquist BLOCKER-1, Mutation A).
+    // `memory_usage()` is still a model; `stored_key_bytes()` is the observation.
+    //
+    // The DECODED-level comparisons below are the DENSE-03 correctness claim and
+    // are unchanged — they are verified sound (Mutation B in 03-VERIFICATION.md).
+    // This storage assertion is a separate, additional claim.
     let dense_counter = u64_encoded_counter(k, canonical)?;
     let n = dense_counter.get_all_counts().len();
     assert!(
@@ -234,20 +243,30 @@ fn assert_dense_cell_matches(k: usize, canonical: bool) -> Result<()> {
         label
     );
     assert_eq!(
-        dense_counter.memory_usage(),
-        n * DENSE_BYTES_PER_ENTRY,
-        "{}: k <= 32 must select the KmerKey::U64 storage width (DENSE-01), \
-         i.e. {} bytes/entry",
-        label,
-        DENSE_BYTES_PER_ENTRY
+        dense_counter.stored_key_bytes(),
+        DENSE_STORED_KEY_BYTES,
+        "{}: k <= 32 must store 8-byte (u64) keys (DENSE-01) — read from the \
+         live table variant, not restated from kmer_length",
+        label
+    );
+    assert!(
+        dense_counter.uses_dense_storage(),
+        "{}: k <= 32 must be on the dense storage path (DENSE-01)",
+        label
     );
 
     let u128_counter = u128_encoded_counter(k, canonical)?;
     assert_eq!(
-        u128_counter.memory_usage(),
-        n * DENSE_BYTES_PER_ENTRY,
-        "{}: the production (u128-encoder) path must also land in the dense \
-         KmerKey::U64 width for k <= 32 (DENSE-01)",
+        u128_counter.stored_key_bytes(),
+        DENSE_STORED_KEY_BYTES,
+        "{}: the production (u128-encoder) path must also store at the dense \
+         8-byte width for k <= 32 (DENSE-01)",
+        label
+    );
+    assert!(
+        u128_counter.uses_dense_storage(),
+        "{}: the production (u128-encoder) path must also be on the dense \
+         storage path for k <= 32 (DENSE-01)",
         label
     );
 
@@ -320,8 +339,9 @@ fn assert_dense_cell_matches(k: usize, canonical: bool) -> Result<()> {
 }
 
 /// The regression guard for the wide width: k=64 has no dense path (k > 32), so
-/// these cells prove the `KmerKey::U128` variant is byte-for-byte the old
-/// behavior. A bug here would mean the swap regressed the pre-existing path.
+/// these cells prove the `DashMap<u128, u32>` table is byte-for-byte the old
+/// behavior. A bug here would mean the width selection regressed the
+/// pre-existing path.
 fn assert_wide_cell_unchanged(k: usize, canonical: bool) -> Result<()> {
     let label = format!("k={} {}", k, canon_label(canonical));
 
@@ -329,11 +349,16 @@ fn assert_wide_cell_unchanged(k: usize, canonical: bool) -> Result<()> {
     let n = counter.get_all_counts().len();
     assert!(n > 0, "{}: fixture input produced no k-mers", label);
     assert_eq!(
-        counter.memory_usage(),
-        n * WIDE_BYTES_PER_ENTRY,
-        "{}: k > 32 must select the KmerKey::U128 storage width, i.e. {} bytes/entry",
-        label,
-        WIDE_BYTES_PER_ENTRY
+        counter.stored_key_bytes(),
+        WIDE_STORED_KEY_BYTES,
+        "{}: k > 32 must store 16-byte (u128) keys — read from the live table \
+         variant, not restated from kmer_length",
+        label
+    );
+    assert!(
+        !counter.uses_dense_storage(),
+        "{}: k > 32 must not be on the dense storage path",
+        label
     );
 
     // The u64 encoder genuinely cannot represent a 64-mer — this is what makes
@@ -350,7 +375,7 @@ fn assert_wide_cell_unchanged(k: usize, canonical: bool) -> Result<()> {
     let reference = u128_reference_map(k, canonical)?;
     assert_eq!(
         wide_map, reference,
-        "{}: the u128-storage path must be unchanged by the KmerKey swap (DENSE-03)",
+        "{}: the u128-storage path must be unchanged by the width split (DENSE-03)",
         label
     );
 

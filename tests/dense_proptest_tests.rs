@@ -31,7 +31,7 @@ use std::collections::HashMap;
 
 /// k values that all sit on the **dense** side of the width boundary
 /// (`k <= MAX_KMER_SIZE_IN_U64` = 32), so every generated k-mer exercises
-/// `KmerKey::U64` storage. 15/21/31 span small, the common default, and the
+/// dense `u64` storage. 15/21/31 span small, the common default, and the
 /// largest dense width; k=32 is covered exhaustively by
 /// `tests/dense_differential_tests.rs`.
 const DENSE_K: &[usize] = &[15, 21, 31];
@@ -73,7 +73,7 @@ fn dense_map(k: usize, canonical: bool, input: &str) -> HashMap<String, u32> {
 }
 
 /// Count `input` through `KmerCounter` using the `u128` encoder family (the
-/// unchanged path; for k <= 31 the counter still stores `KmerKey::U64` keys),
+/// unchanged path; for k <= 31 the counter still stores `u64` keys),
 /// decoded back to a string-keyed map with the matching decoder.
 fn wide_encoded_map(k: usize, canonical: bool, input: &str) -> HashMap<String, u32> {
     let counter = KmerCounter::new(k, canonical, 256, 1).expect("k in 1..=64");
@@ -184,7 +184,7 @@ proptest! {
 
     /// `get_count` (a point lookup) must agree with the aggregated map, and
     /// `get_all_counts` must not lose or duplicate entries on the way out of
-    /// the `KmerKey` → `u128` widening.
+    /// the dense `u64` → `u128` widening.
     #[test]
     fn dense_point_lookup_matches_aggregated_map(
         input in dna_string(),

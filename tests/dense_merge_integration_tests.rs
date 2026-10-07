@@ -12,7 +12,7 @@
 //! ## Why this binary exists
 //!
 //! Plan 03-01 (bounded merge dispatcher) and plan 03-03 (width-selected
-//! `KmerKey`) each shipped their own tests, but neither can see the other:
+//! dense width split) each shipped their own tests, but neither can see the other:
 //!
 //! | Plan | Test | Blind to |
 //! |---|---|---|
@@ -95,8 +95,12 @@ const RKDB_V2_RECORD_SIZE: u64 = 20;
 /// Modelled hash/shard overhead per entry, mirroring
 /// `src/hash/table.rs::HASH_OVERHEAD_PER_ENTRY`.
 const HASH_OVERHEAD_PER_ENTRY: usize = 24;
-/// Modelled per-entry cost on the dense (`KmerKey::U64`) width: 24 + 8 + 4.
+/// Modelled per-entry cost on the dense width: 24 + 8 + 4. This is a MODEL of
+/// `KmerCounter::memory_usage`, not a measurement.
 const DENSE_BYTES_PER_ENTRY: usize = HASH_OVERHEAD_PER_ENTRY + 8 + 4;
+/// Stored key width for the dense table, read from the TYPE so the assertion
+/// cannot drift from the representation it claims to observe.
+const DENSE_STORED_KEY_BYTES: usize = std::mem::size_of::<u64>();
 
 /// k used for the composition tests — inside the D-13 matrix and `<= 32`, so
 /// the dense width is the one under test.
@@ -166,9 +170,17 @@ struct DenseCountOutcome {
     unique_kmers: usize,
     /// Total k-mer windows fed in (i.e. the sum of all counts).
     total_windows: u64,
-    /// `KmerCounter::memory_usage()` — derived from the *stored key width*, so
-    /// comparing it against `unique_kmers * DENSE_BYTES_PER_ENTRY` is a direct
-    /// observation of which `KmerKey` variant the counter selected at `new()`.
+    /// `KmerCounter::stored_key_bytes()` — read from the LIVE `CounterTable`
+    /// variant, so this observes the representation the counter actually holds
+    /// rather than restating `kmer_length`. This replaced a
+    /// `memory_usage()`-versus-model-constant assertion that stayed green under
+    /// the "always store the wide variant" mutation (03-VERIFICATION.md
+    /// §Nyquist BLOCKER-1).
+    stored_key_bytes: usize,
+    /// Whether the counter is on the dense storage path.
+    uses_dense_storage: bool,
+    /// `KmerCounter::memory_usage()` — a MODEL (24 B overhead + key + 4 B count),
+    /// retained so the modelled arithmetic stays pinned; not the storage claim.
     modelled_bytes: usize,
 }
 
@@ -205,7 +217,7 @@ fn count_via_u64_path_then_write_rkdb(
                 encoded
             };
             // `kmer` is a u64; the widening is the public API contract, and the
-            // counter narrows it straight back to `KmerKey::U64`.
+            // counter narrows it straight back to the dense `u64` width.
             counter.increment(kmer as u128)?;
             windows_fed += 1;
         }
@@ -242,6 +254,8 @@ fn count_via_u64_path_then_write_rkdb(
     Ok(DenseCountOutcome {
         unique_kmers,
         total_windows: windows_fed,
+        stored_key_bytes: counter.stored_key_bytes(),
+        uses_dense_storage: counter.uses_dense_storage(),
         modelled_bytes: counter.memory_usage(),
     })
 }
@@ -454,15 +468,28 @@ fn dense_count_then_merge_matches_u128_merge_k21() -> Result<()> {
         outcome.unique_kmers > 0,
         "fixture input produced no k-mers — the differential would be vacuous"
     );
+    // --- DENSE-01: the counting arm really stored 8-byte keys ------------------
+    // Observed from the live table variant, so this turns RED if the dense
+    // storage is ever reverted. The previous assertion here compared
+    // `memory_usage()` against a model constant derived from the same
+    // `kmer_length` branch and was green for any width.
+    assert_eq!(
+        outcome.stored_key_bytes, DENSE_STORED_KEY_BYTES,
+        "k=21 must store 8-byte (u64) keys (DENSE-01); the whole composition claim \
+         could otherwise pass against a counter that had silently reverted to \
+         u128 keys"
+    );
+    assert!(
+        outcome.uses_dense_storage,
+        "k=21 must be on the dense storage path (DENSE-01)"
+    );
+    // The modelled arithmetic is still pinned, on the modelled bytes only —
+    // `memory_usage()` is a model, not the storage observation.
     assert_eq!(
         outcome.modelled_bytes,
         outcome.unique_kmers * DENSE_BYTES_PER_ENTRY,
-        "k=21 must select the KmerKey::U64 storage width (DENSE-01), i.e. {} modelled \
-         bytes/entry ({} entries -> {} bytes); without this the whole composition claim \
-         could pass against a counter that had silently reverted to u128 keys",
-        DENSE_BYTES_PER_ENTRY,
-        outcome.unique_kmers,
-        outcome.modelled_bytes
+        "the modelled per-entry cost must stay {} bytes (24 overhead + 8 key + 4 count)",
+        DENSE_BYTES_PER_ENTRY
     );
 
     // --- Arm B: committed u128 golden .rkdb (D-10 ground truth) -------------
