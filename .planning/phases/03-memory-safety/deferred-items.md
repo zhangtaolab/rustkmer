@@ -182,3 +182,54 @@
   `assert_route` fails loudly if a future fixture-size change pushes an arm
   back under the budget. The same trap applies to any future phase test that
   wants to exercise a specific merge path at toy scale.
+
+## Added by plan 03-05 (PyO3 merge parity)
+
+- `maturin develop` and `maturin build` both refuse to run in this repository.
+  `pyo3/pyproject.toml` sets `python-source = "."` with
+  `module-name = "pyrustkmer"`, but the mixed-layout package directory
+  `pyo3/pyrustkmer/` has **never existed** in git history
+  (`git log --all -- pyo3/pyrustkmer` returns nothing). maturin validates this
+  pairing before building anything and exits 1.
+  status: open
+  **What:** `.github/workflows/ci.yml`'s `pyo3-build` job — a FOUND-01 merge
+  gate — runs `maturin build` as its final step, so that job cannot be green as
+  configured. It also means the repo has no working *documented* path for
+  building the extension locally, which is why plan 03-05's `<verify>` command
+  had to be replaced (see Deviations 2 and 3 in `03-05-SUMMARY.md`).
+  **How to reproduce:** `cd pyo3 && maturin build` -> "python-source is set to
+  `.../pyo3`, but the python module at `.../pyo3/pyrustkmer` does not exist."
+  **Suggested fix (one line):** delete the `python-source` key from
+  `[tool.maturin]` — this is a pure-Rust extension module with no Python
+  sources to package, so maturin's mixed layout does not apply. Not done here:
+  a packaging-config change is outside MERGE-04's scope and would alter the
+  artifact CI publishes.
+  **Workaround that works today:** build the cdylib and install it by hand —
+  `cd pyo3 && PYO3_PYTHON=<venv>/bin/python cargo build --release --features
+  extension-module`, then copy `target/release/libpyrustkmer.so` to
+  `<venv>/lib/pythonX.Y/site-packages/pyrustkmer.so`. **`PYO3_PYTHON` must be
+  set**: without it `pyo3-build-config` picks up whatever interpreter is
+  discoverable through `PATH`/`CONDA_PREFIX`, and the resulting `.so` fails to
+  import with `ImportError: undefined symbol: PyUnicode_EqualToUTF8AndSize`
+  (seen on this machine, where the ambient interpreter is 3.14 and the venv is
+  3.11).
+
+- `pyo3/pyproject.toml`'s `[tool.pytest.ini_options] addopts` hard-codes
+  `--cov=pyrustkmer ... --cov-fail-under=80`, so **every** pytest run under
+  `pyo3/` exits 1 even when all tests pass: `pyrustkmer` is a compiled
+  extension, so coverage is structurally 0.00% and `fail-under` always trips.
+  Verified pre-existing — `pytest tests/test_counter.py` on an unmodified tree
+  reports "85 passed" and then "FAIL Required test coverage of 80% not
+  reached", exit 1.
+  status: open
+  **What:** the plan's criterion "pytest tests/test_database_merge.py exits 0"
+  is unsatisfiable for *any* test file in this crate. Plan 03-05 ran the suite
+  with `-o addopts=""` and documented the substitution. Compounding it,
+  `.github/workflows/ci.yml` has **no** pyo3 pytest job at all (only clippy +
+  `maturin build`), so the 124-test `pyo3/tests/` suite is developer-run only
+  and nothing in CI would have caught this.
+  **Suggested fix:** drop the `--cov*` flags from `addopts` (or move them to an
+  opt-in extra), and consider adding a pyo3 pytest CI job now that the Python
+  surface carries 11 new contract tests. Not done here: editing the crate's
+  test configuration is outside MERGE-04's scope and would change the quality
+  bar every later contributor runs under.
