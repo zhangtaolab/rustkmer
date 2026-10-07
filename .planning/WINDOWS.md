@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 2
 waived_count: 3
-fixed_count: 0
-total_count: 5
-last_updated: 2026-10-07T03:52:57.731Z
+fixed_count: 5
+total_count: 10
+last_updated: 2026-10-07T12:55:00.000Z
 ---
 
 # Broken Windows Ledger
@@ -20,6 +20,11 @@ last_updated: 2026-10-07T03:52:57.731Z
 | 3 | 03 | deviation | tests/merge_routing_tests.rs |  | probe | waived | Junk entry from a tooling probe; carries no defect. Removed from consideration by waiving rather than leaving it blocking the ship gate. | 2026-10-07T03:08:49.330Z | 2026-10-07T03:09:00.781Z |
 | 4 | 03 | unrun-verify | pyo3/pyproject.toml |  | Plan 03-05 verify command 'maturin develop --release' cannot run: python-source='.' with module-name='pyrustkmer' but pyo3/pyrustkmer/ has never existed, so maturin refuses both develop and build (CI's pyo3-build job runs maturin build) | open |  | 2026-10-07T03:52:54.821Z |  |
 | 5 | 03 | deviation | pyo3/pyproject.toml |  | pyo3 pytest addopts hard-codes --cov=pyrustkmer --cov-fail-under=80, so every pyo3 pytest run exits 1 even when all tests pass (compiled extension reports 0% coverage); 03-05 ran pytest with -o addopts="". CI has no pyo3 pytest job at all | open |  | 2026-10-07T03:52:57.731Z |  |
+| 6 | 03 | stub | src/database/format.rs |  | No stubs left | fixed | Not a defect — recorded as a status note. Plan 03-07 introduced no stubs: every assertion is wired to live production code, and no #[ignore] attribute was added. | 2026-10-07T12:29:50.679Z | 2026-10-07T12:55:00.000Z |
+| 7 | 03 | deviation | src/database/streaming_merge.rs |  | EOF at a run refill is the normal end of a run, not damage; truncation is caught by a len % RECORD_SIZE check in merge_sorted_chunks | fixed | Duplicate of id 10 (two appends raced). Closed in plan 03-07: the EOF-vs-truncation distinction is implemented and covered by chunk_truncated_mid_record_is_reported_not_silently_dropped and chunk_record_count_that_is_a_whole_multiple_of_record_size_still_merges, both green. | 2026-10-07T12:29:50.953Z | 2026-10-07T12:55:00.000Z |
+| 8 | 03 | deviation | tests/merge_route_parity_tests.rs |  | Route parity asserted on decoded maps plus an exact count, because 16_777_216 was wrong on BOTH routes and equality alone stayed green | fixed | Closed in plan 03-07: route parity asserted on decoded (String,u32) maps PLUS an exact expected count, because 16_777_216 was wrong on BOTH routes. Both arms green; both observed RED against the pre-fix reader. | 2026-10-07T12:29:51.192Z | 2026-10-07T12:55:00.000Z |
+| 9 | 03 | deviation | .planning/phases/03-memory-safety/03-07-SUMMARY.md |  | Plan criterion grep -c 1_000_000 expecting 2 is unsatisfiable alongside step 10; reported as 3 with a discriminating '> 1_000_000' gate added | fixed | Plan-gate bookkeeping only — the code is as the plan intended. A discriminating gate (grep for the '> 1_000_000' comparison, 1 -> 0) was added and the measurement reported in the SUMMARY. | 2026-10-07T12:29:51.438Z | 2026-10-07T12:55:00.000Z |
+| 10 | 03 | deviation | src/database/streaming_merge.rs |  | EOF at a run refill is the normal end of a run, not damage; truncation is caught by a len % RECORD_SIZE check in merge_sorted_chunks | fixed | Closed in plan 03-07: EOF at a run refill is the normal end of a run; mid-record truncation is caught by a len % RECORD_SIZE check in merge_sorted_chunks, with RECORD_SIZE pinned against a real encode. | 2026-10-07T12:29:54.509Z | 2026-10-07T12:55:00.000Z |
 
 ````json
 [
@@ -86,6 +91,71 @@ last_updated: 2026-10-07T03:52:57.731Z
     "reason": "",
     "recorded_at": "2026-10-07T03:52:57.731Z",
     "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 6,
+    "kind": "stub",
+    "phase": "03",
+    "file": "src/database/format.rs",
+    "line": null,
+    "description": "No stubs left",
+    "status": "fixed",
+    "reason": "Not a defect \u2014 recorded as a status note. Plan 03-07 introduced no stubs: every assertion is wired to live production code, and no #[ignore] attribute was added.",
+    "recorded_at": "2026-10-07T12:29:50.679Z",
+    "resolved_at": "2026-10-07T12:55:00.000Z",
+    "milestone": "v1.0"
+  },
+  {
+    "id": 7,
+    "kind": "deviation",
+    "phase": "03",
+    "file": "src/database/streaming_merge.rs",
+    "line": null,
+    "description": "EOF at a run refill is the normal end of a run, not damage; truncation is caught by a len % RECORD_SIZE check in merge_sorted_chunks",
+    "status": "fixed",
+    "reason": "Duplicate of id 10 (two appends raced). Closed in plan 03-07: the EOF-vs-truncation distinction is implemented and covered by chunk_truncated_mid_record_is_reported_not_silently_dropped and chunk_record_count_that_is_a_whole_multiple_of_record_size_still_merges, both green.",
+    "recorded_at": "2026-10-07T12:29:50.953Z",
+    "resolved_at": "2026-10-07T12:55:00.000Z",
+    "milestone": "v1.0"
+  },
+  {
+    "id": 8,
+    "kind": "deviation",
+    "phase": "03",
+    "file": "tests/merge_route_parity_tests.rs",
+    "line": null,
+    "description": "Route parity asserted on decoded maps plus an exact count, because 16_777_216 was wrong on BOTH routes and equality alone stayed green",
+    "status": "fixed",
+    "reason": "Closed in plan 03-07: route parity is asserted on decoded (String,u32) maps PLUS an exact expected count, because 16_777_216 was wrong on BOTH routes. Both arms green; both observed RED against the pre-fix reader.",
+    "recorded_at": "2026-10-07T12:29:51.192Z",
+    "resolved_at": "2026-10-07T12:55:00.000Z",
+    "milestone": "v1.0"
+  },
+  {
+    "id": 9,
+    "kind": "deviation",
+    "phase": "03",
+    "file": ".planning/phases/03-memory-safety/03-07-SUMMARY.md",
+    "line": null,
+    "description": "Plan criterion grep -c 1_000_000 expecting 2 is unsatisfiable alongside step 10; reported as 3 with a discriminating '> 1_000_000' gate added",
+    "status": "fixed",
+    "reason": "Plan-gate bookkeeping only \u2014 the code is as the plan intended. A discriminating gate (grep for the '> 1_000_000' comparison, 1 -> 0) was added and the measurement reported in the SUMMARY.",
+    "recorded_at": "2026-10-07T12:29:51.438Z",
+    "resolved_at": "2026-10-07T12:55:00.000Z",
+    "milestone": "v1.0"
+  },
+  {
+    "id": 10,
+    "kind": "deviation",
+    "phase": "03",
+    "file": "src/database/streaming_merge.rs",
+    "line": null,
+    "description": "EOF at a run refill is the normal end of a run, not damage; truncation is caught by a len % RECORD_SIZE check in merge_sorted_chunks",
+    "status": "fixed",
+    "reason": "Closed in plan 03-07: EOF at a run refill is the normal end of a run; mid-record truncation is caught by a len % RECORD_SIZE check in merge_sorted_chunks, with RECORD_SIZE pinned against a real encode.",
+    "recorded_at": "2026-10-07T12:29:54.509Z",
+    "resolved_at": "2026-10-07T12:55:00.000Z",
     "milestone": "v1.0"
   }
 ]

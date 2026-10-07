@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 03
 current_phase_name: Memory Safety
 status: gap-closure-in-progress
-stopped_at: "Completed 03-06-PLAN.md (DENSE-01 un-inverted: KmerKey deleted, real 4M-entry RSS ratio 0.5152)"
-last_updated: "2026-10-07T12:15:18.375Z"
+stopped_at: "Completed 03-07-PLAN.md (G3: endianness heuristic deleted, routes proven identical above 1M counts)"
+last_updated: "2026-10-07T12:28:00.352Z"
 last_activity: 2026-10-07
-last_activity_desc: "Completed 03-06 (G1: DENSE-01 un-inverted — KmerKey deleted, real 4M-entry RSS ratio 0.5152)"
-state_head: 490fa6ed7bfc6a7e82330a58e39772ff8e2e3920
+last_activity_desc: "Completed 03-07 (G3: endianness heuristic deleted — routes proven identical and exact above 1M counts)"
+state_head: 9b6cd55ec96ae160b5adb1dc8309236064b91f45
 progress:
   total_phases: 4
   completed_phases: 2
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 
 ## Current Position
 
-Phase: 03 (Memory Safety) — GAP CLOSURE in progress (6/11 plans complete)
-Plan: 6 of 11
-Status: 03-06 closed G1 (DENSE-01 was inverted; now measured at ratio 0.5152 with mutation-proven assertions). Remaining: 03-07..03-11, then `/gsd-verify-work 03`. Still open from 03-VERIFICATION.md: G2 (no merge strategy is memory-bounded) and G3 (routes disagree above 1M counts).
-Last activity: 2026-10-07 — Completed 03-06 (G1: DENSE-01 un-inverted — `KmerKey` deleted, dense table is `DashMap<u64,u32>`, 35.66 vs 69.21 B/entry over 4M entries)
+Phase: 03 (Memory Safety) — GAP CLOSURE in progress (7/11 plans complete)
+Plan: 8 of 11
+Status: 03-07 closed G3 (`read_from` is now the exact inverse of `write_to`; both merge routes proven identical and exact at counts 2,000,000 and 16,777,216). Remaining: 03-08..03-11, then `/gsd-verify-work 03`. Still open from 03-VERIFICATION.md: G2 (no merge strategy is memory-bounded — the phase's central deliverable).
+Last activity: 2026-10-07 — Completed 03-07 (G3: the `1_000_000` endianness heuristic deleted from `KmerEntry::read_from`; a damaged chunk now surfaces as `Err` instead of truncating a run)
 
-Progress: [█████░░░░░] 6/11 plans (Phase 03)
+Progress: [███████░░░] 7/11 plans (Phase 03)
 
 ## Performance Metrics
 
@@ -80,6 +80,8 @@ Progress: [█████░░░░░] 6/11 plans (Phase 03)
 | Phase 03 P04 | 10min | 1 tasks | 4 files |
 | Phase 03 P05 | 35min | 2 tasks | 5 files |
 | Phase 03 P06 | 20 min | 3 tasks | 7 files |
+| Phase 03 P07 | 34min | 3 tasks | 3 files |
+| Phase 03 P07 | 34 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -157,6 +159,12 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-06: dense_narrowing_rejects_high_bits_on_the_u64_path was REWRITTEN against the public increment(), not deleted — the type it named was deleted, but dropping the test would have silently removed the only coverage of threat T-03-09's detection path — 03-06: dense_narrowing_rejects_high_bits_on_the_u64_path was REWRITTEN against the public increment(), not deleted — the type it named was deleted, but dropping the test would have silently removed the only coverage of threat T-03-09's detection path
 - [Phase 03]: 03-06: The RSS measurement holds each counter alive while measuring its sibling. An RSS delta after a drop measures allocator free-list reuse, not footprint — a clean 4M-entry dense counter read 2.51 B/entry, below its own 16-byte slot, which is physically impossible and was the tell — 03-06: The RSS measurement holds each counter alive while measuring its sibling. An RSS delta after a drop measures allocator free-list reuse, not footprint — a clean 4M-entry dense counter read 2.51 B/entry, below its own 16-byte slot, which is physically impossible and was the tell
 - [Phase 03]: 03-06: Deliberate deferral — the dense width is applied to KmerCounter's table only, NOT to merge_databases_inmemory's HashMapBrown<u128,u32> accumulator (src/database/format.rs:912) or the Vec<KmerEntry> read path. DENSE-01 names COUNTING memory; the in-memory route only runs when already under budget, and narrowing those structures needs its own width-selection point and its own decoded-level differential — 03-06: Deliberate deferral — the dense width is applied to KmerCounter's table only, NOT to merge_databases_inmemory's HashMapBrown<u128,u32> accumulator (src/database/format.rs:912) or the Vec<KmerEntry> read path. DENSE-01 names COUNTING memory; the in-memory route only runs when already under budget, and narrowing those structures needs its own width-selection point and its own decoded-level differential
+- [Phase 03]: 03-07: KmerEntry::read_from is now the exact inverse of write_to with NO endianness heuristic — the count is a plain u32::from_le_bytes, matching write_to's write_u32::<LittleEndian>. The pre-fix heuristic byte-swapped every valid count above 1,000,000 (2_000_000 -> 2_156_142_080, 16_777_216 -> 1), and because the in-memory merge swapped once while the streaming merge swapped twice, the two routes produced DIFFERENT DATA for the same input under the same budget. Observed RED against the restored pre-fix reader at 1_094_848_256 before the fix
+- [Phase 03]: 03-07: UnexpectedEof at a streaming run refill is the NORMAL end of that run, not damage — treating it as an error dropped the final k-mer of every merge (a 3-record chunk merged to 2 results plus an error). Mid-record chunk truncation is instead caught by a len % RECORD_SIZE check in merge_sorted_chunks, the last site that still holds the file length, because chunk files carry no record count
+- [Phase 03]: 03-07: Route parity is asserted on decoded (String, u32) maps plus an EXACT expected count. Map equality alone stayed green while both routes were equally wrong for 16_777_216 — 2^24 byte-swaps to 1, a small plausible-looking value
+- [Phase 03]: 03-07: The parity fixture's two inputs are built from different bases and asserted DISJOINT, because the in-memory route accumulates with saturating_add — an overlapping fixture would merge to 2x the value under test and could no longer distinguish 'read correctly' from 'summed twice'
+- [Phase 03]: 03-07: No per-k-mer admission constant is pinned in tests/merge_route_parity_tests.rs. Arm B uses n*96*4 = 384 bytes/k-mer, which exceeds both today's 24 and plan 03-09's incoming 96, so the in-memory arm survives the wave boundary. A whole-file grep for the admission-constant identifier prints 0
+- [Phase 03]: 03-07: pyo3/tests/test_database_merge.py is deliberately untouched — the installed pyrustkmer.so is a prebuilt artifact, so a pytest run would assert against code no longer on disk. RECORDED RESIDUAL: plan 03-10 changes PyDatabase::merge semantics (the save is folded into the merge and the 'Failed to save merged database to {}' path disappears) and that change ships with ZERO Python-level verification, because no plan in this phase may run pytest
 
 ### Pending Todos
 
@@ -180,6 +188,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-07T12:15:18.278Z
-Stopped at: Completed 03-06-PLAN.md (DENSE-01 un-inverted: KmerKey deleted, real 4M-entry RSS ratio 0.5152)
+Last session: 2026-10-07T12:28:00.271Z
+Stopped at: Completed 03-07-PLAN.md (G3: endianness heuristic deleted, routes proven identical above 1M counts)
 Resume file: None
