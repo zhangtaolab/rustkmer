@@ -93,7 +93,7 @@ Plans:
   5. Dense storage maintains correctness — canonicalization and counts match the `u128` path exactly
   6. `pyrustkmer`'s `PyDatabase` merge uses the same bounded path as the CLI
 
-**Plans**: 5/5 plans executed
+**Plans**: 5/5 plans executed + 6 gap-closure plans pending (03-06..03-11)
 
 **Wave 1** *(parallel, no dependencies)*
 
@@ -105,6 +105,15 @@ Plans:
 
 - [x] 03-04-PLAN.md — Wave-2 gate: dense+merge end-to-end integration + full suite + clippy on both crates (depends on 03-01, 03-03; MERGE-01, MERGE-02, DENSE-02, DENSE-03)
 - [x] 03-05-PLAN.md — `PyDatabase.merge` kwargs (`max_memory`/`merge_mode`) routing through bounded core (depends on 03-01; MERGE-04)
+
+**Gap Closure** *(opened 2026-10-07 by `03-VERIFICATION.md` — status `gaps_found`, 4/7 must-haves verified)*
+
+- [ ] 03-06-PLAN.md — **G1 / DENSE-01 inverted**: move the width choice from the key onto the table (`CounterTable::Dense(DashMap<u64,u32>)` | `Wide(DashMap<u128,u32>)`), delete the 32-byte `KmerKey` enum, and replace the self-fulfilling memory assertions with a stored-representation observation plus a 4M-entry `/proc/self/status` ratio test asserting < 1.0 (Wave 1; DENSE-01, DENSE-02, DENSE-03)
+- [ ] 03-07-PLAN.md — **G3 / CR-01**: delete the `count_le > 1_000_000` endianness heuristic in `KmerEntry::read_from`, make a damaged chunk read surface an `Err` instead of a silent `if let Ok`, and prove in-memory and streaming route parity on fixtures at and above 1,000,000 (Wave 1; MERGE-01, MERGE-02, DENSE-02)
+- [ ] 03-08-PLAN.md — **WR-03**: replace the inert golden-sha256 differential with a real write-path differential (dense vs non-dense bytes, k=32 zero-extension on disk, write/read/write idempotence) (Wave 1; DENSE-02)
+- [ ] 03-09-PLAN.md — **G2a / CR-02 header half + WR-01 + WR-06 + IN-01**: add `RKDatabase::read_header_of` and use it at all four `from_file_path` call sites, charge the in-memory route 96 B/k-mer instead of 24, hoist the empty-input guard, and relocate the prefix-cache intermediate into the RAII subdir (Wave 2; depends on 03-07; MERGE-01, MERGE-02, MERGE-03)
+- [ ] 03-10-PLAN.md — **G2b / CR-02 substance + MERGE-04**: add `RKDatabase::merge_databases_to_path` + `MergeSummary`, stream the merged output to disk instead of accumulating it, rename the prefix-cache handoff, and point the CLI and PyO3 binding at the bounded entry point (Wave 3; depends on 03-09; MERGE-01, MERGE-02, MERGE-04)
+- [ ] 03-11-PLAN.md — **WR-04 + WR-08 + MERGE-03 sweep gap**: a failed prefix bucket aborts the merge and preserves its shards, the tautological integrity check is replaced with one that can fire, buckets concatenate in blocks, and the orphan sweep reclaims loose `rustkmer_*_*.chunk` files (Wave 3; depends on 03-09; MERGE-01, MERGE-03)
 
 ### Phase 4: Benchmark & Validation
 
