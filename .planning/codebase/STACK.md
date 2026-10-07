@@ -1,128 +1,109 @@
+---
+last_mapped_commit: 511b99e5b23614e60426e04a74bcf91a3c5d1a32
+last_mapped_at: 2026-10-07
+---
 # Technology Stack
 
-**Analysis Date:** 2026-06-30
+**Analysis Date:** 2026-10-07
 
 ## Languages
 
 **Primary:**
-- Rust (edition 2021, stable channel 1.80+) - Core library, CLI, and PyO3 native extension. Located in `src/` (CLI + library) and `pyo3/src/` (Python bindings).
+- Rust (edition 2021, stable toolchain) - Core CLI + library in `src/` and Python extension crate in `pyo3/src/`. Minimum Rust 1.80.0 per `INSTALL.md`; no `rust-toolchain.toml` and no `rust-version` key in `Cargo.toml`.
 
 **Secondary:**
-- Python 3.10+ (Python bindings target `>=3.11` per `pyo3/pyproject.toml`) - PyO3 consumer package `pyrustkmer`, test suites, docs tooling, CI helper scripts. Python tests live in `pyo3/tests/` and `tests/`.
-- Bash - Shell scripts in `scripts/` (build helpers, version sync, multi-env test runners, benchmarks).
-- Markdown - Documentation in `docs/`, `README.md`, `USER_GUIDE.md`, `INSTALL.md`, `PROJECT_SUMMARY.md`.
+- Python 3.11+ - PyO3 bindings compiled to native module `pyrustkmer` from `pyo3/src/lib.rs`; Python tests in `pyo3/tests/`, examples in `examples/python/`, data generators in `test_data/`, ad-hoc scripts `fresh_test.py`, `precise_analysis.py`.
+- Bash - helper scripts in `scripts/` (`sync_versions.sh`, `test_pyo3_version.sh`, `test_all_envs.sh`) and `pyo3/build_with_python.sh`.
 
 ## Runtime
 
 **Environment:**
-- Rust 1.80+ stable toolchain (no `rust-toolchain.toml` pinned; CI installs via `dtolnay/rust-toolchain@stable`).
-- Python 3.10+ required for bindings/dev tooling; `pyo3/pyproject.toml` `requires-python = ">=3.11"` (local venvs `.venv`, `.venv311`, `.venv312`, `.venv313`, `.venvtest` present).
-- Native binaries: `rustkmer` (CLI), `pyrustkmer` (Python native extension, `cdylib`).
-- Runs on macOS (aarch64/x86_64) and Linux (x86_64-unknown-linux-gnu); CI uses `ubuntu-latest`.
+- Native CLI binary `rustkmer` from `src/main.rs` (declared as `[[bin]]` in `Cargo.toml`).
+- Native Python extension `pyrustkmer` (`cdylib`) from `pyo3/src/lib.rs` via PyO3 0.27.2; package built with maturin.
+- No async runtime (no tokio/async-std). Parallelism is Rayon thread pools only.
 
 **Package Manager:**
-- Cargo (Rust) - lockfiles: `Cargo.lock` (root), `pyo3/Cargo.lock`.
-- pip + maturin (Python) - `pyo3/pyproject.toml` declares `maturin>=1.0,<2.0` as build backend.
-- Lockfiles: present (Cargo.lock files committed); no `requirements.txt` or `poetry.lock` at root (`docs/requirements.txt` referenced by CI but currently empty).
+- Cargo - multiple standalone packages, no workspace: root (`Cargo.toml`, lib `rlib` + bin), `pyo3/Cargo.toml` (path-depends on root), `tools/Cargo.toml` (standalone debug utilities, zero dependencies).
+- pip/maturin for the Python wheel (`pyo3/pyproject.toml`, build-backend `maturin`).
+- Lockfile: **missing/not committed** - `Cargo.lock` is ignored in `.gitignore`; no lockfiles found in repo.
+
+**Versioning:** CLI `0.5.0` and PyO3 `0.5.0`, kept in sync via `scripts/sync_versions.sh` (see `VERSION.md`).
 
 ## Frameworks
 
 **Core:**
-- `clap` 4.5.53 (derive feature) - CLI argument parsing. `src/cli/args.rs`, `src/main.rs`.
-- `pyo3` 0.27.2 - Rust<->Python FFI bindings. `pyo3/src/lib.rs` declares the `pyrustkmer` module.
-- `maturin` >=1.0,<2.0 - Build/distribution backend for the `pyrustkmer` Python wheel (PEP 517). Configured in `pyo3/pyproject.toml` `[tool.maturin]`.
-- `bio` 2.0 (RustBio) - FASTA/FASTQ genomics I/O. `src/io/fasta.rs`, `src/io/fastq.rs`.
+- clap 4.5.53 (`derive` feature) - CLI argument parsing in `src/cli/args.rs`
+- thiserror 2.0.17 + anyhow 1.0 - error types in `src/error.rs` and top-level error handling in `src/main.rs`
+- bio 2.0 - FASTA/FASTQ parsing in `src/io/fasta.rs`, `src/io/fastq.rs`, `src/cli/commands/count.rs`
+- PyO3 0.27.2 - Python bindings in `pyo3/src/*.rs` (maturin `extension-module` feature)
 
 **Testing:**
-- `cargo test` (built-in) + `proptest` 1.5 (property-based testing) - Rust unit/integration tests in `src/` modules and `tests/`.
-- `criterion` 0.5 (html_reports) - Rust benchmarks; referenced by `.github/workflows/performance-regression.yml` (`python_cli_comparison` bench, currently commented out in `Cargo.toml`).
-- `pytest` >=7.0 + `pytest-cov` >=4.0 + `pytest-benchmark` >=4.0 - Python tests in `pyo3/tests/`. Config in `pyo3/pyproject.toml` `[tool.pytest.ini_options]` (coverage gate `--cov-fail-under=80`).
-- `hypothesis` - installed in CI for property-based Python tests.
+- Rust built-in test harness (`cargo test`), suites under `tests/` (unit, integration, contract, property, consistency, golden)
+- criterion 0.5 (`html_reports`) - dev-dependency; the `[[bench]]` section is commented out in `Cargo.toml` and no `benches/` directory exists despite `performance-regression.yml` calling `cargo bench`
+- proptest 1.5 and tempfile 3.12 - Rust property-based/unit test support
+- syn 2.0 + proc-macro2 1.0 - dev-only source-tree introspection for the CJK string-literal lint (used by `tests/cjk_check.rs`)
+- pytest >=7, pytest-cov >=4, pytest-benchmark >=4 - Python tests configured in `pyo3/pyproject.toml` with coverage `--cov-fail-under=80`
+- hypothesis is installed ad hoc in `.github/workflows/performance-regression.yml` but is not declared in any manifest
 
 **Build/Dev:**
-- `cargo` (release profile: `lto=true`, `codegen-units=1`, `panic="abort"`) - `Cargo.toml` `[profile.release]`.
-- `maturin develop` / `maturin build` - builds and installs the `pyrustkmer` extension. Helper: `pyo3/build_with_python.sh`.
-- `mkdocs` + `mkdocs-material` theme - documentation site. Config: `mkdocs.yml` (root) and `docs/mkdocs.yml`; deployed to GitHub Pages.
-- `pre-commit` - hooks config in `.pre-commit-config.yaml` (black, isort, pydocstyle, docformatter targeting `python/`).
+- maturin >=1.0,<2.0 - Python wheel builds (`pyo3/pyproject.toml`, CI job `pyo3-build`)
+- pre-commit - hooks in `.pre-commit-config.yaml` (trailing whitespace, yaml/json/toml checks, black 24.1.1, isort 5.13.2, pydocstyle 6.3.0, docformatter 1.7.5)
+- MkDocs Material - docs config in `mkdocs.yml` and `docs/mkdocs.yml`
 
 ## Key Dependencies
 
-**Critical (Rust - `Cargo.toml`):**
-- `bio` 2.0 - FASTA/FASTQ parsing (`bio::io::fasta::Reader`, `bio::io::fastq::Reader`).
-- `memmap2` 0.9 - Memory-mapped file I/O for large databases. `src/io/mmap.rs` (`MemoryMappedFile`).
-- `rayon` 1.8 - Data parallelism (parallel merge, thread pools). `src/database/prefix_cache_merge.rs`, `src/cli/commands/merge.rs`.
-- `clap` 4.5.53 - CLI derive framework.
-- `serde` 1.0.228 (+ `serde_json` 1.0.145, `bincode` 1.3, `toml` 0.8) - Serialization for the RKDB format, config, metadata.
-- `byteorder` 1.5 - Little-endian binary I/O for RKDB files. `src/database/format.rs`.
-- `hashbrown` 0.14 + `ahash` 0.8 - High-performance hash map for k-mer counting table. `src/hash/`.
-- `smallvec` 1.13 - Small-vector optimization for k-mer buffers.
-- `flate2` 1.0 (zlib), `bzip2` 0.4, `xz2` 0.1 - Compression (note: `niffler` commented out to avoid zstd issues).
+**Critical:**
+- rayon 1.8 - parallel k-mer counting and merge paths (`src/cli/commands/count.rs`, `src/cli/commands/merge.rs`, `src/hash/table.rs`, `src/database/prefix_cache_merge.rs`)
+- dashmap 6.2.1 - concurrent sharded hash map, pinned to reuse hashbrown 0.14.5 (`src/hash/table.rs`)
+- hashbrown 0.14.5 + ahash 0.8 - hash table backing (`src/database/format.rs`)
+- memmap2 0.9 - memory-mapped database IO (`src/io/mmap.rs`, `src/memory/efficiency.rs`)
+- flate2 1.0 (zlib feature) + bzip2 0.4 + xz2 0.1 - `.gz`/`.bz2`/`.xz` input decoding (`src/io/fastq.rs:68-76`; zstd deliberately disabled, `niffler` commented out)
+- serde 1.0.228 + serde_json 1.0.145 + toml 0.8 + bincode 1.3 - config, metadata, and database persistence (`src/config/manager.rs`, `src/core/database/persistence.rs`, `src/core/metadata.rs`)
+- sha2 0.10 - database checksums (`src/core/database/persistence.rs`, `src/core/metadata.rs`, `src/cli/commands/count.rs`)
+- tdigest 0.2 - streaming quantile estimation (`src/database/stats.rs`)
+- sys-info 0.9 - host memory detection for adaptive cache decisions (`src/database/prefix_cache_merge.rs`)
 
-**Critical (PyO3 - `pyo3/Cargo.toml`):**
-- `pyo3` 0.27.2 - Python bindings (`#[pymodule]`, `#[pyclass]`, `#[pymethods]`).
-- `rustkmer` (path `..`) - Path dependency on the root crate; the bindings wrap `rustkmer::hash::KmerCounter`, `rustkmer::io::*`, `rustkmer::kmer::*`.
-- `pyo3-build-config` 0.22 - Build-time PyO3 config (`pyo3/build.rs`).
+**Infrastructure:**
+- parking_lot 0.12 - locking (`src/config/manager.rs`, `src/memory/efficiency.rs`)
+- byteorder 1.5 + csv 1.3 + walkdir 2.4 + itertools 0.14 + smallvec 1.13 - binary IO, CSV output, input discovery, iterator utilities
+- indicatif 0.17 - progress reporting (`src/database/format.rs`)
+- log 0.4 + env_logger 0.11 - logging (`src/main.rs:13`)
+- Discrepancies: `inquire 0.7` and `chrono 0.4` are declared in `Cargo.toml` but have no usage in `src/` (grep found zero references); `numpy>=1.21` is a declared Python dependency in `pyo3/pyproject.toml` but no numpy usage exists in `pyo3/src/`
 
-**Infrastructure (Rust):**
-- `thiserror` 2.0.17 + `anyhow` 1.0 - Error handling. `src/error.rs`.
-- `parking_lot` 0.12 - Thread-safe `RwLock` for `ConfigManager`. `src/config/manager.rs`.
-- `indicatif` 0.17 - Progress bars.
-- `inquire` 0.7 - Interactive file selection.
-- `walkdir` 2.4 - Directory traversal for input discovery. `src/io/discovery.rs`.
-- `csv` 1.3 - CSV output support.
-- `tdigest` 0.2 - Streaming quantile estimation.
-- `itertools` 0.14 - Iterator utilities.
-- `sha2` 0.10 - Hashing for database persistence.
-- `chrono` 0.4 (serde) - Timestamps in metadata.
-- `log` 0.4 + `env_logger` 0.11 - Logging (initialized in `src/main.rs`).
-- `sys-info` 0.9 - System info for monitoring. `src/core/monitoring.rs`.
-
-**Infrastructure (Python - `pyo3/pyproject.toml`):**
-- `numpy>=1.21` - Runtime dependency of `pyrustkmer`.
-- Dev extras: `black>=23.0`, `flake8>=6.0`, `mypy>=1.0`, `pytest>=7.0`, `pytest-cov>=4.0`, `pytest-benchmark>=4.0`.
-- Performance extras: `memory-profiler>=0.60`, `psutil>=5.9`.
-- Docs extras: `sphinx>=5.0`, `sphinx-rtd-theme>=1.2`, `sphinx-autoapi>=2.0` (note: actual docs site uses MkDocs, not Sphinx).
-- Jupyter extras: `jupyter>=1.0`, `ipywidgets>=8.0`.
+**Python binding crate (`pyo3/Cargo.toml`):**
+- pyo3 0.27.2 (note: `build-dependencies` pins `pyo3-build-config = "0.22"`, a version mismatch)
+- Path dependency on root crate; also serde/serde_json/bincode, byteorder, memmap2, anyhow, thiserror, parking_lot, hashbrown, rayon, flate2, bzip2, xz2, log
 
 ## Configuration
 
 **Environment:**
-- Configuration is layered: file (`.rustkmerrc`) + environment variables + CLI flags. Managed by thread-safe `ConfigManager` in `src/config/manager.rs`.
-- Env var prefix: `RUSTKMER_` (constant `ENV_PREFIX = "RUSTKMER"`). Examples read in `src/config/manager.rs`:
-  - `RUSTKMER_MEMORY_LIMIT`, `RUSTKMER_MMAP_THRESHOLD`, `RUSTKMER_PAGE_SIZE`, `RUSTKMER_ADAPTIVE`, `RUSTKMER_FORCE_MMAP`
-  - `RUSTKMER_DEFAULT_K`, `RUSTKMER_CANONICAL`, `RUSTKMER_THREADS`, `RUSTKMER_HASH_SIZE`
-  - `RUSTKMER_SORT_OUTPUT`, `RUSTKMER_MIN_COUNT`, `RUSTKMER_MAX_COUNT`
-  - `RUSTKMER_PROGRESS`, `RUSTKMER_FORMAT`, `RUSTKMER_TIMESTAMPS`, `RUSTKMER_STATISTICS`
-  - `RUSTKMER_VERBOSE`, `RUSTKMER_QUIET`, `RUSTKMER_LOG_LEVEL`, `RUSTKMER_LOG_FILE`, `RUSTKMER_STRUCTURED`
-- `RAYON_NUM_THREADS` - controls parallelism (`src/cli/commands/merge.rs`).
-- `HOME`, `XDG_CONFIG_HOME` - config file discovery.
-- `PYTHON_LIB_DIR` - optional Python linking path (`.cargo/config`).
-- `env_logger` initialized from env in `src/main.rs` (`RUST_LOG` style via `Env::default().default_filter_or("info")`).
-- No `.env` files present (verified: no secrets files exist).
+- Runtime config file `.rustkmerrc` (TOML), searched in: current directory -> `$HOME/.rustkmerrc` -> `$XDG_CONFIG_HOME/rustkmer/.rustkmerrc` (`src/config/manager.rs:14-18, 211-237`)
+- Environment overrides with `RUSTKMER_` prefix (21 variables): `RUSTKMER_MEMORY_LIMIT`, `RUSTKMER_MMAP_THRESHOLD`, `RUSTKMER_PAGE_SIZE`, `RUSTKMER_ADAPTIVE`, `RUSTKMER_FORCE_MMAP`, `RUSTKMER_DEFAULT_K`, `RUSTKMER_CANONICAL`, `RUSTKMER_THREADS`, `RUSTKMER_HASH_SIZE`, `RUSTKMER_SORT_OUTPUT`, `RUSTKMER_MIN_COUNT`, `RUSTKMER_MAX_COUNT`, `RUSTKMER_PROGRESS`, `RUSTKMER_FORMAT`, `RUSTKMER_TIMESTAMPS`, `RUSTKMER_STATISTICS`, `RUSTKMER_VERBOSE`, `RUSTKMER_QUIET`, `RUSTKMER_LOG_LEVEL`, `RUSTKMER_LOG_FILE`, `RUSTKMER_STRUCTURED` (`src/config/manager.rs:296-395`)
+- Threading: `RUSTKMER_THREADS`, falling back to `RAYON_NUM_THREADS` (`src/cli/commands/count.rs:841-844`, `src/cli/commands/merge.rs:365`)
+- Logging: `RUST_LOG` via env_logger, default filter `info` (`src/main.rs:13`)
+- No `.env` files tracked; `.env`, `.env.*` are gitignored
 
 **Build:**
-- `Cargo.toml` (root) - main crate `rustkmer` 0.5.0; lib `rlib` + bin `rustkmer`.
-- `pyo3/Cargo.toml` - `rustkmer-pyo3` 0.5.0; lib `pyrustkmer` as `cdylib`.
-- `pyo3/pyproject.toml` - maturin PEP 517 backend, `[tool.maturin]` with `features = ["pyo3/extension-module"]`, `module-name = "pyrustkmer"`.
-- `.cargo/config` - cross-platform Python extension linking flags for macOS (aarch64/x86_64) and Linux.
-- `pyo3/build.rs` - PyO3 build config rerun trigger.
-- Features: `default = []`, `profiling = []`, `disable-zstd = []` (root); `extension-module` (pyo3).
-- Python tooling config: `[tool.black]` (line-length 88, py311), `[tool.mypy]` (strict), `[tool.coverage.*]`, `[tool.pytest.ini_options]`.
+- `Cargo.toml` - release profile: `lto = true`, `codegen-units = 1`, `panic = "abort"`; features `default = []`, `profiling`, `disable-zstd`
+- `.cargo/config.toml` - per-target rustflags stubs for cross-platform Python extension linking (macOS targets, Linux commented examples)
+- `pyo3/build.rs` - emits `cargo:rerun-if-env-changed=PYO3_BUILD_CONFIG`
+- `pyo3/pyproject.toml` - maturin + `[tool.pytest.ini_options]` (coverage threshold 80), black (line-length 88, py311), mypy strict, coverage config
+- `.pydocstylerc` - Google convention docstring linting
+- `.pre-commit-config.yaml` - Python hook file filters point at `^python/.*\.py$`; a `python/` directory does not exist in the repo (stale filter)
 
 ## Platform Requirements
 
 **Development:**
-- Rust 1.80+ stable, Cargo.
-- Python 3.11+ (3.10+ acceptable for CI/docs) with pip + venv.
-- maturin for building the Python extension (`maturin develop --release`).
-- Optional: valgrind + massif-visualizer (Linux) for memory profiling in CI.
-- Pre-commit hooks (`.pre-commit-config.yaml`) require `pre-commit` install.
+- Rust 1.80.0+ stable with cargo/rustc (`INSTALL.md`)
+- Python 3.11+ for bindings (`pyo3/pyproject.toml` `requires-python = ">=3.11"`); README/INSTALL state 3.10-3.12 tested, with README also mentioning Python 3.8+ in one place
+- maturin >=1.0,<2.0 for extension builds; conda/uv installation paths documented in `README.md`
+- Optional: pre-commit, MkDocs Material (+ `docs/requirements.txt`, which is referenced by `.github/workflows/docs.yml` but does not exist)
 
 **Production:**
-- Distributes as: native `rustkmer` CLI binary, and `pyrustkmer` Python wheel (manylinux/macOS wheels via maturin).
-- Documentation hosted on GitHub Pages (`https://rustkmer.github.io`) via MkDocs Material.
-- Custom binary database format `.rkdb` (magic `RKDB`, version 2) and legacy `.rkd` files for storage.
+- Self-contained native binary compiled to `target/release/rustkmer`; README claims Linux, macOS, Windows support
+- Python wheel (`pyrustkmer`) installable via pip; distribution channels documented: crates.io (`cargo install rustkmer`), PyPI/conda-forge/uv in `README.md` and `docs/getting-started/installation.md`
+- CI runs on `ubuntu-latest` and `macos-latest` (`.github/workflows/ci.yml`); no Windows CI
 
 ---
 
-*Stack analysis: 2026-06-30*
+*Stack analysis: 2026-10-07*

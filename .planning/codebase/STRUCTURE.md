@@ -1,222 +1,343 @@
+---
+last_mapped_commit: 511b99e5b23614e60426e04a74bcf91a3c5d1a32
+last_mapped_at: 2026-10-07
+---
 # Codebase Structure
 
-**Analysis Date:** 2026-06-30
+**Analysis Date:** 2026-10-07
 
 ## Directory Layout
 
-```
+```text
 rustkmer/
-├── src/                    # Core Rust library + CLI binary (the `rustkmer` crate)
-│   ├── lib.rs              # Crate root: declares public modules, re-exports KmerCounter/errors
-│   ├── main.rs             # CLI binary entry point (clap dispatch)
-│   ├── error.rs            # KmerError (thiserror) + ProcessingError (anyhow)
-│   ├── cli/                # CLI surface: arg definitions + command handlers
-│   ├── config/             # Configuration management
-│   ├── core/               # Metadata, monitoring/metrics, persistence facade
-│   ├── database/           # RKDB binary format, query engines, merge strategies
-│   ├── fuzzy/              # Fuzzy/wildcard/mutation query engine
-│   ├── hash/               # KmerCounter + count filtering
-│   ├── io/                 # FASTA/FASTQ parsing, memory mapping, file discovery
-│   ├── kmer/               # 2-bit encoding, canonicalization, validation
-│   ├── memory/             # Memory-efficiency utilities
-│   └── output/             # Binary + text output writers
-├── pyo3/                   # Separate crate (`rustkmer-pyo3`) producing the `pyrustkmer` cdylib
-│   ├── Cargo.toml          # crate-type = ["cdylib"], depends on `rustkmer` by path
-│   ├── build.rs            # PyO3 build config
-│   ├── pyproject.toml      # Maturin/setuptools-rust build config
-│   ├── src/                # #[pyclass] wrappers over the core crate
-│   └── tests/              # Python pytest suite for the binding
-├── tests/                  # Rust integration/unit/property/contract tests
-├── examples/               # Bash, Python, and application usage examples + sample data
-├── docs/                   # MkDocs documentation source
-├── scripts/                # Test runner + benchmark + version-sync shell scripts
-├── tools/                  # Auxiliary tooling
-├── test_data/              # Shared sample databases/kmers/sequences
-├── specs/                  # Spec notes (sparse)
-├── Cargo.toml              # Workspace-less root crate manifest
-└── Cargo.lock
+├── Cargo.toml               # Root package: lib `rustkmer` + bin `rustkmer`
+├── src/                     # Core Rust library + CLI binary
+│   ├── main.rs              # CLI entry point (clap dispatch, env_logger)
+│   ├── lib.rs               # Library root: 10 pub modules, re-exports
+│   ├── error.rs             # KmerError / ProcessingError / ProcessingResult
+│   ├── cli/                 # Command-line surface
+│   │   ├── args.rs          # clap structs/enums for all 8 subcommands
+│   │   ├── mod.rs
+│   │   └── commands/        # One module per subcommand (execute_*)
+│   │       ├── args.rs      # re-export shim
+│   │       ├── count.rs     # parallel counting pipeline
+│   │       ├── query.rs     # exact lookup modes
+│   │       ├── dump.rs      # DB inspection/conversion
+│   │       ├── fuzzy.rs     # fuzzy-query + fuzzy-query-batch
+│   │       ├── merge.rs     # multi-db merge orchestration
+│   │       ├── prefix.rs    # prefix/hybrid query
+│   │       ├── stats.rs     # statistics command
+│   │       ├── benchmark.rs # ORPHANED — not declared in mod.rs
+│   │       └── mod.rs
+│   ├── config/              # ConfigManager (file/env/operation layers)
+│   │   ├── manager.rs
+│   │   └── mod.rs
+│   ├── core/                # Cross-cutting infrastructure
+│   │   ├── database/        # persistence.rs (JSON metadata + checksummed data)
+│   │   ├── metadata.rs      # DatabaseMetadata schema + checksums
+│   │   ├── monitoring.rs    # metrics collector, timers
+│   │   └── mod.rs
+│   ├── database/            # RKDB format, query engines, merge strategies
+│   │   ├── format.rs        # DatabaseHeader/KmerEntry/RKDatabase + merge dispatch
+│   │   ├── index.rs         # in-memory hash index
+│   │   ├── memory.rs        # memory monitor
+│   │   ├── merge_config.rs  # MergeConfig/MergeStrategy/MergeStats
+│   │   ├── merge_error.rs   # typed merge errors + recovery suggestions
+│   │   ├── merge_tests.rs   # ORPHANED — not declared in mod.rs
+│   │   ├── prefix_cache_merge.rs   # ExternalSortMerger
+│   │   ├── prefix_query.rs         # legacy prefix extraction
+│   │   ├── prefix_query_optimized.rs # optimized + hybrid pattern
+│   │   ├── query.rs         # DatabaseQuery (disk/cache lookup)
+│   │   ├── stats.rs         # streaming stats + output formats
+│   │   ├── streaming_merge.rs # ExternalMerger + temp file mgmt
+│   │   ├── suffix_query.rs  # suffix extraction (unused by CLI)
+│   │   └── mod.rs           # re-exports public types
+│   ├── fuzzy/               # Fuzzy query engine
+│   │   ├── query.rs         # FuzzyQuery, FuzzyQueryEngine, position mutations
+│   │   ├── wildcard.rs      # N-wildcard expansion
+│   │   ├── normalization.rs # length normalization (pad/truncate)
+│   │   ├── mutation.rs      # Hamming-distance variant generation
+│   │   ├── expansion.rs     # expansion orchestration types
+│   │   ├── performance.rs   # metrics/optimizer
+│   │   └── mod.rs           # FuzzyError, FuzzyResult, constants
+│   ├── hash/                # Counting
+│   │   ├── table.rs         # KmerCounter (DashMap<u128,u32>) + CounterStats
+│   │   ├── filtering.rs     # CountFilter (min/max)
+│   │   ├── overflow.rs      # DiskOverflow (unused by main path)
+│   │   ├── matrix.rs        # MatrixHashFunction (placeholder, test-only)
+│   │   └── mod.rs
+│   ├── io/                  # Sequence input
+│   │   ├── fasta.rs         # FastaProcessor (bio crate)
+│   │   ├── fastq.rs         # FastqProcessor + compressed readers (gz/bz2/xz)
+│   │   ├── discovery.rs     # FileDiscovery (walkdir)
+│   │   ├── mmap.rs          # MemoryMappedFile
+│   │   └── mod.rs
+│   ├── kmer/                # K-mer representation
+│   │   ├── encoding.rs      # u64 + u128 encode/decode, revcomp
+│   │   ├── canonical.rs     # canonicalization (min fwd/revcomp)
+│   │   ├── operations.rs    # extract/window/quality helpers
+│   │   ├── validation.rs    # u128 encoding validation suite
+│   │   └── mod.rs           # Kmer enum (u128 + k_size)
+│   ├── memory/              # Memory management
+│   │   ├── efficiency.rs    # MemoryManager, PageIterator, reports
+│   │   └── mod.rs
+│   └── output/              # Legacy writers (public API, unused by CLI)
+│       ├── binary.rs        # RSK1 binary format
+│       ├── text.rs          # u64-based text format
+│       └── mod.rs
+├── pyo3/                    # Independent crate `rustkmer-pyo3` → module `pyrustkmer`
+│   ├── Cargo.toml           # pyo3 0.27.2; rustkmer path = ".."
+│   ├── pyproject.toml       # maturin build backend
+│   ├── build.rs / build_with_python.sh
+│   ├── src/
+│   │   ├── lib.rs           # pymodule `pyrustkmer`; class registration
+│   │   ├── counter.rs       # PyCounter, PyCounterStats
+│   │   ├── database.rs      # PyDatabase (LoadMode), result types
+│   │   ├── fuzzy_query.rs   # PyFuzzyQuery, PyFuzzyResult, PyFuzzyMatch
+│   │   ├── prefix_query.rs  # PyPrefixQuery, PyExtendedPrefixQuery, metrics
+│   │   ├── formatter.rs     # PyFormatter
+│   │   ├── errors.rs        # RustKmerError
+│   │   ├── utils.rs
+│   │   ├── database_backup.rs          # orphaned backup
+│   │   ├── database_new_approaches.rs  # orphaned experiment
+│   │   └── *.stage1_fix_backup         # orphaned backup files
+│   └── tests/               # pytest suites + conftest
+│       ├── conftest.py
+│       ├── test_core.py / test_counter.py / test_export.py / test_import.py ...
+│       └── utils.py
+├── tests/                   # Rust test targets
+│   ├── mod.rs               # aggregates unit/integration/property
+│   ├── common/              # shared helpers (memory, performance, temp_files)
+│   ├── consistency/         # u64/u128 consistency generators
+│   ├── contract/            # query contract tests
+│   ├── converted/           # pytest assets (pytest.ini)
+│   ├── fixtures/            # golden .rkdb files + sha256 manifest
+│   ├── integration/         # multi-component tests
+│   ├── performance/         # Python perf tests
+│   ├── property/            # proptest suites
+│   ├── unit/database/       # canonical/query unit tests
+│   ├── golden_tests.rs      # byte-identity gate vs fixtures
+│   ├── golden_generate.rs   # regenerates golden fixtures
+│   ├── round_trip_tests.rs / parallel_count_tests.rs / legacy_readback_tests.rs
+│   ├── consistency_tests.rs / cjk_check.rs
+│   └── 007-api-compatibility/ # Python API compatibility suite artifacts
+├── test_data/               # sample sequences/kmers + generation scripts
+├── tools/                   # Independent debug-tools package (3 bins, no deps)
+├── examples/                # python/ application/ utils/ bash/ examples
+├── docs/                    # mkdocs site (105 markdown files, 16 dirs)
+├── scripts/                 # version sync + env test + benchmark scripts
+├── .github/workflows/       # ci.yml, docs.yml, performance-regression.yml
+├── .cargo/config.toml       # Python linking notes for pyo3 builds
+├── .opencode/               # GSD agent tooling (not app code)
+├── .planning/               # GSD planning artifacts (this directory)
+├── mkdocs.yml               # docs site config
+├── .pre-commit-config.yaml  # repo hygiene + Python formatting hooks
+└── *.md, *.py               # README, USER_GUIDE, INSTALL, VERSION; stray scripts
 ```
 
 ## Directory Purposes
 
 **`src/cli/`:**
-- Purpose: All CLI presentation logic.
-- Contains: `args.rs` (clap `Args`/`Commands` enum + validation helpers), `commands/` (one module per subcommand: `count`, `query`, `stats`, `dump`, `merge`, `fuzzy`, `prefix`, `benchmark`).
-- Key files: `src/cli/args.rs`, `src/cli/commands/mod.rs`, `src/cli/commands/count.rs`.
+- Purpose: the entire command-line surface
+- Contains: clap definitions and one module per subcommand
+- Key files: `src/cli/args.rs` (568 lines; enum `Commands` at `:17`), `src/cli/commands/count.rs` (the hot path), `src/cli/commands/mod.rs` (module registry)
 
 **`src/database/`:**
-- Purpose: RKDB format and all read/query/merge strategies.
-- Contains: format definition, in-memory + streaming query, prefix/hybrid/suffix query, merge (in-memory, streaming, prefix-cache).
-- Key files: `src/database/format.rs` (canonical format), `src/database/query.rs` (query engine), `src/database/streaming_merge.rs`, `src/database/prefix_query_optimized.rs`, `src/database/prefix_cache_merge.rs`.
-
-**`src/hash/`:**
-- Purpose: Counting data structures.
-- Contains: `KmerCounter` (thread-safe), count filtering, overflow handling, hash matrix.
-- Key files: `src/hash/table.rs`, `src/hash/filtering.rs`.
-
-**`src/kmer/`:**
-- Purpose: Nucleotide encoding/decoding and canonicalization.
-- Contains: `encoding.rs` (u64 + u128 encoders/decoders), `canonical.rs` (reverse-complement canonical form), `operations.rs`, `validation.rs`, `mod.rs` (`Kmer` struct).
-- Key files: `src/kmer/encoding.rs`, `src/kmer/canonical.rs`.
-
-**`src/io/`:**
-- Purpose: File input (parsing, discovery, memory mapping) for FASTA/FASTQ (incl. compressed).
-- Contains: `fasta.rs`, `fastq.rs`, `discovery.rs`, `mmap.rs`.
-- Key files: `src/io/fasta.rs` (`FastaProcessor`, `validate_fasta_file`), `src/io/discovery.rs` (`FileDiscovery`, `DiscoveryConfig`).
+- Purpose: `.rkdb` storage format, read/write/query, and all merge strategies
+- Contains: format serialization, query engines, prefix/suffix extraction, stats, merge machinery
+- Key files: `src/database/format.rs` (1321 lines — header/entry/RKDatabase/merge dispatch), `src/database/query.rs`, `src/database/streaming_merge.rs`, `src/database/prefix_cache_merge.rs`
 
 **`src/fuzzy/`:**
-- Purpose: Fuzzy query — wildcard expansion, length normalization, Hamming mutation variants.
-- Contains: `query.rs` (engine), `expansion.rs`, `mutation.rs`, `normalization.rs`, `wildcard.rs`, `performance.rs` (metrics).
-- Key files: `src/fuzzy/query.rs`, `src/fuzzy/expansion.rs`.
+- Purpose: approximate query engine
+- Contains: wildcard, normalization, mutation, expansion, performance modules
+- Key files: `src/fuzzy/query.rs`, `src/fuzzy/mutation.rs` (843 lines)
 
-**`src/output/`:**
-- Purpose: Serialize counts to disk. `binary.rs` and `text.rs` writers. Note the count command also writes the `.rkdb` layout inline (see ARCHITECTURE.md anti-patterns).
+**`src/hash/`:**
+- Purpose: concurrency-safe counting and filtering
+- Key files: `src/hash/table.rs` (KmerCounter, 840 lines), `src/hash/filtering.rs`
+
+**`src/io/`:**
+- Purpose: sequence file input
+- Key files: `src/io/fastq.rs` (fastq + all compression readers), `src/io/fasta.rs`, `src/io/discovery.rs`, `src/io/mmap.rs`
+
+**`src/kmer/`:**
+- Purpose: 2-bit encoding, canonicalization, validation
+- Key files: `src/kmer/encoding.rs`, `src/kmer/canonical.rs`, `src/kmer/validation.rs`
 
 **`src/core/`:**
-- Purpose: Cross-cutting persistence/metadata/monitoring facade. `database/` (persistence config), `metadata.rs` (DatabaseMetadata, schema), `monitoring.rs` (metrics, profiling-gated).
+- Purpose: infrastructure that supports the rest (metadata, persistence, monitoring)
+- Key files: `src/core/metadata.rs`, `src/core/database/persistence.rs`, `src/core/monitoring.rs`
 
-**`src/config/`:** Configuration manager.
+**`src/config/`:**
+- Purpose: layered configuration management
+- Key files: `src/config/manager.rs` (722 lines)
 
-**`src/memory/`:** Memory-efficiency helpers.
+**`src/memory/`:**
+- Purpose: mmap lifecycle and paging helpers
+- Key files: `src/memory/efficiency.rs`
 
-**`pyo3/src/`:**
-- Purpose: Python bindings; each file is a `#[pyclass]` wrapper.
-- Key files: `lib.rs` (module registration), `database.rs` (`PyDatabase`, `LoadMode`, `PyQueryResult`), `counter.rs` (`PyCounter`), `fuzzy_query.rs`, `prefix_query.rs`, `formatter.rs`, `errors.rs` (`RustKmerError`).
-- Note: `database_backup.rs` and `database_new_approaches.rs` are exploratory/legacy files in this directory.
+**`src/output/`:**
+- Purpose: legacy public writers (RSK1 binary, u64 text) — not used by the CLI
+- Key files: `src/output/binary.rs`, `src/output/text.rs`
+
+**`pyo3/`:**
+- Purpose: Python extension crate (cdylib `pyrustkmer`)
+- Contains: PyO3 wrapper classes, pytest suites, maturin build config
+- Key files: `pyo3/src/lib.rs` (registration), `pyo3/src/database.rs` (2048 lines — `PyDatabase`), `pyo3/src/counter.rs`
 
 **`tests/`:**
-- Purpose: Rust test suites organized by kind.
-- Contains: `unit/`, `integration/`, `contract/`, `property/`, `consistency/`, `performance/` (Python), `common/` (shared helpers), `fixtures/` (test FASTA + JSON k-mer fixtures), `007-api-compatibility/` and `converted/` (Python pytest suites under `tests/`).
+- Purpose: all Rust test targets (integration, property, golden, consistency)
+- Key files: `tests/golden_tests.rs` (byte-identity gate), `tests/fixtures/golden_manifest.sha256`, `tests/parallel_count_tests.rs`, `tests/consistency_tests.rs`
+
+**`test_data/`:**
+- Purpose: sample sequences and k-mer JSON fixtures with generators
+- Key files: `test_data/generate_test_data.py`, `test_data/sequences/`, `test_data/kmers/`
+
+**`tools/`:**
+- Purpose: standalone debug binaries in an independent Cargo package
+- Key files: `tools/Cargo.toml`, `tools/debug_canonical_trace.rs`, `tools/analyze_database.rs`, `tools/verify_canonical.rs`
 
 **`examples/`:**
-- Purpose: Demonstrations. `bash/` (CLI usage scripts), `python/` (PyO3 API demos), `application/` (real-world FASTA gap-filling scripts + sample data), `utils/` (data prep), `data/` (sample genome).
+- Purpose: runnable examples for both surfaces
+- Contains: `examples/python/` (PyO3 demos), `examples/application/` (gap-filling FASTA workflows), `examples/bash/`, `examples/utils/`
 
-**`docs/`:** MkDocs Material site source (`mkdocs.yml` at repo root). Subdirs: `getting-started/`, `user-guide/`, `api-reference/`, `guides/`, `examples/`, `tutorials/`, `troubleshooting/`, `dev-guide/`, `implementation/`, `performance/`.
+**`docs/`:**
+- Purpose: mkdocs documentation site
+- Contains: getting-started, user-guide, api-reference (python/rust), guides, tutorials, performance, implementation, troubleshooting
+- Key files: `mkdocs.yml` at repo root, `docs/index.md`
 
-**`scripts/`:** Shell helpers: `test_current.sh`, `test_all_envs.sh`, `test_pyo3_version.sh`, `benchmark_prefix_vs_fuzzy.sh`, `sync_versions.sh`.
+**`scripts/`:**
+- Purpose: developer/release automation
+- Key files: `scripts/sync_versions.sh`, `scripts/test_all_envs.sh`, `scripts/benchmark_prefix_vs_fuzzy.sh`
+
+**`.github/workflows/`:**
+- Purpose: CI gates
+- Key files: `.github/workflows/ci.yml` (fmt, clippy, test on ubuntu+macos, pyo3 wheel), `.github/workflows/docs.yml`, `.github/workflows/performance-regression.yml`
 
 ## Key File Locations
 
 **Entry Points:**
-- `src/main.rs`: CLI binary entry.
-- `src/lib.rs`: Library crate root (public modules + re-exports).
-- `pyo3/src/lib.rs`: Python module entry (`#[pymodule] pyrustkmer`).
+- `src/main.rs`: CLI binary entry — parse, logging, dispatch
+- `src/lib.rs`: library root — module declarations and re-exports
+- `pyo3/src/lib.rs`: Python module `pyrustkmer` registration
+- `tools/`: three standalone debug binaries
 
 **Configuration:**
-- `Cargo.toml`: Root crate manifest (library `rlib` + binary `rustkmer`).
-- `pyo3/Cargo.toml`: PyO3 cdylib manifest.
-- `pyo3/pyproject.toml`: Python build config (maturin).
-- `pyo3/build.rs`: PyO3 build script.
-- `mkdocs.yml`: Documentation site config.
-- `.cargo/`, `.pre-commit-config.yaml`, `.pydocstylerc`: Tooling config.
+- `Cargo.toml`: root crate deps/features/release profile (no workspace)
+- `pyo3/Cargo.toml`: binding crate deps (`pyo3 = "0.27.2"`)
+- `pyo3/pyproject.toml`: maturin packaging (`module-name = "pyrustkmer"`)
+- `.cargo/config.toml`: platform linking notes for Python builds
+- `mkdocs.yml`: documentation site
+- `.pre-commit-config.yaml`: repo hygiene hooks
 
 **Core Logic:**
-- `src/database/format.rs`: RKDB binary format (header/entry/database).
-- `src/hash/table.rs`: `KmerCounter`.
-- `src/database/query.rs`: `DatabaseQuery`.
-- `src/database/streaming_merge.rs`: External-sort merge.
-- `src/kmer/encoding.rs`, `src/kmer/canonical.rs`: encoding/canonicalization.
-- `src/fuzzy/query.rs`: fuzzy query engine.
+- `src/hash/table.rs`: counting (KmerCounter)
+- `src/database/format.rs`: `.rkdb` format + RKDatabase + merge dispatch
+- `src/kmer/encoding.rs`: encode/decode (u64 and u128)
+- `src/cli/commands/count.rs`: counting pipeline (producer/rayon workers)
+- `src/database/query.rs`: exact query
+- `src/fuzzy/query.rs`: fuzzy engine
+- `src/database/streaming_merge.rs`, `src/database/prefix_cache_merge.rs`: merge strategies
 
 **Testing:**
-- `tests/`: Rust test suites (see above).
-- `pyo3/tests/`: Python pytest suite for the binding (`conftest.py`, `test_core.py`, `test_counter.py`, `test_export.py`, `test_import.py`, etc.).
-- `tests/fixtures/`: Shared test FASTA + JSON k-mer fixtures.
-- `tests/common/`: Shared Rust test helpers (`memory.rs`, `performance.rs`, `temp_files.rs`).
+- `tests/`: Rust integration/property/golden targets
+- `tests/fixtures/`: golden `.rkdb` files (do not hand-edit)
+- `pyo3/tests/`: pytest suites for the Python API
+- `scripts/test_all_envs.sh`: environment matrix runner
 
 ## Naming Conventions
 
-**Files (Rust):**
-- `snake_case.rs` for modules and files: `prefix_query_optimized.rs`, `streaming_merge.rs`.
-- `mod.rs` for directory module roots: `src/database/mod.rs`, `src/cli/commands/mod.rs`.
-- Command handler files match the subcommand verb: `count.rs`, `query.rs`, `merge.rs`, `fuzzy.rs`, `prefix.rs`, `stats.rs`, `dump.rs`.
+**Files:**
+- Rust modules/directories: `snake_case` (e.g., `prefix_query_optimized.rs`, `streaming_merge.rs`)
+- Multi-file modules use a directory + `mod.rs` (e.g., `src/cli/commands/mod.rs`)
+- Test files: `*_tests.rs` (e.g., `round_trip_tests.rs`), helper suites as directories (`tests/integration/`)
+- Golden fixtures: `golden_k{N}_{canon|noncanon}_{sorted|unsorted}.rkdb`
 
-**Files (Python):**
-- `snake_case.py`: `test_counter.py`, `conftest.py`.
-- PyO3 wrapper files are named by the Python class domain, lowercase: `database.rs`, `counter.rs`, `fuzzy_query.rs`, `prefix_query.rs`.
+**Functions:**
+- CLI command entry points: `execute_<command>` (e.g., `execute_count`, `execute_fuzzy_query_batch`)
+- Validation helpers: `validate_<subject>`, `is_<predicate>`
+- Constructors: `new`, `from_<source>` (e.g., `from_file_path`, `from_kmer_pairs`, `from_entries`)
+- Conversions/parsers: `parse_<thing>`, `to_<thing>`, `as_<thing>`
 
-**Directories:**
-- `snake_case` for Rust/Python source dirs: `commands/`, `fixtures/`, `unit/`, `integration/`.
-- `kebab-case` for documentation dirs: `user-guide/`, `api-reference/`, `dev-guide/`.
+**Variables:**
+- `snake_case`; encoded k-mers are `encoded`/`encoded_kmer`/`kmer_encoded`; counts are `count`/`u32`; totals use `total_kmers`/`unique_kmers`
 
 **Types:**
-- Rust structs/enums: `UpperCamelCase` — `KmerCounter`, `RKDatabase`, `DatabaseHeader`, `KmerEntry`, `DatabaseQuery`, `FuzzyQueryEngine`.
-- PyO3 classes prefixed `Py`: `PyDatabase`, `PyCounter`, `PyQueryResult`, `PyFuzzyQuery`, `PyPrefixQuery`, `PyFormatter`.
-
-**Functions/Methods:**
-- `snake_case`: `execute_count`, `canonical_kmer_u128`, `encode_kmer_bytes_u128`, `from_file_path`.
-- Command entry points follow `execute_<verb>`: `execute_count`, `execute_query`, `execute_merge`, `execute_fuzzy_query`, `execute_prefix_query`.
-
-**Constants:**
-- `SCREAMING_SNAKE_CASE`: `DATABASE_MAGIC`, `DATABASE_VERSION`, `DEFAULT_MAX_VIANTS`.
+- `PascalCase` structs/enums; PyO3 classes prefixed `Py` (`PyDatabase`, `PyCounter`, `PyFuzzyQuery`, `PyPrefixQuery`, `PyFormatter`)
+- Error types suffixed `Error` (`KmerError`, `MergeError`, `FuzzyError`, `PersistenceError`)
+- Config types often suffixed `Config` (`MergeConfig`, `DiscoveryConfig`, `MemoryConfig`, `PersistenceConfig`); stats suffixed `Stats`/`Statistics`
+- Constants: `UPPER_SNAKE_CASE` (`DATABASE_MAGIC`, `DATABASE_VERSION`, `CHUNK_SIZE`, `MAX_KMER_SIZE`)
 
 ## Where to Add New Code
 
 **New CLI subcommand:**
-- Add a variant to `Commands` in `src/cli/args.rs`.
-- Add a dispatch arm in `src/main.rs`.
-- Create `src/cli/commands/<verb>.rs` with `pub fn execute_<verb>(args: &Args) -> ProcessingResult<()>` and register it in `src/cli/commands/mod.rs`.
+1. Add a variant to `Commands` in `src/cli/args.rs` (with clap attrs + a `validate_*` helper if needed)
+2. Create `src/cli/commands/<name>.rs` exposing `pub fn execute_<name>(args: &Args) -> ProcessingResult<()>` (mirror `src/cli/commands/prefix.rs`)
+3. Register `pub mod <name>;` in `src/cli/commands/mod.rs`
+4. Add the dispatch arm in `src/main.rs`
 
-**New library module:**
-- Create `src/<module>/` with a `mod.rs`.
-- Declare `pub mod <module>;` in `src/lib.rs`.
-- Re-export key types from `src/lib.rs` if they should be part of the public API.
+**New core algorithm (database/kmer/io):**
+- Put it in the closest existing domain directory (`src/database/`, `src/kmer/`, `src/io/`, `src/hash/`, `src/fuzzy/`), add the `pub mod` line and re-export in that directory's `mod.rs`
+- Only add a new top-level module in `src/lib.rs` when the concern is genuinely orthogonal
 
-**New database query/read strategy:**
-- Add a module under `src/database/` and declare it in `src/database/mod.rs`.
-- Read via the shared `DatabaseHeader`/`KmerEntry` types in `src/database/format.rs` (do not re-implement the binary layout).
+**New `.rkdb` format capability:**
+- Extend `DatabaseHeader`/`KmerEntry` in `src/database/format.rs` (the single source of truth); writing paths must go through `write_to`/`read_from` — never inline bytes
+- Update both readers (`RKDatabase::from_file_path`, `DatabaseQuery::open`) and regenerate golden fixtures via `tests/golden_generate.rs`
 
-**New PyO3-exposed class:**
-- Add a `#[pyclass]` wrapper file under `pyo3/src/` and `mod <name>;` in `pyo3/src/lib.rs`.
-- Register it with `m.add_class::<<T>>()?` in the `#[pymodule] fn pyrustkmer` function (`pyo3/src/lib.rs:37`).
+**New merge strategy:**
+- Add a `MergeStrategy` variant in `src/database/merge_config.rs`, implement in `src/database/` (new file or existing `streaming_merge.rs`/`prefix_cache_merge.rs`), wire the selection in `RKDatabase::merge_databases` (`src/database/format.rs:640`), and expose the flag in `MergeArgs` + `src/cli/commands/merge.rs`
 
-**New tests:**
-- Rust integration tests: add a file under the appropriate `tests/<kind>/` dir (or a new `tests/<kind>/` dir).
-- Shared Rust test helpers: `tests/common/`.
-- Python binding tests: `pyo3/tests/test_*.py`.
-- Test data: `tests/fixtures/` (small) or `test_data/` (larger shared assets).
+**New Python binding:**
+- Create `pyo3/src/<name>.rs` with `#[pyclass]`/`#[pymethods]`; declare `mod <name>;` and register `m.add_class::<...>()` in `pyo3/src/lib.rs`; add pytest coverage in `pyo3/tests/test_<name>.py`
 
 **Utilities:**
-- Shared shell helpers: `scripts/`.
-- Auxiliary tools: `tools/`.
+- Shared CLI helpers: inside `src/cli/` (do not create a `utils` module in the root crate unless reused by `pyo3` too)
+- Shared test helpers: `tests/common/` (Rust) or `pyo3/tests/utils.py` (Python)
+
+**Tests:**
+- Rust unit-ish tests for a module: `tests/unit/` or `tests/unit/database/`
+- Integration across components: `tests/integration/` + top-level `tests/*_tests.rs`
+- Property tests: `tests/property/` (proptest)
+- Golden/byte-layout: add fixtures to `tests/fixtures/` and assertions to `tests/golden_tests.rs`
+- Python: `pyo3/tests/`
 
 ## Special Directories
 
-**`target/`:**
-- Purpose: Rust build output (cargo).
-- Generated: Yes.
-- Committed: No (in `.gitignore`).
+**`.planning/`:**
+- Purpose: GSD workflow artifacts (project, roadmap, phases, this codebase map)
+- Generated: partially
+- Committed: yes
 
-**`pyo3/target/`:**
-- Purpose: PyO3 cdylib build output.
-- Generated: Yes.
-- Committed: No.
+**`.opencode/`:**
+- Purpose: GSD agent tooling (agents, commands, skills, hooks)
+- Generated: installed by GSD
+- Committed: yes
 
-**`.venv*` (`.venv`, `.venv311`, `.venv312`, `.venv313`, `.venvtest`):**
-- Purpose: Python virtual environments for multi-version testing.
-- Generated: Yes.
-- Committed: No.
+**`tests/fixtures/`:**
+- Purpose: committed golden `.rkdb` databases + sha256 manifest + FASTA inputs
+- Generated: by `tests/golden_generate.rs` (then never edited by hand)
+- Committed: yes
 
-**`docs/`:**
-- Purpose: MkDocs documentation source.
-- Generated: No.
-- Committed: Yes. Built site is not committed.
+**`pyo3/`:**
+- Purpose: separate crate producing the `pyrustkmer` extension; consumes the root crate via path dependency
+- Generated: no
+- Committed: yes
 
-**`examples/application/`:**
-- Purpose: Real-world application scripts and sample FASTA data (including `.fa.fxi` indexes).
-- Generated: Partially (`.fa.fxi`, `__pycache__/`, `.pytest_cache/`, `htmlcov/` are byproducts).
-- Committed: Yes for scripts/data; byproducts should be gitignored.
+**`tools/`:**
+- Purpose: independent, dependency-free debug binaries
+- Generated: no
+- Committed: yes
 
 **`test_data/`:**
-- Purpose: Shared sample databases (`.rkdb`), k-mer lists, and sequences used across tests and examples.
-- Generated: No.
-- Committed: Yes.
+- Purpose: small sample sequences and k-mer JSON fixtures used by tests/examples
+- Generated: partially (`test_data/generate_test_data.py`)
+- Committed: yes
 
-**`.planning/`:**
-- Purpose: GSD workflow artifacts (plans, codebase maps).
-- Generated: By tooling.
-- Committed: As per project policy.
+**Root-level stray scripts (`fresh_test.py`, `precise_analysis.py`):**
+- Purpose: ad-hoc analysis scripts; not wired into any build or CI
+- Generated: no
+- Committed: yes
 
 ---
 
-*Structure analysis: 2026-06-30*
+*Structure analysis: 2026-10-07*

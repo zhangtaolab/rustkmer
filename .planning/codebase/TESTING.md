@@ -1,115 +1,88 @@
+---
+last_mapped_commit: 511b99e5b23614e60426e04a74bcf91a3c5d1a32
+last_mapped_at: 2026-10-07
+---
 # Testing Patterns
 
-**Analysis Date:** 2026-06-30
+**Analysis Date:** 2026-10-07
 
-The project has **two parallel test ecosystems**: a Rust test suite (root crate `rustkmer`) and a Python test suite for the `pyrustkmer` PyO3 bindings plus cross-validation against the CLI. Both must pass before release.
+## Test Framework
 
-## Test Frameworks
+**Runner (Rust):**
+- Built-in `#[test]` harness, run with `cargo test` — CI gate `.github/workflows/ci.yml` (`test-root` job, ubuntu + macos).
+- Dev-dependencies in `Cargo.toml` (`[dev-dependencies]`): `tempfile = "3.12"`, `proptest = "1.5"`, `criterion = { version = "0.5", features = ["html_reports"] }` (configured but currently unused — no `benches/` directory exists and `[[bench]]` is commented out in `Cargo.toml`), `syn` + `proc-macro2` (for the `tests/cjk_check.rs` source-lint), `rand` + `rand_chacha`.
+- `sha2` is a regular dependency reused by golden tests for sha256 hashing (`tests/golden_tests.rs`).
 
-### Rust
+**Assertion Library:**
+- `std` macros: `assert!`, `assert_eq!` with a descriptive message as the trailing argument.
+- `proptest` macros inside `proptest!` blocks: `prop_assert!`, `prop_assert_eq!` (`tests/property/stats_properties.rs`).
+- `anyhow::Result<()>` in test bodies for `?`-propagation (documented as the convention in `tests/golden_tests.rs:17`).
 
-- **Runner:** built-in `cargo test` harness. Property tests via `proptest = "1.5"` (also a normal dependency). Benchmarks via `criterion = { version = "0.5", features = ["html_reports"] }` (`Cargo.toml:91`).
-- **Dev-deps** (`Cargo.toml:89-99`): `criterion`, `tempfile = "3.12"`, `proptest = "1.5"`, `rand = "0.8"`, `rand_chacha = "0.3"`.
-- **Assertion library:** standard `assert_eq!` / `assert!` / `assert_ne!`. Integration tests also use `anyhow::Result` for ergonomic `?` in test bodies (`tests/integration/queryx_tests.rs:9,22`).
-- **No `rustfmt.toml`/`clippy.toml`** — default lint settings; `cargo clippy` is part of the documented workflow (`CLAUDE.md`).
+**Runner (Python):**
+- `pytest` for the PyO3 bindings (`pyo3/tests/`), with `pytest-cov` configured for coverage (`pyo3/pyproject.toml` `[tool.pytest.ini_options]`), `pytest-benchmark` and `hypothesis` available via extras/README.
+- Root `pyo3/pyproject.toml` addopts: `--cov=pyrustkmer --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=80 -v`.
+- Legacy pytest configs also exist at `tests/converted/pytest.ini` and `tests/007-api-compatibility/pytest.ini` (their test bodies are absent — see "Currently orphaned" below).
 
-### Python
-
-- **Runner:** `pytest >= 7.0` with `pytest-cov >= 4.0` and `pytest-benchmark >= 4.0` (`pyo3/pyproject.toml:38-46`). Optional: `hypothesis`, `pytest-benchmark` (README).
-- **Assertion library:** bare `assert` + `pytest.raises`.
-- **Markers** registered in `pyo3/pyproject.toml:90-94`: `slow`, `performance`, `integration`. Additional per-suite markers in `tests/converted/pytest.ini` (`unit`, `integration`, `performance`, `slow`, `memory`, `cli`, `converted`) and `tests/007-api-compatibility/pytest.ini` (`compatibility`, `performance`, `slow`, `integration`, `unit`).
-
-## Run Commands
-
-### Rust
+**Run Commands:**
 
 ```bash
-cargo test                              # All targets (unit + integration + doctests)
-cargo test --release                    # Run tests against optimized build
-cargo test --release --test integration # Specific test target (see INSTALL.md:243)
-cargo test -- --nocapture               # Show println! output from tests
-cargo clippy --all-targets              # Lint (required per CLAUDE.md)
-cargo bench                             # criterion benchmarks (criterion harness)
-```
+cargo test                              # All Rust tests (CI gate)
+cargo test --test golden_tests          # Single target
+cargo test --test parallel_count_tests -- --ignored capture_parallel_count_baseline
+                                        # One-shot baseline capture (do NOT rerun casually)
+cargo test --test golden_generate -- --ignored
+                                        # One-shot fixture generator — writes committed files
+cargo fmt --all --check                 # CI gate
+cargo clippy --all-targets -- -D warnings   # CI gate (also run inside pyo3/)
 
-### Python (pyrustkmer bindings)
+# Python bindings
 
-Build the extension before testing (maturin):
-
-```bash
-cd pyo3 && maturin develop --release     # Build + install into current env
-cd pyo3 && PYO3_PYTHON=$(which python3) maturin develop
-pytest pyo3/tests/ -v                    # Run all binding tests (cov auto-enabled)
-pytest pyo3/tests/test_counter.py -v     # Single file
-pytest pyo3/tests/ --cov-report=term-missing --cov-report=html
-pytest -m "not slow"                     # Skip slow/perf markers
-```
-
-Coverage is **enforced**: `--cov-fail-under=80` in `pyo3/pyproject.toml:100`.
-
-### Python (cross-validation suites)
-
-```bash
-python -m pytest tests/007-api-compatibility/ -v   # CLI ↔ Python API parity
-python -m pytest tests/converted/ -v               # Converted test set
-python -m pytest tests/ -v                          # All repo-level Python tests
-```
-
-### Multi-version smoke test (PyO3 matrix)
-
-```bash
-./scripts/test_all_envs.sh        # py311, py312, py313 (build+install+validate)
-./scripts/test_current.sh py311   # single env, full wheel build
-./scripts/test_pyo3_version.sh 0.27.2 py312   # specific PyO3 version
+cd pyo3 && maturin develop --release    # Build the extension first
+pytest tests/ -v                        # Run from pyo3/ so pyproject config/coverage applies
+pytest tests/test_counter.py -v         # Single file
 ```
 
 ## Test File Organization
 
-### Rust
+**Location — three tiers:**
 
-Two locations, both consumed by the same crate:
+1. **In-source unit tests:** `#[cfg(test)] mod tests { use super::*; ... }` at the bottom of the module under test. Present in 41 source files, ~213 `#[test]` functions total, e.g. `src/hash/table.rs:479`, `src/kmer/canonical.rs:97`, `src/fuzzy/query.rs:514`. A standalone variant exists at `src/database/merge_tests.rs` (wrapped in its own `#[cfg(test)]`; note it is currently not declared by `src/database/mod.rs`, so it does not compile or run).
 
-1. **Inline unit tests** — `#[cfg(test)] mod tests { use super::*; ... }` at the bottom of source files. Examples: `src/kmer/operations.rs`, `src/hash/table.rs`, `src/database/merge_tests.rs:3`, `tests/common/temp_files.rs:242`, `tests/common/mod.rs:137`.
-2. **Integration / property tests** — separate files under `tests/`, aggregated via a top-level `tests/mod.rs` (`tests/mod.rs:1-9`) declaring:
-   ```rust
-   pub mod common;
-   pub mod integration;
-   pub mod property;
-   pub mod unit;
-   ```
-   Sub-trees:
-   - `tests/unit/` — focused unit suites (e.g. `stats_tests.rs`, `database/canonical_handling_tests.rs`, `database/query_canonical_tests.rs`).
-   - `tests/integration/` — multi-module flows (`queryx_tests.rs`, `stats_integration.rs`) with shared `tests/integration/common.rs`.
-   - `tests/property/` — `proptest!`-based invariant tests (`stats_properties.rs`).
-   - `tests/consistency/` — consistency generators/utils (`generators.rs`, `utils.rs`, `mod.rs`) plus the entrypoint `tests/consistency_tests.rs`.
-   - `tests/contract/` — contract tests (`basic_query_test.rs`, `query_consistency.rs`).
-   - `tests/common/` — shared test helpers (`mod.rs`, `memory.rs`, `performance.rs`, `temp_files.rs`).
-   - `tests/fixtures/` — static data: FASTA (`k33_test.fasta`, `k48_test.fasta`, `k64_test.fasta`, `ambiguous_test.fasta`) and JSON k-mer fixtures (`fixtures/kmers/*.json`).
-   - `tests/007-api-compatibility/`, `tests/converted/` — Python suites (see below).
-   - `tests/performance/` — Python performance scripts (`test_fuzzy_query_performance.py`).
+2. **Top-level integration targets:** every `.rs` directly under `tests/` is its own cargo test crate. Active targets:
 
-**Naming:** Rust test files are `*_tests.rs` or `<topic>_tests.rs`; test functions are `fn test_<behaviour>()` or `fn <behaviour>()` inside `#[test]`.
+| Target | Focus | Tests |
+|--------|-------|-------|
+| `tests/golden_tests.rs` | sha256 golden `.rkdb` regression + cross-consistency | 14 |
+| `tests/parallel_count_tests.rs` | 1-vs-N thread differential, baseline cross-check, determinism, thread precedence | 5 (1 `#[ignore]`d generator) |
+| `tests/cjk_check.rs` | Source-lint gate: no CJK string literals in non-CLI code | 5 |
+| `tests/legacy_readback_tests.rs` | Legacy `data_offset = 42` read-back | 3 |
+| `tests/round_trip_tests.rs` | write→read round-trip of `.rkdb` | 3 |
+| `tests/consistency_tests.rs` | u64/u128 consistency placeholder + parallel-merge logging invariant | 2 |
+| `tests/golden_generate.rs` | `#[ignore]`d one-shot fixture generator | 1 |
+| `tests/mod.rs` | Aggregator declaring `common`/`integration`/`property`/`unit` | 0 direct |
 
-### Python
+3. **Nested suites compiled through declarations:** files inside `tests/integration/`, `tests/unit/`, `tests/property/`, `tests/consistency/`, `tests/contract/` compile only when declared by a parent `mod.rs` (or a top-level file). Shared helpers use the `mod common; use common::*;` pattern (`tests/round_trip_tests.rs:15-17`, `tests/golden_tests.rs:19-21`).
 
-- **Location:** `pyo3/tests/` for binding tests; `tests/007-api-compatibility/` and `tests/converted/` for CLI parity.
-- **Discovery:** `testpaths = ["tests"]`, `python_files = ["test_*.py"]`, `python_classes = ["Test*"]`, `python_functions = ["test_*"]` (`pyo3/pyproject.toml:86-89`).
-- **Structure:**
-  ```
-  pyo3/tests/
-  ├── conftest.py           # Session fixtures (db paths, module/class accessors)
-  ├── utils.py              # PyO3TestHelper, reverse_complement, compare_results
-  ├── test_core.py
-  ├── test_counter.py       # Class-grouped: TestPyCounterBasicCreation, TestPyCounterAddKmer, ...
-  ├── test_counter_simple.py
-  ├── test_export.py
-  ├── test_import.py
-  └── test_pyo3_simple.py
-  ```
+**Wiring rule (important):** cargo auto-discovers only `.rs` files directly under `tests/`. A file in a subdirectory that no parent declares is never compiled and never runs. Before adding tests under `tests/<suite>/`, declare the module in `tests/<suite>/mod.rs`.
+
+**Currently orphaned (not declared, do not assume they run):**
+- `tests/integration/queryx_tests.rs` (12 tests, imports `rustkmer::cli::commands::queryx` / `rustkmer::database::parallel_query`, which no longer exist in `src/`), `tests/integration/stats_integration.rs` (8), `tests/integration/common.rs`
+- `tests/unit/stats_tests.rs` (5), `tests/unit/database/canonical_handling_tests.rs` (9), `tests/unit/database/query_canonical_tests.rs` (3)
+- `tests/property/stats_properties.rs` (4 proptest blocks)
+- `tests/contract/basic_query_test.rs`, `tests/contract/query_consistency.rs` (no top-level `contract.rs` exists)
+- `src/database/merge_tests.rs` (not declared in `src/database/mod.rs`)
+- `tests/performance/test_fuzzy_query_performance.py` (imports a `rustkmer` Python package that does not exist in the repo)
+- `tests/007-api-compatibility/` and `tests/converted/` contain pytest configs/readmes but no test files, and reference a missing `python/` tree
+
+When touching any of these, decide explicitly: wire it up (`pub mod ...;`) and fix stale imports, or leave it out of the compiled set.
+
+**Naming:**
+- Rust: `test_<subject>_<condition>` for most tests (`test_streaming_stats_processor_empty`, `test_round_trip_preserves_kmer_counts`); regression tests that represent a documented decision use outcome names (`golden_k32_canon_sorted_matches_manifest`, `legacy_offset42_reads_via_database_query`, `baseline_matches_current`).
+- Python: `test_<behavior>` inside `Test<Class>` classes (`TestPyCounterBasicCreation::test_invalid_kmer_size_zero_raises_error`).
 
 ## Test Structure
 
-### Rust suite organization
+**Simple unit test (in-source):**
 
 ```rust
 #[cfg(test)]
@@ -117,208 +90,208 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_streaming_stats_processor_basic() {
-        let config = StatsConfiguration { /* ... */ };
-        let mut processor = StreamingStatsProcessor::new(config);
-
-        processor.add_count(1).unwrap();
-        processor.add_count(2).unwrap();
-
-        let stats = processor.finalize(/* ... */);
-
-        assert_eq!(stats.total_kmers, 9);
-        assert!(stats.frequency_distribution.is_none());
+    fn test_canonical_kmer() {
+        let atgc_encoded = encode_kmer("ATGC").unwrap();
+        let canonical = canonical_kmer(atgc_encoded, 4).unwrap();
+        assert_eq!(canonical, atgc_encoded);
     }
 }
 ```
-*(Pattern from `tests/unit/stats_tests.rs:7-45`)*
 
-**Conventions:**
-- Construct domain objects directly (no test-only constructors); configure via plain structs (`StatsConfiguration`, `MergeConfig`).
-- Prefer `.unwrap()` on results inside test bodies (failure is the signal).
-- Use descriptive `assert!(cond, "message")` for behavioural checks (`tests/integration/queryx_tests.rs:48-51`).
-- Integration tests return `anyhow::Result<()>` so `?` can be used; end with `Ok(())` (`tests/integration/queryx_tests.rs:22,53`).
+(`src/kmer/canonical.rs:97-115`)
 
-### Python suite organization
-
-```python
-class TestPyCounterBasicCreation:
-    """Test basic PyCounter creation and initialization."""
-
-    def test_create_counter_default_params(self):
-        """Test creating a counter with default parameters."""
-        counter = pyrustkmer.PyCounter(21)
-        assert counter is not None
-        assert counter.kmer_length == 21
-        assert counter.canonical == False
-
-    def test_invalid_kmer_size_zero_raises_error(self):
-        """Test that k-mer size of 0 raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid k-mer size"):
-            pyrustkmer.PyCounter(0)
-```
-*(Pattern from `pyo3/tests/test_counter.py:16-50`)*
-
-**Conventions:**
-- Group related tests into `Test*` classes by behaviour; each test method has a one-line docstring.
-- Assert on Python-visible attributes (getters) and use `pytest.raises(..., match=...)` for error paths.
-- Skip cleanly when the native module is unavailable: `pytest.skip("pyrustkmer module not installed", allow_module_level=True)` (`pyo3/tests/test_counter.py:10-13`).
-
-## Mocking
-
-**Rust:** no mocking framework in use. Tests exercise real implementations. Where isolation is needed, tests construct small in-memory databases (see Fixtures below). `MemoryMonitor` (`src/database/memory.rs`, used in `src/database/merge_tests.rs:39`) is real, not mocked.
-
-**Python:** no `unittest.mock` usage detected. Tests call into the compiled `pyrustkmer` module directly. `pyo3/tests/utils.py` provides real helper wrappers (`PyO3TestHelper`, `get_test_kmers`).
-
-**What to mock (prescriptive):** nothing by default. Prefer real small inputs. Only mock time-bound / external resources (filesystem paths, env vars) using `tmp_path` / `monkeypatch`.
-
-## Fixtures and Factories
-
-### Rust — in-memory factories (shared)
-
-Centralised in `tests/common/mod.rs`. Re-export via `use common::*;` (see `tests/integration/queryx_tests.rs:16-18`).
-
-```rust
-pub type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
-
-pub fn create_test_database(
-    num_kmers: usize, kmer_size: u8, canonical: bool, sorted: bool,
-) -> TestResult<RKDatabase> { /* ... */ }
-
-pub fn create_overlapping_database(...) -> TestResult<(RKDatabase, Vec<(u128, u32)>)> { /* ... */ }
-pub fn create_database_from_kmers(kmers: Vec<(u128, u32)>, ...) -> TestResult<RKDatabase> { /* ... */ }
-pub fn encode_test_kmer(value: u64, kmer_size: u8) -> u128 { /* base-4 packing */ }
-pub fn databases_have_same_kmers(db1: &RKDatabase, db2: &RKDatabase) -> TestResult<bool> { /* ... */ }
-```
-*(From `tests/common/mod.rs:9-135`)*
-
-### Rust — temporary files & cleanup
-
-`tests/common/temp_files.rs` provides `TempFileManager` (RAII via `Drop`), convenience functions, and macros:
-
-```rust
-let path = temp_file!("test content", ".txt")?;          // macro → .tmp
-let fasta = temp_fasta!("hdr1" => "ATCG", "hdr2" => "GCGC")?;  // macro → .fasta
-
-// Programmatic:
-let mut mgr = TempFileManager::new()?;                    // dedicated TempDir, auto-cleaned on drop
-let p = mgr.create_temp_fasta(&[("s1".into(), "ATCG".into())])?;
-let db_path = mgr.save_database_to_temp(&db)?;
-```
-*(From `tests/common/temp_files.rs:33-239`)*
-
-For tests that don't need tracking, use `TempFileManager::new_with_system_temp()` or the `tempfile::TempDir`/`tempdir()` crate directly (`src/database/merge_tests.rs:9,30`).
-
-### Rust — consistency generators
-
-`tests/consistency/generators.rs` builds FASTA content and expected k-mer counts in-memory (`generate_test_fasta`, `generate_expected_counts`, `create_mixed_sequences`). Marked `#[allow(dead_code)]` because not every config uses them.
-
-### Rust — static fixtures
-
-- `tests/fixtures/*.fasta` — fixed FASTA inputs at k=33/48/64 and ambiguous-base cases.
-- `tests/fixtures/kmers/*.json` — `basic_kmers.json`, `canonical_pairs.json`, `edge_cases.json`, `invalid_sequences.json` (see `tests/fixtures/kmers/README.md`).
-
-### Python — pytest fixtures
-
-Session-scoped data providers live in `pyo3/tests/conftest.py`:
-
-```python
-@pytest.fixture(scope="session")
-def pyo3_test_data_dir():
-    return Path(__file__).parent.parent.parent / "python" / "tests" / "test_data"
-
-@pytest.fixture
-def tiny_db_path(pyo3_test_data_dir) -> str:
-    db_file = pyo3_test_data_dir / "tiny_test.rkdb"
-    if not db_file.exists():
-        pytest.skip(f"Test database not found: {db_file}")
-    return str(db_file)
-
-@pytest.fixture
-def PyCounter(pyo3_module):
-    if not hasattr(pyo3_module, "PyCounter"):
-        pytest.skip("PyCounter class not available")
-    return pyrustkmer.PyCounter
-```
-*(From `pyo3/tests/conftest.py:11-130`)*
-
-Database fixture catalogue is declared once in `pyo3_test_databases` (`conftest.py:17-51`) with size / kmer_size / file_size metadata. Class-accessor fixtures (`PyDatabase`, `PyCounter`, `PyFuzzyQuery`, `PyPrefixQuery`, `LoadMode`) skip the test if the symbol is missing — enables graceful degradation across PyO3 versions.
-
-**Static Python test data:** `test_data/databases/`, `test_data/kmers/`, `test_data/sequences/`; regeneration scripts in `test_data/generate_test_data.py` and `test_data/verify_git_tracking.py`.
-
-## Coverage
-
-**Python:** enforced at **80% minimum** via `--cov-fail-under=80` (`pyo3/pyproject.toml:95-102`). Reports generated in term-missing, HTML, and XML. Source scoped to `pyrustkmer`; omits `*/tests/*`, `*/test_*`, `setup.py`, `build.py` (`pyproject.toml:142-149`). Excluded lines include `pragma: no cover`, `raise NotImplementedError`, `if __name__ == .__main__.`, abstract methods (`pyproject.toml:151-163`). Existing reports: `pyo3/coverage.xml`, `pyo3/htmlcov/`.
-
-**Rust:** no coverage gate configured (no `tarpaulin`/`llvm-cov` config). Treat the inline + `tests/` suites as the coverage vehicle; add a property test alongside any new invariant-heavy code.
-
-**View Python coverage:**
-```bash
-pytest pyo3/tests/ --cov=pyrustkmer --cov-report=html
-open pyo3/htmlcov/index.html
-```
-
-## Test Types
-
-**Unit tests (Rust):** `#[cfg(test)] mod tests` in each source file; also dedicated files in `tests/unit/` (`stats_tests.rs`, `database/canonical_handling_tests.rs`, `database/query_canonical_tests.rs`). Fast, in-memory, no I/O.
-
-**Property tests (Rust):** `proptest!` blocks with `ProptestConfig::with_cases(100)`. Verify invariants over generated inputs (sum/min/max/mean relations, frequency-distribution properties) — see `tests/property/stats_properties.rs:8-100`.
-
-**Integration tests (Rust):** `tests/integration/*` exercise multi-module flows end-to-end (CLI command construction → `execute_queryx` → file output assertions). Use `TempDir` + real database files (`tests/integration/queryx_tests.rs:22-54`).
-
-**Contract / consistency tests (Rust):** `tests/contract/`, `tests/consistency/`, `tests/consistency_tests.rs`. NOTE: `consistency_tests.rs:8-15` is currently a `assert!(true)` placeholder with a TODO — real consistency coverage for u64/u128 parity is missing.
-
-**Python binding tests:** `pyo3/tests/test_*.py` — exercise `pyrustkmer` from Python: object construction, getters, file I/O, error mapping, round-trip count/query, export formats.
-
-**Cross-validation tests (Python):** `tests/007-api-compatibility/` asserts CLI and Python API produce identical results; emits JSON reports under `test_reports/`. `tests/converted/` holds migrated test sets.
-
-**Performance tests:** `tests/performance/test_fuzzy_query_performance.py` (Python) and Rust `criterion` benchmarks (currently commented out in `Cargo.toml:115-117`). CI: `.github/workflows/performance-regression.yml`.
-
-**Examples double as integration checks:** `examples/python/test_pyo3_api.py`, `validate_position_mutations.py`, `demo_*.py`.
-
-## Common Patterns
-
-### Async / threaded testing
-
-The crate is multi-threaded (`rayon`, `parking_lot`). Tests do not spawn explicit async runtimes. Thread-safety is verified behaviourally, e.g. `tests/integration/queryx_tests.rs` constructs `Commands::QueryX { threads: 2, batch_size: 10, ... }` and asserts output correctness after parallel execution.
-
-### Error-path testing
+**Integration test body — `anyhow::Result<()>` + `?`, terminal `Ok(())`:**
 
 ```rust
 #[test]
-fn test_invalid_kmer_size() {
-    let result = KmerCounter::new(0, true, 100, 1);
-    assert!(result.is_err());
+fn legacy_offset42_loads_post_refactor() -> anyhow::Result<()> {
+    let db = RKDatabase::from_file_path(std::path::Path::new(LEGACY_PATH))
+        .map_err(|e| anyhow::anyhow!("legacy fixture failed to load post-refactor: {}", e))?;
+    let kmers = db.all_kmers()?;
+    assert!(!kmers.is_empty(), "legacy fixture must contain nonzero k-mers");
+    Ok(())
 }
 ```
 
+(`tests/legacy_readback_tests.rs:22-43`)
+
+**Property test block:**
+
+```rust
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(100))]
+
+    #[test]
+    fn test_stats_mean_median_invariants(
+        counts in prop::collection::vec(1u32..=1000u32, 1..=100)
+    ) {
+        // ... build processor, add counts ...
+        prop_assert_eq!(stats.total_kmers, expected_total);
+    }
+}
+```
+
+(`tests/property/stats_properties.rs:8-72`)
+
+**One-shot generators — `#[ignore]` with a reason and run instructions in the doc comment:**
+
+```rust
+#[test]
+#[ignore = "one-shot pre-refactor baseline capture (D-10); run with --ignored"]
+fn capture_parallel_count_baseline() -> Result<(), Box<dyn std::error::Error>> { ... }
+```
+
+(`tests/parallel_count_tests.rs:229`, `tests/golden_generate.rs:169`). Committed generated artifacts are treated as ground truth — comments explicitly warn against regeneration.
+
+**Panic expectation (rare):**
+
+```rust
+#[test]
+#[should_panic(expected = "Sequences must have the same length")]
+fn test_hamming_distance_different_lengths() { ... }
+```
+
+(`src/fuzzy/mutation.rs:678`)
+
+**Patterns:**
+- One assertion theme per test; matrix cells each get their own `#[test]` so failures localize (`golden_k{21,32,64}_{canon,sorted}` — 12 separate tests in `tests/golden_tests.rs`).
+- Assertions carry messages explaining the contract: `assert!(result.is_ok(), "QueryX execution should succeed")` (`tests/integration/queryx_tests.rs:48`).
+- Tests reference the decision IDs (D-09, PCOUNT-04, etc.) in comments and test names where behavior is contractual.
+- Deterministic inputs are hand-built, not random, for regression tests (fixed `BASELINE_INPUT` in `tests/parallel_count_tests.rs`); `rand` is only used for synthetic binary blobs (`tests/common/temp_files.rs:130`).
+- Concurrency tests spawn workers with `std::thread::scope`, join every handle, and propagate the first error (`tests/parallel_count_tests.rs:166-207`).
+
+## Mocking
+
+**Framework:** None for Rust. The codebase deliberately tests against real implementations and real files — there is no `mockall`, `wiremock`, or trait-fake infrastructure anywhere in `tests/` or `src/`.
+
+**Patterns:**
+- Real `.rkdb` databases built in-memory and written to `tempfile` dirs: `RKDatabase::from_kmer_pairs(...)` + `TempDir`/`NamedTempFile` (51 usages of temp-dir helpers across `tests/` and `src/`).
+- Real files on disk from shared factories (`tests/common/mod.rs`) and committed fixtures (`tests/fixtures/`).
+- CLI-level tests invoke the compiled binary directly — `Command::new("./target/debug/rustkmer")` (`tests/consistency/utils.rs:89`, `tests/integration/stats_integration.rs:9`). Requires `cargo build` first; prefer in-process `execute_*` calls where possible.
+- Error-type bridging is done with a small adapter trait rather than mocks:
+
+```rust
+trait TestResultExt<T> { fn a(self) -> anyhow::Result<T>; }
+impl<T> TestResultExt<T> for Result<T, Box<dyn std::error::Error>> {
+    fn a(self) -> anyhow::Result<T> { self.map_err(|e| anyhow::anyhow!("{}", e)) }
+}
+```
+
+(`tests/round_trip_tests.rs:20-29`)
+
+**What to Mock (Python):** nothing — pytest fixtures skip rather than mock when prerequisites are missing (`pytest.skip(f"Test database not found: {db_file}")`, `pyo3/tests/conftest.py:59`; module-import skip in `pyo3/tests/test_counter.py:9-12`).
+
+## Fixtures and Factories
+
+**Test Data:**
+- `tests/fixtures/` — committed golden data:
+  - `golden_k{21,32,64}_{canon,noncanon}_{sorted,unsorted}.rkdb` + `golden_manifest.sha256` (12 fixtures, name → sha256)
+  - `legacy_v2_offset42.rkdb` (legacy format read-back)
+  - `parallel_count_baseline/k{21,32,64}_{canon,noncanon}.json` (pre-refactor count maps; JSON object keyed by stringified u128, numerically ordered `BTreeMap`)
+  - `k64_test.fasta`, `k33_test.fasta`, `ambiguous_test.fasta`, `kmers/*.json` (`basic_kmers`, `canonical_pairs`, `edge_cases`, `invalid_sequences`)
+- `test_data/` at repo root (`sequences/`, `kmers/`) — older dataset location.
+- Python data (expected at `python/tests/test_data/` from `pyo3/tests/conftest.py`; currently missing → fixtures skip).
+
+**Factories (`tests/common/mod.rs`):**
+
+```rust
+pub fn create_test_database(num_kmers: usize, kmer_size: u8, canonical: bool, sorted: bool) -> TestResult<RKDatabase>;
+pub fn create_overlapping_database(num_kmers, kmer_size, canonical, sorted, overlap_ratio) -> TestResult<(RKDatabase, Vec<(u128, u32)>)>;
+pub fn create_database_from_kmers(kmers: Vec<(u128, u32)>, kmer_size, canonical, sorted) -> TestResult<RKDatabase>;
+pub fn encode_test_kmer(value: u64, kmer_size: u8) -> u128;
+pub fn generate_kmer_sequence(start: u64, count: usize, kmer_size: u8) -> Vec<u128>;
+pub fn databases_have_same_kmers(db1: &RKDatabase, db2: &RKDatabase) -> TestResult<bool>;
+```
+
+Import via `mod common; use common::*;`. The module carries `#![allow(dead_code)]` because each test crate compiles only the subset it uses (`tests/common/mod.rs:3-10`).
+
+**Temp-file helpers (`tests/common/temp_files.rs`):**
+- `TempFileManager` — RAII: `Drop` runs best-effort cleanup; methods `create_temp_file`, `create_temp_text_file`, `create_temp_fasta`, `create_temp_fastq`, `save_database_to_temp`, `create_temp_binary`, `get_file_size`, `cleanup`.
+- Macros: `temp_file!("content", ".txt")`, `temp_fasta!("header1" => "ATCG", ...)`.
+- `TempFileError` is a domain `thiserror` enum, mirroring library conventions.
+
+**Performance/memory helpers:** `tests/common/performance.rs` (`PerformanceMetrics`, ops/sec, throughput), `tests/common/memory.rs` (`MemoryMonitor`, `get_current_memory_usage`). Both carry `#![allow(dead_code)]`.
+
+**Python fixtures (`pyo3/tests/conftest.py`):**
+- Session-scoped: `pyo3_test_data_dir`, `pyo3_test_databases` metadata map.
+- DB path fixtures (`tiny_db_path`, `small_db_path`, `k33_db_path`) skip when the file is absent.
+- Class fixtures (`PyDatabase`, `PyCounter`, `PyFuzzyQuery`, `PyPrefixQuery`, `LoadMode`) import `pyrustkmer` and skip when unavailable.
+- Shared helper functions in `pyo3/tests/utils.py` (`get_test_kmers`, `reverse_complement`, `compare_results`).
+
+## Coverage
+
+**Requirements:**
+- Rust: no coverage target configured or enforced; CI runs `cargo test` only (`.github/workflows/ci.yml`). No `cargo-llvm-cov`/tarpaulin config.
+- Python: `--cov-fail-under=80` for `pyrustkmer` (`pyo3/pyproject.toml`). This applies when pytest resolves its rootdir to `pyo3/` (run from `pyo3/`). `pyo3/tests/.coverage` and `pyo3/.coverage` artifacts exist from local runs.
+- Docs pipeline runs `python -m pydocstyle python/rustkmer/ --config=.pydocstylerc` non-blocking (`.github/workflows/docs.yml:53`).
+
+**View Coverage:**
+
+```bash
+cd pyo3 && pytest tests/ --cov=pyrustkmer --cov-report=term-missing
+```
+
+**CI summary:**
+- `.github/workflows/ci.yml`: `fmt` (rustfmt check), `clippy-root` + `test-root` (ubuntu/macos, `cargo test`), `pyo3-build` (clippy + `maturin build`, no pytest execution).
+- `.github/workflows/performance-regression.yml`: criterion benchmark jobs exist but are guarded — the referenced `python_cli_comparison` bench target is commented out in `Cargo.toml`, so jobs skip with a warning; later steps call Python scripts under a missing `python/`/`scripts/` path.
+- `.github/workflows/docs.yml`: docs build + link check + pydocstyle (non-blocking).
+
+## Test Types
+
+**Unit Tests (Rust):** in-source `#[cfg(test)] mod tests` per module — pure functions, validation, encoding/canonical round-trips, per-module error paths (~213 tests across 41 files).
+
+**Integration Tests (Rust):** top-level `tests/*.rs` exercising real file I/O, format round-trips, and command handlers in-process (`execute_count(&args)` in `tests/contract/basic_query_test.rs`) or via the compiled binary (`tests/consistency/utils.rs`).
+
+**Golden / Regression:** sha256 manifest verification of committed `.rkdb` bytes plus write-path cross-consistency (`tests/golden_tests.rs`); legacy read-back (`tests/legacy_readback_tests.rs`).
+
+**Differential / Concurrency:** 1-worker vs N-worker count-map equality, committed-baseline comparison, byte-identical sorted output across runs, thread-count precedence chain (`tests/parallel_count_tests.rs`).
+
+**Property-Based:** `proptest` with 100 cases per property, asserting statistical invariants (mean/median bounds, frequency-distribution sums) — canonical example at `tests/property/stats_properties.rs` (currently orphaned).
+
+**Source-Lint Tests:** `tests/cjk_check.rs` parses every in-scope `.rs` file with `syn` and fails on CJK string literals, with sanity tests for each Unicode block and for the exclusion patterns.
+
+**Performance Tests:** Python timing benchmarks (`tests/performance/test_fuzzy_query_performance.py`, time-based, asserts batch vs individual speedup). Criterion benchmarks are configured as a dev-dependency but have no `benches/` target.
+
+**Python Binding Tests:** class-based pytest suites (`pyo3/tests/test_core.py`, `test_counter.py`, `test_export.py`, `test_import.py`, `test_pyo3_simple.py`, `test_counter_simple.py`) covering constructors, validation errors, load modes, query results, and exports. Note there is duplication between `test_counter.py` and `test_counter_simple.py` / `test_pyo3_simple.py` (parallel coverage of the same APIs).
+
+**E2E:** not used (no Playwright/Cypress equivalents; no CLI end-to-end harness beyond `Command::new` patterns above).
+
+## Common Patterns
+
+**Async Testing:** Not applicable — the codebase is synchronous; concurrency is tested with `rayon` and `std::thread::scope` (see `tests/parallel_count_tests.rs:166-207` for the join-all-and-propagate-first-error pattern).
+
+**Error Testing (Rust):**
+
+```rust
+let result = execute_queryx(&command);
+assert!(result.is_err(), "QueryX should fail with invalid k-mers");
+```
+
+Or prefer `?`-propagation in `anyhow::Result` bodies when the error is not the subject of the assertion.
+
+**Error Testing (Python):**
+
 ```python
 with pytest.raises(ValueError, match="Invalid k-mer size"):
-    pyrustkmer.PyCounter(65)        # > 64 rejected (u128 ceiling)
+    pyrustkmer.PyCounter(0)
 ```
-*(Pattern: `pyo3/tests/test_counter.py:57-60`)*
 
-### Parameterised / data-driven tests
+(`pyo3/tests/test_counter.py:47-49`)
 
-- Rust: `proptest!` with strategies like `prop::collection::vec(1u32..=1000u32, 1..=100)` (`tests/property/stats_properties.rs:13`).
-- Python: prefer `pytest.mark.parametrize` for new code (not yet widely used in this repo). Multi-value cases currently use simple `for` loops (`pyo3/tests/test_counter.py:42-45`).
+**CLI subprocess testing (pattern to reuse):**
 
-### Temp-file hygiene
-
-Always scope file-producing tests under a `TempDir` / `TempFileManager` so cleanup runs on `Drop` even on panic (`tests/common/temp_files.rs:186-191`). Never write test artifacts into the repo root (the root already contains stray `*.rkdb`, `*.rkd`, `*_result.txt` debug files — do not add more).
-
-### Skip-when-absent pattern (Python)
-
-Native extension tests must skip, not error, when the module isn't built:
-
-```python
-try:
-    import pyrustkmer
-except ImportError:
-    pytest.skip("pyrustkmer module not installed", allow_module_level=True)
+```rust
+let output = Command::new("./target/debug/rustkmer").args(args).output().expect("Failed to execute rustkmer stats");
+let stdout = String::from_utf8(output.stdout).unwrap();
+let exit_code = output.status.code().unwrap();
 ```
-*(From `pyo3/tests/test_counter.py:10-13`)*
+
+(`tests/integration/stats_integration.rs:8-25`) — remember this requires a prior `cargo build`.
+
+**Building databases inside tests:** prefer the `tests/common/mod.rs` factories over hand-rolling `RKDatabase` construction; use `TempDir` for on-disk round-trips (`tests/round_trip_tests.rs`).
+
+**Regenerating fixtures:** only through the `#[ignore]`d generators (`golden_generate.rs`, `capture_parallel_count_baseline`) and only when intentionally re-baselining; committed artifacts and their sha256 manifest are the contract.
 
 ---
 
-*Testing analysis: 2026-06-30*
+*Testing analysis: 2026-10-07*
