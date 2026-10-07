@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 03
 current_phase_name: Memory Safety
 status: executing
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-10-07T02:28:57.188Z"
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-10-07T02:56:50.722Z"
 last_activity: 2026-10-07
 last_activity_desc: Completed 03-02 (RAII merge temp lifecycle + orphan sweep)
-state_head: 3aa2d2ff2b96e3d456d19a7e22ce380d1c54d25b
+state_head: 6a0e9731b093e401962d0efff30eee094909c8ed
 progress:
   total_phases: 4
   completed_phases: 2
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 ## Current Position
 
 Phase: 03 (Memory Safety) — EXECUTING
-Plan: 3 of 5
-Status: In progress
+Plan: 4 of 5
+Status: Ready to execute
 Last activity: 2026-10-07 — Completed 03-02 (RAII merge temp lifecycle + orphan sweep)
 
 Progress: [██████░░░░] 2/5 plans (Phase 03)
@@ -76,6 +76,7 @@ Progress: [██████░░░░] 2/5 plans (Phase 03)
 |------|----------|-------|-------|
 | Phase 03 P01 | 42min | 2 tasks | 6 files |
 | Phase 03 P02 | 38min | 2 tasks | 7 files |
+| Phase 03 P03 | 10min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,11 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-02: The sweep refuses symlinks carrying the prefix (entry.file_type(), not entry.metadata()) so a planted symlink in a shared temp dir cannot redirect remove_dir_all at an arbitrary tree — T-03-07 was accepted, escalating it to arbitrary-target deletion was not
 - [Phase 03]: 03-02: Two pre-existing prefix-cache bugs were logged to deferred-items.md, not fixed — external_sort_merge_output.tmp is written outside the subdir and never removed (T-03-05/T-03-06), and merge_prefix_buckets returns Ok(()) after bucket failures, producing a silent partial merge. Neither is caused by this plan and fixing the second would change merge outcomes
 - [Phase 03]: 03-02: Subdir uniqueness uses rand_bytes(8), not the PID — random bytes also survive PID reuse after a reboot, which PID-based naming does not
+- [Phase 03]: 03-03: KmerKey's narrowing debug_assert lives in KmerKey::from_u128 rather than in increment (the plan's location) — get_count and merge narrow at the same boundary, so one assertion covers all three call sites; increment still trips it because it routes through from_u128
+- [Phase 03]: 03-03: No use_u64 field on KmerCounter — width is derived from the immutable kmer_length on demand. kmer_length cannot change for a counter's lifetime, so a cached flag could only ever be redundant state capable of disagreeing with the length it came from
+- [Phase 03]: 03-03: DENSE-01's 'roughly half' is asserted on the keyed PAYLOAD (20B -> 12B, ratio 0.6), not the overhead-inclusive total (36/44 = 0.818). The plan's own formula mandates the same 24-byte modelled overhead on both widths, which makes its proposed [0.4,0.7] band unreachable on the total — the band brackets the payload ratio
+- [Phase 03]: 03-03: The dense differential uses THREE independent references per cell (counter-free u128 oracle, production u128-encoder counter, committed golden .rkdb) rather than two — a single two-way comparison would not localize a failure to 'the counter' vs 'the shared encoders'
+- [Phase 03]: 03-03: The D-10 golden baseline caught a 2-character transcription drift in the differential's hand-copied GOLDEN_INPUT (all 6 tests failed, one entry off by 2). Fix was to splice the generator's array in programmatically instead of by transcription — evidence that reusing committed baselines rather than regenerating them is the right discipline
 
 ### Pending Todos
 
@@ -152,6 +158,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-07T03:45:00.000Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-10-07T02:56:50.639Z
+Stopped at: Completed 03-03-PLAN.md
 Resume file: None

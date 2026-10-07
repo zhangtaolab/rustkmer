@@ -24,9 +24,9 @@ Requirements for this performance milestone. Each maps to a roadmap phase (trace
 
 ### Dense Storage
 
-- [ ] **DENSE-01**: K-mers for k ≤ 32 are stored as `u64` (8 bytes) instead of `u128`, roughly halving counting memory for the common case
-- [ ] **DENSE-02**: Dense storage is transparent to existing readers — current `.rkdb` v2 files and queries keep working (backward/forward compatible); if a format bump turns out to be required, the tradeoff is surfaced as an explicit decision with a migration path before it lands
-- [ ] **DENSE-03**: Canonicalization stays correct under `u64` packing — counts match the `u128` path exactly
+- [x] **DENSE-01**: K-mers for k ≤ 32 are stored as `u64` (8 bytes) instead of `u128`, roughly halving counting memory for the common case
+- [x] **DENSE-02**: Dense storage is transparent to existing readers — current `.rkdb` v2 files and queries keep working (backward/forward compatible); if a format bump turns out to be required, the tradeoff is surfaced as an explicit decision with a migration path before it lands
+- [x] **DENSE-03**: Canonicalization stays correct under `u64` packing — counts match the `u128` path exactly
 
 ### Benchmark / Validation
 
@@ -95,9 +95,9 @@ Explicitly excluded from this milestone. Documented to prevent scope creep.
 | MERGE-02 | Phase 3 | Complete |
 | MERGE-03 | Phase 3 | Complete |
 | MERGE-04 | Phase 3 | Pending |
-| DENSE-01 | Phase 3 | Pending |
-| DENSE-02 | Phase 3 | Pending |
-| DENSE-03 | Phase 3 | Pending |
+| DENSE-01 | Phase 3 | Complete |
+| DENSE-02 | Phase 3 | Complete |
+| DENSE-03 | Phase 3 | Complete |
 | BENCH-01 | Phase 4 | Pending |
 | BENCH-02 | Phase 4 | Pending |
 | BENCH-03 | Phase 4 | Pending |
