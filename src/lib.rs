@@ -32,4 +32,4 @@ pub mod output;
 
 // Re-export key types for convenience
 pub use error::{KmerError, ProcessingError, ProcessingResult};
-pub use hash::KmerCounter;
+pub use hash::{KmerCounter, KmerKey};

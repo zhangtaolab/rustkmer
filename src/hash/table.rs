@@ -151,11 +151,8 @@ impl KmerCounter {
     /// # Returns
     /// Vector of (kmer_encoded, count) pairs sorted by count descending
     pub fn get_top_n(&self, n: usize) -> Vec<(u128, u32)> {
-        let mut pairs: Vec<(u128, u32)> = self
-            .table
-            .iter()
-            .map(|r| (*r.key(), *r.value()))
-            .collect();
+        let mut pairs: Vec<(u128, u32)> =
+            self.table.iter().map(|r| (*r.key(), *r.value())).collect();
 
         // Sort by count descending, then by kmer value for deterministic ordering
         pairs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
@@ -643,7 +640,6 @@ mod tests {
         assert_eq!(counter1.get_count(0x1), Some(u32::MAX));
     }
 
-
     #[test]
     fn test_reset() {
         let counter = KmerCounter::new(31, false, 1000, 1).unwrap();
@@ -694,7 +690,9 @@ mod tests {
                 let counter_ref = &counter;
                 s.spawn(move || {
                     for _ in 0..INCREMENTS_PER_THREAD {
-                        counter_ref.increment(kmer).expect("increment must not overflow");
+                        counter_ref
+                            .increment(kmer)
+                            .expect("increment must not overflow");
                     }
                 });
             }
@@ -710,7 +708,11 @@ mod tests {
             (THREADS * INCREMENTS_PER_THREAD) as u64,
             "total_kmers atomic must match the sum of all increments"
         );
-        assert_eq!(counter.unique_kmers(), 1, "only one unique k-mer was touched");
+        assert_eq!(
+            counter.unique_kmers(),
+            1,
+            "only one unique k-mer was touched"
+        );
     }
 
     /// PCOUNT-04 (VALIDATION.md Wave 0): the u32::MAX overflow guard must
@@ -739,7 +741,10 @@ mod tests {
         // the verbatim "K-mer count overflow reached maximum value 4294967295"
         // message (PCOUNT-04 — byte-identical to the pre-refactor path).
         let result = counter.increment(kmer);
-        assert!(result.is_err(), "increment at u32::MAX must error, not wrap");
+        assert!(
+            result.is_err(),
+            "increment at u32::MAX must error, not wrap"
+        );
         let msg = format!("{}", result.unwrap_err());
         assert!(
             msg.contains("K-mer count overflow reached maximum value"),
@@ -835,6 +840,80 @@ mod tests {
         assert_eq!(
             stats.total_before, counter.total_kmers(),
             "FilteringResult::total_before must equal the post-WR-03 total_kmers (WR-01 denominator)"
+        );
+    }
+
+    /// DENSE-01 (plan 03-03 Task 1, RED stub): a k ≤ 32 counter must model its
+    /// per-key storage at the dense `u64` width — 8-byte key — while a k > 32
+    /// counter keeps the 16-byte `u128` key. `memory_usage()` is derived from the
+    /// stored key width, so its value is a direct observation of which
+    /// `KmerKey` variant `new()` selected.
+    ///
+    /// RED until plan 03-03 Task 2 swaps `table` to `DashMap<KmerKey, u32>`:
+    /// both counters currently report `len * 44` and the dense assertion fails.
+    #[test]
+    #[ignore = "TODO(03-03 Task 2): un-ignore once the DashMap key swap lands"]
+    fn dense_counter_memory_usage_halved_for_k21() {
+        const N: usize = 4096;
+        // 24 B modelled hash/shard overhead, shared by both widths.
+        const OVERHEAD: usize = 24;
+        // key + count payload: 8 + 4 dense, 16 + 4 wide.
+        const DENSE_PAYLOAD: usize = 8 + 4;
+        const WIDE_PAYLOAD: usize = 16 + 4;
+
+        let dense = KmerCounter::new(21, false, N, 1).unwrap();
+        let wide = KmerCounter::new(64, false, N, 1).unwrap();
+        for i in 0..N {
+            // Distinct k-mers on both sides, so both tables hold N entries.
+            let kmer = i as u128;
+            dense.increment(kmer).unwrap();
+            wide.increment(kmer).unwrap();
+        }
+        assert_eq!(dense.unique_kmers(), N as u64);
+        assert_eq!(wide.unique_kmers(), N as u64);
+
+        let dense_usage = dense.memory_usage();
+        let wide_usage = wide.memory_usage();
+
+        // The modelled per-entry cost follows the key width.
+        assert_eq!(
+            dense_usage,
+            N * (OVERHEAD + DENSE_PAYLOAD),
+            "a k=21 counter must model 8-byte keys (DENSE-01), i.e. {} bytes/entry",
+            OVERHEAD + DENSE_PAYLOAD
+        );
+        assert_eq!(
+            wide_usage,
+            N * (OVERHEAD + WIDE_PAYLOAD),
+            "a k=64 counter must keep 16-byte keys, i.e. {} bytes/entry",
+            OVERHEAD + WIDE_PAYLOAD
+        );
+
+        // DENSE-01's "roughly half": compare the *keyed payload* — the part of
+        // the entry this plan actually shrinks — rather than the total, because
+        // the 24-byte hash/shard overhead is common to both widths and does not
+        // narrow. Asserting half on the total would be measuring a constant
+        // this plan does not touch.
+        let dense_payload = dense_usage - N * OVERHEAD;
+        let wide_payload = wide_usage - N * OVERHEAD;
+        let payload_ratio = dense_payload as f64 / wide_payload as f64;
+        assert!(
+            (0.4..=0.7).contains(&payload_ratio),
+            "DENSE-01: k<=32 keyed payload must be roughly half the u128 payload \
+             (expected ~0.6 for 12/20 bytes; got {})",
+            payload_ratio
+        );
+
+        // And the reported total must strictly decrease, by exactly the 8 bytes
+        // per key that 16 -> 8 saves.
+        assert!(
+            dense_usage < wide_usage,
+            "the dense counter must report strictly lower memory usage"
+        );
+        assert_eq!(
+            wide_usage - dense_usage,
+            N * 8,
+            "the saving must be exactly the 8-byte per-key key shrink"
         );
     }
 }
