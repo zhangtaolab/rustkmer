@@ -20,7 +20,7 @@ Requirements for this performance milestone. Each maps to a roadmap phase (trace
 - [x] **MERGE-01**: Merge defaults to the streaming / external-sort path (not the all-in-memory path), so human-scale merges no longer OOM
 - [x] **MERGE-02**: Merge respects a memory budget via admission control — it estimates required memory and routes to streaming when the estimate exceeds the budget
 - [x] **MERGE-03**: A failed or interrupted streaming merge cleans up its temporary shard files (RAII guard) — no silent disk exhaustion
-- [ ] **MERGE-04**: `pyrustkmer`'s `PyDatabase` merge uses the same bounded path as the CLI
+- [x] **MERGE-04**: `pyrustkmer`'s `PyDatabase` merge uses the same bounded path as the CLI
 
 ### Dense Storage
 
@@ -94,7 +94,7 @@ Explicitly excluded from this milestone. Documented to prevent scope creep.
 | MERGE-01 | Phase 3 | Complete |
 | MERGE-02 | Phase 3 | Complete |
 | MERGE-03 | Phase 3 | Complete |
-| MERGE-04 | Phase 3 | Pending |
+| MERGE-04 | Phase 3 | Complete |
 | DENSE-01 | Phase 3 | Complete |
 | DENSE-02 | Phase 3 | Complete |
 | DENSE-03 | Phase 3 | Complete |

@@ -3,12 +3,12 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 03
 current_phase_name: Memory Safety
-status: executing
-stopped_at: Completed 03-04-PLAN.md
-last_updated: "2026-10-07T03:10:31.575Z"
+status: plans-complete
+stopped_at: Completed 03-05-PLAN.md
+last_updated: "2026-10-07T03:54:58.864Z"
 last_activity: 2026-10-07
-last_activity_desc: Completed 03-04 (cross-plan composition gate: dense counter x bounded merge)
-state_head: bc2db7d1b000d2a6939f77c5389d1594d19a7902
+last_activity_desc: "Completed 03-05 (MERGE-04: PyDatabase.merge max_memory / merge_mode kwargs)"
+state_head: bf619ae9b0ea802b3c4138accfc5cc21941b52a4
 progress:
   total_phases: 4
   completed_phases: 2
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 
 ## Current Position
 
-Phase: 03 (Memory Safety) — EXECUTING
+Phase: 03 (Memory Safety) — PLANS COMPLETE (5/5), awaiting phase verification
 Plan: 5 of 5
-Status: Ready to execute (03-05 = MERGE-04, `PyDatabase.merge` kwargs)
-Last activity: 2026-10-07 — Completed 03-04 (cross-plan composition gate: dense counter x bounded merge)
+Status: All plans executed; `/gsd-verify-work 03` is the next step
+Last activity: 2026-10-07 — Completed 03-05 (MERGE-04: `PyDatabase.merge` max_memory / merge_mode kwargs)
 
-Progress: [████████░░] 4/5 plans (Phase 03)
+Progress: [██████████] 5/5 plans (Phase 03)
 
 ## Performance Metrics
 
@@ -78,6 +78,7 @@ Progress: [████████░░] 4/5 plans (Phase 03)
 | Phase 03 P02 | 38min | 2 tasks | 7 files |
 | Phase 03 P03 | 10min | 2 tasks | 7 files |
 | Phase 03 P04 | 10min | 1 tasks | 4 files |
+| Phase 03 P05 | 35min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -143,6 +144,12 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-04: Added header-accounting + total-count-conservation cross-validation to merge_routing_tests.rs (the only 03-01 edit this plan made) — 03-01 deferred nothing explicitly, but auditing its four routing tests showed a real gap: each pins union size and spot-checked counts, none pins the invariants a merge can break without changing either. The live prefix-cache defect 03-02 logged (merge_prefix_buckets returns Ok(()) after bucket failures -> valid .rkdb with undercounted total_kmers) is exactly this shape and would pass every existing routing test
 - [Phase 03]: 03-04: Every merge assertion pins exact k-mer COUNTS and header accounting; none asserts merely 'non-empty' — The direct lesson of 03-01's two data-loss bugs, which survived because test_merge_streaming_basic asserted only non-emptiness (200 k-mers in, 5 out)
 - [Phase 03]: 03-04: The new integration test binary mutates production code to prove it can fail, and reverted it — Four defects injected (streaming k-mer drop, in-memory k-mer drop, dense widening high bit, header undercount); each is caught by a specific named assertion. For a verification-only plan the deliverable is not 'tests pass' but 'tests CAN fail' - a GREEN gate that cannot fail reports the phase verified while proving nothing
+- [Phase 03]: 03-05: max_memory is REUSED from src/cli/commands/merge.rs::parse_memory_size (made pub) rather than copied into the binding — a duplicated parser would accept different strings on the two surfaces, and the drift would surface only as a user's budget behaving differently in Python than in the shell, the exact failure MERGE-04 exists to prevent
+- [Phase 03]: 03-05: Both new kwargs are keyword-only (* in the pyo3 signature), mirroring PyCounter(threads=...) from 02-03. This narrows accepted call shapes but cannot regress an existing caller — the pre-MERGE-04 signature accepted only two positional args
+- [Phase 03]: 03-05: MergeConfig is assembled with struct-update syntax, not the field-by-field form the plan spelled out, because clippy::field_reassign_with_default (denied by the pyo3 crate's own -D warnings gate, which the plan lists as a blocking criterion) rejects that exact shape
+- [Phase 03]: 03-05: No new public API for route observation — merge still returns None. TMPDIR pointed at a nonexistent directory turns MergeConfig::temp_dir's existing default into a side-effect discriminator, so 03-01's probe reached the Python surface with zero new API and no log capture
+- [Phase 03]: 03-05: The over-budget test budget is 1024 (parse_memory_size's floor) and is usable only because the helper ASSERTS the derived estimate exceeds it first — that assertion turns a shrunken fixture from a silently vacuous routing test into a loud failure (inherited from 03-04's finding)
+- [Phase 03]: 03-05: Pre-existing pyo3 breakage reported, not fixed — maturin's python-source pairing (breaks the CI pyo3-build job's maturin build step) and the --cov-fail-under=80 addopts gate (makes every pyo3 pytest run exit 1). Both are one-line config fixes outside MERGE-04, recorded in deferred-items.md + WINDOWS.md with open status so a human decides at ship time
 
 ### Pending Todos
 
@@ -166,6 +173,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-07T03:10:16.020Z
-Stopped at: Completed 03-04-PLAN.md
+Last session: 2026-10-07T03:54:58.749Z
+Stopped at: Completed 03-05-PLAN.md
 Resume file: None

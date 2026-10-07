@@ -93,7 +93,7 @@ Plans:
   5. Dense storage maintains correctness — canonicalization and counts match the `u128` path exactly
   6. `pyrustkmer`'s `PyDatabase` merge uses the same bounded path as the CLI
 
-**Plans**: 4/5 plans executed
+**Plans**: 5/5 plans executed
 
 **Wave 1** *(parallel, no dependencies)*
 
@@ -104,7 +104,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1)*
 
 - [x] 03-04-PLAN.md — Wave-2 gate: dense+merge end-to-end integration + full suite + clippy on both crates (depends on 03-01, 03-03; MERGE-01, MERGE-02, DENSE-02, DENSE-03)
-- [ ] 03-05-PLAN.md — `PyDatabase.merge` kwargs (`max_memory`/`merge_mode`) routing through bounded core (depends on 03-01; MERGE-04)
+- [x] 03-05-PLAN.md — `PyDatabase.merge` kwargs (`max_memory`/`merge_mode`) routing through bounded core (depends on 03-01; MERGE-04)
 
 ### Phase 4: Benchmark & Validation
 
@@ -136,5 +136,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation & Quality | 4/4 | Complete    | 2026-07-01 |
 | 2. Parallel Counting | 5/5 | Complete    | 2026-07-01 |
-| 3. Memory Safety | 4/5 | In Progress | - |
+| 3. Memory Safety | 5/5 | In Progress | - |
 | 4. Benchmark & Validation | 0/4 | Not started | - |
