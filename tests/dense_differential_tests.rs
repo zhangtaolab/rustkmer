@@ -55,7 +55,7 @@ use std::collections::{BTreeMap, HashMap};
 const GOLDEN_INPUT: &[&str] = &[
     "ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTAC",
     "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
-    "ACACACACACACACACACACACACACACACACACACACACACACACACACACACACACACACACACAC",
+    "ACACACACACACACACACACACACACACACACACACACACACACACACACACACACACACACACAC",
     "GTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGT",
     "AAAACCCCGGGGTTTTAAAACCCCGGGGTTTTAAAACCCCGGGGTTTTAAAACCCCGGGGTTTTAA",
     "GATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATT",
@@ -368,25 +368,21 @@ fn assert_wide_cell_unchanged(k: usize, canonical: bool) -> Result<()> {
 // --- D-13 matrix: the u64 cells (dense path) ---
 
 #[test]
-#[ignore = "TODO(03-03 Task 2): un-ignore once the KmerKey swap lands"]
 fn dense_u64_matches_u128_k21_canon() -> Result<()> {
     assert_dense_cell_matches(21, true)
 }
 
 #[test]
-#[ignore = "TODO(03-03 Task 2): un-ignore once the KmerKey swap lands"]
 fn dense_u64_matches_u128_k21_noncanon() -> Result<()> {
     assert_dense_cell_matches(21, false)
 }
 
 #[test]
-#[ignore = "TODO(03-03 Task 2): un-ignore once the KmerKey swap lands"]
 fn dense_u64_matches_u128_k32_canon() -> Result<()> {
     assert_dense_cell_matches(32, true)
 }
 
 #[test]
-#[ignore = "TODO(03-03 Task 2): un-ignore once the KmerKey swap lands"]
 fn dense_u64_matches_u128_k32_noncanon() -> Result<()> {
     assert_dense_cell_matches(32, false)
 }
@@ -394,13 +390,11 @@ fn dense_u64_matches_u128_k32_noncanon() -> Result<()> {
 // --- D-13 matrix: the u128 cells (regression guard) ---
 
 #[test]
-#[ignore = "TODO(03-03 Task 2): un-ignore once the KmerKey swap lands"]
 fn dense_u128_unchanged_k64_canon() -> Result<()> {
     assert_wide_cell_unchanged(64, true)
 }
 
 #[test]
-#[ignore = "TODO(03-03 Task 2): un-ignore once the KmerKey swap lands"]
 fn dense_u128_unchanged_k64_noncanon() -> Result<()> {
     assert_wide_cell_unchanged(64, false)
 }

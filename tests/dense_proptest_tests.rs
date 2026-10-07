@@ -129,7 +129,6 @@ proptest! {
     /// `u128`-encoder pipelines must produce identical decoded `(String, u32)`
     /// maps, and both must agree with the counter-free `u128` oracle.
     #[test]
-    #[ignore = "TODO(03-03 Task 2): un-ignore once the KmerKey swap lands"]
     fn dense_u64_matches_u128_on_random_dna(
         input in dna_string(),
         k_idx in 0usize..DENSE_K.len(),
@@ -160,7 +159,6 @@ proptest! {
     /// "counts sum to the input" invariant that survives even a hypothetical
     /// collision-pair bug which happened to keep the maps equal.
     #[test]
-    #[ignore = "TODO(03-03 Task 2): un-ignore once the KmerKey swap lands"]
     fn dense_counts_sum_to_kmer_windows(
         input in dna_string(),
         k_idx in 0usize..DENSE_K.len(),
@@ -188,7 +186,6 @@ proptest! {
     /// `get_all_counts` must not lose or duplicate entries on the way out of
     /// the `KmerKey` → `u128` widening.
     #[test]
-    #[ignore = "TODO(03-03 Task 2): un-ignore once the KmerKey swap lands"]
     fn dense_point_lookup_matches_aggregated_map(
         input in dna_string(),
         k_idx in 0usize..DENSE_K.len(),
