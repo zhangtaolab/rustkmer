@@ -35,6 +35,67 @@ pub const DATABASE_VERSION: u16 = 2;
 /// `num_buckets = 1 << 8` is bounded, not how many buckets there are.
 const PREFIX_CACHE_MIN_BUFFER_MB: usize = 1;
 
+// ---------------------------------------------------------------------------
+// Per-route admission model (review finding WR-01).
+//
+// Every constant below is DERIVED from the structures that route actually holds
+// live at its peak. That derivation is the point: the pre-fix model was a bare
+// 24-bytes-per-k-mer multiply with no derivation at all, and it was roughly a
+// quarter of the peak it was supposed to bound — so a merge the gate admitted
+// could still OOM. A constant nobody derived is how the 24 became wrong in the
+// first place.
+// ---------------------------------------------------------------------------
+
+/// Per-k-mer admission cost charged to the IN-MEMORY route, in bytes: 96.
+///
+/// Derived from the three structures that dominate that route's peak, each of
+/// which is exactly **32 bytes per element** on this target
+/// (`u128 + u32` is 20 B of payload, padded to `u128`'s 16-byte alignment; the
+/// `size_of` values are pinned by
+/// `estimated_bytes_per_route_reflects_each_routes_peak` in
+/// `tests/merge_routing_tests.rs`, as a floor and a drift alarm rather than as
+/// this comment's evidence):
+///   - 32 B — the `Vec<KmerEntry>` inside each loaded input `RKDatabase`, one
+///     per input record,
+///   - 32 B — the `hashbrown::HashMap<u128, u32>` accumulator, whose bucket is
+///     a 32-byte `(u128, u32)` pair,
+///   - 32 B — the `Vec<(u128, u32)>` drained out of that map.
+///
+/// # This constant makes NO direction claim about the true peak
+///
+/// `merge_databases_inmemory` does **not** hold all three for the same k-mer
+/// at the same instant: the map is drained by `into_iter()` and its table is
+/// freed at the end of that drain, before `from_kmer_pairs` allocates its
+/// `Vec<KmerEntry>`. So the real peak is at most `32*N + 68*U` and at least
+/// `32*N + 64*U` (N = total input record count, U = unique k-mer count), and
+/// the two candidates differ by about 6%. **96 sits at neither extreme**: a
+/// claim that it over- or under-states the peak would be arithmetic this
+/// comment cannot support, because hashbrown's control bytes and load factor
+/// are not modelled here at all.
+///
+/// The value is rounded UP from the dominant structure's own size because an
+/// admission gate that errs toward streaming is safe, and one that errs toward
+/// admitting is the bug this constant exists to fix. The instrument that will
+/// actually measure the real peak is plan 03-10's `/proc/self/status` test, not
+/// this arithmetic.
+const INMEMORY_BYTES_PER_KMER: u64 = 96;
+
+/// Per-k-mer cost REPORTED for the streaming route, in bytes: 32.
+///
+/// **Diagnostic only. This figure is never used to reject a route.** The
+/// streaming route's resident set is one `chunk_size` buffer of `KmerEntry`
+/// plus a heap of run heads — O(chunk), not O(N) — so any linear per-k-mer
+/// figure is a conservative upper bound reported for operator visibility only.
+/// Stated explicitly so nobody later mistakes it for a second admission test.
+const STREAMING_BYTES_PER_KMER: u64 = 32;
+
+/// Per-k-mer cost REPORTED for the prefix-cache route, in bytes: 32.
+///
+/// **Diagnostic only, same as [`STREAMING_BYTES_PER_KMER`].** One bucket is
+/// resident at a time, bounded by the per-bucket `merge_buffer_mb` threshold —
+/// again O(bucket), not O(N).
+const PREFIX_CACHE_BYTES_PER_KMER: u64 = 32;
+
 /// Database file header containing metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseHeader {
@@ -44,7 +105,22 @@ pub struct DatabaseHeader {
     pub version: u16,
     /// K-mer size (1-127)
     pub kmer_size: u8,
-    /// Total number of unique k-mers
+    /// RECORD COUNT: the number of distinct k-mer RECORDS in the file, i.e.
+    /// `entries.len()` — **not** the sum of their `count` fields.
+    ///
+    /// IN-03: this name collides with `KmerCounter::total_kmers()`
+    /// (`src/hash/table.rs`), which is the SUM OF COUNTS — an `AtomicU64`
+    /// bumped once per observation. Both meanings are live in one binary
+    /// format, and `pyo3/tests/test_database_merge.py::_estimated_bytes` has
+    /// to say in prose that it wants this one. Both sites now document which
+    /// they are. Renaming either is a breaking public-API change and is
+    /// deliberately NOT done here; see the plan's deferral note.
+    ///
+    /// This is also the field the admission-control model is built on
+    /// ([`Self::estimate_total_kmers`] and
+    /// [`Self::estimated_bytes_for_route`]), so reading the wrong meaning here
+    /// scales the estimate by the average count — which is why the distinction
+    /// is written down rather than left to the reader.
     pub total_kmers: u64,
     /// Whether k-mers are sorted for binary search
     pub sorted: bool,
@@ -802,6 +878,45 @@ impl RKDatabase {
         }
     }
 
+    /// The admission-control estimate for one merge route, in bytes.
+    ///
+    /// This is the single place a route's per-k-mer cost is turned into a
+    /// number. `merge_databases` calls it once, and the result is what the
+    /// budget comparison, the D-02 reject message, and the routing log line all
+    /// report — the pre-fix code computed the same quantity in two places with
+    /// two literals, which is how they drifted apart.
+    ///
+    /// `route` selects the constant; see [`INMEMORY_BYTES_PER_KMER`] and its
+    /// siblings for each value's derivation, and for what this model does and
+    /// does not claim. `MergeStrategy::Hybrid` is charged the in-memory
+    /// constant because the hybrid strategy starts in-memory and only falls
+    /// back, so its first-resort peak is the in-memory one.
+    ///
+    /// Saturating: a crafted header claiming `u64::MAX` k-mers must produce
+    /// `u64::MAX` bytes, never a wrapped small number that would slip under a
+    /// budget and admit a merge the estimate was supposed to reject (threat
+    /// T-03-32).
+    ///
+    /// `pub` so an integration test — an external crate — can assert the model
+    /// itself, following the 03-01 precedent for `estimate_total_kmers`. It
+    /// takes a route and returns a number; it deliberately does **not** return
+    /// a strategy from `merge_databases`, which 03-01 declined in favour of
+    /// the behavioural `temp_dir` probe. That discipline is unchanged.
+    pub fn estimated_bytes_for_route(
+        route: crate::database::MergeStrategy,
+        total_kmers: u64,
+    ) -> u64 {
+        let per_kmer = match route {
+            crate::database::MergeStrategy::InMemory => INMEMORY_BYTES_PER_KMER,
+            crate::database::MergeStrategy::Streaming => STREAMING_BYTES_PER_KMER,
+            crate::database::MergeStrategy::PrefixCache => PREFIX_CACHE_BYTES_PER_KMER,
+            // Hybrid starts in-memory and only falls back, so its first-resort
+            // peak is the in-memory one.
+            crate::database::MergeStrategy::Hybrid => INMEMORY_BYTES_PER_KMER,
+        };
+        total_kmers.saturating_mul(per_kmer)
+    }
+
     /// - Memory is insufficient for the operation
     pub fn merge_databases(
         input_paths: &[std::path::PathBuf],
@@ -837,14 +952,26 @@ impl RKDatabase {
         // D-01: header-only estimate. The pre-fix loop called
         // `Self::from_file_path(path)` per input, materializing every entry
         // into RAM just to read `total_kmers` — OOMing during the estimate.
-        let total_kmers: u64 = input_paths
+        //
+        // The sum SATURATES (threat T-03-32). `.iter().sum()` panics on
+        // overflow in a debug build, so two crafted headers each claiming just
+        // over `u64::MAX / 2` k-mers would abort an admission gate — the one
+        // component that must never be the thing that dies on hostile input.
+        // `saturating_add` turns that into a saturated estimate, which the
+        // budget comparison then correctly treats as over budget.
+        let total_kmers = input_paths
             .iter()
             .map(|path| Self::estimate_total_kmers(path))
             .collect::<crate::error::ProcessingResult<Vec<_>>>()?
-            .iter()
-            .sum();
+            .into_iter()
+            .fold(0u64, |total, count| total.saturating_add(count));
 
-        let estimated_memory = total_kmers.saturating_mul(24);
+        // WR-01: charge the route its real peak. This was a bare
+        // 24-bytes-per-k-mer multiply with no derivation, modelling roughly a
+        // quarter of what the in-memory route actually holds, so a merge the
+        // gate admitted could still exhaust memory.
+        let estimated_memory =
+            Self::estimated_bytes_for_route(crate::database::MergeStrategy::InMemory, total_kmers);
 
         // Use prefix cache merge if enabled
         if config.use_prefix_cache {
@@ -890,13 +1017,22 @@ impl RKDatabase {
             // unconditionally to streaming — no warn-and-continue in-memory
             // fallback. Within budget the existing selection is preserved,
             // which keeps the small-input in-memory fast path (D-02).
-            let stream = Self::should_use_streaming(input_paths, config)?;
+            let stream = Self::should_use_streaming(estimated_memory, config);
             if stream {
+                // The first sentence is unchanged so any log-scraping consumer
+                // (and the existing tests) keep working. The per-route figures
+                // are appended because an operator who was just told "you got
+                // streaming" also wants to know what that route costs and what
+                // the in-memory route would have cost.
                 log::info!(
-                    "Routing to streaming merge: estimated {} bytes ({} k-mers) exceeds memory budget {} bytes",
+                    "Routing to streaming merge: estimated {} bytes ({} k-mers) exceeds memory budget {} bytes \
+                     (in-memory {} B/k-mer, streaming {} B/k-mer, prefix-cache {} B/k-mer)",
                     estimated_memory,
                     total_kmers,
-                    config.max_memory_usage
+                    config.max_memory_usage,
+                    INMEMORY_BYTES_PER_KMER,
+                    STREAMING_BYTES_PER_KMER,
+                    PREFIX_CACHE_BYTES_PER_KMER
                 );
             }
             stream
@@ -925,22 +1061,15 @@ impl RKDatabase {
 
     /// Admission-control predicate for the default (`auto`) merge mode.
     ///
-    /// D-01: reads each input's persisted `total_kmers` from its 42-byte
-    /// header. The pre-fix version called `RKDatabase::from_file_path(path)`,
-    /// loading every entry of every input into RAM — the OOM-on-estimate bug.
-    fn should_use_streaming(
-        input_paths: &[std::path::PathBuf],
-        config: &crate::database::MergeConfig,
-    ) -> crate::error::ProcessingResult<bool> {
-        let mut total_kmers = 0u64;
-
-        for path in input_paths {
-            total_kmers = total_kmers.saturating_add(Self::estimate_total_kmers(path)?);
-        }
-
-        let estimated_memory = total_kmers.saturating_mul(24);
-
-        Ok(estimated_memory > config.max_memory_usage as u64)
+    /// WR-01: this used to RE-DERIVE the estimate — reading each input's
+    /// 42-byte header itself and multiplying by a second copy of the
+    /// per-k-mer constant. Two sites computing the same quantity with two
+    /// literals is exactly how they drifted, so the estimate is now computed
+    /// once in [`Self::merge_databases`] and HANDED to this predicate, which is
+    /// a pure comparison over a value it is given. The header reads are not
+    /// lost: they still happen, in `merge_databases`, just once.
+    fn should_use_streaming(estimated_memory: u64, config: &crate::database::MergeConfig) -> bool {
+        estimated_memory > config.max_memory_usage as u64
     }
 
     fn merge_databases_streaming(
@@ -1642,7 +1771,7 @@ mod tests {
 
     /// D-01 / MERGE-02 admission-control unit tests.
     ///
-    /// The routing logic is size-independent (`sum(total_kmers) * 24 >
+    /// The routing logic is size-independent (`sum(total_kmers) * per_kmer >
     /// max_memory_usage`), so it is proven here at toy scale rather than at
     /// human scale, and the header-only property is proven structurally: a
     /// file whose header promises far more entries than its body holds can
@@ -1732,21 +1861,41 @@ mod tests {
         /// Named `should_use_streaming` so the plan's
         /// `cargo test --lib -- --exact should_use_streaming` verification
         /// command actually selects it.
+        ///
+        /// WR-01: `should_use_streaming` no longer derives the estimate itself
+        /// — `merge_databases` owns the single number and hands it over. This
+        /// test therefore re-derives it the way production does, from the
+        /// 42-byte headers, so the header-only property it used to cover
+        /// directly is still covered.
         #[test]
         fn should_use_streaming() {
             let dir = tempdir().unwrap();
             let a = write_db(dir.path(), "a.rkdb", 100);
             let b = write_db(dir.path(), "b.rkdb", 100);
-            let paths = vec![a, b];
+            let paths = [a, b];
 
-            // 200 k-mers * 24 B/entry = 4800 bytes estimated.
+            let total: u64 = paths
+                .iter()
+                .map(|p| RKDatabase::estimate_total_kmers(p).unwrap())
+                .sum();
+            assert_eq!(
+                total, 200,
+                "premise: the two headers carry 100 records each"
+            );
+            // 200 k-mers * 96 B/k-mer = 19200 bytes estimated.
+            let estimated = RKDatabase::estimated_bytes_for_route(
+                crate::database::MergeStrategy::InMemory,
+                total,
+            );
+            assert_eq!(estimated, 19_200);
+
             let tight = crate::database::MergeConfig {
                 max_memory_usage: 1024,
                 ..Default::default()
             };
             assert!(
-                RKDatabase::should_use_streaming(&paths, &tight).unwrap(),
-                "4800 bytes must exceed a 1024-byte budget"
+                RKDatabase::should_use_streaming(estimated, &tight),
+                "19200 bytes must exceed a 1024-byte budget"
             );
 
             let loose = crate::database::MergeConfig {
@@ -1754,18 +1903,81 @@ mod tests {
                 ..Default::default()
             };
             assert!(
-                !RKDatabase::should_use_streaming(&paths, &loose).unwrap(),
-                "4800 bytes must fit a 1 MB budget"
+                !RKDatabase::should_use_streaming(estimated, &loose),
+                "19200 bytes must fit a 1 MB budget"
             );
 
             // A header promising 5 billion k-mers over an empty body still
             // yields a verdict — the pre-fix estimator would have tried to
             // materialize those entries and died here.
-            let bomb = vec![truncate_body(dir.path(), "bomb.rkdb", 4, 5_000_000_000)];
+            let bomb = truncate_body(dir.path(), "bomb.rkdb", 4, 5_000_000_000);
+            let bomb_estimated = RKDatabase::estimated_bytes_for_route(
+                crate::database::MergeStrategy::InMemory,
+                RKDatabase::estimate_total_kmers(&bomb).unwrap(),
+            );
             assert!(
-                RKDatabase::should_use_streaming(&bomb, &loose).unwrap(),
+                RKDatabase::should_use_streaming(bomb_estimated, &loose),
                 "a 5e9 k-mer header must be admitted as over budget without materializing"
             );
+        }
+
+        /// WR-01 / threat T-03-32 — the `total_kmers` sum SATURATES.
+        ///
+        /// This is the one test in the plan that is red in a DEBUG build before
+        /// the fix: `.iter().sum::<u64>()` on two headers each claiming more
+        /// than `u64::MAX / 2` k-mers panics with "attempt to add with
+        /// overflow". An admission gate that aborts on a crafted header is the
+        /// worst possible place to panic — it is the component whose entire job
+        /// is to survive hostile input.
+        ///
+        /// The test drives the real public entry point rather than the fold, so
+        /// it also proves the saturated figure reaches the D-02 message rather
+        /// than being recomputed correctly somewhere and lost in between.
+        #[test]
+        fn summing_two_near_max_headers_saturates_instead_of_panicking() {
+            let dir = tempdir().unwrap();
+            // 2^63 each; the pair sums to 2^64, i.e. one past u64::MAX.
+            let bomb = u64::MAX / 2 + 1;
+            let a = truncate_body(dir.path(), "near_max_a.rkdb", 4, bomb);
+            let b = truncate_body(dir.path(), "near_max_b.rkdb", 4, bomb);
+
+            // Premise: both headers really do claim that, read header-only.
+            assert_eq!(RKDatabase::estimate_total_kmers(&a).unwrap(), bomb);
+            assert_eq!(RKDatabase::estimate_total_kmers(&b).unwrap(), bomb);
+
+            let config = crate::database::MergeConfig {
+                // Generous, and still far below the saturated estimate.
+                max_memory_usage: 1_000_000_000_000,
+                merge_mode: "memory".to_string(),
+                temp_dir: dir.path().to_path_buf(),
+                ..Default::default()
+            };
+
+            // The call must RETURN, not abort. Pre-fix this panicked inside the
+            // `.iter().sum()` fold on the first addition that overflowed.
+            let result = RKDatabase::merge_databases(&[a, b], &config);
+
+            match result {
+                Ok(_) => panic!(
+                    "a saturated estimate of {bomb} k-mers must exceed a 1 TB budget, so the \
+                     merge cannot have succeeded"
+                ),
+                Err(e) => {
+                    let msg = e.to_string();
+                    assert!(
+                        msg.contains(&u64::MAX.to_string()),
+                        "the rejection must name the SATURATED byte figure ({}), not a wrapped \
+                         one; got: {}",
+                        u64::MAX,
+                        msg
+                    );
+                    assert!(
+                        msg.contains("merge_mode='memory' rejected"),
+                        "the rejection must be the D-02 over-budget reject; got: {}",
+                        msg
+                    );
+                }
+            }
         }
 
         /// D-02: explicit `merge_mode = "memory"` over budget is rejected with

@@ -458,6 +458,16 @@ impl KmerCounter {
     }
 
     /// Get total number of k-mers processed
+    ///
+    /// **SUM OF COUNTS**, not a record count: this `AtomicU64` is bumped once
+    /// per successful observation, so a k-mer seen 10 times contributes 10.
+    /// (IN-03) The same NAME on `DatabaseHeader::total_kmers`
+    /// (`src/database/format.rs`) and on `PyDatabaseStats::total_kmers`
+    /// (`pyo3/src/database_backup.rs`) means the opposite thing — the number of
+    /// distinct k-mer RECORDS in a file. `pyo3/tests/test_database_merge.py`
+    /// has to state in prose which one its admission model needs, which is how
+    /// the collision was noticed. Renaming either is a breaking public-API
+    /// change and is deliberately out of scope; this doc comment is the fix.
     pub fn total_kmers(&self) -> u64 {
         self.total_kmers.load(std::sync::atomic::Ordering::Relaxed)
     }

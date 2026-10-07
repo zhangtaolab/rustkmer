@@ -12,7 +12,22 @@ pub struct MergeConfig {
     pub chunk_size: usize,
     /// Temporary directory for operations
     pub temp_dir: PathBuf,
-    /// Force streaming mode
+    /// **ACCEPTED AND IGNORED — setting this has NO effect on merge routing.**
+    ///
+    /// WR-07: this field is read by nothing. `RKDatabase::merge_databases`'s
+    /// `let use_streaming` is a LOCAL variable computed from `merge_mode` and
+    /// the memory estimate, not from this struct. The supported selectors are:
+    ///
+    ///   - `merge_mode`: `"auto"` (estimate-driven), `"memory"`, or
+    ///     `"streaming"`,
+    ///   - `use_prefix_cache`: the external-sort route.
+    ///
+    /// Use those. The field is kept (not `#[deprecated]`, not removed) because
+    /// it is public API with five construction sites across this crate; removing
+    /// it is a breaking change and deprecating it would turn those sites into
+    /// warnings under the `-D warnings` gate. It is documented rather than
+    /// deleted so the next reader does not spend time wondering which one the
+    /// dispatcher actually reads.
     pub use_streaming: bool,
     /// Use prefix cache merge (memory-efficient with error isolation)
     pub use_prefix_cache: bool,

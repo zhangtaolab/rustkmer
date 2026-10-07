@@ -843,3 +843,204 @@ fn prefix_cache_intermediate_result_is_inside_the_raii_subdir_and_reclaimed() ->
 
     Ok(())
 }
+
+/// WR-01 — the admission model is a PER-ROUTE model, and each constant is
+/// derived from the structures that route actually holds live.
+///
+/// This test is a floor and a drift alarm, not proof the model is right: a
+/// `size_of` constant cannot observe a source change (plan 03-06's lesson).
+/// The behavioural evidence that the model changed and matters is
+/// `model_change_routes_a_budget_the_old_model_admitted_to_streaming`.
+#[test]
+fn estimated_bytes_per_route_reflects_each_routes_peak() {
+    use rustkmer::database::merge_config::MergeStrategy;
+
+    const N: u64 = 1_000;
+    // 32 + 32 + 32, and the derivation is checkable: `KmerEntry` and
+    // `(u128, u32)` are both 32 B (20 B of payload padded to u128's 16-byte
+    // alignment). If a future layout change moves either, this fails loudly
+    // instead of leaving the comment above the constant quietly wrong.
+    assert_eq!(
+        std::mem::size_of::<rustkmer::database::format::KmerEntry>(),
+        32,
+        "the INMEMORY derivation's first 32 B is size_of::<KmerEntry>()"
+    );
+    assert_eq!(
+        std::mem::size_of::<(u128, u32)>(),
+        32,
+        "the hashbrown bucket and the drained Vec both store (u128, u32)"
+    );
+
+    assert_eq!(
+        RKDatabase::estimated_bytes_for_route(MergeStrategy::InMemory, N),
+        N * 96,
+        "the in-memory route is charged all three live structures"
+    );
+    assert_eq!(
+        RKDatabase::estimated_bytes_for_route(MergeStrategy::Streaming, N),
+        N * 32,
+        "the streaming route reports a diagnostic-only 32"
+    );
+    assert_eq!(
+        RKDatabase::estimated_bytes_for_route(MergeStrategy::PrefixCache, N),
+        N * 32,
+        "the prefix-cache route reports a diagnostic-only 32"
+    );
+    // Hybrid is defined, not a panic and not a silent zero. It starts in
+    // memory, so it is charged the in-memory peak.
+    assert_eq!(
+        RKDatabase::estimated_bytes_for_route(MergeStrategy::Hybrid, N),
+        N * 96,
+        "Hybrid starts in-memory, so its first-resort peak is the in-memory one"
+    );
+
+    // The retired 24 B/k-mer model must be gone: it modelled roughly a quarter
+    // of the peak it was meant to bound (WR-01), so a merge the gate admitted
+    // could still exhaust memory.
+    assert_ne!(
+        RKDatabase::estimated_bytes_for_route(MergeStrategy::InMemory, N),
+        N * 24,
+        "the pre-WR-01 model must not be back"
+    );
+
+    // Threat T-03-32: a crafted header claiming u64::MAX k-mers saturates
+    // rather than wrapping to a small number that would slip under a budget.
+    assert_eq!(
+        RKDatabase::estimated_bytes_for_route(MergeStrategy::InMemory, u64::MAX),
+        u64::MAX
+    );
+}
+
+/// WR-01 — the model change is BEHAVIOURAL, not cosmetic.
+///
+/// A budget of `48 * N` is above the retired 24 B/k-mer and below the new 96
+/// B/k-mer, so the same inputs and the same budget take DIFFERENT routes
+/// before and after this change. Under the old model `48*N >= 24*N` put the
+/// merge in memory; under the new one `96*N > 48*N` hard-routes it to
+/// streaming (MERGE-02's hard route), which is proven behaviourally by
+/// pointing `temp_dir` at a directory that does not exist: only the streaming
+/// path can fail there, so an `Err` naming that directory IS the route proof.
+#[test]
+fn model_change_routes_a_budget_the_old_model_admitted_to_streaming() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let path = write_input_db(dir.path(), "single.rkdb", INPUT_KMERS)?;
+
+    // N from the production estimator, never hard-coded.
+    let n = RKDatabase::estimate_total_kmers(&path)?;
+    assert_eq!(
+        n, INPUT_KMERS as u64,
+        "premise: N is the input's record count"
+    );
+
+    // The discriminating budget. 48*N > 24*N (old model admitted it) and
+    // 48*N < 96*N (new model rejects it).
+    let budget = 48 * n;
+    let derived = RKDatabase::estimated_bytes_for_route(
+        rustkmer::database::merge_config::MergeStrategy::InMemory,
+        n,
+    );
+    assert!(
+        derived > budget,
+        "GUARD: the derived estimate ({}) must EXCEED the budget ({}) for this test to mean \
+         anything. If a future model change drops the estimate below 48 bytes/k-mer, the merge \
+         below would silently take the in-memory path and this test would pass for the wrong \
+         reason — the exact failure mode plan 03-04 shipped.",
+        derived,
+        budget
+    );
+    assert!(
+        24 * n <= budget,
+        "premise: this budget is one the retired 24 B/k-mer model would have ADMITTED in memory"
+    );
+
+    let missing = missing_temp_dir(dir.path());
+    let err =
+        RKDatabase::merge_databases(&[path], &routing_config(&missing, budget as usize, "auto"))
+            .expect_err(
+                "a budget between the old and new per-k-mer models must hard-route to streaming, \
+         which is observable only as a chunk-creation failure in a nonexistent temp dir",
+            );
+    assert_streaming_route_proved(&err, &missing);
+
+    // Control: the SAME inputs under a budget the new model also admits take
+    // the in-memory path and never touch temp_dir. Without this arm, "it
+    // streamed" would be the only thing proven and a route that always streams
+    // would pass.
+    let merged = RKDatabase::merge_databases(
+        &[write_input_db(dir.path(), "control.rkdb", INPUT_KMERS)?],
+        &routing_config(&missing, derived as usize, "auto"),
+    )
+    .map_err(|e| {
+        anyhow::anyhow!(
+            "control: a budget at/above the derived estimate must take the in-memory path \
+             (no temp_dir use); got: {}",
+            e
+        )
+    })?;
+    assert_eq!(
+        merged.all_kmers()?.len(),
+        INPUT_KMERS,
+        "the in-memory control must produce the exact union"
+    );
+
+    Ok(())
+}
+
+/// WR-06 / threat T-03-35 — `merge_databases(&[], ..)` returns `Err`, it does
+/// not panic.
+///
+/// Pre-fix the dispatcher ran straight into `&input_paths[0]` in the streaming
+/// route, so an empty list was an index-out-of-bounds abort rather than a
+/// reportable error. The assertion is on the error TEXT as well as the absence
+/// of a panic, so a future "fix" that returns some unrelated error still fails.
+#[test]
+fn merge_databases_with_empty_input_list_returns_err() -> anyhow::Result<()> {
+    // A generous budget and a real temp dir, so the ONLY thing that can fail
+    // here is the empty-input guard.
+    let dir = tempfile::tempdir()?;
+    let config = routing_config(dir.path(), HUGE_BUDGET_BYTES, "auto");
+
+    let result = std::panic::catch_unwind(|| {
+        let config = config.clone();
+        RKDatabase::merge_databases(&[], &config).map_err(|e| e.to_string())
+    })
+    .expect("merge_databases(&[], ..) must not panic");
+
+    let message = result.expect_err("an empty input list must return Err, not Ok");
+    assert!(
+        message.contains("At least one input database is required"),
+        "the error must name the actual cause; got: {}",
+        message
+    );
+
+    // The same guard must cover the other two selectors too — it lives in the
+    // dispatcher, above the strategy branch, not in one strategy.
+    for mode in ["memory", "streaming"] {
+        let cfg = routing_config(dir.path(), HUGE_BUDGET_BYTES, mode);
+        let err = RKDatabase::merge_databases(&[], &cfg)
+            .expect_err("empty input must be rejected under every merge_mode")
+            .to_string();
+        assert!(
+            err.contains("At least one input database is required"),
+            "merge_mode={} must report the empty-input cause; got: {}",
+            mode,
+            err
+        );
+    }
+
+    // And the prefix-cache route, which has its own copy of the guard.
+    let cfg = MergeConfig {
+        use_prefix_cache: true,
+        ..routing_config(dir.path(), HUGE_BUDGET_BYTES, "auto")
+    };
+    let err = RKDatabase::merge_databases(&[], &cfg)
+        .expect_err("empty input must be rejected on the prefix-cache route too")
+        .to_string();
+    assert!(
+        err.contains("At least one input database is required"),
+        "the prefix-cache route must report the empty-input cause; got: {}",
+        err
+    );
+
+    Ok(())
+}

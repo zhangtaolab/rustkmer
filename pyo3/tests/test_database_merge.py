@@ -21,6 +21,8 @@ Two habits from earlier plans in this phase are load-bearing here:
   the header accounting.
 """
 
+import re
+
 import pytest
 
 try:
@@ -32,12 +34,23 @@ except ImportError:
 # enough that the shared/unique split below produces 110 distinct k-mers.
 K = 21
 
-# Modelled per-k-mer cost used by the merge admission control
-# (`RKDatabase::merge_databases`: `total_kmers.saturating_mul(24)` in
-# src/database/format.rs). Restated here on purpose: a test can only predict
-# the routing decision the core will make if it carries its own copy of the
-# model instead of asking the implementation.
-BYTES_PER_KMER_ESTIMATE = 24
+# Modelled per-k-mer cost used by the merge admission control.
+# `INMEMORY_BYTES_PER_KMER` in src/database/format.rs is the source of this
+# number. 24 was WR-01's under-model: it described roughly a quarter of the
+# peak the in-memory route actually reaches, so a merge the gate admitted could
+# still exhaust memory, and the in-memory route was the one the gate admitted.
+# The core now charges 96.
+#
+# THIS IS THE ONLY CROSS-LANGUAGE COPY of the constant. It is restated here
+# because a test can only predict the routing decision the core will make if it
+# carries its own model instead of asking the implementation — but two comments
+# can drift apart silently, so `test_python_budget_model_tracks_the_core` below
+# pairs the two copies BEHAVIOURALLY: it reads the byte figure the core echoes
+# in its own D-02 rejection and asserts it equals
+# `total_kmers * BYTES_PER_KMER_ESTIMATE`. If the core's constant changes and
+# this one does not, that test fails instead of the whole file quietly testing
+# the wrong route.
+BYTES_PER_KMER_ESTIMATE = 96
 
 # `parse_memory_size` refuses anything below 1KB ("Memory size too small
 # (minimum 1KB)"), so 1024 is the smallest budget a Python caller can request.
@@ -225,6 +238,82 @@ def test_over_budget_memory_mode_is_rejected(two_dbs, tmp_path):
     # ...and echo the numbers the core computed from the derived budget.
     assert f"{estimate} bytes" in message, message
     assert f"{int(budget)} bytes" in message, message
+
+
+def test_python_budget_model_tracks_the_core(two_dbs, tmp_path):
+    """The Python copy of the admission model is pinned to the CORE's figure.
+
+    W1: ``BYTES_PER_KMER_ESTIMATE`` is the only cross-language copy of
+    ``INMEMORY_BYTES_PER_KMER``. Two copies of a number held together by a
+    comment drift silently, and the consequence here is a routing test that
+    quietly exercises the wrong path — the failure mode plan 03-04 shipped and
+    this phase has now hit twice.
+
+    So the pairing is BEHAVIOURAL rather than editorial. The core echoes the
+    figures it computed in its D-02 rejection message; this test drives that
+    rejection and parses both of them out, asserting that
+
+    * the core's byte figure equals ``total_kmers * BYTES_PER_KMER_ESTIMATE``,
+      and
+    * the core's k-mer figure equals the sum of ``db.get_stats().total_kmers``
+      read here in Python.
+
+    The second assertion matters as much as the first: it pins the *record
+    count* reading of ``total_kmers`` (IN-03) across the language boundary. If
+    the core ever switches to the sum of counts — the other meaning of the same
+    name, live in ``KmerCounter::total_kmers`` — this fails instead of every
+    budget in this file being scaled by the average count.
+
+    CAVEAT, and it is not a small one: ``pyrustkmer.so`` in the project venv is
+    a PREBUILT artifact, not a build of the Rust on disk. This assertion is
+    correct once the extension is rebuilt from source, and until then the whole
+    of ``pyo3/tests/`` is developer-run only. Two things make that worse, both
+    recorded in deferred-items.md: ``pyo3/pyproject.toml``'s ``python-source``
+    misconfiguration means ``maturin build``/``maturin develop`` refuse to run
+    at all, and ``addopts`` hard-codes ``--cov-fail-under=80`` against a
+    compiled extension, so every pytest run exits 1 even when green.
+    ``.github/workflows/ci.yml`` has no pytest job either, so nothing in CI
+    runs this file. The Rust-side evidence for the model change is
+    ``model_change_routes_a_budget_the_old_model_admitted_to_streaming`` in
+    ``tests/merge_routing_tests.rs``; this is the Python half, kept
+    correct-by-construction for the next rebuild.
+    """
+    budget = _over_budget(two_dbs)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        pyrustkmer.PyDatabase.merge(
+            two_dbs,
+            str(tmp_path / "merged.rkdb"),
+            max_memory=budget,
+            merge_mode="memory",
+        )
+
+    message = str(excinfo.value)
+    match = re.search(
+        r"estimated memory \((\d+) bytes for (\d+) k-mers\)", message
+    )
+    assert match, (
+        "the D-02 rejection must echo the figures the core computed, in the form "
+        f"'estimated memory (N bytes for M k-mers)'; got: {message}"
+    )
+    core_bytes = int(match.group(1))
+    core_kmers = int(match.group(2))
+
+    total_kmers = 0
+    for db_path in two_dbs:
+        db = pyrustkmer.PyDatabase(db_path, pyrustkmer.LoadMode.Preload)
+        total_kmers += db.get_stats().total_kmers
+
+    assert core_kmers == total_kmers, (
+        "the core's k-mer figure must be the sum of the inputs' record counts, "
+        f"as Python reads them: core {core_kmers} vs Python {total_kmers}"
+    )
+    assert core_bytes == total_kmers * BYTES_PER_KMER_ESTIMATE, (
+        f"the core's admission model ({core_bytes} bytes) disagrees with this "
+        f"file's copy of it ({total_kmers} * {BYTES_PER_KMER_ESTIMATE} = "
+        f"{total_kmers * BYTES_PER_KMER_ESTIMATE}). One of the two copies of "
+        "INMEMORY_BYTES_PER_KMER is stale."
+    )
 
 
 def test_streaming_and_inmemory_routes_produce_identical_data(
