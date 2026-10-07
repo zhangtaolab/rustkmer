@@ -93,11 +93,11 @@ Plans:
   5. Dense storage maintains correctness — canonicalization and counts match the `u128` path exactly
   6. `pyrustkmer`'s `PyDatabase` merge uses the same bounded path as the CLI
 
-**Plans**: 5 plans
+**Plans**: 1/5 plans executed
 
 **Wave 1** *(parallel, no dependencies)*
 
-- [ ] 03-01-PLAN.md — Header-only estimator + hard-route + D-02 reject branch (D-01/D-02; MERGE-01, MERGE-02)
+- [x] 03-01-PLAN.md — Header-only estimator + hard-route + D-02 reject branch (D-01/D-02; MERGE-01, MERGE-02)
 - [ ] 03-02-PLAN.md — RAII temp guards + process-unique subdir + startup sweep + tempfile dev→dep (D-06; MERGE-03)
 - [ ] 03-03-PLAN.md — KmerKey enum + DashMap width-swap for k ≤ 32 (D-03/D-04/D-05; DENSE-01, DENSE-02, DENSE-03)
 
@@ -136,5 +136,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation & Quality | 4/4 | Complete    | 2026-07-01 |
 | 2. Parallel Counting | 5/5 | Complete    | 2026-07-01 |
-| 3. Memory Safety | 0/5 | Not started | - |
+| 3. Memory Safety | 1/5 | In Progress | - |
 | 4. Benchmark & Validation | 0/4 | Not started | - |

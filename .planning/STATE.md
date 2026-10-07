@@ -1,20 +1,20 @@
 ---
-gsd_state_version: 1.0
+gsd_state_version: "1.0"
 milestone: v1.0
-milestone_name: milestone
-current_phase: 3
+current_phase: 03
 current_phase_name: Memory Safety
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-07-02T10:14:34.805Z"
-last_activity: 2026-07-01
-last_activity_desc: Phase 02 complete, transitioned to Phase 3
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-10-07T02:28:57.188Z"
+last_activity: 2026-10-07
+last_activity_desc: Phase 03 execution started
+state_head: 3aa2d2ff2b96e3d456d19a7e22ce380d1c54d25b
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 9
   completed_plans: 9
-  percent: 50
+milestone_name: milestone
 ---
 
 # Project State
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-30)
 
 **Core value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools, from both the CLI and Python.
-**Current focus:** Phase 02 — Parallel Counting
+**Current focus:** Phase 03 — Memory Safety
 
 ## Current Position
 
-Phase: 3 — Memory Safety
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-07-01 — Phase 02 complete, transitioned to Phase 3
+Phase: 03 (Memory Safety) — EXECUTING
+Plan: 2 of 5
+Status: In progress
+Last activity: 2026-10-07 — Completed 03-01 (header-only merge estimator + hard admission control)
 
-Progress: [██████████] 100% (Phase 02)
+Progress: [████░░░░░░] 1/5 plans (Phase 03)
 
 ## Performance Metrics
 
@@ -70,6 +70,11 @@ Progress: [██████████] 100% (Phase 02)
 | Phase 02 P02 | ~12 min | 2 tasks | 3 files |
 | Phase 02 P03 | ~10 min | 1 tasks | 2 files |
 | Phase 02 P05 | ~25 min | 2 tasks | 3 files |
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 03 P01 | 42min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -104,6 +109,18 @@ Recent decisions affecting current work:
 - [Phase ?]: 02-05: PCOUNT-04 gate GREEN — 4 un-ignored asserting Rust tests (differential_threads_1_vs_n, baseline_matches_current, deterministic_sorted_output, test_thread_resolution) + 4 Python tests prove parallel counting == sequential counting (1-vs-N identical across D-13 matrix), post-refactor counts == committed pre-refactor baselines (D-10), output is deterministic run-to-run (D-09), D-07 precedence chain works (PCOUNT-01), PyCounter(threads=1)==(threads=N) at the Python layer (PCOUNT-03)
 - [Phase ?]: 02-05: Drove the 1-vs-N differential via std::thread::scope against a shared Arc<KmerCounter> (DashMap interior mutability) instead of CLI subprocess — build_global is one-call-per-process; thread::scope exercises the same entry().and_modify().or_insert_with() atomicity path the CLI's rayon workers rely on
 - [Phase ?]: 02-05: Made resolve_thread_count_from pub in src/cli/commands/count.rs (was private fn) so the integration test binary can call it directly (pub(crate) insufficient — integration tests are external crates); one-line visibility change authorized by plan 02-05 Task 1 action (d)
+- [Phase 03]: 03-01: estimate_total_kmers is a pub associated fn on RKDatabase (not a free fn) so the integration test can assert the D-01 header-only property from an external test crate; mirrors the 02-05 resolve_thread_count_from precedent — Integration tests are external crates - a private/free fn would be unassertable, leaving MERGE-02 without a direct proof
+- [Phase 03]: 03-01: A corrupt/unreadable .rkdb header falls back to the file-size estimate instead of erroring, so the merge still routes conservatively to streaming and surfaces real corruption during the streaming path's own per-chunk validation — Returning Err would fail the merge before a strategy is chosen - a worse failure mode than over-estimating. Fallback only over-estimates (threat T-03-01)
+- [Phase 03]: 03-01: Merge path selection is observed in tests via a nonexistent temp_dir probe (streaming writes chunk files there, in-memory does not) rather than adding a public strategy-returning API or capturing logs — merge_databases returns an RKDatabase, not a strategy tag; the probe is a deterministic side-effect discriminator that needs no public API change
+- [Phase 03]: 03-01: estimated_memory uses saturating_mul instead of the original `total_kmers as usize * 24` — The old form could overflow into a panic in debug builds given a large header value
+- [Phase 03]: 03-01: Fixed two latent streaming-merge data-loss bugs (StreamingMergeIterator heap-refill strand; TempFileManager chunk-name collision) as part of this plan — MERGE-01 promotes that exact path to hard-route default. Measured 200 k-mers in -> 5 out. Shipping the hard route on top of a truncating merge would have turned a latent bug into guaranteed data corruption for every over-budget merge
+- [Phase 03]: 03-01: Fixed 4 pre-existing clippy useless_borrows_in_formatting errors in src/io/{fasta,fastq}.rs (toolchain drift) to unblock the plan's -D warnings gate — Plan acceptance criteria list `cargo clippy --all-targets -- -D warnings` as blocking; logged to deferred-items.md before fixing
+- [Phase 03]: 03-01: estimate_total_kmers is a pub associated fn on RKDatabase (not a free fn) so the integration test can assert the D-01 header-only property from an external test crate; mirrors the 02-05 resolve_thread_count_from precedent — Integration tests are external crates - a private/free fn would be unassertable, leaving MERGE-02 without a direct proof
+- [Phase 03]: 03-01: A corrupt/unreadable .rkdb header falls back to the file-size estimate instead of erroring, so the merge still routes conservatively to streaming and surfaces real corruption during the streaming path's own per-chunk validation — Returning Err would fail the merge before a strategy is chosen - a worse failure mode than over-estimating. The fallback only over-estimates (threat T-03-01)
+- [Phase 03]: 03-01: Merge path selection is observed in tests via a nonexistent temp_dir probe (streaming writes chunk files there, in-memory does not) rather than adding a public strategy-returning API or capturing logs — merge_databases returns an RKDatabase, not a strategy tag; the probe is a deterministic side-effect discriminator needing no public API change
+- [Phase 03]: 03-01: estimated_memory uses saturating_mul instead of the original `total_kmers as usize * 24` — The old form could overflow into a panic in debug builds given a large header value
+- [Phase 03]: 03-01: Fixed two latent streaming-merge data-loss bugs (StreamingMergeIterator heap-refill strand; TempFileManager chunk-name collision) as part of this plan — MERGE-01 promotes that exact path to hard-route default. Measured 200 k-mers in -> 5 out. Shipping the hard route on top of a truncating merge would have turned a latent bug into guaranteed corruption for every over-budget merge
+- [Phase 03]: 03-01: Fixed 4 pre-existing clippy useless_borrows_in_formatting errors in src/io/{fasta,fastq}.rs (toolchain drift) to unblock the plan's -D warnings gate — Plan acceptance criteria list `cargo clippy --all-targets -- -D warnings` as blocking; logged to deferred-items.md before fixing
 
 ### Pending Todos
 
@@ -127,6 +144,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-02T09:24:10.422Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-memory-safety/03-CONTEXT.md
+Last session: 2026-10-07T02:28:57.101Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None
