@@ -1323,19 +1323,32 @@ impl PyDatabase {
     /// Merge multiple databases into a single output database
     ///
     /// This static method merges multiple k-mer databases into a single output database.
-    /// The merge operation automatically chooses the optimal strategy (in-memory, streaming,
-    /// or prefix cache) based on the size of the input databases and available memory.
+    /// The merge goes through the same bounded core the CLI uses
+    /// (`RKDatabase::merge_databases`): the total k-mer count is read from the
+    /// 42-byte `.rkdb` headers, compared against the memory budget, and the
+    /// merge is routed to the in-memory or the streaming path accordingly.
     ///
     /// Args:
     ///     databases: List of database file paths to merge
     ///     output: Output database file path for the merged database
+    ///     max_memory: Optional memory budget as a string (e.g. "4GB", "512MB",
+    ///         "1024" for raw bytes). Same grammar and same bounds as the CLI's
+    ///         `--max-memory`. `None` (default) uses 50% of system memory.
+    ///     merge_mode: One of "auto" (default), "memory", or "streaming" —
+    ///         parity with the CLI's `--merge-mode`. "auto" routes to streaming
+    ///         when the inputs exceed the budget; "memory" refuses to run
+    ///         over budget instead of risking an OOM; "streaming" always
+    ///         streams.
     ///
     /// Returns:
     ///     None (the merged database is saved to the specified output path)
     ///
     /// Raises:
-    ///     PyValueError: If databases list is empty or files don't exist
-    ///     PyRuntimeError: If merge operation fails
+    ///     PyValueError: If databases list is empty, files don't exist, or
+    ///         merge_mode / max_memory are invalid
+    ///     PyFileNotFoundError: If an input database file does not exist
+    ///     PyRuntimeError: If the merge fails, including the over-budget
+    ///         merge_mode="memory" rejection
     ///
     /// Example:
     ///     >>> import pyrustkmer
@@ -1343,9 +1356,21 @@ impl PyDatabase {
     ///     ...     ["db1.rkdb", "db2.rkdb", "db3.rkdb"],
     ///     ...     "merged.rkdb"
     ///     ... )
+    ///     >>> # Bound the memory, stream regardless of the budget
+    ///     >>> pyrustkmer.PyDatabase.merge(
+    ///     ...     ["db1.rkdb", "db2.rkdb"],
+    ///     ...     "merged.rkdb",
+    ///     ...     max_memory="4GB",
+    ///     ...     merge_mode="streaming",
+    ///     ... )
     #[staticmethod]
-    #[pyo3(signature = (databases, output))]
-    fn merge(databases: Vec<String>, output: String) -> PyResult<()> {
+    #[pyo3(signature = (databases, output, *, max_memory=None, merge_mode="auto".to_string()))]
+    fn merge(
+        databases: Vec<String>,
+        output: String,
+        max_memory: Option<String>,
+        merge_mode: String,
+    ) -> PyResult<()> {
         use std::path::PathBuf;
 
         // Validate input: check databases list is not empty
@@ -1364,14 +1389,57 @@ impl PyDatabase {
             }
         }
 
+        // MERGE-04 / T-03-15: validate merge_mode at the Python boundary, before
+        // it can reach MergeConfig. The core treats any unrecognised mode as
+        // "auto", so without this check a typo would silently hand the user a
+        // strategy they did not ask for instead of an error. Mirrors
+        // PyCounter::new's thread-count validation (T-02-13) and the CLI's
+        // clap `value_parser = ["auto", "memory", "streaming"]`.
+        const VALID_MERGE_MODES: [&str; 3] = ["auto", "memory", "streaming"];
+        if !VALID_MERGE_MODES.contains(&merge_mode.as_str()) {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Invalid merge_mode: {}. Must be one of: auto, memory, streaming",
+                merge_mode
+            )));
+        }
+
+        // MERGE-04 / T-03-16: parse the budget with the CLI's own parser so the
+        // two surfaces cannot accept different grammars or bounds.
+        let parsed_max_memory = match max_memory.as_deref() {
+            None => None,
+            Some(size_str) => Some(
+                rustkmer::cli::commands::merge::parse_memory_size(size_str).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Invalid max_memory: {}. {}",
+                        size_str, e
+                    ))
+                })?,
+            ),
+        };
+
         // Convert to PathBuf
         let input_paths: Vec<PathBuf> = databases.into_iter().map(PathBuf::from).collect();
 
-        // Create default merge configuration
-        let config = MergeConfig::default();
+        // Assemble the merge configuration from the keyword arguments, starting
+        // from the defaults so every unset knob keeps its CLI-equivalent value.
+        // Struct-update syntax rather than field-by-field assignment, because
+        // `field_reassign-with-default` is denied by the pyo3 crate's
+        // `-D warnings` gate.
+        let defaults = MergeConfig::default();
+        let config = MergeConfig {
+            max_memory_usage: parsed_max_memory.unwrap_or(defaults.max_memory_usage),
+            merge_mode,
+            ..defaults
+        };
 
-        // Call Rust core merge functionality
-        // This automatically chooses optimal strategy (in-memory, streaming, or prefix cache)
+        // Call Rust core merge functionality.
+        //
+        // This is the same bounded dispatcher the CLI calls, so the header-only
+        // estimator (D-01), the hard route to streaming when over budget
+        // (MERGE-02) and the over-budget `merge_mode="memory"` rejection
+        // (D-02) apply here by inheritance rather than by duplication. The
+        // rejection surfaces as a PyRuntimeError carrying the core's message,
+        // which names both the memory mode and the streaming alternative.
         let merged_db = RKDatabase::merge_databases(&input_paths, &config).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Merge operation failed: {}",

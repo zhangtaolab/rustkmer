@@ -183,7 +183,6 @@ def test_merge_default_no_kwargs_works(two_dbs, tmp_path):
     assert sum(counts.values()) == EXPECTED_SUM_OF_COUNTS
 
 
-@pytest.mark.skip(reason="TODO(03-05 Task 2): un-skip once kwargs land")
 def test_merge_rejects_bad_merge_mode(two_dbs, tmp_path):
     """An unknown merge_mode is rejected at the Python boundary (T-03-15)."""
     with pytest.raises(ValueError, match="merge_mode"):
@@ -192,7 +191,6 @@ def test_merge_rejects_bad_merge_mode(two_dbs, tmp_path):
         )
 
 
-@pytest.mark.skip(reason="TODO(03-05 Task 2): un-skip once kwargs land")
 def test_merge_rejects_bad_max_memory(two_dbs, tmp_path):
     """A malformed max_memory string is rejected at the boundary (T-03-16)."""
     with pytest.raises(ValueError, match="max_memory"):
@@ -201,7 +199,6 @@ def test_merge_rejects_bad_max_memory(two_dbs, tmp_path):
         )
 
 
-@pytest.mark.skip(reason="TODO(03-05 Task 2): un-skip once kwargs land")
 def test_over_budget_memory_mode_is_rejected(two_dbs, tmp_path):
     """max_memory + merge_mode='memory' reach the D-02 reject (T-03-17).
 
@@ -230,7 +227,6 @@ def test_over_budget_memory_mode_is_rejected(two_dbs, tmp_path):
     assert f"{int(budget)} bytes" in message, message
 
 
-@pytest.mark.skip(reason="TODO(03-05 Task 2): un-skip once kwargs land")
 def test_streaming_and_inmemory_routes_produce_identical_data(
     two_dbs, tmp_path, monkeypatch
 ):
@@ -272,3 +268,110 @@ def test_streaming_and_inmemory_routes_produce_identical_data(
     assert inmemory_stats.unique_kmers == EXPECTED_UNIQUE
     assert sum(streaming_counts.values()) == EXPECTED_SUM_OF_COUNTS
     assert sum(inmemory_counts.values()) == EXPECTED_SUM_OF_COUNTS
+
+
+def test_over_budget_auto_hard_route_completes(two_dbs, tmp_path, monkeypatch):
+    """MERGE-02's hard route, reached from Python.
+
+    `auto` with an over-budget budget must still complete — routed to
+    streaming, never to an in-memory merge that could exhaust RAM. That the
+    streaming branch was the one entered is proved by the sibling
+    bogus-`TMPDIR` test, not by this test; this one asserts the data.
+    """
+    work = tmp_path / "temp"
+    work.mkdir()
+    monkeypatch.setenv("TMPDIR", str(work))
+
+    out = tmp_path / "merged.rkdb"
+    pyrustkmer.PyDatabase.merge(
+        two_dbs,
+        str(out),
+        max_memory=_over_budget(two_dbs),
+        merge_mode="auto",
+    )
+
+    counts, stats = _read_count_map(str(out), tmp_path)
+    assert counts == EXPECTED_COUNTS
+    assert stats.unique_kmers == EXPECTED_UNIQUE
+    assert stats.total_kmers == EXPECTED_UNIQUE
+    assert sum(counts.values()) == EXPECTED_SUM_OF_COUNTS
+
+
+def _bogus_temp_dir(tmp_path, monkeypatch):
+    """Point the merge's temp dir at a directory that does not exist.
+
+    `MergeConfig::temp_dir` defaults to `std::env::temp_dir()`, which on unix
+    reads `TMPDIR` on every call (it is not cached), so the environment
+    variable is enough to redirect it. This is 03-01's nonexistent-`temp_dir`
+    probe lifted to Python: it needs no new API and no log capture.
+    """
+    bogus = tmp_path / "no_such_temp_dir"
+    monkeypatch.setenv("TMPDIR", str(bogus))
+    assert not bogus.exists()
+    return bogus
+
+
+@pytest.mark.parametrize("merge_mode", ["streaming", "auto"])
+def test_streaming_route_is_proven_by_its_chunk_files(
+    two_dbs, tmp_path, monkeypatch, merge_mode
+):
+    """The streaming route is OBSERVED, never assumed.
+
+    `TempFileManager::create_temp_file` does
+    `File::create(temp_dir.join("rustkmer_sort_..."))`, so with `TMPDIR`
+    pointing at a nonexistent directory the streaming path fails on its first
+    chunk file and the error names that file. `merge_databases_inmemory` never
+    touches `temp_dir` at all, which is what makes the sibling control test
+    meaningful: same fixture, same bogus temp dir, succeeds.
+
+    A test that merely passed a small budget and called the result "streaming"
+    would prove nothing — plan 03-04 shipped exactly that mistake.
+    """
+    bogus = _bogus_temp_dir(tmp_path, monkeypatch)
+
+    kwargs = {"merge_mode": merge_mode}
+    if merge_mode == "auto":
+        # Derived (not hard-coded) so the MERGE-02 hard route actually fires.
+        kwargs["max_memory"] = _over_budget(two_dbs)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        pyrustkmer.PyDatabase.merge(two_dbs, str(tmp_path / "merged.rkdb"), **kwargs)
+
+    message = str(excinfo.value)
+    assert "Failed to create temp file" in message, message
+    assert bogus.name in message, message
+
+
+@pytest.mark.parametrize("merge_mode", ["auto", "memory"])
+def test_inmemory_route_never_touches_temp_dir(
+    two_dbs, tmp_path, monkeypatch, merge_mode
+):
+    """Control arm for the route proof, and the 'memory is not always rejected'
+    control: within budget, the bogus temp dir is irrelevant and the merge
+    succeeds with the exact union.
+    """
+    _bogus_temp_dir(tmp_path, monkeypatch)
+
+    out = tmp_path / "merged.rkdb"
+    pyrustkmer.PyDatabase.merge(
+        two_dbs,
+        str(out),
+        max_memory=_within_budget(two_dbs),
+        merge_mode=merge_mode,
+    )
+
+    counts, stats = _read_count_map(str(out), tmp_path)
+    assert counts == EXPECTED_COUNTS
+    assert stats.unique_kmers == EXPECTED_UNIQUE
+
+
+def test_merge_signature_exposes_the_cli_kwargs():
+    """`max_memory` and `merge_mode` are part of the public signature.
+
+    Scripts the plan's manual `help(pyrustkmer.PyDatabase.merge)` check so the
+    kwargs cannot silently drop out of the binding.
+    """
+    doc = pyrustkmer.PyDatabase.merge.__doc__ or ""
+    assert "max_memory" in doc
+    assert "merge_mode" in doc
+    assert "streaming" in doc

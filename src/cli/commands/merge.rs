@@ -472,7 +472,13 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
 }
 
 /// Parse memory size string like "32GB", "1TB", "512MB" into bytes
-fn parse_memory_size(size_str: &str) -> Result<usize, String> {
+///
+/// Public so the PyO3 binding can reuse it: MERGE-04 requires Python's
+/// `max_memory=` kwarg and the CLI's `--max-memory` flag to accept exactly the
+/// same grammar and the same bounds. A second copy of this parser in the
+/// binding would be free to drift, and the drift would be invisible until a
+/// user's budget silently parsed differently on one surface than the other.
+pub fn parse_memory_size(size_str: &str) -> Result<usize, String> {
     let size_str = size_str.trim().to_uppercase();
 
     // Parse number and unit - handle multi-character units properly
