@@ -1044,3 +1044,68 @@ fn merge_databases_with_empty_input_list_returns_err() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+/// The external-sort compatibility rules kept their exact error text when they
+/// moved from `&[&RKDatabase]` to `&[DatabaseHeader]`, so the message a caller
+/// sees did not change as a side effect of making the route memory-bounded.
+///
+/// The plan required the strings to be byte-identical because
+/// `tests/merge_routing_tests.rs` and the PyO3 docstring describe them. That is
+/// true by construction — the format! arguments were not touched — but nothing
+/// asserted it, and "byte-identical by construction" is exactly the kind of
+/// claim that stops being true the first time someone tidies a format string.
+/// This test is the assertion.
+///
+/// It drives the real prefix-cache route with two genuinely incompatible
+/// inputs, so it covers the whole path: header read -> `validate_header_
+/// compatibility` -> Err, with no database body ever loaded.
+#[test]
+fn prefix_cache_kmer_size_mismatch_keeps_its_error_text() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let work = tempfile::tempdir()?;
+
+    let a = RKDatabase::from_kmer_pairs(vec![(0x1234, 10), (0x5678, 20)], 31, true, true)?;
+    let b = RKDatabase::from_kmer_pairs(vec![(0x9ABC, 30)], 51, true, true)?;
+    let a_path = dir.path().join("k31.rkdb");
+    let b_path = dir.path().join("k51.rkdb");
+    a.to_file_path(&a_path)?;
+    b.to_file_path(&b_path)?;
+
+    let config = MergeConfig {
+        use_prefix_cache: true,
+        temp_dir: work.path().to_path_buf(),
+        // `verbose` is what selects the multi-line diagnostic form of the
+        // message — the branch this refactor rewrote most heavily, since it
+        // formats `first_header.total_kmers` and `header.canonical` rather
+        // than calling accessors on materialized databases.
+        verbose: true,
+        ..routing_config(work.path(), HUGE_BUDGET_BYTES, "auto")
+    };
+
+    let err = RKDatabase::merge_databases(&[a_path, b_path], &config)
+        .expect_err("a k-mer-size mismatch must be rejected before any merge work happens")
+        .to_string();
+
+    // The pre-refactor wording, verbatim.
+    assert!(
+        err.contains("Database 2 has k-mer size 51, expected 31"),
+        "the mismatch message must keep its exact wording; got: {}",
+        err
+    );
+    assert!(
+        err.contains("All databases must have the same k-mer size to merge"),
+        "the hint line must survive the header refactor; got: {}",
+        err
+    );
+    // The verbose diagnostic reads its numbers off the HEADERS now. A
+    // regression that mixed the two sources up (e.g. reporting database 1's
+    // values in database 2's line) would pass every assertion above.
+    assert!(
+        err.contains("Database 1: k-mer size=31, canonical=true, k-mers=2")
+            && err.contains("Database 2: k-mer size=51, canonical=true, k-mers=1"),
+        "the verbose diagnostic must report each database's OWN header values; got: {}",
+        err
+    );
+
+    Ok(())
+}
