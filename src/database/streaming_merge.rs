@@ -12,6 +12,18 @@ use std::io::{BufReader, BufWriter, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+/// Byte width of one k-mer record on disk: a 16-byte little-endian `u128`
+/// followed by a 4-byte little-endian `u32`.
+///
+/// Sorted chunk files written by [`ExternalMerger::sort_database`] are bare
+/// sequences of these records — no header, no record count — which is why the
+/// ONLY way to tell a complete chunk from one truncated mid-record is to check
+/// that its length is a whole multiple of `RECORD_SIZE` (see
+/// [`ExternalMerger::merge_sorted_chunks`]). Pinned against a real encode by
+/// `chunk_record_width_matches_the_pinned_constant` so a `.rkdb` v2 layout
+/// change turns that check red instead of silently rejecting every chunk.
+pub const RECORD_SIZE: u64 = 20;
+
 /// Streaming iterator for reading database entries in chunks
 pub struct DatabaseStreamIterator {
     reader: BufReader<File>,
@@ -310,15 +322,48 @@ impl ExternalMerger {
                 ))
             })?;
 
-            let mut reader = BufReader::new(file);
-            let first_entry = KmerEntry::read_from(&mut reader);
+            // A chunk truncated mid-record has no 20-byte record boundary to
+            // land on, so the iterator below would read its partial tail as a
+            // clean end-of-run and silently drop that k-mer. Chunk files carry
+            // no record count, so their length is the only evidence available —
+            // and this is the only site that still has it, before any reading
+            // begins. Threat T-03-27.
+            let chunk_len = file.metadata().map(|m| m.len()).map_err(|e| {
+                ProcessingError::io_error(format!(
+                    "Failed to stat chunk file '{}': {}",
+                    file_path.display(),
+                    e
+                ))
+            })?;
+            if chunk_len % RECORD_SIZE != 0 {
+                return Err(ProcessingError::io_error(format!(
+                    "Damaged chunk file '{}': length {} is not a whole multiple of the {}-byte \
+                     record, so it was truncated mid-k-mer",
+                    file_path.display(),
+                    chunk_len,
+                    RECORD_SIZE
+                )));
+            }
 
-            if let Ok(entry) = first_entry {
-                heap.push(MergeItem {
+            let mut reader = BufReader::new(file);
+            // EOF here means a zero-record chunk. `sort_database` only writes a
+            // chunk after reading at least one entry, so an empty one is damage,
+            // not an empty run: the pre-fix code was `if let Ok(entry) = ..`
+            // with no else arm and let it contribute nothing to the merge while
+            // reporting success.
+            match KmerEntry::read_from(&mut reader) {
+                Ok(entry) => heap.push(MergeItem {
                     kmer: entry.kmer,
                     count: entry.count,
                     file_index,
-                });
+                }),
+                Err(e) => {
+                    return Err(ProcessingError::io_error(format!(
+                        "Failed to read first entry of chunk file '{}': {}",
+                        file_path.display(),
+                        e
+                    )))
+                }
             }
 
             file_readers.push(reader);
@@ -345,6 +390,15 @@ pub struct StreamingMergeIterator {
     _temp_files: Vec<PathBuf>,
     current_kmer: Option<u128>,
     current_count: u32,
+    /// A read failure observed while draining the heap, reported on the NEXT
+    /// `next()` call rather than swallowed.
+    ///
+    /// The pre-fix refill was `if let Ok(next_entry) = KmerEntry::read_from(..)`
+    /// with no else arm, so a mid-run read failure ended that run early and the
+    /// iterator reported a clean, shorter merge. Silent truncation of a merge is
+    /// exactly the defect class plan 03-01 found twice (200 k-mers in, 5 out).
+    /// Threat T-03-26.
+    pending_error: Option<ProcessingError>,
 }
 
 impl StreamingMergeIterator {
@@ -359,6 +413,7 @@ impl StreamingMergeIterator {
             _temp_files: temp_files,
             current_kmer: None,
             current_count: 0,
+            pending_error: None,
         }
     }
 
@@ -369,6 +424,7 @@ impl StreamingMergeIterator {
             _temp_files: Vec::new(),
             current_kmer: None,
             current_count: 0,
+            pending_error: None,
         }
     }
 }
@@ -377,6 +433,17 @@ impl Iterator for StreamingMergeIterator {
     type Item = Result<(u128, u32), ProcessingError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // Report a refill failure observed on the previous call BEFORE draining
+        // further. The iterator is then finished: the run it belonged to has
+        // already been abandoned mid-drain, so there is no consistent point to
+        // resume from and no partial run may be emitted beside the error.
+        if let Some(err) = self.pending_error.take() {
+            self.current_kmer = None;
+            self.current_count = 0;
+            self.heap.clear();
+            return Some(Err(err));
+        }
+
         while let Some(merge_item) = self.heap.pop() {
             let kmer = merge_item.kmer;
             let count = merge_item.count;
@@ -389,14 +456,48 @@ impl Iterator for StreamingMergeIterator {
             // item would be consumed for the emit and its successor would
             // never be read, silently truncating that run. Measured impact of
             // the old ordering: a 10-entry database merged to 2 k-mers, a
-            // 200-entry database to 5.
+            // 200-entry database to 5. (plan 03-01's fix — preserved here.)
             let reader = &mut self.file_readers[merge_item.file_index];
-            if let Ok(next_entry) = KmerEntry::read_from(reader) {
-                self.heap.push(MergeItem {
+            match KmerEntry::read_from(reader) {
+                Ok(next_entry) => self.heap.push(MergeItem {
                     kmer: next_entry.kmer,
                     count: next_entry.count,
                     file_index: merge_item.file_index,
-                });
+                }),
+                // `UnexpectedEof` is how a run ends NORMALLY: the reader has
+                // consumed exactly the chunk's records and there is no next one.
+                // Treating it as damage would drop the final k-mer of every run
+                // — and does: it turned a 3-entry merge into 2 results plus an
+                // error. Mid-record truncation is caught earlier and exactly, by
+                // the `len % RECORD_SIZE` check in `merge_sorted_chunks`, which
+                // is the only place that can tell the two apart.
+                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {}
+                Err(e) => {
+                    // Record the FIRST failure only: a second failure while
+                    // draining the same run must never mask the one that
+                    // explains where the data stopped being trustworthy.
+                    //
+                    // The popped `merge_item` is deliberately NOT re-queued and
+                    // the heap / `current_kmer` / `current_count` are left
+                    // untouched, so no k-mer is double-counted if a caller ever
+                    // retries and no partial run is emitted beside the error.
+                    if self.pending_error.is_none() {
+                        self.pending_error = Some(ProcessingError::io_error(format!(
+                            "Failed to read k-mer entry from chunk file '{}': {}",
+                            self._temp_files[merge_item.file_index].display(),
+                            e
+                        )));
+                    }
+                    // Return IMMEDIATELY rather than falling through to the
+                    // `match &self.current_kmer` emit arm: falling through
+                    // would emit the half-accumulated run AND the error on a
+                    // later call — a partial run beside the error, which is the
+                    // exact ambiguity this rule exists to prevent.
+                    return Some(Err(self
+                        .pending_error
+                        .take()
+                        .expect("pending_error was just set")));
+                }
             }
 
             match &self.current_kmer {
@@ -525,5 +626,87 @@ mod tests {
         assert_eq!(result3, (0x0030, 30));
 
         assert!(merge_iter.next().is_none());
+    }
+
+    /// `RECORD_SIZE` is the sole basis for the mid-record truncation check in
+    /// `merge_sorted_chunks`. If it drifts from the real `.rkdb` v2 record
+    /// width, every well-formed chunk is rejected (loud) or every damaged one is
+    /// accepted (silent) — so pin it against an actual encode rather than
+    /// against a restated literal.
+    #[test]
+    fn chunk_record_width_matches_the_pinned_constant() {
+        let mut buf = Vec::new();
+        KmerEntry::new(0x0123456789ABCDEF, u32::MAX)
+            .write_to(&mut buf)
+            .unwrap();
+        assert_eq!(
+            buf.len() as u64,
+            RECORD_SIZE,
+            "the pinned record width no longer matches what write_to emits — the \
+             truncation check in merge_sorted_chunks cannot be trusted"
+        );
+    }
+
+    /// Threat T-03-27: a chunk file truncated mid-record is DAMAGED INPUT and
+    /// must surface as an `Err` naming the file. Chunk files carry no record
+    /// count, so a partial tail would otherwise read as a clean end-of-run and
+    /// silently drop that k-mer from the merged output.
+    #[test]
+    fn chunk_truncated_mid_record_is_reported_not_silently_dropped() {
+        let temp_dir = tempfile::tempdir().unwrap();
+
+        // Two whole records plus a 7-byte tail: 47 bytes, not a multiple of 20.
+        let mut bytes = Vec::new();
+        KmerEntry::new(0x0010, 10).write_to(&mut bytes).unwrap();
+        KmerEntry::new(0x0020, 20).write_to(&mut bytes).unwrap();
+        bytes.extend_from_slice(&[0u8; 7]);
+        let damaged = temp_dir.path().join("damaged.chunk");
+        std::fs::write(&damaged, &bytes).unwrap();
+
+        let mut merger = ExternalMerger::new(2, temp_dir.path().to_path_buf());
+        merger.temp_files.push(damaged.clone());
+
+        let err = match merger.merge_sorted_chunks() {
+            Ok(_) => panic!("a chunk truncated mid-record must not merge as a clean run"),
+            Err(e) => e,
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("truncated mid-k-mer"),
+            "the error must name the truncation, got: {}",
+            msg
+        );
+        assert!(
+            msg.contains("damaged.chunk"),
+            "the error must name the offending chunk file, got: {}",
+            msg
+        );
+    }
+
+    /// A well-formed chunk of the same k-mers must still merge — the truncation
+    /// check is not a blanket rejection.
+    #[test]
+    fn chunk_record_count_that_is_a_whole_multiple_of_record_size_still_merges() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut bytes = Vec::new();
+        KmerEntry::new(0x0010, 10).write_to(&mut bytes).unwrap();
+        KmerEntry::new(0x0020, 20).write_to(&mut bytes).unwrap();
+        let intact = temp_dir.path().join("intact.chunk");
+        std::fs::write(&intact, &bytes).unwrap();
+
+        let mut merger = ExternalMerger::new(2, temp_dir.path().to_path_buf());
+        merger.temp_files.push(intact);
+
+        let merged: Vec<(u128, u32)> = merger
+            .merge_sorted_chunks()
+            .unwrap()
+            .map(|r| r.expect("a whole-record chunk must not produce an error"))
+            .collect();
+        assert_eq!(
+            merged,
+            vec![(0x0010, 10), (0x0020, 20)],
+            "a whole-record chunk must merge to exactly its records — every \
+             k-mer present, including the last"
+        );
     }
 }

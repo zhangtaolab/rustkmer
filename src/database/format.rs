@@ -213,26 +213,43 @@ impl KmerEntry {
     }
 
     /// Read entry from binary format (16 bytes kmer + 4 bytes count)
+    ///
+    /// # Invariant: this is the exact inverse of [`Self::write_to`]
+    ///
+    /// The `.rkdb` v2 record layout is a 16-byte little-endian `u128` followed
+    /// by a 4-byte little-endian `u32`. **Every** writer in this crate emits
+    /// little-endian — [`Self::write_to`], the streaming chunk writer in
+    /// `streaming_merge::ExternalMerger::sort_database`, and
+    /// `count.rs`'s delegating write path — so this reader decodes
+    /// little-endian and nothing else.
+    ///
+    /// The pre-fix reader carried an endianness heuristic: if the
+    /// little-endian count came out above `1_000_000`, it was re-read as
+    /// big-endian. That is **not** a compatibility feature, it is silent data
+    /// corruption on valid input: every count above one million was returned
+    /// byte-swapped (`2_000_000` -> `2_156_142_080`, `16_777_216` -> `1`).
+    /// It also made the two merge routes disagree, because the in-memory route
+    /// applied it once while the streaming route applied it twice (read ->
+    /// little-endian chunk write -> read back), so the double swap cancelled
+    /// by accident. Same input, same budget, different data depending only on
+    /// which route the budget picked.
+    ///
+    /// There is **no legacy big-endian file to preserve**: the format is v2
+    /// and has only ever been written little-endian by this crate. The one
+    /// legacy fixture in the repo, `tests/fixtures/legacy_v2_offset42.rkdb`,
+    /// round-trips through this same little-endian path. The re-introduced
+    /// `u128` read is deliberately left as `read_u128::<LittleEndian>()`; it
+    /// had no heuristic and was never part of the defect.
+    ///
+    /// Threat T-03-24. The counts that used to be corrupted are pinned by
+    /// `kmer_entry_round_trips_counts_above_the_old_threshold` below and by
+    /// `tests/merge_route_parity_tests.rs`.
     pub fn read_from<R: Read>(reader: &mut R) -> IoResult<Self> {
         let kmer = reader.read_u128::<LittleEndian>()?;
 
-        // Fix for endianness issue: count might be written as big-endian
-        let count_bytes = {
-            let mut buf = [0u8; 4];
-            reader.read_exact(&mut buf)?;
-            buf
-        };
-
-        // Try little-endian first, if it gives a huge number, try big-endian
-        let count_le = u32::from_le_bytes(count_bytes);
-        let count_be = u32::from_be_bytes(count_bytes);
-
-        // If little-endian gives an unreasonable count (> 1M), use big-endian
-        let count = if count_le > 1_000_000 {
-            count_be
-        } else {
-            count_le
-        };
+        let mut count_bytes = [0u8; 4];
+        reader.read_exact(&mut count_bytes)?;
+        let count = u32::from_le_bytes(count_bytes);
 
         Ok(Self { kmer, count })
     }
@@ -1305,6 +1322,40 @@ mod tests {
 
         assert_eq!(entry.kmer, loaded_entry.kmer);
         assert_eq!(entry.count, loaded_entry.count);
+    }
+
+    /// CR-01 / G3: the count field must round-trip EXACTLY at and above the
+    /// threshold the pre-fix reader used to treat as "this must be big-endian".
+    ///
+    /// `write_to` always emits `write_u32::<LittleEndian>`. The pre-fix
+    /// `read_from` applied an endianness heuristic — "if the little-endian read
+    /// gives a count above one million, use the big-endian reading instead" —
+    /// so every valid count above that threshold came back byte-swapped:
+    /// `2_000_000` read back as `2_156_142_080` and `16_777_216` as `1`.
+    ///
+    /// This test is the DISCRIMINATING gate for the heuristic's deletion. A
+    /// source grep cannot do the job: `u32::from_le_bytes` was already
+    /// present inside the heuristic being deleted, so its count is unchanged by
+    /// the fix and inert as evidence.
+    #[test]
+    fn kmer_entry_round_trips_counts_above_the_old_threshold() {
+        for count in [999_999u32, 1_000_000, 1_000_001, 2_000_000, 16_777_216] {
+            let entry = KmerEntry::new(0x1, count);
+
+            let mut buffer = Vec::new();
+            entry.write_to(&mut buffer).unwrap();
+
+            let mut reader = std::io::Cursor::new(buffer);
+            let loaded = KmerEntry::read_from(&mut reader).unwrap();
+
+            assert_eq!(
+                loaded.count, count,
+                "count {} round-tripped as {} — the count field is being read with \
+                 the wrong byte order",
+                count, loaded.count
+            );
+            assert_eq!(loaded.kmer, entry.kmer);
+        }
     }
 
     #[test]
