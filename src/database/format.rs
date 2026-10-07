@@ -358,6 +358,50 @@ impl RKDatabase {
         })
     }
 
+    /// Read ONLY the 42-byte `.rkdb` header of `path`, materializing no entries.
+    ///
+    /// # Cost
+    ///
+    /// O(42 bytes) per call, **not** O(entries). This is the same header-only
+    /// read D-01 introduced for [`Self::estimate_total_kmers`], now also
+    /// available to the merge strategies the estimator routes *into* — the
+    /// over-budget path, whose entire purpose is to handle inputs that do not
+    /// fit, cannot afford to load one.
+    ///
+    /// The `data_offset != 42` rejection below is deliberately the SAME check,
+    /// with the SAME error text, that [`Self::from_file_path`] applies: a file
+    /// this reader refuses is a file every other reader in the crate refuses,
+    /// so an incompatible or corrupt file fails identically whether or not its
+    /// body was going to be loaded.
+    ///
+    /// `pub` following the 03-01 precedent that made `estimate_total_kmers`
+    /// public specifically so an integration test (an external crate) could
+    /// assert the header-only property from outside.
+    pub fn read_header_of(
+        path: &std::path::Path,
+    ) -> crate::error::ProcessingResult<DatabaseHeader> {
+        use std::fs::File;
+        use std::io::BufReader;
+
+        let file =
+            File::open(path).map_err(|e| crate::error::ProcessingError::io_error(e.to_string()))?;
+        let mut reader = BufReader::new(file);
+        // Reads exactly 42 bytes and returns — no `KmerEntry` is created.
+        let header = DatabaseHeader::read_from(&mut reader)?;
+
+        // Identical rejection and message to `from_file_path` (see the
+        // rationale comment there): the `.rkdb` v2 format has exactly one
+        // valid data_offset, so anything else is incompatible/corrupt.
+        if header.data_offset != 42 {
+            return Err(crate::error::ProcessingError::new(format!(
+                "Unsupported data_offset {} (expected 42); file may be from an incompatible rustkmer version or corrupt",
+                header.data_offset
+            )));
+        }
+
+        Ok(header)
+    }
+
     /// Load database from file path with memory mapping
     pub fn from_file_path_mapped(path: &std::path::Path) -> crate::error::ProcessingResult<Self> {
         // For now, fall back to regular file reading
@@ -682,24 +726,36 @@ impl RKDatabase {
     /// A merely-unreadable header is not itself an error: a corrupt input
     /// still merges through the streaming path, which does its own per-chunk
     /// validation and surfaces the real corruption.
+    ///
+    /// # What routing the estimator through `read_header_of` changes
+    ///
+    /// **This is not a pure refactor, and the difference is a behaviour change
+    /// worth stating plainly rather than describing as "semantics preserved
+    /// exactly".** [`Self::read_header_of`] applies the `data_offset != 42`
+    /// rejection that `from_file_path` applies, and this estimator previously
+    /// did not. So a file whose header *parses* but carries any other
+    /// `data_offset` moves from "header trusted, return its `total_kmers`" to
+    /// "fall back to the file-size estimate, with a `log::warn!`".
+    ///
+    /// That is the **safe** direction, not a regression. `from_file_path`
+    /// refuses such a file outright, so the old estimator was the more
+    /// permissive of the two: it would trust a `data_offset` that no reader in
+    /// the crate accepts, admit a merge on that estimate, and then have the
+    /// merge fail on read. The `log::warn!` keeps the fallback visible, so an
+    /// operator sees *why* the header was not trusted.
+    ///
+    /// Everything else is preserved exactly: a readable header with
+    /// `total_kmers > 0` is trusted; an unreadable header **or**
+    /// `total_kmers == 0` falls back to the file-size estimate with the same
+    /// warning text.
     pub fn estimate_total_kmers(path: &std::path::Path) -> crate::error::ProcessingResult<u64> {
-        use std::fs::File;
-        use std::io::BufReader;
-
         // `.rkdb` v2 on-disk constants — 42-byte header, 20-byte entries.
         // Kept as local consts (not derived from the structs) so the fallback
         // arithmetic cannot silently drift if a struct field is ever added.
         const HEADER_SIZE: u64 = 42;
         const RECORD_SIZE: u64 = 20;
 
-        let header_kmers = (|| -> crate::error::ProcessingResult<u64> {
-            let file = File::open(path)
-                .map_err(|e| crate::error::ProcessingError::io_error(e.to_string()))?;
-            let mut reader = BufReader::new(file);
-            // Reads exactly 42 bytes and returns — no `KmerEntry` is created.
-            let header = DatabaseHeader::read_from(&mut reader)?;
-            Ok(header.total_kmers)
-        })();
+        let header_kmers = Self::read_header_of(path).map(|header| header.total_kmers);
 
         // On a bad header, over-estimate from the file size and let the merge
         // path surface any real corruption.
@@ -729,6 +785,19 @@ impl RKDatabase {
         input_paths: &[std::path::PathBuf],
         config: &crate::database::MergeConfig,
     ) -> crate::error::ProcessingResult<Self> {
+        // WR-06 / threat T-03-35: hoisted to the TOP of the dispatcher.
+        // `merge_databases_streaming` indexes `input_paths[0]` unconditionally,
+        // so an empty input list panicked with an index-out-of-bounds before
+        // any strategy-specific guard could run. One guard here covers all
+        // three routes; the per-strategy guards are left in place as defence in
+        // depth for any direct private-fn caller (removing them would be an
+        // unrequested behaviour change for callers the plan does not own).
+        if input_paths.is_empty() {
+            return Err(crate::error::ProcessingError::new(
+                "At least one input database is required",
+            ));
+        }
+
         // D-06 / MERGE-03: reclaim temp shards orphaned by a merge that could
         // not clean up after itself — SIGKILL, `panic = "abort"` (this project's
         // release profile), `process::exit`, power loss. RAII handles the
@@ -866,9 +935,14 @@ impl RKDatabase {
 
         let start_time = Instant::now();
 
-        let first_db = RKDatabase::from_file_path(&input_paths[0])?;
-        let kmer_size = first_db.kmer_size();
-        let canonical = first_db.is_canonical();
+        // G2a / threat T-03-31: this is the OVER-BUDGET path — the one chosen
+        // precisely because the inputs do not fit — and it used to
+        // `from_file_path(&input_paths[0])` (materializing a whole input
+        // database into RAM) purely to read `kmer_size` and `canonical`, two
+        // fields of a 42-byte header. A 42-byte read is all that is needed.
+        let header = RKDatabase::read_header_of(&input_paths[0])?;
+        let kmer_size = header.kmer_size;
+        let canonical = header.canonical;
 
         let mut merger = ExternalMerger::new(config.chunk_size, config.temp_dir.clone());
 
@@ -905,7 +979,7 @@ impl RKDatabase {
             log::info!("  Total time: {:?}", start_time.elapsed());
         }
 
-        Self::from_kmer_pairs(sorted_kmers, kmer_size as u8, canonical, true)
+        Self::from_kmer_pairs(sorted_kmers, kmer_size, canonical, true)
     }
 
     fn merge_databases_inmemory(
@@ -1061,20 +1135,25 @@ impl RKDatabase {
             ));
         }
 
-        // Validate compatibility
-        let mut db_refs = Vec::new();
+        // Validate compatibility.
+        //
+        // G2a: this used to hold every input as a live `RKDatabase` in
+        // `db_refs`, so the resident set was every input database, held all the
+        // way through the final `from_file_path(&temp_output)` read — peak =
+        // all inputs PLUS the full merged output. Compatibility validation only
+        // needs three header fields, so the resident set is now
+        // `Vec<DatabaseHeader>` (~42 bytes per input).
+        let mut headers = Vec::with_capacity(input_paths.len());
         for path in input_paths {
-            let db = Self::from_file_path(path)?;
-            db_refs.push(db);
+            headers.push(Self::read_header_of(path)?);
         }
-        let db_refs_slice: Vec<&Self> = db_refs.iter().collect();
 
         // Create external sort merger
         let merge_buffer_mb = config.max_memory_usage / 1024 / 1024; // Convert bytes to MB
 
         // Validate for external sort merge (allow mixed canonical modes)
         let (_kmer_size, _final_canonical) =
-            Self::validate_compatibility_external_sort(&db_refs_slice, config.verbose)?;
+            Self::validate_header_compatibility(&headers, config.verbose)?;
 
         let mut merger = ExternalSortMerger::new(
             input_paths.to_vec(),
@@ -1097,14 +1176,27 @@ impl RKDatabase {
         Ok(result_db)
     }
 
-    /// Validate compatibility for external sort merge (allows mixed canonical modes)
-    fn validate_compatibility_external_sort(
-        db_refs: &[&Self],
+    /// The external-sort compatibility rules, over headers rather than
+    /// materialized databases.
+    ///
+    /// This function USED to be `validate_compatibility_external_sort(&[&Self],
+    /// bool)` and it held the whole rule set inline. Splitting it this way is
+    /// what lets the prefix-cache route validate a merge it has not loaded.
+    /// The error strings are byte-identical to the pre-split version because
+    /// `tests/merge_routing_tests.rs` and the PyO3 docstring both quote them.
+    ///
+    /// There is exactly ONE implementation of these rules. The database-taking
+    /// form was removed rather than kept as an adapter: after this change it
+    /// had no remaining caller, and a `#[allow(dead_code)]` shim retained
+    /// "just in case" would be a second thing to keep correct for the next
+    /// reader to mistake for a live path.
+    fn validate_header_compatibility(
+        headers: &[DatabaseHeader],
         verbose: bool,
     ) -> crate::error::ProcessingResult<(u8, bool)> {
-        let first_db = db_refs[0];
-        let kmer_size = first_db.kmer_size();
-        let canonical = first_db.is_canonical();
+        let first_header = &headers[0];
+        let kmer_size = first_header.kmer_size;
+        let canonical = first_header.canonical;
 
         if verbose {
             log::info!("Validating databases for external sort merge...");
@@ -1113,28 +1205,26 @@ impl RKDatabase {
         let mut has_canonical = false;
         let mut has_non_canonical = false;
 
-        for (i, db) in db_refs.iter().enumerate() {
-            if db.kmer_size() != kmer_size {
+        for (i, header) in headers.iter().enumerate() {
+            if header.kmer_size != kmer_size {
                 let mut msg = format!(
                     "Database {} has k-mer size {}, expected {}",
                     i + 1,
-                    db.kmer_size(),
+                    header.kmer_size,
                     kmer_size
                 );
 
                 if verbose {
                     msg.push_str(&format!(
                         "\n  Database 1: k-mer size={}, canonical={}, k-mers={}",
-                        kmer_size,
-                        canonical,
-                        first_db.header().total_kmers
+                        kmer_size, canonical, first_header.total_kmers
                     ));
                     msg.push_str(&format!(
                         "\n  Database {}: k-mer size={}, canonical={}, k-mers={}",
                         i + 1,
-                        db.kmer_size(),
-                        db.is_canonical(),
-                        db.header().total_kmers
+                        header.kmer_size,
+                        header.canonical,
+                        header.total_kmers
                     ));
                     msg.push_str("\n  Hint: All databases must have the same k-mer size to merge");
                 }
@@ -1142,7 +1232,7 @@ impl RKDatabase {
                 return Err(crate::error::ProcessingError::new(msg));
             }
 
-            if db.is_canonical() {
+            if header.canonical {
                 has_canonical = true;
             } else {
                 has_non_canonical = true;
@@ -1152,8 +1242,8 @@ impl RKDatabase {
                 log::info!(
                     "  Database {}: compatible (k-mer size={}, canonical={})",
                     i + 1,
-                    db.kmer_size(),
-                    db.is_canonical()
+                    header.kmer_size,
+                    header.canonical
                 );
             }
         }
@@ -1167,7 +1257,7 @@ impl RKDatabase {
             log::info!("  Final merge mode: canonical={}", final_canonical);
         }
 
-        Ok((kmer_size.try_into().unwrap(), final_canonical))
+        Ok((kmer_size, final_canonical))
     }
 }
 

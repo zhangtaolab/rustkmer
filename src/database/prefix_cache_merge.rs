@@ -73,16 +73,27 @@ impl ExternalSortMerger {
     ) -> ProcessingResult<Self> {
         let num_buckets = 1 << 8;
 
-        let reference_db = RKDatabase::from_file_path(&input_files[0])?;
-        let kmer_size = reference_db.header().kmer_size as usize;
+        // G2a / threat T-03-31: this constructor used to call
+        // `RKDatabase::from_file_path` on the first input AND then on every
+        // input again in the loop below — loading every input database twice,
+        // and using the first one only for its header. Both now read 42 bytes
+        // via `read_header_of`; the body is never touched.
+        //
+        // Note also that `read_record_at` above was already a plain
+        // `u32::from_le_bytes` with no endianness heuristic: the prefix-cache
+        // path never carried the `count_le`/`count_be` fallback that plan 03-07
+        // deleted from `KmerEntry::read_from`. The reader, not this file, was
+        // the outlier.
+        let first_header = RKDatabase::read_header_of(&input_files[0])?;
+        let kmer_size = first_header.kmer_size as usize;
 
         let mut canonical_modes = Vec::new();
         let mut kmer_sizes = Vec::new();
 
         for path in input_files.iter() {
-            let db = RKDatabase::from_file_path(path)?;
-            canonical_modes.push(db.header().canonical);
-            kmer_sizes.push(db.header().kmer_size as usize);
+            let header = RKDatabase::read_header_of(path)?;
+            canonical_modes.push(header.canonical);
+            kmer_sizes.push(header.kmer_size as usize);
         }
 
         if kmer_sizes.iter().any(|&k| k != kmer_sizes[0]) {
@@ -100,7 +111,7 @@ impl ExternalSortMerger {
         }
 
         let final_canonical = has_canonical;
-        let total_kmers = reference_db.header().total_kmers;
+        let total_kmers = first_header.total_kmers;
 
         // D-06: every shard this merge writes lives under its own
         // `rustkmer-merge-<rand>/` subdir instead of loose in the shared

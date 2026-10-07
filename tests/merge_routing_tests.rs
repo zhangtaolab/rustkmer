@@ -178,6 +178,62 @@ fn missing_temp_dir(root: &Path) -> PathBuf {
     root.join("this_temp_dir_does_not_exist")
 }
 
+/// Overwrite a `u64` field in an already-written `.rkdb` header.
+///
+/// `.rkdb` v2 header layout (see `DatabaseHeader::write_to`):
+///   [0..4)   magic "RKDB"          [4..6)   version (u16 LE)
+///   [6]      kmer_size            [7]      pad
+///   [8..10)  pad (u16 LE)         [10..18) total_kmers (u64 LE)
+///   [18]     flags                [19..26) pad (7 bytes)
+///   [26..34) data_offset (u64 LE) [34..42) index_offset (u64 LE)
+fn patch_header_u64(path: &Path, field_offset: u64, value: u64) -> anyhow::Result<()> {
+    let mut f = File::options()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(|e| anyhow::anyhow!("failed to reopen {}: {}", path.display(), e))?;
+    f.seek(SeekFrom::Start(field_offset))
+        .map_err(|e| anyhow::anyhow!("failed to seek in {}: {}", path.display(), e))?;
+    f.write_all(&value.to_le_bytes())
+        .map_err(|e| anyhow::anyhow!("failed to patch header of {}: {}", path.display(), e))?;
+    f.flush()
+        .map_err(|e| anyhow::anyhow!("failed to flush {}: {}", path.display(), e))
+}
+
+/// Assert that `err` is the streaming route's temp-chunk-creation failure.
+///
+/// The exact shape matters. The previous assertion in this file was
+/// `msg.contains("temp") || msg.contains("No such file")`, which several
+/// unrelated failures satisfy — a wrong k-mer size, a bad input path, a corrupt
+/// input all mention one or the other, so the "hard route" proof it was
+/// carrying was much weaker than it read. This asserts BOTH halves of the real
+/// signature emitted by `TempFileManager::create_temp_file`:
+///
+///   `Failed to create temp file '<temp_dir>/rustkmer_sort_<pid>_<ts>_<id>.chunk': ...`
+///
+/// — the operation, and the nonexistent directory we deliberately pointed at.
+/// Plan 03-07 reported the weak form and left it here; this is that fix.
+fn assert_streaming_route_proved(err: &rustkmer::ProcessingError, missing: &Path) {
+    let msg = err.to_string();
+    let missing_name = missing
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    assert!(
+        msg.contains("Failed to create temp file"),
+        "expected the streaming route's chunk-creation failure; the message must name the \
+         operation that only the streaming path performs. Got: {}",
+        msg
+    );
+    assert!(
+        !missing_name.is_empty() && msg.contains(&missing_name),
+        "the failure must name the nonexistent temp dir '{}' we pointed the route probe at, \
+         proving the streaming path was entered rather than some other failure. Got: {}",
+        missing_name,
+        msg
+    );
+}
+
 /// Smoke test (GREEN in the Wave-0 scaffold — the only test not `#[ignore]`d).
 ///
 /// Two small, overlapping inputs merged under `merge_mode: "auto"` with a
@@ -276,15 +332,11 @@ fn merge_over_budget_hard_routes_to_streaming() -> anyhow::Result<()> {
     // streaming path was entered (it must create a chunk file there). A
     // warn-and-continue in-memory fallback would have returned Ok.
     let no_temp = routing_config(&missing_temp_dir(dir.path()), TINY_BUDGET_BYTES, "auto");
+    let missing = missing_temp_dir(dir.path());
     let err = RKDatabase::merge_databases(&[a, b], &no_temp).expect_err(
         "over-budget auto merge must hard-route to streaming, not warn-and-continue in-memory",
     );
-    let msg = err.to_string();
-    assert!(
-        msg.contains("temp") || msg.contains("No such file"),
-        "expected a temp-chunk-creation failure proving the streaming path ran; got: {}",
-        msg
-    );
+    assert_streaming_route_proved(&err, &missing);
 
     Ok(())
 }
@@ -346,19 +398,15 @@ fn merge_explicit_streaming_mode_always_streams() -> anyhow::Result<()> {
         write_input_db(dir.path(), "p1.rkdb", 8)?,
         write_input_db(dir.path(), "p2.rkdb", 8)?,
     ];
+    let missing = missing_temp_dir(dir.path());
     let err = RKDatabase::merge_databases(
         &probe_inputs,
-        &routing_config(&missing_temp_dir(dir.path()), HUGE_BUDGET_BYTES, "streaming"),
+        &routing_config(&missing, HUGE_BUDGET_BYTES, "streaming"),
     )
     .expect_err(
         "merge_mode='streaming' must take the streaming path even when the estimate is within budget",
     );
-    let msg = err.to_string();
-    assert!(
-        msg.contains("temp") || msg.contains("No such file"),
-        "expected a temp-chunk-creation failure proving the streaming path ran; got: {}",
-        msg
-    );
+    assert_streaming_route_proved(&err, &missing);
 
     // Control: the same explicit streaming mode with a real temp_dir must
     // succeed and produce the exact union.
@@ -470,6 +518,111 @@ fn estimator_reads_header_only_no_materialization() -> anyhow::Result<()> {
         corrupt_estimate,
         corrupt_len.saturating_sub(42) / 20,
         "a corrupt header must fall back to the file-size upper bound (threat T-03-01)"
+    );
+
+    Ok(())
+}
+
+/// G2a — the header-only read is the ONLY way a merge route learns an input's
+/// shape, so it must (a) agree with the materializing loader field for field on
+/// a well-formed file, and (b) succeed on a file whose body is absent entirely.
+///
+/// (b) is the property that makes the over-budget path safe:
+/// `merge_databases_streaming` used to call `from_file_path` on
+/// `input_paths[0]` purely to learn `kmer_size` and `canonical` — on the route
+/// chosen precisely because the inputs do not fit. A header claiming 5 billion
+/// k-mers over an empty body would need ~100 GB to materialize, so returning a
+/// number for it is only possible if nothing was loaded. The premise assertion
+/// keeps that honest: the materializing loader must genuinely FAIL on the same
+/// file, so a green here cannot be explained by the file being readable anyway.
+#[test]
+fn header_only_read_agrees_with_the_materializing_loader() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+
+    // (a) Field-for-field agreement on a well-formed file. The streaming route
+    // takes `kmer_size`/`canonical` and `ExternalSortMerger::new` takes
+    // `kmer_size`/`canonical`/`total_kmers` from this read, so a divergence here
+    // would silently change merge output.
+    let ok = write_input_db(dir.path(), "ok.rkdb", 23)?;
+    let header = RKDatabase::read_header_of(&ok)?;
+    let materialized = RKDatabase::from_file_path(&ok)?;
+    assert_eq!(header.kmer_size, materialized.kmer_size_u8());
+    assert_eq!(header.canonical, materialized.is_canonical());
+    assert_eq!(header.total_kmers, materialized.total_kmers());
+    assert_eq!(
+        header.total_kmers, 23,
+        "the header's record count must be the real entry count on a well-formed file"
+    );
+
+    // (b) A header over an empty body. `write_truncated_oversized_db` writes
+    // exactly 42 bytes of header and then truncates the body away.
+    const DECLARED: u64 = 5_000_000_000;
+    const DECLARED_SMALL: u64 = 1_000;
+    let bomb = write_truncated_oversized_db(dir.path(), "bomb.rkdb", 16, DECLARED)?;
+    let small = write_truncated_oversized_db(dir.path(), "small.rkdb", 0, DECLARED_SMALL)?;
+    assert!(
+        RKDatabase::from_file_path(&small).is_err(),
+        "premise: the materializing loader must fail on a truncated body, otherwise the \
+         next assertion proves nothing"
+    );
+
+    let bomb_header = RKDatabase::read_header_of(&bomb)?;
+    assert_eq!(
+        bomb_header.total_kmers, DECLARED,
+        "the header-only read must return the persisted count without materializing anything"
+    );
+    assert_eq!(bomb_header.kmer_size, K);
+    assert!(bomb_header.canonical);
+
+    Ok(())
+}
+
+/// G2a / the documented semantic change of routing the estimator through
+/// `read_header_of`: a file whose header PARSES but carries a `data_offset`
+/// other than 42 is now refused by both the header-only read and the
+/// materializing loader, with the identical message — and the estimator, which
+/// is a fallback-by-design function, falls back to the file-size bound rather
+/// than trusting a header no reader will accept.
+///
+/// This is asserted rather than described because the plan's warning is
+/// explicit that "semantics preserved exactly" would be a false claim: the
+/// estimator is now the STRICTER of the two for this field, and that is the
+/// safe direction.
+#[test]
+fn header_only_read_and_estimator_reject_an_unaccepted_data_offset() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let path = write_input_db(dir.path(), "odd_offset.rkdb", 30)?;
+    patch_header_u64(&path, 26, 64)?; // data_offset := 64, not 42
+
+    // Both readers refuse it, and they say the SAME thing, so a corrupt or
+    // incompatible file fails identically whether or not a body was loaded.
+    let header_err = RKDatabase::read_header_of(&path)
+        .expect_err("read_header_of must reject a data_offset no reader in the crate accepts");
+    let loader_err = RKDatabase::from_file_path(&path).expect_err(
+        "from_file_path must reject the same data_offset (premise for the equality below)",
+    );
+    assert_eq!(
+        header_err.to_string(),
+        loader_err.to_string(),
+        "the header-only read and the materializing loader must produce the identical error text"
+    );
+    assert!(
+        header_err
+            .to_string()
+            .contains("Unsupported data_offset 64"),
+        "the message must name the offending offset; got: {}",
+        header_err
+    );
+
+    // The estimator, unlike before this plan, no longer trusts this header: it
+    // falls back to the file-size upper bound (over-estimating routes the merge
+    // conservatively to streaming — threat T-03-01).
+    let estimated = RKDatabase::estimate_total_kmers(&path)?;
+    let len = std::fs::metadata(&path)?.len();
+    assert_eq!(
+        estimated,
+        len.saturating_sub(42) / 20,
+        "an unaccepted data_offset must send the estimator to its file-size fallback, not the header"
     );
 
     Ok(())
