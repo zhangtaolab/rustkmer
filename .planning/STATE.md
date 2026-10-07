@@ -3,12 +3,12 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 03
 current_phase_name: Memory Safety
-status: plans-complete
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-10-07T03:54:58.864Z"
+status: gap-closure-in-progress
+stopped_at: "Completed 03-06-PLAN.md (DENSE-01 un-inverted: KmerKey deleted, real 4M-entry RSS ratio 0.5152)"
+last_updated: "2026-10-07T12:15:18.375Z"
 last_activity: 2026-10-07
-last_activity_desc: "Completed 03-05 (MERGE-04: PyDatabase.merge max_memory / merge_mode kwargs)"
-state_head: bf619ae9b0ea802b3c4138accfc5cc21941b52a4
+last_activity_desc: "Completed 03-06 (G1: DENSE-01 un-inverted — KmerKey deleted, real 4M-entry RSS ratio 0.5152)"
+state_head: 490fa6ed7bfc6a7e82330a58e39772ff8e2e3920
 progress:
   total_phases: 4
   completed_phases: 2
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 
 ## Current Position
 
-Phase: 03 (Memory Safety) — PLANS COMPLETE (5/5), awaiting phase verification
-Plan: 5 of 5
-Status: All plans executed; `/gsd-verify-work 03` is the next step
-Last activity: 2026-10-07 — Completed 03-05 (MERGE-04: `PyDatabase.merge` max_memory / merge_mode kwargs)
+Phase: 03 (Memory Safety) — GAP CLOSURE in progress (6/11 plans complete)
+Plan: 6 of 11
+Status: 03-06 closed G1 (DENSE-01 was inverted; now measured at ratio 0.5152 with mutation-proven assertions). Remaining: 03-07..03-11, then `/gsd-verify-work 03`. Still open from 03-VERIFICATION.md: G2 (no merge strategy is memory-bounded) and G3 (routes disagree above 1M counts).
+Last activity: 2026-10-07 — Completed 03-06 (G1: DENSE-01 un-inverted — `KmerKey` deleted, dense table is `DashMap<u64,u32>`, 35.66 vs 69.21 B/entry over 4M entries)
 
-Progress: [██████████] 5/5 plans (Phase 03)
+Progress: [█████░░░░░] 6/11 plans (Phase 03)
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ Progress: [██████████] 5/5 plans (Phase 03)
 | Phase 03 P03 | 10min | 2 tasks | 7 files |
 | Phase 03 P04 | 10min | 1 tasks | 4 files |
 | Phase 03 P05 | 35min | 2 tasks | 5 files |
+| Phase 03 P06 | 20 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -150,6 +151,12 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-05: No new public API for route observation — merge still returns None. TMPDIR pointed at a nonexistent directory turns MergeConfig::temp_dir's existing default into a side-effect discriminator, so 03-01's probe reached the Python surface with zero new API and no log capture
 - [Phase 03]: 03-05: The over-budget test budget is 1024 (parse_memory_size's floor) and is usable only because the helper ASSERTS the derived estimate exceeds it first — that assertion turns a shrunken fixture from a silently vacuous routing test into a loud failure (inherited from 03-04's finding)
 - [Phase 03]: 03-05: Pre-existing pyo3 breakage reported, not fixed — maturin's python-source pairing (breaks the CI pyo3-build job's maturin build step) and the --cov-fail-under=80 addopts gate (makes every pyo3 pytest run exit 1). Both are one-line config fixes outside MERGE-04, recorded in deferred-items.md + WINDOWS.md with open status so a human decides at ship time
+- [Phase 03]: 03-06: The dense/wide width lives on the TABLE (a private two-variant CounterTable enum), not on the KEY — an enum key with a u128 variant costs 32 bytes whichever variant is populated, because layout is fixed at compile time, which is why plan 03-03's density claim was inverted — 03-06: The dense/wide width lives on the TABLE (a private two-variant CounterTable enum), not on the KEY — an enum key with a u128 variant costs 32 bytes whichever variant is populated, because layout is fixed at compile time, which is why plan 03-03's density claim was inverted
+- [Phase 03]: 03-06: stored_key_bytes()/uses_dense_storage() match the LIVE CounterTable variant and never re-derive from kmer_length — that single rule is what makes the DENSE-01 assertions observations rather than restatements, and what turns them red under the 'always Wide' mutation — 03-06: stored_key_bytes()/uses_dense_storage() match the LIVE CounterTable variant and never re-derive from kmer_length — that single rule is what makes the DENSE-01 assertions observations rather than restatements, and what turns them red under the 'always Wide' mutation
+- [Phase 03]: 03-06: The entry chain is one bump_entry! macro invoked once per arm with modify/insert blocks passed in — increment and merge genuinely differ in overflow predicate and fresh-insert bookkeeping, so forcing them into one parameterised shape would hide a real semantic difference — 03-06: The entry chain is one bump_entry! macro invoked once per arm with modify/insert blocks passed in — increment and merge genuinely differ in overflow predicate and fresh-insert bookkeeping, so forcing them into one parameterised shape would hide a real semantic difference
+- [Phase 03]: 03-06: dense_narrowing_rejects_high_bits_on_the_u64_path was REWRITTEN against the public increment(), not deleted — the type it named was deleted, but dropping the test would have silently removed the only coverage of threat T-03-09's detection path — 03-06: dense_narrowing_rejects_high_bits_on_the_u64_path was REWRITTEN against the public increment(), not deleted — the type it named was deleted, but dropping the test would have silently removed the only coverage of threat T-03-09's detection path
+- [Phase 03]: 03-06: The RSS measurement holds each counter alive while measuring its sibling. An RSS delta after a drop measures allocator free-list reuse, not footprint — a clean 4M-entry dense counter read 2.51 B/entry, below its own 16-byte slot, which is physically impossible and was the tell — 03-06: The RSS measurement holds each counter alive while measuring its sibling. An RSS delta after a drop measures allocator free-list reuse, not footprint — a clean 4M-entry dense counter read 2.51 B/entry, below its own 16-byte slot, which is physically impossible and was the tell
+- [Phase 03]: 03-06: Deliberate deferral — the dense width is applied to KmerCounter's table only, NOT to merge_databases_inmemory's HashMapBrown<u128,u32> accumulator (src/database/format.rs:912) or the Vec<KmerEntry> read path. DENSE-01 names COUNTING memory; the in-memory route only runs when already under budget, and narrowing those structures needs its own width-selection point and its own decoded-level differential — 03-06: Deliberate deferral — the dense width is applied to KmerCounter's table only, NOT to merge_databases_inmemory's HashMapBrown<u128,u32> accumulator (src/database/format.rs:912) or the Vec<KmerEntry> read path. DENSE-01 names COUNTING memory; the in-memory route only runs when already under budget, and narrowing those structures needs its own width-selection point and its own decoded-level differential
 
 ### Pending Todos
 
@@ -173,6 +180,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-07T03:54:58.749Z
-Stopped at: Completed 03-05-PLAN.md
+Last session: 2026-10-07T12:15:18.278Z
+Stopped at: Completed 03-06-PLAN.md (DENSE-01 un-inverted: KmerKey deleted, real 4M-entry RSS ratio 0.5152)
 Resume file: None
