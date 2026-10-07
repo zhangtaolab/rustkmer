@@ -90,6 +90,37 @@
   **Suggested fix:** `cargo fmt` (one commit, no semantic change — the drift is
   purely line-wrapping).
 
+## Added by Nyquist validation audit (2026-10-07)
+
+- **BLOCKER-1 — `KmerKey` is 32 bytes, so DENSE-01's dense width INCREASES
+  counting memory rather than halving it, and the assertion that "proves" it
+  cannot fail.** (Supersedes the scope of the `memory_usage()` modelled-estimate
+  entry below — read that entry's 0.6×/0.818× framing as applying to the
+  *model* only; the real footprint is worse than either figure.)
+  status: open
+  **What:** `KmerKey` is an enum with a `u128` variant, so it inherits
+  `u128`'s 16-byte alignment and pads to **32 bytes** (measured:
+  `size_of::<KmerKey>() == 32`). For the k ≤ 32 case DENSE-01 targets, the real
+  per-entry key+count is 36 B versus the pre-Phase-3 20 B — a 1.80× ratio,
+  where the model claims 12 B (0.60×). The doc rationale at
+  `src/hash/key.rs:31-34` ("the discriminant never adds live storage cost") is
+  incorrect: the discriminant is paid on every entry, since the layout is fixed
+  at compile time and the `U128` variant forces the alignment.
+  **Why the tests miss it:** `KmerCounter::key_bytes()`
+  (`src/hash/table.rs:361`) derives the width from `self.kmer_length`, never
+  from a stored `KmerKey`, and no test inspects a `KmerKey` value (no
+  `size_of` assertion, no variant accessor). So `dense_counter_memory_usage_halved_for_k21`
+  (`src/hash/table.rs:1018`), `tests/dense_differential_tests.rs:237,247` and
+  `tests/dense_merge_integration_tests.rs:457` all stay green under the mutation
+  "always store `KmerKey::U128`". They restate the branch condition rather than
+  observing the branch.
+  **Scope:** DENSE-01 only. DENSE-02 (golden sha256) and DENSE-03 (decoded-level
+  differential) remain sound — see `03-VALIDATION.md` §BLOCKER-1.
+  **Suggested fix:** monomorphize the table over the key width (or use two
+  concrete counter types selected at `new()`), keeping
+  `get_all_counts() -> Vec<(u128, u32)>` unchanged for D-05/DENSE-02. Re-open
+  the "Pattern 1 Option A" trade-off from 03-RESEARCH.
+
 - `KmerCounter::memory_usage()` is a *modelled* estimate, not a measurement.
   Plan 03-03 made it branch on the DENSE-01 storage width (24 B overhead + 8 B
   key + 4 B count for k ≤ 32; 24 + 16 + 4 above), and the 24-byte
