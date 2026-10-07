@@ -15,6 +15,7 @@ pub mod query;
 pub mod stats;
 pub mod streaming_merge;
 pub mod suffix_query;
+pub mod temp_lifecycle;
 
 pub use format::{DatabaseFormat, DatabaseHeader};
 pub use index::DatabaseIndex;

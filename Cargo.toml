@@ -88,12 +88,19 @@ env_logger = "0.11"
 # System information
 sys-info = "0.9"
 
+# Temporary files/dirs — PRODUCTION dependency since plan 03-02 (D-06).
+# Promoted from [dev-dependencies]: `src/database/temp_lifecycle.rs` uses
+# `tempfile::TempDir` to give every merge a process-unique `rustkmer-merge-*`
+# subdir with RAII cleanup. A dev-dependency is invisible to `src/`, so
+# `cargo build --release` would fail with "unresolved import `tempfile`"
+# (03-RESEARCH.md Pitfall 6). Tests still inherit it from [dependencies].
+tempfile = "3.12"
+
 [dev-dependencies]
 # Benchmarking
 criterion = { version = "0.5", features = ["html_reports"] }
 
 # Testing
-tempfile = "3.12"
 proptest = "1.5"
 
 # Source-tree introspection for the CJK string-literal lint (plan 01-04, D-07).
