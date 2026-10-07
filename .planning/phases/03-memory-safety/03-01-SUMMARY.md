@@ -128,9 +128,9 @@ coverage:
     human_judgment: true
     rationale: "CI and this machine have no human-scale dataset, so only the size-independent routing LOGIC is proven here. The plan's own RESEARCH section defers actual human-scale validation to Phase 4's benchmark against CRR1936095. A human must confirm the end-to-end bound on real data."
 
-commits: 2
+commits: 4
 plan_head_before: ec52a6325c15a2a8c9b7ffaa16f3da06ebdce0e5
-plan_head_after: fc8da65db4fb22e819157680ea014d3ac9647bf5
+plan_head_after: 26a66974755c01ce8d0f183e1c36d9ccd15abcd4
 
 duration: 42min
 completed: 2026-10-07
@@ -162,6 +162,8 @@ status: complete
 
 1. **Task 1: Wave-0 scaffold `tests/merge_routing_tests.rs`** — `db90529` (test)
 2. **Task 2: Header-only estimator + hard-route + D-02 reject** — `fc8da65` (feat)
+3. **Plan metadata:** `3aa2d2f` (docs: SUMMARY.md)
+4. **Plan close-out:** `26a6697` (docs: STATE.md, ROADMAP.md, REQUIREMENTS.md)
 
 ## Files Created/Modified
 
@@ -245,7 +247,7 @@ See `.planning/phases/03-memory-safety/deferred-items.md`:
 
 - Commits verified present in history: `db90529`, `fc8da65` ✓
 - Files verified on disk: `tests/merge_routing_tests.rs`, `src/database/format.rs`, `src/database/streaming_merge.rs`, `.planning/phases/03-memory-safety/deferred-items.md` ✓
-- `commits: 2` is MEASURED via `git rev-list --count ec52a63..HEAD` (ledger written to `.git/gsd-plan-head-before-03-01` before the first commit) ✓
+- `commits: 4` is MEASURED via `git rev-list --count ec52a63..HEAD` (ledger written to `.git/gsd-plan-head-before-03-01` before the first commit) — 2 task commits + the SUMMARY commit + the STATE/ROADMAP/REQUIREMENTS commit ✓
 - All Task 1 and Task 2 acceptance criteria re-run and passing ✓
 - Full `cargo test` green: 217 lib + 25 merge_routing + 34 golden + 23 round_trip + 20 mod + 8 property, 0 failures ✓
 - `cargo clippy --all-targets -- -D warnings` exits 0 ✓
