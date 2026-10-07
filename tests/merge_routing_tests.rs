@@ -754,3 +754,92 @@ fn merged_database_accounts_for_every_input_kmer_on_both_routes() -> anyhow::Res
 
     Ok(())
 }
+
+/// MERGE-03 / threat T-03-34 — the prefix-cache intermediate result must live
+/// inside the merger's process-unique subdir and be reclaimed when the merge
+/// returns.
+///
+/// `deferred-items.md` recorded that the intermediate result was written to
+/// `config.temp_dir.join("external_sort_merge_output.tmp")` — a FIXED basename
+/// in a SHARED directory, never removed. Two defects in one: two concurrent
+/// prefix-cache merges sharing a temp dir overwrote each other, and a
+/// dataset-sized file survived the merge that produced it.
+///
+/// The assertion has two halves on purpose. Checking only the subdir would
+/// pass if the file had simply moved somewhere else outside RAII; checking only
+/// `temp_dir` would pass if the subdir copy still existed. Both must be absent.
+#[test]
+fn prefix_cache_intermediate_result_is_inside_the_raii_subdir_and_reclaimed() -> anyhow::Result<()>
+{
+    let dir = tempfile::tempdir()?;
+    let work = tempfile::tempdir()?;
+    let a = write_input_db(dir.path(), "pc_a.rkdb", INPUT_KMERS)?;
+    let b = write_input_db(dir.path(), "pc_b.rkdb", INPUT_KMERS)?;
+
+    let config = MergeConfig {
+        use_prefix_cache: true,
+        temp_dir: work.path().to_path_buf(),
+        ..routing_config(work.path(), HUGE_BUDGET_BYTES, "auto")
+    };
+
+    let merged = RKDatabase::merge_databases(&[a, b], &config)
+        .map_err(|e| anyhow::anyhow!("prefix-cache merge must succeed: {}", e))?;
+    let merged_kmers: std::collections::HashMap<u128, u32> = merged
+        .all_kmers()
+        .map_err(|e| anyhow::anyhow!("failed to read merged k-mers: {}", e))?
+        .into_iter()
+        .collect();
+    assert_eq!(
+        merged_kmers.len(),
+        INPUT_KMERS,
+        "the prefix-cache route must still produce the exact union — this test is about \
+         where its intermediate file lives, not about relaxing what it produces"
+    );
+
+    // Half 1: nothing named `external_sort_merge_output.tmp` survives anywhere
+    // under a `rustkmer-merge-*` subdir.
+    let mut subdirs_seen = 0usize;
+    for entry in std::fs::read_dir(work.path())? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.starts_with("rustkmer-merge-") {
+            continue;
+        }
+        subdirs_seen += 1;
+        if !entry.path().is_dir() {
+            continue;
+        }
+        for inner in std::fs::read_dir(entry.path())? {
+            let inner = inner?;
+            let inner_name = inner.file_name().to_string_lossy().to_string();
+            assert_ne!(
+                inner_name,
+                "external_sort_merge_output.tmp",
+                "the intermediate result must not survive inside {}: the TempDir's Drop \
+                 owns every file beneath it, so a leftover here means the merge result was \
+                 written somewhere RAII does not own",
+                entry.path().display()
+            );
+        }
+    }
+    if subdirs_seen == 0 {
+        // The success case: Drop removed the whole subdir, so there is nothing
+        // left to inspect. Logged, never a silent pass.
+        eprintln!(
+            "prefix-cache reclamation: the whole rustkmer-merge-* subdir is already gone, \
+             which is the RAII success case"
+        );
+    }
+
+    // Half 2: the OLD fixed location, directly in the shared temp dir, must
+    // also be absent — otherwise the file merely moved outside RAII.
+    let old_location = work.path().join("external_sort_merge_output.tmp");
+    assert!(
+        !old_location.exists(),
+        "the intermediate result must not be written to the shared temp dir at {} \
+         (fixed basename: collides between concurrent merges, survives the merge)",
+        old_location.display()
+    );
+
+    Ok(())
+}

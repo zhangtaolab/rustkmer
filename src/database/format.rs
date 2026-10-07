@@ -13,6 +13,28 @@ pub const DATABASE_MAGIC: &[u8; 4] = b"RKDB";
 /// Database version
 pub const DATABASE_VERSION: u16 = 2;
 
+/// Lower bound (in MB) on the per-prefix-bucket merge buffer.
+///
+/// This value REPLACED a hard-coded 1 GB floor (`merge_buffer_mb.max(1024)`,
+/// review finding IN-01). That floor silently overrode a user's
+/// `--max-memory 256MB` by 4x, on exactly the path that flag exists to
+/// constrain: `merge_buffer_mb` becomes the per-bucket byte threshold in
+/// `prefix_cache_merge.rs`, so a user who asked for a 256 MB budget still
+/// got up to 1 GB resident per bucket.
+///
+/// The old floor is not justified anywhere in the record, and the code review
+/// treated it as *possibly deliberate* (a guard against a pathologically small
+/// per-bucket buffer). The judgement here is that a memory-budget flag the
+/// code silently overrides is a bug, and the "don't be pathologically small"
+/// intent is preserved two ways: the floor is now 1 MB rather than 0, and when
+/// it does raise a smaller configured value the merge logs one line naming both
+/// numbers, so the adjustment is visible rather than silent.
+///
+/// MINIM-03 (4-prefix / 256-bucket granularity) is a v2 requirement and is
+/// explicitly out of scope: this constant changes how the existing
+/// `num_buckets = 1 << 8` is bounded, not how many buckets there are.
+const PREFIX_CACHE_MIN_BUFFER_MB: usize = 1;
+
 /// Database file header containing metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseHeader {
@@ -1150,6 +1172,14 @@ impl RKDatabase {
 
         // Create external sort merger
         let merge_buffer_mb = config.max_memory_usage / 1024 / 1024; // Convert bytes to MB
+        if merge_buffer_mb < PREFIX_CACHE_MIN_BUFFER_MB {
+            log::info!(
+                "Prefix-cache per-bucket buffer raised from {} MB to the {} MB floor \
+                 (set by the user's max_memory budget)",
+                merge_buffer_mb,
+                PREFIX_CACHE_MIN_BUFFER_MB
+            );
+        }
 
         // Validate for external sort merge (allow mixed canonical modes)
         let (_kmer_size, _final_canonical) =
@@ -1158,14 +1188,36 @@ impl RKDatabase {
         let mut merger = ExternalSortMerger::new(
             input_paths.to_vec(),
             config.temp_dir.clone(),
-            merge_buffer_mb.max(1024), // At least 1GB buffer
+            PREFIX_CACHE_MIN_BUFFER_MB.max(merge_buffer_mb),
             config.num_threads,
             config.merge_mode.clone(),
             config.keep_intermediate,
         )?;
 
-        // Create temporary output path
-        let temp_output = config.temp_dir.join("external_sort_merge_output.tmp");
+        // The intermediate result goes INSIDE the merger's own process-unique
+        // `rustkmer-merge-<rand>/` subdir, not loose in the shared
+        // `config.temp_dir`. Two consequences, both of which close a recorded
+        // deferred item:
+        //
+        //   1. The `TempDir`'s `Drop` now reclaims the intermediate result
+        //      together with every shard. It used to be written to the shared
+        //      temp dir under a FIXED name and never removed, so a
+        //      dataset-sized file survived the merge that produced it — the
+        //      disk-exhaustion half of MERGE-03 that `deferred-items.md`
+        //      recorded as open.
+        //   2. The fixed basename meant two concurrent prefix-cache merges
+        //      sharing a `temp_dir` overwrote each other's output — threat
+        //      T-03-06's class, and the reason the shards moved under a
+        //      process-unique subdir in the first place.
+        //
+        // The `None` arm is the degenerate case where `Drop` already took the
+        // `TempDir` (only possible once `keep_intermediate` is being honoured
+        // during drop, i.e. after the merge finished). Falling back keeps the
+        // merge working rather than panicking on an impossible state.
+        let temp_output = match merger.merge_temp_subdir_path() {
+            Some(dir) => dir.join("external_sort_merge_output.tmp"),
+            None => config.temp_dir.join("external_sort_merge_output.tmp"),
+        };
         merger.external_sort_merge(&temp_output)?;
 
         let _elapsed = start_time.elapsed();
