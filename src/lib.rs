@@ -32,4 +32,11 @@ pub mod output;
 
 // Re-export key types for convenience
 pub use error::{KmerError, ProcessingError, ProcessingResult};
-pub use hash::{KmerCounter, KmerKey};
+// Phase 3 plan 03-06: `KmerKey` is gone. The dense/wide width lives on the
+// counter's private `CounterTable` (a `DashMap<u64,u32>` / `DashMap<u128,u32>`)
+// rather than in a public key enum whose `u128` variant forced 16-byte
+// alignment and a 32-byte key, which made counting memory for k <= 32 LARGER
+// than the pre-Phase-3 `u128` counter. `KmerCounter` keeps its whole `u128`
+// -typed surface (`new`/`increment`/`get_count`/`get_all_counts`/`merge`), so
+// every call site below is unaffected.
+pub use hash::KmerCounter;

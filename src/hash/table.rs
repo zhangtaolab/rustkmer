@@ -7,7 +7,6 @@ use dashmap::DashMap;
 
 use super::filtering::{CountFilter, FilteringResult};
 use crate::error::{KmerError, ProcessingError, ProcessingResult};
-use crate::hash::key::KmerKey;
 use crate::kmer::encoding::MAX_KMER_SIZE_IN_U64;
 
 /// Modelled per-entry hash/shard overhead in [`KmerCounter::memory_usage`].
@@ -16,17 +15,77 @@ use crate::kmer::encoding::MAX_KMER_SIZE_IN_U64;
 /// table, not of the key it stores, so it does not halve with the key.
 const HASH_OVERHEAD_PER_ENTRY: usize = 24;
 
-/// Modelled width of the dense `KmerKey::U64` storage key (DENSE-01).
-const U64_KEY_BYTES: usize = 8;
-/// Modelled width of the `KmerKey::U128` storage key.
-const U128_KEY_BYTES: usize = 16;
 /// Modelled width of the `u32` count value stored alongside every key.
 const COUNT_BYTES: usize = 4;
+
+/// The counter's storage, width-selected in [`KmerCounter::new`] (DENSE-01).
+///
+/// **The width lives on the TABLE, not on the KEY.** Phase 3's first attempt
+/// (plan 03-03) put it on the key as a `KmerKey { U64(u64), U128(u128) }`
+/// enum. That enum has a `u128` variant, so Rust gives it `u128`'s 16-byte
+/// alignment and pads it to **32 bytes**, making the `(K, V)` slot `DashMap`
+/// actually stores **48 bytes** instead of 32 — a 4M-entry measurement put
+/// counting memory for k ≤ 32 at **102.89 B/entry vs 69.34 B/entry** for the
+/// pre-Phase-3 `DashMap<u128, u32>`, a ratio of **1.487**. DENSE-01 claims the
+/// opposite. The enum was deleted (plan 03-06) and the width moved here.
+///
+/// Neither variant's payload mentions the other's width, so `size_of` is decided
+/// by the concrete `DashMap`, not by a discriminant. Do NOT reintroduce a
+/// `KmerKey`-shaped enum here — a `Box`-ed or `Option`-ed wide arm reintroduces
+/// exactly the same padding.
+#[derive(Debug)]
+enum CounterTable {
+    /// **Dense width** — `kmer_length <= MAX_KMER_SIZE_IN_U64` (k ≤ 32), the
+    /// common case. An 8-byte key plus a 4-byte count is a 16-byte slot.
+    Dense(DashMap<u64, u32>),
+    /// **Wide width** — 33..=64, the pre-Phase-3 layout, byte for byte.
+    Wide(DashMap<u128, u32>),
+}
+
+/// Atomic per-key count bump, shared by both [`CounterTable`] arms.
+///
+/// CRITICAL (RESEARCH Pattern 1 / Pitfalls 1, 2, 6): the
+/// `entry().and_modify(..).or_insert_with(..)` chain holds the shard lock for
+/// the entry's whole lifetime, so the overflow check + increment is ATOMIC
+/// per-key — no lost update, no double count under concurrency (PCOUNT-04).
+/// Do NOT split this into `get()` + `insert()` — that both loses atomicity
+/// (TOCTOU window → lost updates) AND risks deadlock (dashmap docs.rs: "May
+/// deadlock if called when holding any sort of reference into the map").
+///
+/// `and_modify` takes `FnOnce(&mut V) -> ()` and CANNOT return a `Result`
+/// (Pitfall 6). The flag-then-check pattern works around the signature: mutate
+/// the `flag: $flag` local inside the closure, then inspect it AFTER the entry
+/// chain completes (the shard lock has been released by then, so the
+/// early-return is safe).
+///
+/// Both arms need the chain, so it is factored here rather than duplicated —
+/// duplication is exactly how the two widths would drift apart, and T-03-23
+/// requires the per-key shard-lock hold to be identical on both.
+///
+/// The `modify` and `insert` blocks are passed in because `increment` and
+/// `merge` differ in their overflow predicate (`*count == self.max_count` vs
+/// `*existing > u32::MAX - count`) and in what they publish on a fresh insert.
+/// The *shape* is identical and that shape is what must not drift.
+macro_rules! bump_entry {
+    (
+        flag: $flag:ident,
+        map: $map:expr,
+        key: $key:expr,
+        modify: |$cur:ident| $modify:block,
+        insert: $insert:block $(,)?
+    ) => {{
+        let mut $flag = false;
+        $map.entry($key)
+            .and_modify(|$cur| $modify)
+            .or_insert_with(|| $insert);
+        $flag
+    }};
+}
 
 /// Thread-safe k-mer counter with concurrent operations
 #[derive(Debug)]
 pub struct KmerCounter {
-    /// Core hash table storing k-mer counts.
+    /// Core hash table storing k-mer counts, at the width selected by `new`.
     ///
     /// Backed by `dashmap::DashMap` (Phase 2, PCOUNT-02): internally sharded
     /// (~4×num_cpus per-shard `RwLock`s), so increments spread across shards
@@ -35,20 +94,21 @@ pub struct KmerCounter {
     /// relevant shard lock for its lifetime → atomic per-key (RESEARCH
     /// Pattern 1), preserving the u32::MAX overflow semantics verbatim.
     ///
-    /// **DENSE-01 (Phase 3, plan 03-03): the key is width-selected, not a bare
-    /// `u128`.** For `kmer_length <= MAX_KMER_SIZE_IN_U64` (32) — the common
-    /// case — keys are stored as `KmerKey::U64`, halving the per-k-mer keyed
-    /// storage. For 33..=64 they stay `KmerKey::U128`, unchanged. The width is
-    /// fixed for the counter's lifetime (chosen in `new`), so exactly one
-    /// variant is ever populated and the discriminant costs nothing.
+    /// **DENSE-01 (Phase 3, plan 03-06): the WIDTH lives on the TABLE.** For
+    /// k ≤ 32 (the common case) the table is `DashMap<u64, u32>` — a 16-byte
+    /// `(K, V)` slot. For 33..=64 it stays `DashMap<u128, u32>`, unchanged. The
+    /// width is fixed for the counter's lifetime, chosen at exactly one site in
+    /// `new`, and every read of it goes through [`KmerCounter::stored_key_bytes`]
+    /// — which matches the LIVE variant rather than re-deriving it from
+    /// `kmer_length`, which is what makes the DENSE-01 assertions observations
+    /// rather than restatements.
     ///
     /// **D-03: this is RAM-only.** No public signature changed (Phase 2 D-05
     /// carry-forward) — `increment`/`get_count` still take `u128` and
-    /// `get_all_counts` still returns `Vec<(u128, u32)>`, converting through
-    /// [`KmerKey::from_u128`] / [`KmerKey::to_u128`] at the boundary. The
-    /// `.rkdb` v2 write path therefore sees the same 16-byte-u128 values it
-    /// always did (DENSE-02 byte-identity).
-    table: DashMap<KmerKey, u32>,
+    /// `get_all_counts` still returns `Vec<(u128, u32)>`, narrowing/widening at
+    /// the boundary. The `.rkdb` v2 write path therefore sees the same
+    /// 16-byte-u128 values it always did (DENSE-02 byte-identity).
+    table: CounterTable,
     /// Total k-mers successfully counted (excludes per-k-mer overflow
     /// attempts that return `Err` from `increment`). See WR-03.
     total_kmers: std::sync::atomic::AtomicU64,
@@ -77,12 +137,14 @@ impl KmerCounter {
     /// New KmerCounter instance
     ///
     /// # Storage width (DENSE-01)
-    /// `kmer_length <= MAX_KMER_SIZE_IN_U64` (32) selects the dense
-    /// `KmerKey::U64` storage width; 33..=64 keeps `KmerKey::U128`. The width
-    /// is derived from `kmer_length` on demand rather than cached in a
-    /// `use_u64` field — `kmer_length` is immutable for the counter's lifetime,
+    /// This is the **single width-selection point**. For k ≤ 32 the table is
+    /// `DashMap<u64, u32>` (16-byte slot); for 33..=64 it stays
+    /// `DashMap<u128, u32>` (32-byte slot). The width is not cached in a
+    /// `use_u64` flag — `kmer_length` is immutable for the counter's lifetime,
     /// so a cached flag could only ever be redundant state capable of drifting
-    /// out of agreement with the length it was derived from.
+    /// out of agreement with the table it was derived from. It is observable
+    /// from outside via [`KmerCounter::stored_key_bytes`] and
+    /// [`KmerCounter::uses_dense_storage`], both of which read the live table.
     pub fn new(
         kmer_length: usize,
         canonical_mode: bool,
@@ -93,14 +155,80 @@ impl KmerCounter {
             return Err(KmerError::InvalidKmerSize(kmer_length as u32).into());
         }
 
+        // The one and only place the storage width is chosen. `key_bytes()`
+        // used to re-derive this from `kmer_length` on every call, which made
+        // `memory_usage()` a restatement of the branch condition rather than an
+        // observation of the branch being taken.
+        let table = if kmer_length <= MAX_KMER_SIZE_IN_U64 {
+            CounterTable::Dense(DashMap::<u64, u32>::with_capacity(initial_capacity))
+        } else {
+            CounterTable::Wide(DashMap::<u128, u32>::with_capacity(initial_capacity))
+        };
+
         Ok(Self {
-            table: DashMap::<KmerKey, u32>::with_capacity(initial_capacity),
+            table,
             total_kmers: std::sync::atomic::AtomicU64::new(0),
             unique_kmers: std::sync::atomic::AtomicU64::new(0),
             kmer_length,
             canonical_mode,
             max_count: u32::MAX,
         })
+    }
+
+    /// Bytes occupied by ONE stored key, read from the LIVE table variant.
+    ///
+    /// **This is the single observation point the DENSE-01 tests build on.**
+    /// It matches `self.table` — it never re-derives the width from
+    /// `self.kmer_length`. That distinction is the whole point: a function
+    /// that recomputed the width from `k` would return the same answer whether
+    /// the counter really stored `u64` keys or `u128` keys, so it could not
+    /// detect the dense table being reverted. Under the mutation "always build
+    /// `CounterTable::Wide`" this accessor reports 16 for a k=21 counter and
+    /// the DENSE-01 assertions go red.
+    pub fn stored_key_bytes(&self) -> usize {
+        match &self.table {
+            CounterTable::Dense(_) => core::mem::size_of::<u64>(),
+            CounterTable::Wide(_) => core::mem::size_of::<u128>(),
+        }
+    }
+
+    /// Whether this counter stores keys at the dense `u64` width (k ≤ 32).
+    ///
+    /// Same rule as [`KmerCounter::stored_key_bytes`]: reads the live variant,
+    /// never `self.kmer_length`.
+    pub fn uses_dense_storage(&self) -> bool {
+        matches!(&self.table, CounterTable::Dense(_))
+    }
+
+    /// Number of entries currently held by the live table.
+    fn entry_count(&self) -> usize {
+        match &self.table {
+            CounterTable::Dense(map) => map.len(),
+            CounterTable::Wide(map) => map.len(),
+        }
+    }
+
+    /// Narrow an encoded k-mer to the dense `u64` storage width.
+    ///
+    /// Threat **T-03-09** (Tampering): on the dense path this is a `u128 as
+    /// u64` truncation, safe only because every production caller encodes
+    /// through `encode_kmer_bytes_u128`, which leaves the upper 64 bits zero for
+    /// a k ≤ 32 window. The `debug_assert!` enforces that invariant in
+    /// dev/test builds (elided in release — zero cost). Without it, a caller
+    /// that fed a value with high bits set would alias two distinct k-mers onto
+    /// one key and silently merge their counts.
+    ///
+    /// The message text is preserved VERBATIM from the deleted
+    /// `KmerKey::from_u128` so the T-03-09 test keeps matching on it.
+    fn narrow_to_dense(&self, value: u128) -> u64 {
+        debug_assert!(
+            value <= u64::MAX as u128,
+            "u64 storage width selected for kmer_length {} but the encoded value \
+             has bits set above bit 64 — narrowing would alias two distinct \
+             k-mers onto one key",
+            self.kmer_length
+        );
+        value as u64
     }
 
     /// Increment the count for a k-mer
@@ -112,47 +240,58 @@ impl KmerCounter {
     /// Result indicating success or error
     pub fn increment(&self, kmer_encoded: u128) -> ProcessingResult<()> {
         // CRITICAL (RESEARCH Pattern 1 / Pitfalls 1, 2, 6):
-        // The `entry().and_modify(..).or_insert_with(..)` chain holds the
-        // shard lock for the entry's whole lifetime, so the overflow check +
-        // increment is ATOMIC per-key — no lost update, no double count under
-        // concurrency (PCOUNT-04 invariant). Do NOT split this into
-        // `get()` + `insert()` — that both loses atomicity (TOCTOU window →
-        // lost updates) AND risks deadlock (dashmap docs.rs: "May deadlock if
-        // called when holding any sort of reference into the map").
+        // See the `bump_entry!` doc comment — the `entry().and_modify(..)
+        // .or_insert_with(..)` chain holds the shard lock for the entry's whole
+        // lifetime, so the overflow check + increment is ATOMIC per-key (no
+        // lost update, no double count under concurrency — the PCOUNT-04
+        // invariant). Both arms go through the same macro so the invariant is
+        // identical on both storage widths (threat T-03-23).
         //
-        // `and_modify` takes `FnOnce(&mut V) -> ()` and CANNOT return a
-        // `Result` (Pitfall 6). The flag-then-check pattern works around the
-        // signature: mutate a local `overflow` flag inside the closure, then
-        // inspect it AFTER the entry chain completes (the shard lock has been
-        // released by then, so the early-return is safe). The overflow
-        // message is preserved VERBATIM from the pre-refactor path
-        // (table.rs:76-79) — PCOUNT-04 depends on byte-identical behavior.
+        // DENSE-01 (Phase 3): the Dense arm narrows to the storage width chosen
+        // at `new()`; `narrow_to_dense` asserts the narrowing invariant with a
+        // `debug_assert!` (active under `cargo test`, elided in release — zero
+        // cost, threat T-03-09), so a caller that ever fed a value with high
+        // bits set fails loudly in dev/test instead of silently aliasing two
+        // distinct k-mers onto one key.
         //
-        // DENSE-01 (Phase 3): the key is narrowed to the storage width chosen
-        // at `new()`. On the U64 path this is a `u128 as u64` truncation, which
-        // is safe only because every production caller encodes through
-        // `encode_kmer_bytes_u128` and that encoder leaves the upper 64 bits
-        // zero for a k <= 32 window. `KmerKey::from_u128` asserts the invariant
-        // with a `debug_assert!` (active under `cargo test`, elided in release —
-        // zero cost, threat T-03-09), so a caller that ever fed a value with
-        // high bits set fails loudly in dev/test instead of silently aliasing
-        // two distinct k-mers onto one key.
-        let key = KmerKey::from_u128(kmer_encoded, self.kmer_length);
-        let mut overflow = false;
-        self.table
-            .entry(key)
-            .and_modify(|count| {
-                if *count == self.max_count {
-                    overflow = true;
-                } else {
-                    *count += 1;
-                }
-            })
-            .or_insert_with(|| {
-                self.unique_kmers
-                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                1
-            });
+        // The overflow message is preserved VERBATIM from the pre-refactor path
+        // (PCOUNT-04 depends on byte-identical behavior).
+        let overflow = match &self.table {
+            CounterTable::Dense(map) => bump_entry!(
+                flag: overflow,
+                map: map,
+                key: self.narrow_to_dense(kmer_encoded),
+                modify: |count| {
+                    if *count == self.max_count {
+                        overflow = true;
+                    } else {
+                        *count += 1;
+                    }
+                },
+                insert: {
+                    self.unique_kmers
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    1u32
+                },
+            ),
+            CounterTable::Wide(map) => bump_entry!(
+                flag: overflow,
+                map: map,
+                key: kmer_encoded,
+                modify: |count| {
+                    if *count == self.max_count {
+                        overflow = true;
+                    } else {
+                        *count += 1;
+                    }
+                },
+                insert: {
+                    self.unique_kmers
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    1u32
+                },
+            ),
+        };
 
         if overflow {
             return Err(ProcessingError::new(format!(
@@ -180,10 +319,12 @@ impl KmerCounter {
     /// # Returns
     /// Number of occurrences, or None if not found
     pub fn get_count(&self, kmer_encoded: u128) -> Option<u32> {
-        // DENSE-01: build the same width-selected key `increment` would have
-        // stored, so a lookup cannot miss because of an asymmetric conversion.
-        let key = KmerKey::from_u128(kmer_encoded, self.kmer_length);
-        self.table.get(&key).map(|r| *r)
+        // DENSE-01: look the key up at the width this counter actually STORES,
+        // so a lookup cannot miss because of an asymmetric conversion.
+        match &self.table {
+            CounterTable::Dense(map) => map.get(&self.narrow_to_dense(kmer_encoded)).map(|r| *r),
+            CounterTable::Wide(map) => map.get(&kmer_encoded).map(|r| *r),
+        }
     }
 
     /// Get all k-mer counts as a vector
@@ -191,14 +332,18 @@ impl KmerCounter {
     /// # Returns
     /// Vector of (kmer_encoded, count) pairs
     ///
-    /// DENSE-01 / D-03: dense `KmerKey::U64` keys are widened back to `u128`
-    /// by zero-extension on the way out, so this signature and every byte that
-    /// reaches the `.rkdb` writer are unchanged from the pre-Phase-3 counter.
+    /// DENSE-01 / D-03: the dense arm maps its stored `u64` key out as
+    /// `k as u128` — a **lossless zero-extension**, because every k ≤ 32
+    /// encoder leaves the upper 64 bits zero. This is the D-03 / DENSE-02
+    /// byte-identity guarantee: this signature, and every byte that reaches the
+    /// `.rkdb` writer, are unchanged from the pre-Phase-3 counter.
     pub fn get_all_counts(&self) -> Vec<(u128, u32)> {
-        self.table
-            .iter()
-            .map(|r| (r.key().to_u128(), *r.value()))
-            .collect()
+        match &self.table {
+            CounterTable::Dense(map) => {
+                map.iter().map(|r| (*r.key() as u128, *r.value())).collect()
+            }
+            CounterTable::Wide(map) => map.iter().map(|r| (*r.key(), *r.value())).collect(),
+        }
     }
 
     /// Get the top N most frequent k-mers
@@ -209,11 +354,9 @@ impl KmerCounter {
     /// # Returns
     /// Vector of (kmer_encoded, count) pairs sorted by count descending
     pub fn get_top_n(&self, n: usize) -> Vec<(u128, u32)> {
-        let mut pairs: Vec<(u128, u32)> = self
-            .table
-            .iter()
-            .map(|r| (r.key().to_u128(), *r.value()))
-            .collect();
+        // DENSE-01: iterates the LIVE variant via `get_all_counts`, so the
+        // dense arm's zero-extension applies here too.
+        let mut pairs: Vec<(u128, u32)> = self.get_all_counts();
 
         // Sort by count descending, then by kmer value for deterministic ordering
         pairs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
@@ -230,11 +373,20 @@ impl KmerCounter {
     /// # Returns
     /// Vector of (kmer_encoded, count) pairs within the specified range
     pub fn filter_by_count(&self, min_count: u32, max_count: u32) -> Vec<(u128, u32)> {
-        self.table
-            .iter()
-            .filter(|r| *r.value() >= min_count && *r.value() <= max_count)
-            .map(|r| (r.key().to_u128(), *r.value()))
-            .collect()
+        match &self.table {
+            CounterTable::Dense(map) => map
+                .iter()
+                .filter(|r| *r.value() >= min_count && *r.value() <= max_count)
+                // D-03 / DENSE-02: lossless zero-extension back to the public
+                // `u128` representation.
+                .map(|r| (*r.key() as u128, *r.value()))
+                .collect(),
+            CounterTable::Wide(map) => map
+                .iter()
+                .filter(|r| *r.value() >= min_count && *r.value() <= max_count)
+                .map(|r| (*r.key(), *r.value()))
+                .collect(),
+        }
     }
 
     /// Get k-mers with filtering applied using CountFilter
@@ -327,7 +479,10 @@ impl KmerCounter {
 
     /// Reset the counter to empty state
     pub fn reset(&self) {
-        self.table.clear();
+        match &self.table {
+            CounterTable::Dense(map) => map.clear(),
+            CounterTable::Wide(map) => map.clear(),
+        }
         self.total_kmers
             .store(0, std::sync::atomic::Ordering::Relaxed);
         self.unique_kmers
@@ -340,30 +495,38 @@ impl KmerCounter {
     /// Estimated memory usage in bytes
     ///
     /// # DENSE-01 (Phase 3)
-    /// The per-entry model now branches on the stored key width: 24 B modelled
-    /// hash/shard overhead + 8 B `KmerKey::U64` key + 4 B `u32` count for k ≤ 32,
-    /// and 24 + 16 + 4 for the `KmerKey::U128` width. The keyed *payload* is
-    /// what this plan halves (20 B → 12 B, i.e. 0.6×); the 24 B overhead is a
-    /// modelled constant common to both widths and is not part of the payload.
     ///
-    /// Because the value is derived from the key width, it doubles as an
-    /// observable of which `KmerKey` variant `new()` selected — the property
-    /// `tests/dense_differential_tests.rs` asserts directly.
+    /// The per-entry model is
+    /// 24 B (modelled hash/shard overhead) + 4 B (`u32` count) + the stored key.
+    ///
+    /// That is 36 B/entry for a k ≤ 32 counter and 44 B/entry above k=32. The
+    /// keyed *payload* is what DENSE-01 halves (20 B → 12 B, i.e. 0.6x); the
+    /// 24 B overhead is a modelled constant common to both widths and is not
+    /// part of the payload.
+    ///
+    /// **What this method is, and what it is not (plan 03-06).** The key width
+    /// now comes from [`KmerCounter::stored_key_bytes`], which reads the LIVE
+    /// table variant rather than re-deriving it from `kmer_length` — so the
+    /// number reported here does track what is actually stored. But the 24 B
+    /// overhead and the 4 B count are still a MODEL, not a measurement: the
+    /// value remains an estimate of a table this crate never lays out exactly.
+    /// `stored_key_bytes()` is the observation; this is the arithmetic around
+    /// it. The end-to-end evidence for DENSE-01 is the real-`KmerCounter`
+    /// bytes-per-entry measurement in `tests/dense_memory_tests.rs`.
     pub fn memory_usage(&self) -> usize {
-        self.table.len() * (HASH_OVERHEAD_PER_ENTRY + self.key_bytes() + COUNT_BYTES)
+        self.entry_count() * (HASH_OVERHEAD_PER_ENTRY + self.key_bytes() + COUNT_BYTES)
     }
 
     /// Modelled bytes for one k-mer key at this counter's storage width.
     ///
-    /// DENSE-01: 8 for the dense `KmerKey::U64` width (k ≤ 32), 16 for the
-    /// `KmerKey::U128` width (k > 32). Derived from `kmer_length` on demand —
-    /// see `new` for why no `use_u64` flag is cached.
+    /// DENSE-01 (plan 03-06): delegates to [`KmerCounter::stored_key_bytes`],
+    /// which matches the live table variant. Before plan 03-06 this method
+    /// branched on `kmer_length` itself — which made it a restatement of the
+    /// width-selection condition rather than an observation of the width
+    /// actually selected, and therefore unable to detect the dense storage
+    /// being reverted.
     fn key_bytes(&self) -> usize {
-        if self.kmer_length <= MAX_KMER_SIZE_IN_U64 {
-            U64_KEY_BYTES
-        } else {
-            U128_KEY_BYTES
-        }
+        self.stored_key_bytes()
     }
 
     /// Get statistics for the counter
@@ -456,34 +619,57 @@ impl KmerCounter {
         let mut merged_total: u64 = 0;
 
         for (kmer, count) in other_counts {
-            // Mirror `increment`'s flag-then-check (Pitfall 6): `and_modify`
-            // is `FnOnce(&mut V) -> ()` and cannot return `Result`. The shard
-            // lock is held for the entry's whole lifetime, so the
-            // overflow-check + add is atomic per-key (no TOCTOU window).
+            // Mirror `increment`'s flag-then-check (Pitfall 6) — see the
+            // `bump_entry!` doc comment. `and_modify` is `FnOnce(&mut V) -> ()`
+            // and cannot return `Result`. The shard lock is held for the entry's
+            // whole lifetime, so the overflow-check + add is atomic per-key (no
+            // TOCTOU window). Both arms go through the same macro, so the
+            // invariant is identical on both storage widths (threat T-03-23).
             //
             // DENSE-01: `other_counts` are widened back to `u128` by
-            // `get_all_counts`, so re-narrow them with the *same* width rule
-            // `increment` used. `merge` already rejected a differing
+            // `get_all_counts`, so the Dense arm re-narrows them with the same
+            // rule `increment` used. `merge` already rejected a differing
             // `kmer_length` above, so `self` and `other` necessarily agree on
-            // the width and this round-trip (`U64 -> u128 -> U64`) is exact.
-            let key = KmerKey::from_u128(kmer, self.kmer_length);
-            let mut overflow = false;
+            // the width and this round-trip (`u64 -> u128 -> u64`) is exact.
             let mut delta_total: u64 = 0;
-            self.table
-                .entry(key)
-                .and_modify(|existing| {
-                    if *existing > u32::MAX - count {
-                        overflow = true;
-                    } else {
-                        *existing += count;
+            let overflow = match &self.table {
+                CounterTable::Dense(map) => bump_entry!(
+                    flag: overflow,
+                    map: map,
+                    key: self.narrow_to_dense(kmer),
+                    modify: |existing| {
+                        if *existing > u32::MAX - count {
+                            overflow = true;
+                        } else {
+                            *existing += count;
+                            delta_total = count as u64;
+                        }
+                    },
+                    insert: {
+                        merged_unique += 1;
                         delta_total = count as u64;
-                    }
-                })
-                .or_insert_with(|| {
-                    merged_unique += 1;
-                    delta_total = count as u64;
-                    count
-                });
+                        count
+                    },
+                ),
+                CounterTable::Wide(map) => bump_entry!(
+                    flag: overflow,
+                    map: map,
+                    key: kmer,
+                    modify: |existing| {
+                        if *existing > u32::MAX - count {
+                            overflow = true;
+                        } else {
+                            *existing += count;
+                            delta_total = count as u64;
+                        }
+                    },
+                    insert: {
+                        merged_unique += 1;
+                        delta_total = count as u64;
+                        count
+                    },
+                ),
+            };
 
             if overflow {
                 // Publish the partial atomics before returning so the
@@ -567,6 +753,46 @@ impl KmerCounterBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Seed `kmer` directly into `counter`'s live table at the saturation
+    /// ceiling (`u32::MAX`), bypassing four billion `increment` calls.
+    ///
+    /// DENSE-01 (plan 03-06): `table` is now an enum over two concrete
+    /// `DashMap`s, so a test that seeds a k-mer must insert into the map the
+    /// counter ACTUALLY built. Routing every seed through this helper is what
+    /// keeps the seeding itself from becoming a source of width drift — a test
+    /// that hard-coded an arm would silently keep passing against a counter
+    /// that had reverted to the wide table.
+    ///
+    /// `kmer_length` is asserted against the live variant so a test calling
+    /// this with a length that contradicts the counter fails loudly instead of
+    /// quietly narrowing (or not).
+    fn seed_saturated(counter: &KmerCounter, kmer: u128, kmer_length: usize) {
+        // The caller's `kmer_length` must match the counter's own, so a test
+        // that seeds with the wrong k fails loudly. Note this deliberately
+        // compares the two lengths and nothing else: restating the width
+        // predicate here would put a second `kmer_length <= MAX_KMER_SIZE_IN_U64`
+        // in the file, which is precisely the "width chosen at two sites" drift
+        // plan 03-06 exists to prevent.
+        assert_eq!(
+            counter.kmer_length(),
+            kmer_length,
+            "seed_saturated: caller said k={} but the counter was built for k={}",
+            kmer_length,
+            counter.kmer_length()
+        );
+
+        match &counter.table {
+            // Narrow through the SAME production helper `increment` uses, so the
+            // T-03-09 debug guard covers test seeds too.
+            CounterTable::Dense(map) => {
+                map.insert(counter.narrow_to_dense(kmer), u32::MAX);
+            }
+            CounterTable::Wide(map) => {
+                map.insert(kmer, u32::MAX);
+            }
+        }
+    }
 
     #[test]
     fn test_basic_increment() {
@@ -677,12 +903,11 @@ mod tests {
         let counter1 = KmerCounter::new(31, false, 1000, 1).unwrap();
         let counter2 = KmerCounter::new(31, false, 1000, 1).unwrap();
 
-        // Seed counter1's kmer at the ceiling.
-        // Seed counter1's kmer at the ceiling. The private `table` field is
-        // keyed by `KmerKey` since DENSE-01, and this counter was built with
-        // k=31 (<= 32), so the seed must go through the same width selection
-        // `increment` uses — hence `from_u128(kmer, kmer_length)`.
-        counter1.table.insert(KmerKey::from_u128(0x1, 31), u32::MAX);
+        // Seed counter1's kmer at the ceiling. The private `table` field is in
+        // scope from this child module; `seed_saturated` matches the live
+        // variant, and this counter was built with k=31 (<= 32) so the dense
+        // arm is the one taken.
+        seed_saturated(&counter1, 0x1, 31);
         // Manually keep counter1's atomics in sync with the seed for a fair
         // starting point (the table field is private but in-scope from this
         // child module).
@@ -773,9 +998,9 @@ mod tests {
     /// holds only the relevant shard lock for each increment → atomic per-key.
     ///
     /// DENSE-01 note: this counter is built with k=31, so `increment` narrows
-    /// the argument into the `KmerKey::U64` storage width. The literal is a
+    /// the argument into the dense `u64` storage width. The literal is a
     /// 64-bit value (16 hex digits), so it is a representable k ≤ 32 k-mer and
-    /// satisfies the narrowing invariant `KmerKey::from_u128` asserts. A literal
+    /// satisfies the narrowing invariant `narrow_to_dense` asserts. A literal
     /// with bits above bit 63 would now be a programming error and would trip
     /// that assert (threat T-03-09) — which is the point.
     #[test]
@@ -836,10 +1061,10 @@ mod tests {
 
         // Seed the k-mer at the saturation ceiling WITHOUT 4 billion increments.
         // (The test module is a child of `table`'s module, so the private
-        // `table` field is in scope. DENSE-01: the field is keyed by
-        // `KmerKey`, so the seed must use the same width selection `increment`
-        // uses — k=31 selects `KmerKey::U64`.)
-        counter.table.insert(KmerKey::from_u128(kmer, 31), u32::MAX);
+        // `table` field is in scope. DENSE-01: `seed_saturated` inserts into
+        // whichever map the counter actually built — k=31 selects the dense
+        // `u64` table.)
+        seed_saturated(&counter, kmer, 31);
 
         // The next increment must hit the overflow guard and return Err with
         // the verbatim "K-mer count overflow reached maximum value 4294967295"
@@ -902,8 +1127,8 @@ mod tests {
         let counter = KmerCounter::new(31, false, 1000, 1).unwrap();
 
         // Seed 0x1 at the ceiling so the next increment on it overflows.
-        // DENSE-01: `table` is keyed by `KmerKey`; k=31 selects `U64`.
-        counter.table.insert(KmerKey::from_u128(0x1, 31), u32::MAX);
+        // DENSE-01: `seed_saturated` matches the live variant; k=31 is dense.
+        seed_saturated(&counter, 0x1, 31);
         counter
             .total_kmers
             .store(u32::MAX as u64, std::sync::atomic::Ordering::Relaxed);
@@ -948,15 +1173,20 @@ mod tests {
         );
     }
 
-    /// Threat T-03-09 (Tampering): the `u128 -> u64` narrowing in `increment` must
-    /// not silently truncate a value that does not fit the dense width.
+    /// Threat T-03-09 (Tampering): the `u128 -> u64` narrowing on the dense path
+    /// must not silently truncate a value that does not fit the dense width.
     ///
-    /// `KmerKey::from_u128` guards that with a `debug_assert!` — compiled out in
-    /// release (zero cost, D-03 zero-extension discipline), active in `cargo
-    /// test`. This test proves the guard actually fires, rather than merely
-    /// asserting it in a comment: without it, a caller that encoded a k-mer with
-    /// bits above bit 64 would alias two distinct k-mers onto one key and merge
-    /// their counts silently.
+    /// `KmerCounter::narrow_to_dense` guards that with a `debug_assert!` —
+    /// compiled out in release (zero cost, D-03 zero-extension discipline), active
+    /// in `cargo test`. This test proves the guard actually fires, rather than
+    /// merely asserting it in a comment: without it, a caller that encoded a k-mer
+    /// with bits above bit 64 would alias two distinct k-mers onto one key and
+    /// merge their counts silently.
+    ///
+    /// Rewritten in plan 03-06 against the live variant (the deleted enum key type
+    /// no longer exists to be called directly). The body drives the SAME production
+    /// entry point a caller uses — `increment` — so what is proven is that the
+    /// guard is reachable from the public API, not merely that a helper panics.
     ///
     /// Gated on `debug_assertions` because the release profile sets
     /// `panic = "abort"` — a release-mode run of this test would abort the
@@ -968,8 +1198,9 @@ mod tests {
         expected = "u64 storage width selected for kmer_length 21 but the encoded value has bits set above bit 64"
     )]
     fn dense_narrowing_rejects_high_bits_on_the_u64_path() {
-        // k=21 selects `KmerKey::U64`; `u128::MAX` cannot fit a u64.
-        let _ = KmerKey::from_u128(u128::MAX, 21);
+        // k=21 selects the dense u64 table; `u128::MAX` cannot fit a u64.
+        let counter = KmerCounter::new(21, false, 16, 1).unwrap();
+        let _ = counter.increment(u128::MAX);
     }
 
     /// The other half of T-03-09: the same value is *legitimate* on the wide
@@ -977,43 +1208,85 @@ mod tests {
     /// blanket rejection of large k-mers.
     #[test]
     fn dense_narrowing_guard_does_not_fire_on_the_u128_path() {
+        let counter = KmerCounter::new(64, false, 16, 1).unwrap();
+
+        // The wide table must report the full-width key...
         assert_eq!(
-            KmerKey::from_u128(u128::MAX, 64),
-            KmerKey::U128(u128::MAX),
+            counter.stored_key_bytes(),
+            core::mem::size_of::<u128>(),
+            "k=64 must report the full u128 stored key width"
+        );
+        assert!(
+            !counter.uses_dense_storage(),
+            "k=64 must not be on the dense storage path"
+        );
+        // ...and must actually accept `u128::MAX` without narrowing.
+        assert!(
+            counter.increment(u128::MAX).is_ok(),
             "k=64 must store the full u128 with no narrowing"
         );
+        assert_eq!(counter.get_count(u128::MAX), Some(1));
     }
 
-    /// A round-trip through the two conversions must be lossless for every k-mers
-    /// a given width is allowed to represent — this is the property that makes
-    /// the `.rkdb` write path byte-identical (D-03 / DENSE-02).
+    /// A round-trip through the two conversions must be lossless for every k-mer a
+    /// given width is allowed to represent — this is the property that makes the
+    /// `.rkdb` write path byte-identical (D-03 / DENSE-02).
+    ///
+    /// Rewritten in plan 03-06 as a `get_all_counts()` round-trip over REAL
+    /// counters, which is the property that actually matters: the key that comes
+    /// out is the key that went in. The old body exercised the deleted enum key
+    /// type's conversions in isolation; this one goes through the production table.
     #[test]
     fn dense_key_round_trip_is_lossless_on_both_widths() {
+        let dense_value: u128 = 0x0123_4567_89AB_CDEF_u64 as u128;
         for &k in &[1usize, 15, 21, 31, 32] {
-            let value = 0x0123_4567_89AB_CDEFu64 as u128;
+            let counter = KmerCounter::new(k, false, 16, 1).unwrap();
+            assert!(
+                counter.uses_dense_storage(),
+                "k={} must store at the dense u64 width",
+                k
+            );
+            counter.increment(dense_value).unwrap();
             assert_eq!(
-                KmerKey::from_u128(value, k).to_u128(),
-                value,
+                counter.get_all_counts(),
+                vec![(dense_value, 1u32)],
                 "k={} must round-trip a representable u64 k-mer exactly",
                 k
             );
         }
+
+        let wide_value: u128 = u128::MAX - 12345;
         for &k in &[33usize, 64] {
-            let value = u128::MAX - 12345;
+            let counter = KmerCounter::new(k, false, 16, 1).unwrap();
+            assert!(
+                !counter.uses_dense_storage(),
+                "k={} must store at the wide u128 width",
+                k
+            );
+            counter.increment(wide_value).unwrap();
             assert_eq!(
-                KmerKey::from_u128(value, k).to_u128(),
-                value,
+                counter.get_all_counts(),
+                vec![(wide_value, 1u32)],
                 "k={} must round-trip a full-width u128 k-mer exactly",
                 k
             );
         }
     }
 
-    /// DENSE-01 (plan 03-03): a k ≤ 32 counter must model its per-key storage
-    /// at the dense `u64` width — 8-byte key — while a k > 32 counter keeps the
-    /// 16-byte `u128` key. `memory_usage()` is derived from the stored key
-    /// width, so its value is a direct observation of which `KmerKey` variant
-    /// `new()` selected.
+    /// DENSE-01 (plan 03-03, tightened in plan 03-06): a k ≤ 32 counter must
+    /// model its per-key storage at the dense `u64` width — 8-byte key — while a
+    /// k > 32 counter keeps the 16-byte `u128` key.
+    ///
+    /// **Plan 03-06 tightened this test's claim.** It used to describe
+    /// `memory_usage()` as "a direct observation of which variant `new()`
+    /// selected". That was false: the key width inside `memory_usage()` was
+    /// derived from `kmer_length`, so the number was a restatement of the
+    /// branch condition and stayed green under the mutation "always build the
+    /// wide table". `memory_usage()` is still a MODEL (a 24 B overhead constant
+    /// plus the real stored key width plus a 4 B count) — [`KmerCounter::
+    /// stored_key_bytes`] is the observation, and it reads the live variant.
+    /// The assertion below therefore pins BOTH: the modelled arithmetic AND
+    /// that the width feeding it is the one the table really holds.
     #[test]
     fn dense_counter_memory_usage_halved_for_k21() {
         const N: usize = 4096;
@@ -1025,6 +1298,30 @@ mod tests {
 
         let dense = KmerCounter::new(21, false, N, 1).unwrap();
         let wide = KmerCounter::new(64, false, N, 1).unwrap();
+
+        // The modelled per-entry cost must be derived from the LIVE variant.
+        // Without this, the arithmetic assertions below would pass against a
+        // counter that had silently reverted to wide keys — the exact
+        // vacuity plan 03-06 was written to close.
+        assert_eq!(
+            dense.stored_key_bytes(),
+            core::mem::size_of::<u64>(),
+            "a k=21 counter must report the dense 8-byte stored key width"
+        );
+        assert!(
+            dense.uses_dense_storage(),
+            "a k=21 counter must be on the dense storage path"
+        );
+        assert_eq!(
+            wide.stored_key_bytes(),
+            core::mem::size_of::<u128>(),
+            "a k=64 counter must report the wide 16-byte stored key width"
+        );
+        assert!(
+            !wide.uses_dense_storage(),
+            "a k=64 counter must not be on the dense storage path"
+        );
+
         for i in 0..N {
             // Distinct k-mers on both sides, so both tables hold N entries.
             let kmer = i as u128;
