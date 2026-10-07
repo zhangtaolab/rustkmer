@@ -712,6 +712,20 @@ impl RKDatabase {
         input_paths: &[std::path::PathBuf],
         config: &crate::database::MergeConfig,
     ) -> crate::error::ProcessingResult<Self> {
+        // D-06 / MERGE-03: reclaim temp shards orphaned by a merge that could
+        // not clean up after itself — SIGKILL, `panic = "abort"` (this project's
+        // release profile), `process::exit`, power loss. RAII handles the
+        // unwind cases; this handles the ones where `Drop` never runs.
+        //
+        // This is the single sweep call site for the whole merge subsystem, so
+        // it covers all three strategies. It is deliberately placed BEFORE any
+        // temp shard this merge creates, and is a no-op on a temp_dir that does
+        // not exist yet.
+        crate::database::temp_lifecycle::sweep_stale_merge_dirs(
+            &config.temp_dir,
+            crate::database::temp_lifecycle::DEFAULT_MERGE_TEMP_TTL,
+        );
+
         // D-01: header-only estimate. The pre-fix loop called
         // `Self::from_file_path(path)` per input, materializing every entry
         // into RAM just to read `total_kmers` — OOMing during the estimate.

@@ -98,7 +98,76 @@ pub fn create_merge_temp_subdir(parent: &Path) -> ProcessingResult<TempDir> {
 /// sweep must never be able to abort the merge that triggered it. In particular
 /// a `temp_dir` that does not exist is a no-op, not an error.
 pub fn sweep_stale_merge_dirs(temp_dir: &Path, ttl: Duration) {
-    // Task 2 (GREEN) fills this in. Stubbed for Task 1 so the signature is
-    // importable and the orphan-sweep test is RED for the right reason.
-    let _ = (temp_dir, ttl);
+    use std::time::SystemTime;
+
+    // `now - ttl` can underflow for an absurd TTL; clamp to the epoch rather
+    // than panicking, which would abort the merge the sweep exists to protect.
+    let cutoff = SystemTime::now()
+        .checked_sub(ttl)
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+
+    // A missing / unreadable temp_dir is a no-op, not an error: this sweep runs
+    // on the merge path and must never be the reason a merge fails.
+    let entries = match std::fs::read_dir(temp_dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            log::debug!(
+                "Stale merge temp sweep skipped: cannot read '{}': {}",
+                temp_dir.display(),
+                e
+            );
+            return;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if !name.to_string_lossy().starts_with(MERGE_TEMP_PREFIX) {
+            continue;
+        }
+
+        let path = entry.path();
+        // `entry.metadata()` follows symlinks; `file_type()` does not. A symlink
+        // carrying our prefix is NOT ours to recurse into — refuse it rather
+        // than deleting whatever it points at.
+        match entry.file_type() {
+            Ok(ft) if ft.is_dir() => {}
+            Ok(_) => continue,
+            Err(e) => {
+                log::warn!(
+                    "Stale merge temp sweep: cannot stat '{}': {}",
+                    path.display(),
+                    e
+                );
+                continue;
+            }
+        }
+
+        let mtime = match entry.metadata().and_then(|m| m.modified()) {
+            Ok(mtime) => mtime,
+            Err(e) => {
+                log::warn!(
+                    "Stale merge temp sweep: cannot read mtime of '{}': {}",
+                    path.display(),
+                    e
+                );
+                continue;
+            }
+        };
+
+        if mtime >= cutoff {
+            // Younger than the TTL: assumed to belong to a merge that is still
+            // running. Deleting it would corrupt a live merge (T-03-06).
+            continue;
+        }
+
+        match std::fs::remove_dir_all(&path) {
+            Ok(()) => log::info!("Swept stale merge temp dir: {}", path.display()),
+            Err(e) => log::warn!(
+                "Failed to sweep stale merge temp dir '{}': {}",
+                path.display(),
+                e
+            ),
+        }
+    }
 }

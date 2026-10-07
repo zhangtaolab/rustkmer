@@ -9,13 +9,36 @@ use rayon::current_num_threads;
 use rayon::prelude::*;
 
 use crate::database::format::{KmerEntry, RKDatabase};
+use crate::database::temp_lifecycle::create_merge_temp_subdir;
 use crate::error::ProcessingResult;
 use crate::kmer::canonical::canonical_kmer_u128;
+
+/// On-disk size of one `KmerEntry` record: `u128` k-mer (16 B) + `u32` count
+/// (4 B), little-endian — the `.rkdb` v2 layout written by
+/// `KmerEntry::write_to` (`format.rs`).
+///
+/// Every `try_into().unwrap()` byte-slice conversion below reads exactly this
+/// many bytes, so the assumption is stated once here instead of being spelled
+/// as a bare `20` at eight separate call sites (`.planning/codebase/CONCERNS.md`
+/// "Fragile Area: prefix_cache_merge.rs").
+const RECORD_SIZE: usize = 20;
+
+/// Decode the `(kmer, count)` record starting at `offset` in `buf`.
+///
+/// `buf[offset..offset + RECORD_SIZE]` is split by field width, not by a bare
+/// literal, so `RECORD_SIZE` above is the single source of truth for the layout.
+fn read_record_at(buf: &[u8], offset: usize) -> (u128, u32) {
+    debug_assert!(offset + RECORD_SIZE <= buf.len());
+    let kmer = u128::from_le_bytes(buf[offset..offset + 16].try_into().unwrap());
+    let count = u32::from_le_bytes(buf[offset + 16..offset + RECORD_SIZE].try_into().unwrap());
+    (kmer, count)
+}
 
 pub struct ExternalSortMerger {
     pub prefix_bits: usize,
     pub num_buckets: usize,
     pub merge_buffer_mb: usize,
+    /// Parent directory the merge temp subdir is created under.
     pub temp_dir: PathBuf,
     pub input_files: Vec<PathBuf>,
     pub kmer_size: usize,
@@ -25,6 +48,17 @@ pub struct ExternalSortMerger {
     pub num_threads: usize,
     pub merge_mode: String,
     pub keep_intermediate: bool,
+    /// D-06: the process-unique `rustkmer-merge-<rand>/` directory that owns
+    /// every shard this merge writes.
+    ///
+    /// Holding the `TempDir` is the cleanup *guarantee*: its `Drop` removes the
+    /// tree recursively on every unwind path (normal return, early `?` return,
+    /// `panic = "unwind"`). `Option` so `Drop` can `take()` it when
+    /// `keep_intermediate` asks for the shards to survive.
+    merge_temp_subdir: Option<tempfile::TempDir>,
+    /// D-06: every shard path this merge created, tracked so `Drop` can remove
+    /// them explicitly before the `TempDir` removes the tree.
+    shard_paths: Vec<PathBuf>,
 }
 
 #[allow(dead_code)]
@@ -68,6 +102,15 @@ impl ExternalSortMerger {
         let final_canonical = has_canonical;
         let total_kmers = reference_db.header().total_kmers;
 
+        // D-06: every shard this merge writes lives under its own
+        // `rustkmer-merge-<rand>/` subdir instead of loose in the shared
+        // `temp_dir`. Two consequences, both load-bearing:
+        //   - the `TempDir` gives RAII cleanup on every unwind path, and
+        //   - an orphan left by a SIGKILL / `panic = "abort"` / power loss is
+        //     unambiguously identifiable, so the next merge can sweep it.
+        // If this fails, the merger is never constructed, so nothing to clean up.
+        let merge_temp_subdir = create_merge_temp_subdir(&temp_dir)?;
+
         Ok(Self {
             prefix_bits: 8,
             num_buckets,
@@ -81,7 +124,29 @@ impl ExternalSortMerger {
             num_threads,
             merge_mode,
             keep_intermediate,
+            merge_temp_subdir: Some(merge_temp_subdir),
+            shard_paths: Vec::new(),
         })
+    }
+
+    /// D-06: the directory this merge's shards are written into.
+    ///
+    /// Falls back to the parent `temp_dir` only in the degenerate state where
+    /// the `TempDir` was already taken by `keep_intermediate`, which can only
+    /// happen during `Drop` (after the merge has finished).
+    fn shard_dir(&self) -> &Path {
+        match self.merge_temp_subdir.as_ref() {
+            Some(dir) => dir.path(),
+            None => self.temp_dir.as_path(),
+        }
+    }
+
+    /// The process-unique merge temp subdir, or `None` once it has been taken.
+    ///
+    /// Exposed so tests can observe *where* a merge's shards live without
+    /// reaching into private state.
+    pub fn merge_temp_subdir_path(&self) -> Option<&Path> {
+        self.merge_temp_subdir.as_ref().map(|dir| dir.path())
     }
 
     pub fn external_sort_merge(&mut self, output_path: &Path) -> ProcessingResult<()> {
@@ -139,12 +204,18 @@ impl ExternalSortMerger {
                 (0..self.num_buckets)
                     .map(|prefix| {
                         let dna = Self::prefix_to_dna(prefix);
-                        self.temp_dir
+                        self.shard_dir()
                             .join(format!("ext_sort_{}_file_{:03}.tmp", dna, file_idx))
                     })
                     .collect()
             })
             .collect();
+
+        // D-06: register every path the merge could write so `Drop` can remove
+        // it on any exit. Paths that were never created are harmless —
+        // `remove_file` on a missing file is a no-op.
+        self.shard_paths
+            .extend(temp_files.iter().flatten().cloned());
 
         log::info!("");
 
@@ -178,7 +249,7 @@ impl ExternalSortMerger {
                         bucket_buffers[prefix].extend_from_slice(&entry.count.to_le_bytes());
                         file_kmers += 1;
 
-                        if bucket_buffers[prefix].len() >= BATCH_SIZE * 20 {
+                        if bucket_buffers[prefix].len() >= BATCH_SIZE * RECORD_SIZE {
                             let temp_file_path = &temp_files[file_idx][prefix];
                             Self::write_buffer_sync(temp_file_path, &bucket_buffers[prefix])?;
                             bucket_buffers[prefix].clear();
@@ -252,7 +323,7 @@ impl ExternalSortMerger {
             for file_idx in 0..self.input_files.len() {
                 let dna = Self::prefix_to_dna(prefix);
                 let temp_file_path = self
-                    .temp_dir
+                    .shard_dir()
                     .join(format!("ext_sort_{}_file_{:03}.tmp", dna, file_idx));
                 if temp_file_path.exists() {
                     if let Ok(metadata) = std::fs::metadata(&temp_file_path) {
@@ -283,8 +354,14 @@ impl ExternalSortMerger {
 
         let start_parallel = Instant::now();
 
-        let temp_dir = self.temp_dir.clone();
-        let temp_dir_arc = std::sync::Arc::new(temp_dir);
+        // Capture what the rayon closure needs by value. Reading `self` from
+        // inside the closure would force `ExternalSortMerger: Sync` and borrow
+        // the whole merger across the parallel section.
+        let shard_dir = self.shard_dir().to_path_buf();
+        let merge_buffer_mb = self.merge_buffer_mb;
+        let keep_intermediate = self.keep_intermediate;
+
+        let temp_dir_arc = std::sync::Arc::new(shard_dir);
         let merge_mode_arc = std::sync::Arc::new(self.merge_mode.clone());
         let completed_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let prefix_file_map_arc = std::sync::Arc::new(prefix_file_map);
@@ -311,7 +388,7 @@ impl ExternalSortMerger {
                 } else if merge_mode == "memory" {
                     Self::merge_single_prefix_hashmap(prefix_files, &output_file)
                 } else {
-                    let threshold = self.merge_buffer_mb * 1_000_000;
+                    let threshold = merge_buffer_mb * 1_000_000;
                     if total_size <= threshold {
                         Self::merge_single_prefix_hashmap(prefix_files, &output_file)
                     } else {
@@ -319,7 +396,12 @@ impl ExternalSortMerger {
                     }
                 };
 
-                if result.is_ok() && !self.keep_intermediate {
+                // D-06: cleanup is no longer a success-branch concern — `Drop`
+                // removes every shard on ANY exit. This is only a peak-disk
+                // optimization, so it runs on the failure path too; the previous
+                // `result.is_ok() && !keep_intermediate` gate left every shard
+                // of a failed bucket behind.
+                if !keep_intermediate {
                     for temp_file in files_to_delete {
                         let _ = std::fs::remove_file(&temp_file);
                     }
@@ -414,7 +496,7 @@ impl ExternalSortMerger {
 
         // Compute total size
         let total_size: u64 = files.iter().map(|(_, s)| *s).sum();
-        let total_kmers = total_size / 20;
+        let total_kmers = total_size / RECORD_SIZE as u64;
 
         log::info!("   Input files: {}", files.len());
         log::info!(
@@ -471,12 +553,10 @@ impl ExternalSortMerger {
             })?;
 
             let mut offset = 0usize;
-            while offset + 20 <= buffer.len() {
-                let kmer = u128::from_le_bytes(buffer[offset..offset + 16].try_into().unwrap());
-                let count =
-                    u32::from_le_bytes(buffer[offset + 16..offset + 20].try_into().unwrap());
+            while offset + RECORD_SIZE <= buffer.len() {
+                let (kmer, count) = read_record_at(&buffer, offset);
                 *kmer_counts.entry(kmer).or_insert(0) += count;
-                offset += 20;
+                offset += RECORD_SIZE;
                 processed_kmers += 1;
             }
 
@@ -578,7 +658,7 @@ impl ExternalSortMerger {
         for (idx, (file_path, _)) in files.iter().enumerate() {
             let file = File::open(file_path)?;
             let reader = std::io::BufReader::new(file);
-            let data = Vec::with_capacity(BATCH_READ * 20);
+            let data = Vec::with_capacity(BATCH_READ * RECORD_SIZE);
             let entries = Vec::new();
             file_states.push((reader, data, entries));
 
@@ -660,11 +740,10 @@ impl ExternalSortMerger {
         let mut entries = Vec::new();
         let mut offset = 0usize;
 
-        while offset + 20 <= data.len() {
-            let kmer = u128::from_le_bytes(data[offset..offset + 16].try_into().unwrap());
-            let count = u32::from_le_bytes(data[offset + 16..offset + 20].try_into().unwrap());
+        while offset + RECORD_SIZE <= data.len() {
+            let (kmer, count) = read_record_at(&data, offset);
             entries.push(KmerEntry::new(kmer, count));
-            offset += 20;
+            offset += RECORD_SIZE;
         }
 
         Ok(entries)
@@ -694,11 +773,10 @@ impl ExternalSortMerger {
         let mut entries = Vec::new();
         let mut offset = 0usize;
 
-        while offset + 20 <= data.len() {
-            let kmer = u128::from_le_bytes(data[offset..offset + 16].try_into().unwrap());
-            let count = u32::from_le_bytes(data[offset + 16..offset + 20].try_into().unwrap());
+        while offset + RECORD_SIZE <= data.len() {
+            let (kmer, count) = read_record_at(data, offset);
             entries.push(KmerEntry::new(kmer, count));
-            offset += 20;
+            offset += RECORD_SIZE;
         }
 
         Ok(entries)
@@ -726,14 +804,16 @@ impl ExternalSortMerger {
             );
         }
 
-        let temp_data_file = self.temp_dir.join("ext_sort_final_data.tmp");
+        let temp_data_file = self.shard_dir().join("ext_sort_final_data.tmp");
         let mut temp_file = File::create(&temp_data_file)?;
         let mut data_size = 0u64;
         let mut total_kmers_in_files = 0u64;
 
         for prefix in 0..self.num_buckets {
             let dna = Self::prefix_to_dna(prefix);
-            let prefix_file = self.temp_dir.join(format!("ext_sort_{}_merged.tmp", dna));
+            let prefix_file = self
+                .shard_dir()
+                .join(format!("ext_sort_{}_merged.tmp", dna));
 
             if prefix_file.exists() {
                 let file_size = std::fs::metadata(&prefix_file)?.len();
@@ -744,7 +824,7 @@ impl ExternalSortMerger {
                     continue;
                 }
 
-                let kmers_in_file = file_size / 20;
+                let kmers_in_file = file_size / RECORD_SIZE as u64;
                 total_kmers_in_files += kmers_in_file;
 
                 let mut input_file = File::open(&prefix_file)?;
@@ -777,7 +857,7 @@ impl ExternalSortMerger {
         temp_file.sync_all()?;
         drop(temp_file);
 
-        let total_kmers = data_size / 20;
+        let total_kmers = data_size / RECORD_SIZE as u64;
 
         log::info!(
             "   Writing RKDB format, {} M k-mers total...",
@@ -826,7 +906,7 @@ impl ExternalSortMerger {
         header.write_to(&mut writer)?;
 
         // Stream-read and write k-mer data
-        let mut buffer = vec![0u8; 20 * 100_000]; // 100k k-mers per batch
+        let mut buffer = vec![0u8; RECORD_SIZE * 100_000]; // 100k k-mers per batch
         let mut processed_kmers = 0u64;
         let mut last_report = std::time::Instant::now();
 
@@ -834,7 +914,7 @@ impl ExternalSortMerger {
             match file.read(&mut buffer) {
                 Ok(0) => break,
                 Ok(n) => {
-                    let num_kmers = n / 20;
+                    let num_kmers = n / RECORD_SIZE;
                     processed_kmers += num_kmers as u64;
                     writer.write_all(&buffer[..n])?;
 
@@ -936,14 +1016,66 @@ impl ExternalSortMerger {
         let mut entries = Vec::new();
         let mut offset = 0;
 
-        while offset + 20 <= data.len() {
-            let kmer = u128::from_le_bytes(data[offset..offset + 16].try_into().unwrap());
-            let count = u32::from_le_bytes(data[offset + 16..offset + 20].try_into().unwrap());
+        while offset + RECORD_SIZE <= data.len() {
+            let (kmer, count) = read_record_at(&data, offset);
             entries.push(KmerEntry::new(kmer, count));
-            offset += 20;
+            offset += RECORD_SIZE;
         }
 
         Ok(entries)
+    }
+}
+
+/// D-06 / MERGE-03: RAII cleanup for the prefix-cache merge.
+///
+/// Mirrors `streaming_merge.rs::TempFileManager::Drop`. Before this impl the
+/// shards were removed only on the success branch, so every other exit — an
+/// early `?` return, a logic-error panic, a dropped future — leaked them.
+///
+/// Two mechanisms, deliberately layered:
+///   1. each tracked shard is `remove_file`d best-effort (belt), then
+///   2. the `merge_temp_subdir` [`tempfile::TempDir`] field is dropped, which
+///      removes the whole tree recursively (suspenders) and also covers any
+///      shard this struct never got to track.
+///
+/// Rust runs this body *before* dropping fields, so the explicit removals
+/// happen first and `TempDir` cleans up whatever is left.
+///
+/// What this still cannot cover: `panic = "abort"`, SIGKILL, `process::exit`,
+/// power loss — `Drop` does not run at all. That is precisely why
+/// [`crate::database::temp_lifecycle::sweep_stale_merge_dirs`] exists.
+impl Drop for ExternalSortMerger {
+    fn drop(&mut self) {
+        if self.keep_intermediate {
+            // `keep()` disarms the TempDir's cleanup and hands the path back, so
+            // the shards survive for inspection. This leak is the documented
+            // meaning of `--keep-intermediate`; the next merge's sweep will
+            // eventually reclaim it (threat T-03-05).
+            if let Some(dir) = self.merge_temp_subdir.take() {
+                let path = dir.keep();
+                log::info!(
+                    "Keeping merge temp dir (--keep-intermediate): {}",
+                    path.display()
+                );
+            }
+            return;
+        }
+
+        for shard in &self.shard_paths {
+            let _ = std::fs::remove_file(shard);
+        }
+
+        if let Some(dir) = self.merge_temp_subdir.take() {
+            // `close()` rather than letting the field drop silently: it reports
+            // the removal error instead of swallowing it like `Drop` does.
+            if let Err(e) = dir.close() {
+                log::warn!(
+                    "Failed to remove merge temp dir '{}': {}",
+                    self.shard_dir().display(),
+                    e
+                );
+            }
+        }
     }
 }
 
