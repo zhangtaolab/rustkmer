@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 03
 current_phase_name: Memory Safety
 status: gap-closure-in-progress
-stopped_at: "Completed 03-07-PLAN.md (G3: endianness heuristic deleted, routes proven identical above 1M counts)"
-last_updated: "2026-10-07T12:28:00.352Z"
+stopped_at: "Completed 03-08-PLAN.md (WR-03: DENSE-02 guard now drives the production write path; both new write-path tests observed RED under an injected widening)"
+last_updated: "2026-10-07T12:38:36.887Z"
 last_activity: 2026-10-07
-last_activity_desc: "Completed 03-07 (G3: endianness heuristic deleted — routes proven identical and exact above 1M counts)"
-state_head: 9b6cd55ec96ae160b5adb1dc8309236064b91f45
+last_activity_desc: "Completed 03-08 (WR-03: the DENSE-02 guard now drives the production write path; both new write-path tests observed RED under an injected u64 -> u128 widening)"
+state_head: 4e9af47acafd823d87615ba9c1e8473147e1951a
 progress:
   total_phases: 4
   completed_phases: 2
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 
 ## Current Position
 
-Phase: 03 (Memory Safety) — GAP CLOSURE in progress (7/11 plans complete)
-Plan: 8 of 11
-Status: 03-07 closed G3 (`read_from` is now the exact inverse of `write_to`; both merge routes proven identical and exact at counts 2,000,000 and 16,777,216). Remaining: 03-08..03-11, then `/gsd-verify-work 03`. Still open from 03-VERIFICATION.md: G2 (no merge strategy is memory-bounded — the phase's central deliverable).
-Last activity: 2026-10-07 — Completed 03-07 (G3: the `1_000_000` endianness heuristic deleted from `KmerEntry::read_from`; a damaged chunk now surfaces as `Err` instead of truncating a run)
+Phase: 03 (Memory Safety) — GAP CLOSURE in progress (8/11 plans complete)
+Plan: 9 of 11
+Status: 03-08 closed WR-03 (the DENSE-02 golden binary now drives `KmerCounter` -> `get_all_counts` -> `to_file_path` and compares the emitted bytes against a reference the test assembles itself; both new write-path tests were observed RED under an injected `u64 -> u128` widening while the committed-fixture re-hash stayed GREEN). Remaining: 03-09..03-11, then `/gsd-verify-work 03`. Still open from 03-VERIFICATION.md: G2 (no merge strategy is memory-bounded — the phase's central deliverable).
+Last activity: 2026-10-07 — Completed 03-08 (WR-03: replaced the false "differential rather than a tautology" docstring claim with a real write-path differential; removed all four docstring mentions of the type 03-06 deleted, kept the two `KmerEntry` mentions)
 
-Progress: [███████░░░] 7/11 plans (Phase 03)
+Progress: [████████░░] 8/11 plans (Phase 03)
 
 ## Performance Metrics
 
@@ -82,6 +82,7 @@ Progress: [███████░░░] 7/11 plans (Phase 03)
 | Phase 03 P06 | 20 min | 3 tasks | 7 files |
 | Phase 03 P07 | 34min | 3 tasks | 3 files |
 | Phase 03 P07 | 34 min | 3 tasks | 3 files |
+| Phase 03 P08 | 4 min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -165,6 +166,12 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-07: The parity fixture's two inputs are built from different bases and asserted DISJOINT, because the in-memory route accumulates with saturating_add — an overlapping fixture would merge to 2x the value under test and could no longer distinguish 'read correctly' from 'summed twice'
 - [Phase 03]: 03-07: No per-k-mer admission constant is pinned in tests/merge_route_parity_tests.rs. Arm B uses n*96*4 = 384 bytes/k-mer, which exceeds both today's 24 and plan 03-09's incoming 96, so the in-memory arm survives the wave boundary. A whole-file grep for the admission-constant identifier prints 0
 - [Phase 03]: 03-07: pyo3/tests/test_database_merge.py is deliberately untouched — the installed pyrustkmer.so is a prebuilt artifact, so a pytest run would assert against code no longer on disk. RECORDED RESIDUAL: plan 03-10 changes PyDatabase::merge semantics (the save is folded into the merge and the 'Failed to save merged database to {}' path disappears) and that change ships with ZERO Python-level verification, because no plan in this phase may run pytest
+- [Phase 03]: 03-08: The DENSE-02 guard's reference arm is a BYTE STRING the test assembles with to_le_bytes(), not a second from_kmer_pairs call - the plan's earlier shape compared one pure function with itself on the same input and stayed GREEN under the injected u64 -> u128 widening
+- [Phase 03]: 03-08: Both new write-path tests were observed RED under `v as u128 ^ (1u128 << 96)` while the committed-fixture re-hash stayed GREEN. A single catching test would not have been the same claim as a differential that catches it - and the committed-fixture re-hash is exactly the blind spot WR-03 named
+- [Phase 03]: 03-08: The k=32 tight-bound test drives the counter with canonical:false, because no CANONICAL k-mer encodes to u64::MAX (a 32-base T k-mer's reverse complement is 32 bases of A, which encodes to 0). The non-canonical path is a real production path (count --no-canonical) and the claim under test - how a dense u64 key is widened - is independent of the flag
+- [Phase 03]: 03-08: An input fixture's claimed property is asserted, not commented. table_is_already_canonical runs canonical_kmer_u128 over every literal table entry, so a canonicalization change fails loudly instead of silently counting a different k-mer set. Same discipline as 03-06's stored_key_bytes: observe, never restate
+- [Phase 03]: 03-08: tests/golden_tests.rs deliberately unchanged. It shares the static-fixture property, its own file comment is already candid that both binaries read the same manifest, and a duplicated DIFFERENTIAL is worse than a duplicated guard because independence is the property most easily lost by accident
+- [Phase 03]: 03-08: A test that hashes COMMITTED artifacts proves those artifacts are unchanged; it says nothing about the code that produced them. Any file whose mandate is 'no docstring may claim something false' must also drive the production path, or its own green is the tautology it accuses others of
 
 ### Pending Todos
 
@@ -188,6 +195,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-07T12:28:00.271Z
-Stopped at: Completed 03-07-PLAN.md (G3: endianness heuristic deleted, routes proven identical above 1M counts)
+Last session: 2026-10-07T12:38:36.797Z
+Stopped at: Completed 03-08-PLAN.md (WR-03: DENSE-02 guard now drives the production write path; both new write-path tests observed RED under an injected widening)
 Resume file: None
