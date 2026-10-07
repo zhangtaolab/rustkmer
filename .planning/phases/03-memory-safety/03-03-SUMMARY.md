@@ -167,6 +167,13 @@ coverage:
     human_judgment: true
     rationale: "`memory_usage()` is a MODEL, not a measurement — the 24-byte-per-entry hash/shard overhead is an inherited constant (see Deferred Items). The key-width halving is proven exactly; the total-RSS effect is not, because CI has no human-scale dataset and swapping the model for a measurement needs an allocator hook or an empirical heap delta. Phase 4's benchmark against CRR1936095 is where a human should confirm the real number, and it is also where the query/read path (still u128) would show up as residual cost."
 
+# Measured at SUMMARY-write time from the ledger at `.git/gsd-plan-head-before-03-03`
+# (written before the first commit). `commits: 2` is the two TASK commits. Two more
+# follow it and cannot appear in this field without changing the value being measured:
+#   6a0e973 docs(03-03): complete dense KmerKey swap plan          (this file)
+#   aaffda3 docs(03-03): close out plan — STATE/ROADMAP/REQUIREMENTS
+# So `git rev-list --count 4317c69..HEAD` = 4 once both land. (03-01 and 03-02 record
+# `commits: 4` for the same reason — all 4 commits on the branch.)
 commits: 2
 plan_head_before: 4317c6981811e02780fde346b2a4fb04838e8938
 plan_head_after: f3d0c67c20767e6097db3bd1d49aa5a271ac92b6
