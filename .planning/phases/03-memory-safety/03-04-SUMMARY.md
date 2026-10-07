@@ -309,5 +309,28 @@ None — no external service configuration required.
 - **Open defects carried forward unchanged** (all pre-existing, none introduced here): `merge_prefix_buckets` silent partial merge; `external_sort_merge_output.tmp` outside the process-unique subdir and never deleted; loose `rustkmer_sort_*.chunk` files not covered by the orphan sweep (normal-path cleanup confirmed working, abort-path coverage still open); the dense `u64` width not applied to the in-memory merge accumulator or the `RKDatabase` read path; `memory_usage()` modelled not measured; `cargo fmt --all --check` drift in `src/cli/commands/count.rs` + `tests/parallel_count_tests.rs` (a Phase 1 CI gate failure independent of Phase 3).
 
 ---
+
+## Self-Check: PASSED
+
+- **Files verified on disk:** `tests/dense_merge_integration_tests.rs`, `tests/merge_routing_tests.rs`, `.planning/phases/03-memory-safety/03-04-SUMMARY.md`, `deferred-items.md`, `.planning/WINDOWS.md` ✓
+- **Commits verified present in history:** `f54f099` (task), `bc2db7d` (SUMMARY), `7098752` (STATE/ROADMAP/REQUIREMENTS) ✓
+- **`commits: 1` is MEASURED** via `git rev-list --count 95d846d..HEAD` (ledger at `.git/gsd-plan-head-before-03-04`, written before the first commit) = **3** at SUMMARY-close time: 1 task + this SUMMARY commit + the STATE/ROADMAP commit. The frontmatter records the *task* count with the derivation documented inline, matching the 03-01/03-02/03-03 convention.
+- **Production code untouched:** `git diff 95d846d..HEAD --stat -- src/ pyo3/ Cargo.toml` is **empty**. All 4 mutation defects injected during verification were reverted before the task commit.
+- **All Task 1 acceptance criteria re-run, each with its actual result:**
+  | Criterion | Result |
+  |---|---|
+  | No `#[ignore]` attributes in the 5 phase-3 test files | PASS — attribute-shaped grep returns zero matches; every binary reports `0 ignored` (the plan's *literal* grep returns 3 doc-comment prose hits; see Issues Encountered) |
+  | `cargo test --test dense_merge_integration_tests` exits 0 | PASS — 3 passed, 0 failed, 0 ignored |
+  | `cargo test --all` exits 0 | PASS — 221 lib + 34 golden + 26 merge_cleanup + 26 merge_routing + 23 round_trip + 20 mod + 8 property + 6 dense_differential + 5 cjk + 4 parallel_count + 3 dense_merge_integration + 3 dense_proptest + 3 legacy + 2 golden_sha256 + 2 consistency, 0 failures |
+  | `cargo test --test parallel_count_tests` exits 0 (PCOUNT-04 not regressed) | PASS — 4 passed, 0 failed (+1 pre-existing Phase 2 ignored baseline-capture generator) |
+  | `cargo test --test golden_sha256_tests` exits 0 (DENSE-02 byte-identity) | PASS — 2 passed over all 12 fixtures; `golden_tests` 34/34 |
+  | `cargo clippy --all-targets -- -D warnings` (root) exits 0 | PASS |
+  | `(cd pyo3 && cargo clippy --all-targets -- -D warnings)` exits 0 | PASS |
+  | `cargo build --release` exits 0 (`panic="abort"` preserved) | PASS — `Cargo.toml` unmodified; `[profile.release] panic = "abort"` intact |
+  | `rustfmt` clean on both touched test files | PASS — `cargo fmt --all --check` drift is confined to the two documented pre-existing files (`src/cli/commands/count.rs`, `tests/parallel_count_tests.rs`) |
+- **Non-vacuity verified by 4 mutations** (all reverted): streaming k-mer drop, in-memory k-mer drop, dense widening high bit, header undercount — each fails a specific named assertion. A 5th check confirmed a *passing* mutation (the `max_memory_usage: 1024` routing mistake) revealed that the original version of these tests asserted nothing about the streaming path.
+- **Ship gate not blocked:** `.planning/WINDOWS.md` `open_count: 0` (3 entries waived with reasons; none is an open defect).
+
+---
 *Phase: 03-memory-safety*
 *Completed: 2026-10-07*

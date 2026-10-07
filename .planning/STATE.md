@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 03
 current_phase_name: Memory Safety
 status: executing
-stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-10-07T02:56:50.722Z"
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-10-07T03:10:31.575Z"
 last_activity: 2026-10-07
-last_activity_desc: Completed 03-02 (RAII merge temp lifecycle + orphan sweep)
-state_head: 6a0e9731b093e401962d0efff30eee094909c8ed
+last_activity_desc: Completed 03-04 (cross-plan composition gate: dense counter x bounded merge)
+state_head: bc2db7d1b000d2a6939f77c5389d1594d19a7902
 progress:
   total_phases: 4
   completed_phases: 2
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 ## Current Position
 
 Phase: 03 (Memory Safety) — EXECUTING
-Plan: 4 of 5
-Status: Ready to execute
-Last activity: 2026-10-07 — Completed 03-02 (RAII merge temp lifecycle + orphan sweep)
+Plan: 5 of 5
+Status: Ready to execute (03-05 = MERGE-04, `PyDatabase.merge` kwargs)
+Last activity: 2026-10-07 — Completed 03-04 (cross-plan composition gate: dense counter x bounded merge)
 
-Progress: [██████░░░░] 2/5 plans (Phase 03)
+Progress: [████████░░] 4/5 plans (Phase 03)
 
 ## Performance Metrics
 
@@ -77,6 +77,7 @@ Progress: [██████░░░░] 2/5 plans (Phase 03)
 | Phase 03 P01 | 42min | 2 tasks | 6 files |
 | Phase 03 P02 | 38min | 2 tasks | 7 files |
 | Phase 03 P03 | 10min | 2 tasks | 7 files |
+| Phase 03 P04 | 10min | 1 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -135,6 +136,13 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-03: DENSE-01's 'roughly half' is asserted on the keyed PAYLOAD (20B -> 12B, ratio 0.6), not the overhead-inclusive total (36/44 = 0.818). The plan's own formula mandates the same 24-byte modelled overhead on both widths, which makes its proposed [0.4,0.7] band unreachable on the total — the band brackets the payload ratio
 - [Phase 03]: 03-03: The dense differential uses THREE independent references per cell (counter-free u128 oracle, production u128-encoder counter, committed golden .rkdb) rather than two — a single two-way comparison would not localize a failure to 'the counter' vs 'the shared encoders'
 - [Phase 03]: 03-03: The D-10 golden baseline caught a 2-character transcription drift in the differential's hand-copied GOLDEN_INPUT (all 6 tests failed, one entry off by 2). Fix was to splice the generator's array in programmatically instead of by transcription — evidence that reusing committed baselines rather than regenerating them is the right discipline
+- [Phase 03]: 03-04: The u128 arm of the cross-plan composition differential is the committed Phase 1/2 golden .rkdb (D-10), not a second KmerCounter run — The plan allowed either; 03-03 exposed no forced-u128 constructor, and the fixture is the better reference anyway - it is what production emitted BEFORE any of Phase 3, so it is independent of the code under test. A pre-merge equality assertion then turns an ambiguous two-plan failure into 'count stage or merge stage'
+- [Phase 03]: 03-04: A plan's 'streaming route' arm is only proven if the route ITSELF is asserted - the budget must be derived from the estimator, not hard-coded — The plan text and first draft used max_memory_usage: 1024, but the golden fixture's 20 unique k-mers estimate to only 960 bytes, so every 'streaming' arm silently ran the IN-MEMORY path and the entire cross-plan composition claim was vacuous. Only a mutation test caught it. tests/dense_merge_integration_tests.rs now derives the budget from RKDatabase::estimate_total_kmers and proves the route with 03-01's nonexistent-temp_dir probe
+- [Phase 03]: 03-04: The in-memory test arm pairs HUGE_BUDGET_BYTES with merge_mode 'auto', never 'memory' — With merge_mode 'memory' an over-budget merge returns Err from the D-02 REJECT, which is indistinguishable by outcome alone from a temp-file failure, so the route probe would misreport the route. 03-01 already owns merge_mode 'memory' behavior
+- [Phase 03]: 03-04: Composition is asserted as a 4-WAY decoded-map equality (u64/u128 x in-memory/streaming), not pairwise — 03-01 made route selection budget-dependent, so a claim covering one route is half a claim; cross-arm equality also catches route-specific regressions that per-arm exactness assertions would miss
+- [Phase 03]: 03-04: Added header-accounting + total-count-conservation cross-validation to merge_routing_tests.rs (the only 03-01 edit this plan made) — 03-01 deferred nothing explicitly, but auditing its four routing tests showed a real gap: each pins union size and spot-checked counts, none pins the invariants a merge can break without changing either. The live prefix-cache defect 03-02 logged (merge_prefix_buckets returns Ok(()) after bucket failures -> valid .rkdb with undercounted total_kmers) is exactly this shape and would pass every existing routing test
+- [Phase 03]: 03-04: Every merge assertion pins exact k-mer COUNTS and header accounting; none asserts merely 'non-empty' — The direct lesson of 03-01's two data-loss bugs, which survived because test_merge_streaming_basic asserted only non-emptiness (200 k-mers in, 5 out)
+- [Phase 03]: 03-04: The new integration test binary mutates production code to prove it can fail, and reverted it — Four defects injected (streaming k-mer drop, in-memory k-mer drop, dense widening high bit, header undercount); each is caught by a specific named assertion. For a verification-only plan the deliverable is not 'tests pass' but 'tests CAN fail' - a GREEN gate that cannot fail reports the phase verified while proving nothing
 
 ### Pending Todos
 
@@ -158,6 +166,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-07T02:56:50.639Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-10-07T03:10:16.020Z
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None
