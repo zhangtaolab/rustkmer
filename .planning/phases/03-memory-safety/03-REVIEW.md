@@ -1,590 +1,317 @@
 ---
 phase: 03-memory-safety
-reviewed: 2026-10-07T04:07:16Z
+reviewed: 2026-10-08T15:59:04Z
 depth: standard
 files_reviewed: 21
 files_reviewed_list:
-  - Cargo.toml
   - pyo3/src/database.rs
   - pyo3/tests/test_database_merge.py
   - src/cli/commands/merge.rs
   - src/database/format.rs
-  - src/database/mod.rs
+  - src/database/merge_config.rs
   - src/database/prefix_cache_merge.rs
+  - src/database/stats.rs
   - src/database/streaming_merge.rs
   - src/database/temp_lifecycle.rs
-  - src/hash/key.rs
   - src/hash/mod.rs
   - src/hash/table.rs
-  - src/io/fasta.rs
-  - src/io/fastq.rs
   - src/lib.rs
   - tests/dense_differential_tests.rs
+  - tests/dense_memory_tests.rs
   - tests/dense_merge_integration_tests.rs
   - tests/dense_proptest_tests.rs
   - tests/golden_sha256_tests.rs
+  - tests/merge_bounded_memory_tests.rs
   - tests/merge_cleanup_tests.rs
+  - tests/merge_route_parity_tests.rs
   - tests/merge_routing_tests.rs
 findings:
-  critical: 2
-  warning: 8
-  info: 3
-  total: 13
+  critical: 3
+  warning: 10
+  info: 7
+  total: 20
 status: issues_found
 ---
 
-# Phase 03: Code Review Report
+# Phase 3: Code Review Report
 
-**Reviewed:** 2026-10-07T04:07:16Z
-**Depth:** standard (from `workflow.code_review_depth`)
+**Reviewed:** 2026-10-08T15:59:04Z
+**Depth:** standard
 **Files Reviewed:** 21
 **Status:** issues_found
 
-## Scope Resolution
-
-Scope was resolved by the workflow's three-tier precedence, not by hand-picking:
-
-- **Tier 2 (SUMMARY.md):** 23 unique paths extracted from the five `03-0N-SUMMARY.md`
-  artifacts (`key_files.created` / `key_files.modified`).
-- **Tier 3 (`gsd check evaluation-scope --phase 03`):** `status: resolved`,
-  `source: task-commits`, 9 task commits, 21 files. `outsideUnion: []`,
-  `unreachable: []`, `missingOnDisk: []`.
-- **Cross-check (#2666):** all 21 resolver paths were already present in the
-  SUMMARY scope — `MISSING_FROM_SUMMARY` was empty, so the SUMMARY extract did not
-  mask part of the phase. The two extra SUMMARY entries were `.planning/` paths,
-  dropped by the D-03 exclusion step.
-- `LAST_REVIEW_COMMIT` was empty (first review of this phase), so no incremental
-  narrowing applied. `DIFF_BASE = 6230ba9ddc1b313a0b284ecb6b67d25ca84a3438`.
-
-**Deviation recorded for auditability.** The workflow's `resolve_depth` guard
-returned `DEPTH_OK=false` with `{"reason":"not_an_array"}` and, read literally,
-mandates `exit 1` with no REVIEW.md. That false positive is a quoting artifact of
-the guard's own default injection: `workflow.code_review_depth_overrides` is unset
-here (`config-get` → "Key not found"; global `~/.gsd/defaults.json` carries only
-`resolve_model_ids`/`runtime`), so the `|| echo '[]'` path is not taken, and
-`config-get ... --default '[]' --raw` emits the JSON-*string* `"[]"`, which
-`JSON.parse` yields as a string rather than an array. Proof that this is not a
-configured-sensitive-path policy being downgraded: (a) with a correctly-typed
-empty array the resolver returns `{ok:true, depth:"standard", source:"config"}`;
-(b) the guard still fires correctly on a genuinely malformed policy
-(`src/**` → `paths_malformed`). The guard's documented intent — never silently
-review a *configured* depth policy at `standard` — does not apply when no policy
-exists. Review proceeded at `standard`, the depth the project's own
-`workflow.code_review_depth: "standard"` selects. **This is a GSD tooling bug
-worth filing separately: the guard makes `/gsd-code-review` unable to run in any
-project that has not opted into per-path depth overrides.**
-
 ## Summary
 
-Twenty-one files reviewed at standard depth, spanning the merge-routing core
-(`src/database/format.rs`), the external-sort merge
-(`src/database/prefix_cache_merge.rs`), the streaming merge
-(`src/database/streaming_merge.rs`), the new temp lifecycle
-(`src/database/temp_lifecycle.rs`), the dense key (`src/hash/key.rs`,
-`src/hash/table.rs`), the PyO3 surface (`pyo3/src/database.rs`), and six test
-binaries.
+Incremental re-review of the gap-closure work since `d467dc5` (plans 03-06 through 03-11: KmerKey removal/CounterTable monomorphization, LE-only `KmerEntry::read_from`, golden_sha256 re-pointing, header-only merge routes + admission model, `merge_databases_to_path`, prefix-cache merge integrity + loose-chunk sweep), plus the full file contents of all 21 in-scope files.
 
-The engineering quality is high and unusually well-documented. `KmerKey`'s
-narrowing contract is stated with its exact preconditions and its failure mode
-(`src/hash/key.rs:59-73`); `temp_lifecycle.rs` explains *why* RAII alone is
-insufficient under `panic = "abort"` before providing the sweep (lines 10-26);
-`merge_cleanup_tests.rs` is candid that it cannot test the abort half and names
-the sweep test as the real protection. `dense_differential_tests.rs` compares at
-the decoded-string level against an independent oracle with the reasoning for
-each choice recorded. The two pre-existing streaming data-loss bugs fixed in
-03-01 (heap-refill ordering, microsecond chunk-name collision) are both genuinely
-correct in the current code — I traced the refill-before-emit reordering at
-`streaming_merge.rs:379-424` and it is right.
+**Verified correct (prior findings addressed by 03-06..03-11 — not re-reported):** the `CounterTable` enum with single-site width selection and the atomic `bump_entry!` macro (03-06); the endianness-heuristic removal in `KmerEntry::read_from` (03-07); `parse_memory_size` with `checked_mul` (WR-05 fix); the empty-input guard in `merge_prologue` and the single sweep call site (WR-06); the saturating admission model with `INMEMORY_BYTES_PER_KMER = 96` (WR-01); the WR-04 accounting/abort-on-bucket-failure logic and the WR-08 block-copy concatenation and pending-carry hashmap reader; `sweep_stale_merge_dirs` (symlink refusal via `file_type()`, TTL checks, graceful no-op); the chunk `len % RECORD_SIZE` truncation check and monotonic `TempFileManager` file IDs in `streaming_merge.rs`; the placeholder-then-rewrite streaming header write. WR-02 and WR-07 remain documented deferrals, not defects.
 
-Two Critical findings undercut the phase's two headline claims.
+**Key concerns in the new findings:** two independent silent-data-corruption defects remain in the prefix-cache route's per-bucket streaming machinery (CR-01 drops a partial record at every ~4 MB batch boundary and permanently misaligns the rest of the shard; CR-02 writes `sorted: true` on output that is not in ascending k-mer order, breaking every binary-search consumer), and the streaming merge route reachable from the Python API performs no cross-input compatibility validation at all (CR-03). Ten warnings cover count-overflow and stranding edge cases in the bucket merges, a CLI front-end that fully materializes every input on the memory-bounded route it exists to protect, temp-file leaks, and two PyO3 correctness defects.
 
-**CR-01** is the more serious: the two merge routes that this phase deliberately
-unified behind one `max_memory` / `merge_mode` API return **different count
-values for the same input**, depending only on which route the budget selects.
-This is not a hypothetical — it follows from `KmerEntry::read_from`'s
-endianness heuristic interacting with the streaming path's double read, and it is
-reproducible arithmetically from the source with no execution required. It is
-pre-existing in origin, but the phase is what made both routes reachable through
-one budget-driven entry point, so it is newly load-bearing.
-
-**CR-02** is that "bounded-memory merge" is not achieved: every one of the three
-merge strategies materializes whole databases in RAM, so the route chosen for
-over-budget merges is *not* the memory-safe one. The D-01 fix was applied
-precisely and only to the estimator — `estimate_total_kmers` — while the same
-`from_file_path` materialization the fix removed from the estimator survives
-unaltered in the three functions the estimator routes into. `WR-01` quantifies
-why this is not caught by the admission check.
-
-The `.rkdb` v2 byte-identity claim is **true by construction but not actually
-verified by the test that claims to verify it** (`WR-03`). I did not take it on
-faith and it does hold — `KmerKey::U64 → u128` is a lossless zero-extension, and
-for k ≤ 32 the encoder bound is `2^(2k) ≤ 2^64`, so `value <= u64::MAX` holds
-with equality at k=32 — but `golden_sha256_tests.rs` re-hashes committed Phase-1
-fixture *files* against a committed Phase-1 *manifest*. I confirmed by `git` that
-neither was touched anywhere in `6230ba9..HEAD` (last modified in `12caa42`,
-Phase 1). The test therefore passes identically whether or not the write path is
-correct, and its own doc comment's claim that the pre/post passes form "a
-differential rather than a tautology" is false.
-
-Seven of the eight known deferred items were re-examined rather than assumed;
-one (`merge_prefix_buckets` swallowing bucket failures) is **worse than recorded**
-and is escalated as `WR-04` with two aggravating factors the record omits.
-
-No source file, test, `Cargo.toml`, `STATE.md`, or `ROADMAP.md` was modified by
-this review. `cargo check --all-targets` was run read-only and passes clean.
-
----
+## Narrative Findings (AI reviewer)
 
 ## Critical Issues
 
-### CR-01: The two merge routes silently disagree on any k-mer count above 1,000,000
+### CR-01: `read_batch_from_file_sync` drops the partial-record tail at every batch boundary and swallows read errors — silent shard corruption above ~4 MB
 
-**File:** `src/database/format.rs:216-238` (origin), route divergence surfaces at `src/database/streaming_merge.rs:94` + `:314`
-**Severity:** Critical — silent data corruption, and a route-dependent divergence between two code paths this phase unified behind one API.
-
-`KmerEntry::read_from` does not perform a plain little-endian read. It reads four
-bytes and applies a heuristic:
+**File:** `src/database/prefix_cache_merge.rs:937-968` (callers at `:845` and `:882`)
+**Issue:** The per-bucket streaming reader clears its buffer at the start of every call (`data.clear()` at line 942), reads 8192-byte chunks until `bytes_read >= 4_000_000`, then decodes only whole 20-byte records (`while offset + RECORD_SIZE <= data.len()`, lines 961-965) and discards the tail. The arithmetic is deterministic: 488 full reads give 3,997,696 bytes (< 4 MB), so a 489th read runs, ending the batch at 4,005,888 bytes; `4,005,888 mod 20 = 8`, so 8 tail bytes are dropped at every batch boundary. The next batch then starts reading 8 bytes *into the middle of a record*, so every subsequent record in that shard decodes as misaligned garbage k-mers and counts. Any input shard file larger than ~4 MB (i.e., any single input contributing more than ~4 MB of records to one prefix bucket — the normal case for the large merges this route exists for) is silently corrupted. Additionally, `Err(_) => break` (line 954) swallows real I/O errors mid-file as a clean end-of-batch, silently truncating the merge. The WR-08 pending-carry fix was applied to `merge_single_prefix_hashmap`'s reader (lines 707-733) but not to this one. The WR-04 conservation check cannot catch this: both sides of that comparison derive from the same corrupted stream.
+**Fix:** Carry the partial-record tail across batches exactly as the hashmap reader does, and propagate read errors:
 
 ```rust
-let count_le = u32::from_le_bytes(count_bytes);
-let count_be = u32::from_be_bytes(count_bytes);
-// If little-endian gives an unreasonable count (> 1M), use big-endian
-let count = if count_le > 1_000_000 { count_be } else { count_le };
+fn read_batch_from_file_sync(
+    file_state: &mut (std::io::BufReader<File>, Vec<u8>, Vec<KmerEntry>),
+) -> ProcessingResult<Vec<KmerEntry>> {
+    const BATCH_BYTES: usize = 4_000_000;
+    let (reader, data, _) = &mut *file_state;
+    // Do NOT clear: `data` holds the partial-record tail from the last batch.
+
+    let mut bytes_read = 0usize;
+    let mut buffer = [0u8; 8192];
+    while bytes_read < BATCH_BYTES {
+        match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(n) => {
+                data.extend_from_slice(&buffer[..n]);
+                bytes_read += n;
+            }
+            Err(e) => {
+                return Err(ProcessingError::io_error(format!(
+                    "failed reading shard stream: {e}"
+                )));
+            }
+        }
+    }
+
+    let mut entries = Vec::new();
+    let mut offset = 0usize;
+    while offset + RECORD_SIZE <= data.len() {
+        let (kmer, count) = read_record_at(data, offset);
+        entries.push(KmerEntry::new(kmer, count));
+        offset += RECORD_SIZE;
+    }
+    data.drain(..offset); // keep only the sub-record tail for the next call
+    Ok(entries)
+}
 ```
 
-`write_to` (line 211) always emits `write_u32::<LittleEndian>` — the documented
-v2 layout. So for any count above 1,000,000 the reader reinterprets
-correctly-written bytes and returns a byte-swapped value. Confirmed
-arithmetically against the actual on-disk encoding:
+### CR-02: Prefix-cache output is bucketed by the LOW byte but written with `sorted: true` — every binary-search consumer silently returns wrong results
 
-| true count | on-disk bytes | `read_from` returns |
-|---|---|---|
-| 1,000,000 | `40420f00` | 1,000,000 (ok) |
-| 1,000,001 | `41420f00` | 1,094,848,256 |
-| 2,000,000 | `80841e00` | 2,156,142,080 |
-| 16,777,216 | `00000001` | 1 |
-| 4,000,000,000 | `00286bee` | 2,649,070 |
-
-The phase then makes this a **route-dependent** bug. `PyDatabase.merge` (MERGE-04)
-and `--merge-mode` both select between the in-memory and streaming routes using
-one budget. Those two routes apply the heuristic a *different number of times*:
-
-- **In-memory route:** `from_file_path` → one `read_from` (`format.rs:328`).
-  A single swap. Count 2,000,000 → **2,156,142,080**.
-- **Streaming route:** `DatabaseStreamIterator::next` reads the input
-  (`streaming_merge.rs:94`, swap #1), writes the sorted chunk little-endian
-  (`streaming_merge.rs:272`), and `merge_sorted_chunks` reads the chunk back
-  (`streaming_merge.rs:314`, swap #2). Two swaps cancel — accidentally correct.
-
-Result: for count 2,000,000 the in-memory route returns 2,156,142,080 and the
-streaming route returns 2,000,000. **The same input merged under the same
-`max_memory` yields different data depending only on which route the budget
-picked.** Both routes are also individually wrong in some cases (16,777,216 →
-`01000000` swaps to 1, and 1 is not > 1M so it does not swap back — both routes
-return 1).
-
-This is precisely the failure mode the phase's own contract test is built to
-catch: `pyo3/tests/test_database_merge.py:230`
-`test_streaming_and_inmemory_routes_produce_identical_data` asserts
-`streaming_counts == inmemory_counts`. It passes only because every fixture count
-is far below 1,000,000, so the heuristic never engages. The test is correct; it
-just cannot reach the bug.
-
-Origin is pre-existing (`a4f13bb0`, 2025-11-28) and is **not** a defect this
-phase introduced. It is raised as Critical because the phase routes large merges
-through this reader by default, because a `.rkdb` merge that silently rewrites
-counts is a data-loss risk by the taxonomy, and because the phase's verification
-strategy structurally cannot see it.
-
-**Fix.** Delete the heuristic — `read_from` must be a plain little-endian read
-matching `write_to`:
+**File:** `src/database/prefix_cache_merge.rs:970-973` (`get_prefix_4mer`), `:1010-1017` (concatenation loop `0..num_buckets`), `:1175` (`sorted: true`); log claim at `:243`
+**Issue:** `get_prefix_4mer` returns `kmer & 0xFF`. The k-mer encoding is right-aligned in the u128 (verified in `src/kmer/encoding.rs`: `encoded = (encoded << 2) | value` starting from zero), so `kmer & 0xFF` selects the **last** 4 bases, not the first — the Phase 1 log at line 243 ("data bucketing (by first 4 bases)") and the `prefix_to_dna` bucket labels ("AAAA".."TTTT") are both wrong about what is actually selected. That alone is only a labeling issue; the defect is the combination with `concatenate_final_output`: buckets are concatenated in index order 0..255, and each bucket is internally sorted ascending by full u128, so the output is ordered by `(low_byte, kmer)`. That is **not** ascending u128 order — e.g. k-mer `0x100` (low byte `0x00`, bucket 0) is written before k-mer `0xFF` (low byte `0xFF`, bucket 255) — yet the header written at line 1175 claims `sorted: true`. Every consumer that trusts that flag then breaks: `RKDatabase::query_kmer` (`src/database/format.rs:590-596`) switches to `binary_search_kmer` when `header.sorted`, and `src/database/prefix_query_optimized.rs` binary-searches sorted databases (lines 86-120, 264-310). Exact-match queries on a prefix-cache-merged database silently return `None` (or a wrong count), and prefix extraction silently misses k-mers. The prior phase's `merged_database_accounts_for_every_input_kmer_on_both_routes` test asserts `header.sorted` only for the in-memory and streaming routes, so this is untested on the prefix-cache route.
+**Fix:** Either (a) bucket by the true first 4 bases so index order equals u128 order:
 
 ```rust
-let mut count_bytes = [0u8; 4];
-reader.read_exact(&mut count_bytes)?;
-let count = u32::from_le_bytes(count_bytes);
+fn get_prefix_4mer(&self, kmer: u128) -> usize {
+    // First 4 bases = the HIGH 8 bits of the right-aligned 2k-bit key.
+    let shift = 2 * self.kmer_size.saturating_sub(4);
+    ((kmer >> shift) & 0xFF) as usize
+}
 ```
 
-Then add a regression test that round-trips counts at and above the old
-threshold (`1_000_000`, `1_000_001`, `2_000_000`, `16_777_216`) through
-`write_to` → `read_from`, and extend the streaming-vs-in-memory parity test to
-use at least one fixture whose count exceeds 1,000,000. If a legacy
-big-endian-written file genuinely must be readable, that compatibility belongs in
-an explicit, opt-in migration keyed off the header version — not in an
-unannounced per-record heuristic that fires on valid input.
+(with the `shift == 0` case for `k < 4` decided explicitly), or (b) keep low-byte bucketing but clear the `sorted` flag in the output header — noting that (b) degrades prefix extraction to linear scans — or (c) emit buckets in an order that produces globally sorted output only if the bucket key is the high byte, which is option (a). Independently, correct the "first 4 bases" log/label claim to match whatever is implemented, and add a test that asserts global ascending order of a prefix-cache-merged output.
 
-### CR-02: No merge strategy is memory-bounded; the streaming route is not a memory escape
+### CR-03: Streaming merge route performs no cross-input k-mer-size/canonical validation — Python API silently merges incompatible databases
 
-**File:** `src/database/format.rs:852` (primary), plus `:870-877`, `:941-945`, `src/database/prefix_cache_merge.rs:76` and `:82-86`
-**Severity:** Critical — the phase's central deliverable is not delivered, and over-budget merges are routed to a path that OOMs at least as hard as the one they avoided.
-
-D-01 correctly diagnosed that "the function whose whole job is to prevent OOM
-was itself the OOM": `estimate_total_kmers` used to call `from_file_path` per
-input. `from_file_path` loads every entry (`format.rs:326-335`,
-`Vec::with_capacity(total_kmers)` then a read loop). The fix made the estimator
-header-only — excellent, and correctly unit-tested.
-
-But the same materialization survives in all three strategies the estimator
-routes into:
-
-1. **Streaming** (`format.rs:852`):
-   ```rust
-   let first_db = RKDatabase::from_file_path(&input_paths[0])?;
-   let kmer_size = first_db.kmer_size();
-   let canonical = first_db.is_canonical();
-   ```
-   The *only* reason the first database is loaded is to read two header fields.
-   This is the path chosen precisely when the inputs **do not fit** in the budget.
-   It then also accumulates the entire merged output in RAM at `:870-877`
-   (`sorted_kmers: Vec<(u128, u32)>`), and `from_kmer_pairs` builds a third
-   full copy (`:466-469`). So "streaming" holds roughly 2–3× the whole dataset
-   at peak — strictly worse than the in-memory path it replaced.
-
-2. **In-memory** (`format.rs:941-945`) loads *every* input into a `Vec<RKDatabase>`
-   and holds them alive while building the accumulator, the sorted vector, and
-   the entry vector.
-
-3. **Prefix cache** loads every input at `format.rs:1048-1052` into `db_refs`,
-   which stays in scope through the final `from_file_path(&temp_output)` at
-   `:1078` — so peak is all inputs *plus* the full merged output — and then
-   `ExternalSortMerger::new` loads them all a second time
-   (`prefix_cache_merge.rs:76` and `:82-86`).
-
-Net effect: there is no bounded-memory merge anywhere in this phase. Every route
-scales with total dataset size. The external-sort *sharding* is genuinely
-bounded, but the wrappers around it are not.
-
-**Fix.** Both header-only reads are the same one-line change D-01 already
-demonstrated:
+**File:** `src/database/format.rs:1344-1350` (validation gap); entry point `pyo3/src/database.rs:1370-1465`; contrast `src/database/prefix_cache_merge.rs:128-143` and `src/database/format.rs:1545`
+**Issue:** `merge_databases_streaming_to_path` reads `kmer_size` and `canonical` from `read_header_of(&input_paths[0])` only (lines 1348-1350) and never compares them against the other inputs. `merge_prologue` (format.rs:966-996) checks only for an empty list, and `resolve_merge_route` only estimates memory. The other two routes validate: the in-memory route calls `validate_compatibility_verbose` (format.rs:1545) and the prefix-cache route compares every input's header k-mer size (prefix_cache_merge.rs:128-143). The CLI front-end also pre-validates (src/cli/commands/merge.rs:165-299). But `PyDatabase.merge` (pyo3/src/database.rs:1370-1465) validates only file existence, `merge_mode`, and `max_memory` parsing before calling `merge_databases_to_path` — so from Python, merging a k=21 database with a k=31 database (or mixed canonical modes) on the streaming route (selected automatically once the admission model says the merge is over budget) silently produces a corrupt database whose header claims input[0]'s k-mer size, instead of returning an error. This is the same class of route-disagreement as prior CR-01, now on the validation axis.
+**Fix:** Validate every input header once, in the shared path, so all routes and both front-ends inherit it:
 
 ```rust
-// format.rs:852 — replace with a header-only read
-let (kmer_size, canonical) = {
-    let f = File::open(&input_paths[0])?;
-    let mut r = BufReader::new(f);
-    let h = DatabaseHeader::read_from(&mut r)?;
-    (h.kmer_size, h.canonical)
-};
+fn merge_prologue(
+    input_paths: &[std::path::PathBuf],
+    config: &crate::database::MergeConfig,
+) -> crate::error::ProcessingResult<()> {
+    if input_paths.is_empty() { /* existing guard */ }
+
+    // Cross-input compatibility: header-only (D-01), so the over-budget
+    // route never materializes an input just to reject it.
+    let first = Self::read_header_of(&input_paths[0])?;
+    for path in input_paths.iter().skip(1) {
+        let h = Self::read_header_of(path)?;
+        if h.kmer_size != first.kmer_size {
+            return Err(crate::error::ProcessingError::new(format!(
+                "Database '{}' has k-mer size {}, expected {}",
+                path.display(), h.kmer_size, first.kmer_size
+            )));
+        }
+        // canonical mismatch: reject here unless the prefix-cache route's
+        // mixed-canonical capability is intentionally selected (see WR-04).
+    }
+    // ... existing sweep call ...
+}
 ```
-
-Do the same at `prefix_cache_merge.rs:76`/`:82-86` and `format.rs:1048-1052`.
-For the streaming route, `sorted_kmers` must additionally be streamed to the
-output file rather than accumulated — that is the substantive part, and it is
-the only way the "streaming" label becomes true. Track it as a follow-up; the
-header-only reads alone are a large, low-risk first step.
-
----
 
 ## Warnings
 
-### WR-01: The admission-control model is ~3–4× below the peak it is meant to bound
+### WR-01: `StreamingMergeIterator`'s `pending_error` machinery is dead code and the iterator is not actually finished after an `Err`
 
-**File:** `src/database/format.rs:739` and `:833`
-**Severity:** Warning.
-
-`estimated_memory = total_kmers * 24` models one 20-byte record plus 4 bytes of
-slack. The actual peak of `merge_databases_inmemory` for N input k-mers holds
-simultaneously: all inputs as `Vec<KmerEntry>` (32 B each after `u128`
-alignment), a `hashbrown` `HashMap<u128, u32>`, a `Vec<(u128, u32)>` (32 B each),
-and finally a `Vec<KmerEntry>` from `from_kmer_pairs`. That is roughly 3–4× the
-model. A merge the check admits can therefore still OOM, which is precisely the
-outcome MERGE-01 promises to prevent and D-02's rejection message claims to
-prevent. `WR-01` is the quantitative reason `CR-02` is not caught by the
-admission gate.
-
-**Fix.** Model the dominant peak term explicitly and document it as an
-over-estimate, e.g. charge `total_kmers * 96` for the in-memory route, or
-switch on `merge_mode`/`use_prefix_cache` and use a per-route constant. Also fix
-`format.rs:737`: `.iter().sum()` there is non-saturating while its sibling at
-`:830` uses `saturating_add` — inconsistent, and it would panic in a debug build
-rather than saturate.
-
-### WR-02: `merge_mode` is silently ignored — and the D-02 rejection is unreachable — whenever `--use-prefix-cache` is set
-
-**File:** `src/database/format.rs:742-751` (vs. `:759-766`)
-**Severity:** Warning — a phase-introduced contract that is unreachable on one path.
+**File:** `src/database/streaming_merge.rs:436-445, 475-500`
+**Issue:** The error arm sets `self.pending_error = Some(...)` (lines 484-490) and then immediately returns `Some(Err(self.pending_error.take().expect(...)))` (lines 496-499) — so `pending_error` is always `None` again by the time `next()` is re-entered, making the top-of-`next` check and state reset (lines 440-445) unreachable dead code. Worse, the comments claim "the run it belonged to has already been abandoned" and "the heap / `current_kmer` / `current_count` are left untouched, so no k-mer is double-counted if a caller ever retries and no partial run is emitted beside the error" — but leaving the heap and current run intact means a caller that continues iterating after the `Err` (any `for` loop that doesn't break, `collect::<Result<...>>` retry logic, `iterator.map(...).take_while(...)`) receives further `Ok` records from the still-live heap, i.e. a partial run IS emitted beside the error. The production consumer aborts via `?`, so impact is contained today, but the documented contract is false and the next consumer will be built on it.
+**Fix:** Decide the contract and implement it directly: to make "finished after error" true, clear the state before returning the error (as the dead branch at 440-443 intended) and drop the take/return dance:
 
 ```rust
-if config.use_prefix_cache {
-    ...
-    return Self::merge_databases_prefix_cache(input_paths, config);
+Err(e) => {
+    let err = ProcessingError::io_error(format!(
+        "Failed to read k-mer entry from chunk file '{}': {}",
+        self._temp_files[merge_item.file_index].display(), e
+    ));
+    // Terminal: no further items after an error.
+    self.current_kmer = None;
+    self.current_count = 0;
+    self.heap.clear();
+    return Some(Err(err));
 }
-let over_budget = estimated_memory > config.max_memory_usage as u64;
-if config.merge_mode == "memory" && over_budget { return Err(...); }
 ```
 
-The prefix-cache early return precedes both the D-02 rejection and every
-`merge_mode` decision. `--use-prefix-cache` is a real, documented CLI flag
-(`src/cli/args.rs:289-294`, set at `src/cli/commands/merge.rs:336`, with
-`config.merge_mode` assigned one line later at `:337`). Consequences:
+### WR-02: u32 count overflow in prefix-cache bucket merges — panics in debug, wraps in release; in-memory route saturates
 
-- `rustkmer merge --use-prefix-cache --merge-mode memory --max-memory 1GB` over
-  budget runs anyway instead of returning the actionable rejection. The error
-  message and the PyO3 docstring (`pyo3/src/database.rs:1339-1341`: *"'memory'
-  refuses to run over budget"*) both promise otherwise.
-- `merge_mode` still reaches `ExternalSortMerger` (`format.rs:1067`) but there
-  means something entirely different — a *per-bucket* strategy selector
-  (`prefix_cache_merge.rs:386-397`), not a route selector. So
-  `--merge-mode streaming` on this path selects streaming per bucket while the
-  whole merge still runs the prefix-cache algorithm.
+**File:** `src/database/prefix_cache_merge.rs:719` (hashmap), `:866, :887, :899` (streaming); contrast `src/database/format.rs:1561-1562`
+**Issue:** The per-bucket merge accumulates counts with plain `+=` (`*kmer_counts.entry(kmer).or_insert(0) += count;` and `current_count += top.count`). Merging databases whose summed count for one k-mer exceeds `u32::MAX` panics in debug builds and silently wraps in release builds. The in-memory route deliberately uses `saturating_add` (format.rs:1562, "Merge k-mers with overflow protection") — the prefix-cache route, which exists precisely for the merges large enough to be over budget, has the weaker behavior on exactly the path where overflow is most reachable.
+**Fix:** Use `saturating_add` at all four sites, e.g. `*e = e.saturating_add(count)` / `current_count = current_count.saturating_add(top.count)`, matching the in-memory route's documented overflow policy.
 
-**Fix.** Either hoist the D-02 rejection above the `use_prefix_cache` early
-return, or explicitly reject the incompatible flag combination
-(`--use-prefix-cache` + `--merge-mode != auto`) with a message explaining that
-the prefix-cache strategy owns its own per-bucket memory policy. Document the
-dual meaning of `merge_mode` on the CLI help either way.
+### WR-03: `merge_single_prefix_streaming` peek-and-add strands the rest of a file's run on within-file duplicate k-mers
 
-### WR-03: `golden_sha256_tests.rs` cannot detect the format drift it claims to guard
-
-**File:** `tests/golden_sha256_tests.rs:116-121`, with the claim at `:27-29`
-**Severity:** Warning — the phase's load-bearing DENSE-02 verification is inert.
-
-The test hashes the twelve committed fixture files on disk and compares them to
-`tests/fixtures/golden_manifest.sha256`. Verified by git: neither the fixtures
-nor the manifest is touched anywhere in this phase — `git diff --stat
-6230ba9..HEAD -- tests/fixtures/` is empty, and the last commit to affect either
-is `12caa42` (Phase 1, plan 01-03). The bytes under test are therefore static
-Phase-1 artifacts that no Phase-3 code path touches at test time.
-
-The consequence is that this test passes identically regardless of whether
-`KmerKey::to_u128` still zero-extends, whether `KmerEntry::write_to` still
-emits 16 + 4 bytes, or whether the write path is correct at all. It verifies
-that nobody hand-edited a committed fixture — useful, but not what it claims.
-
-Lines 27-29 assert the opposite: *"it was GREEN before the KmerKey swap landed —
-that pre-swap pass is what makes the post-swap pass meaningful as a differential
-rather than a tautology."* Because the test never invokes the swapped code, the
-pre-swap and post-swap passes are green for the same reason, and there is no
-differential. (`tests/golden_tests.rs` reads the same manifest and has the same
-property; the file is candid that both binaries read the same manifest, but not
-that both are static.)
-
-For the record, **the byte-identity claim itself is true**, just not proven here:
-`KmerKey::U64 → u128` is a lossless zero-extension (`src/hash/key.rs:96-101`), and
-for k ≤ 32 the encoder bound is `2^(2k) ≤ 2^64`, so the narrowing contract at
-`from_u128:74-87` holds with equality at k=32. `KmerEntry`'s layout is untouched
-since `0fa16cf`, pre-dating this phase. The gap is verification rigor plus a
-misleading comment, not a live format break.
-
-**Fix.** Make the test actually exercise the write path: build a database
-through `KmerCounter` for each cell of the k ∈ {21, 32, 64} × canonical × sorted
-matrix, write it, and assert the resulting bytes hash to the manifest entry. Then
-the pre/post comparison is a real differential. Failing that, retitle the test
-and delete the differential claim so the comment stops misleading a future
-maintainer into trusting it.
-
-### WR-04: `merge_prefix_buckets` failure swallowing is worse than the record states
-
-**File:** `src/database/prefix_cache_merge.rs:461-485`; aggravators at `:404-408` and `:872`
-**Severity:** Warning (already-known item, escalated with two new aggravating factors).
-
-This is the recorded deferred item — bucket failures are counted, logged, and
-`Ok(())` is returned regardless, so `concatenate_final_output` writes a partial
-`.rkdb`. That part of the record is accurate and I am not re-reporting it as new.
-
-Two aggravating factors the record does not record:
-
-1. **The D-06 change destroyed the recovery data first.** Lines 399-408
-   deliberately moved shard deletion off the success branch so it also runs on
-   failure ("this is only a peak-disk optimization, so it runs on the failure path
-   too"). For a *failed* bucket that now deletes the bucket's shard files before
-   the error is swallowed at `:485`. There is no longer any on-disk artifact from
-   which the lost k-mers could be recovered or the bucket retried. The phase
-   improved peak-disk behaviour and, in the same edit, closed the last recovery
-   path for the silent-loss case. The two changes interact badly.
-
-2. **The existing integrity check is itself a tautology, so it gives false
-   assurance.** Lines 871-874:
-   ```rust
-   // Check for duplicates
-   if total_kmers != total_kmers_in_files {
-       log::warn!("   ⚠️  Warning: data size mismatch! Possible duplicates or loss");
-   }
-   ```
-   `total_kmers` is `data_size / RECORD_SIZE` (`:860`) where `data_size` sums the
-   buffers of the merged bucket files (`:835`); `total_kmers_in_files` sums
-   `file_size / RECORD_SIZE` over those *same* merged bucket files (`:827-828`).
-   The two are computed from identical inputs, so the comparison can never
-   differ. A bucket that failed simply has no merged file (or an empty one, which
-   is skipped at `:821-825`), and both counters exclude it identically. The check
-   named "Possible duplicates or loss" cannot detect loss.
-
-**Fix.** Return `Err` when `error_count > 0` (the record's suggestion is correct),
-and delete the `total_kmers != total_kmers_in_files` check rather than leaving a
-warning that can never fire. If a real integrity signal is wanted, compare the
-concatenated record count against the sum of the *bucket-phase* counts recorded
-before phase 2 discards the shards — which requires not deleting shards on the
-failure path.
-
-### WR-05: `parse_memory_size` overflows before it validates, and is now reachable from Python
-
-**File:** `src/cli/commands/merge.rs:507-525`
-**Severity:** Warning.
-
-The unit multipliers are applied before the range check:
+**File:** `src/database/prefix_cache_merge.rs:886-895` (refill branch; identical pattern at `:897-906`)
+**Issue:** After popping an entry, the code peeks at the file's next buffered head; if `current_kmer == Some(first_entry.kmer)` it adds the count to the current run but neither removes the head from the buffer nor pushes it onto the heap (lines 886-887, 898-899). The merge invariant is "the heap holds the head of each live file"; once a file's head is consumed this way without a heap entry, nothing ever references that file again — the head and every remaining record of that file are silently dropped. This triggers whenever a shard file contains duplicate k-mer records (possible for hand-built or externally produced `.rkdb` inputs; the function also never checks the input's `sorted` flag, it just assumes each shard is a sorted run, so an unsorted input corrupts the heap merge silently rather than erroring).
+**Fix:** Always remove the consumed head and only conditionally push:
 
 ```rust
-let bytes = match unit {
-    "TB" => number * 1024 * 1024 * 1024 * 1024,
+let first_entry = file_states[top.file_idx].2.remove(0);
+if !file_states[top.file_idx].2.is_empty() || /* refill happened */ {
     ...
-};
-if bytes < 1024 { return Err("Memory size too small (minimum 1KB)".to_string()); }
-if bytes > 1024 * 1024 * 1024 * 1024 { return Err("Memory size too large (maximum 1TB)".to_string()); }
+}
+if current_kmer == Some(first_entry.kmer) {
+    current_count = current_count.saturating_add(first_entry.count);
+} else {
+    heap.push(HeapEntry { kmer: first_entry.kmer, count: first_entry.count,
+                          file_idx: top.file_idx });
+}
 ```
 
-Verified by compilation with and without overflow checks (this repo's
-`[profile.release]` sets `panic = "abort"` and leaves `overflow-checks` off):
+i.e. treat the peeked head as consumed in both branches. Also reject (or document and verify) unsorted shard inputs rather than assuming sorted runs.
 
-- **dev / `cargo test` profile** (`overflow-checks=on`): `--max-memory 99999999TB`
-  panics with `attempt to multiply with overflow`, exit 101.
-- **release** (`overflow-checks=off`): the multiply wraps silently. For
-  `16777217TB` and `17179869185GB` the wrapped value is exactly 2^40, which
-  **passes** the 1 TB upper bound that the same function advertises. The cap is
-  defeated by the very input it exists to reject.
+### WR-04: Prefix-cache mixed-canonical merge writes raw (non-canonical) records while the output header claims `canonical` from input[0]
 
-Inputs this large are unrealistic, which bounds the impact — but 03-05 made this
-function `pub` and routed arbitrary Python strings through it
-(`pyo3/src/database.rs:1411`), where an unhandled panic aborts the host
-interpreter rather than a short-lived CLI.
+**File:** `src/database/prefix_cache_merge.rs:292-303` (selection-only canonicalization, `unwrap_or` at `:294`), `:1174` (header claim); capability advertised at `src/database/format.rs:796`
+**Issue:** In `split_files_by_prefix`, `processed_kmer` (the canonicalized value) is used ONLY to choose the bucket (line 299); the raw `entry.kmer` is what gets written to the shard (lines 302-303). Mixed-canonical merging is this route's advertised capability ("Use --use-prefix-cache for flexible canonical mode merging", format.rs:796), but on such a merge the non-canonical inputs' records are never converted — the output contains non-canonical k-mers while its header claims `canonical: self.canonical` (input[0]'s flag, line 1174). Downstream canonical-mode consumers get wrong query semantics, and canonical/non-canonical encodings of the same k-mer stay as separate records instead of merging. Additionally, `canonical_kmer_u128(...).unwrap_or(entry.kmer)` (line 294) silently swallows canonicalization errors and buckets by the un-canonicalized value.
+**Fix:** Write the canonicalized value to the shard: `bucket_buffers[prefix].extend_from_slice(&processed_kmer.to_le_bytes())` (and propagate the canonicalization error instead of `unwrap_or(entry.kmer)`); or, if raw-preserve is intended, derive the output header's `canonical` flag from whether every input was canonical and say so in the route's documentation.
 
-**Fix.** Use checked arithmetic and map the overflow to the existing
-"Memory size too large" error:
+### WR-05: CLI merge fully materializes every input database just to validate — including on `--use-prefix-cache`, the memory-bounded route it exists for
+
+**File:** `src/cli/commands/merge.rs:165-299` (reference load at `:165`; validation loop 1 at `:168-236`; always-runs loop 2 at `:241-299`)
+**Issue:** `execute_merge` contains two sequential per-input validation loops that each call `RKDatabase::from_file_path(db_path)`, loading the entire database into RAM. Loop 1 runs when `!use_prefix_cache`; loop 2 runs unconditionally — so with `--use-prefix-cache`, every input is still fully materialized one at a time purely to compare `kmer_size()` (line 253), defeating the purpose of the bounded-memory route at the exact front-end where users select it (the 03-09/D-01 fix removed whole-database loads from the core routing, but not from this CLI front-end). When `!use_prefix_cache` the two loops are also plain duplicated work (same loads, same comparisons, different error message wording).
+**Fix:** Replace both loops with one header-only pass:
 
 ```rust
-let bytes = number.checked_mul(mult).ok_or_else(|| {
-    format!("Memory size too large: {} {}", number_str, unit)
-})?;
+let ref_header = RKDatabase::read_header_of(first_db_path)?;
+for db_path in args.input.iter().skip(1) {
+    let h = RKDatabase::read_header_of(db_path)?;
+    if h.kmer_size != ref_header.kmer_size { /* error with recovery suggestions */ }
+    if !args.use_prefix_cache && h.canonical != ref_header.canonical { /* error */ }
+}
 ```
 
-### WR-06: `merge_databases_streaming` indexes `input_paths[0]` with no empty guard
+and drop the `reference_db` full load (nothing else in the function needs it once the header is read directly).
 
-**File:** `src/database/format.rs:852`
-**Severity:** Warning (latent).
+### WR-06: Compat-shim fallback file leaks on error and is never swept
 
-`merge_databases` is a public library API. Its three strategies disagree on
-empty input: `merge_databases_inmemory` validates explicitly (`:905-909`) and
-`merge_databases_prefix_cache` does too (`:1041-1045`), but
-`merge_databases_streaming` reaches `&input_paths[0]` immediately and panics
-with an index-out-of-bounds. A library consumer calling
-`RKDatabase::merge_databases(&[], &config)` gets a panic rather than the
-`Err("At least one input database is required")` the sibling paths return.
-
-I confirmed both shipped front-ends guard this (`src/cli/commands/merge.rs:145`
-rejects `len() < 2`; `pyo3/src/database.rs:1377` rejects an empty list), so it is
-not reachable through the CLI or the Python API today. That is why this is a
-Warning and not a Critical — but the guard belongs at the top of
-`merge_databases` itself, where it protects all three strategies at once.
-
-### WR-07: `MergeConfig::use_streaming` is a dead, silently-ignored public field
-
-**File:** `src/database/merge_config.rs:15-16`; never read in `src/database/format.rs`
-**Severity:** Warning.
-
-The field is documented `/// Force streaming mode` and is `pub`, but a
-repo-wide search shows it is only ever *written* (its `Default` and test
-fixtures) — `merge_databases` decides routing purely from `config.merge_mode`
-(`:770`) and `should_use_streaming` (`:823`). A library consumer who sets
-`use_streaming = true` gets silently different behavior than they asked for,
-with no diagnostic. Either honor it (treat `use_streaming || merge_mode ==
-"streaming"`) or delete it; a public knob that does nothing is worse than no
-knob.
-
-### WR-08: `concatenate_final_output` loads each entire merged bucket into memory
-
-**File:** `src/database/prefix_cache_merge.rs:831-832`
-**Severity:** Warning.
+**File:** `src/database/format.rs:1222-1231` (fallback target), `:1284-1290` (leak); sweep mismatch at `src/database/temp_lifecycle.rs:232-243`
+**Issue:** When `compat_materialization_target` cannot create a merge subdir, `merge_databases`'s Streaming/PrefixCache arm writes to `rustkmer-merge-compat-<pid>-<nanos>.rkdb` directly under `temp_dir`. If `merge_databases_to_path` or `from_file_path` then returns `Err`, the `?` at lines 1285/1286 returns before the `remove_file` at line 1289 runs — the file leaks. It is also never reclaimed by the orphan sweep: the file name carries the `rustkmer-merge-` prefix, but the sweep's directory branch explicitly skips non-directories (`Ok(_) => continue`, temp_lifecycle.rs:233-234) and the loose-chunk branch requires the `.chunk` suffix.
+**Fix:** Clean up on the error path (and/or make the sweep's prefix branch handle files named with `MERGE_TEMP_PREFIX` that end in `.rkdb`):
 
 ```rust
-let mut buffer = Vec::new();
-input_file.read_to_end(&mut buffer)?;
+let (subdir, temp_path) = Self::compat_materialization_target(config);
+let result = Self::merge_databases_to_path(input_paths, config, &temp_path)
+    .and_then(|_| Self::from_file_path(&temp_path).map(|db| (db, ())));
+if subdir.is_none() {
+    let _ = std::fs::remove_file(&temp_path);
+}
+result.map(|(merged, _)| merged)
 ```
 
-Each merged prefix bucket is read wholly into RAM before being appended. Peak is
-therefore bounded by the *largest single bucket*, not by the merge buffer. With
-256 buckets (`num_buckets = 1 << 8`, `:74`) a merge whose k-mers concentrate in
-few prefixes produces very large individual buckets, so this is unbounded in
-practice on the path advertised as "memory-efficient". Copying in fixed-size
-blocks — the same `RECORD_SIZE * 100_000` pattern already used at `:909` — would
-keep it bounded.
+### WR-07: `PyDatabase.dump(limit=None, offset>0)` overflows `offset + usize::MAX` — panic in debug, empty result in release
 
----
+**File:** `pyo3/src/database.rs:1254, 1261-1265`
+**Issue:** `dump` sets `actual_limit = limit.unwrap_or(usize::MAX)` (line 1254) and the Preload arm's break condition is `count >= offset + actual_limit` (line 1263). With `limit=None` and any `offset > 0`, `offset + usize::MAX` overflows: in a build with overflow checks it panics; in release it wraps to `offset - 1`, and since the enclosing condition already established `count >= offset`, the break fires immediately — the call returns an empty list instead of "everything from offset". (The MemoryMapped arm correctly uses `offset.saturating_add(...)`; Lazy uses skip/take and is fine.)
+**Fix:** `if count >= offset.saturating_add(actual_limit) { break; }` — or better, `if results.len() >= actual_limit { break; }` after the offset skip.
+
+### WR-08: `PyDatabase.query_exact` in MemoryMapped mode always returns count 0 / found False
+
+**File:** `pyo3/src/database.rs:606-611`
+**Issue:** The `LoadMode::MemoryMapped` arm of `query_exact_impl` returns the literal `0` with the comment "This is a simplified implementation". Every exact query against a memory-mapped database reports the k-mer as absent. Pre-existing (outside the diff range) but never reported and directly user-visible from Python: callers get silently wrong answers rather than an "unsupported mode" error.
+**Fix:** Either implement the file-backed binary search (the format guarantees 20-byte fixed records after the 42-byte header when `header.sorted`), or fail loudly: `return Err(PyErr::new::<pyo3::exceptions::PyNotImplementedError, _>("query_exact is not supported in memory-mapped mode"));`.
+
+### WR-09: `from_file_path` pre-reserves `header.total_kmers` entries — crafted header aborts the process instead of returning an error
+
+**File:** `src/database/format.rs:463`
+**Issue:** `Vec::with_capacity(header.total_kmers as usize)` runs immediately after the 42-byte header is read and validated for magic/version/data_offset, but before any consistency check against the file's actual size. A crafted or truncated-corrupt header claiming `total_kmers` near `u64::MAX` (or merely a large implausible value) makes `with_capacity` attempt a huge allocation: capacity-overflow panic (and the release profile's `panic = "abort"` turns that into a process abort), or an allocation-failure abort — on what should be a rejectable input. The read loop would otherwise catch the mismatch via `read_from`'s `UnexpectedEof`, but only after the reservation.
+**Fix:** Clamp the reservation and let the loop grow the vector, cross-checking against file size:
+
+```rust
+let file_len = std::fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0);
+let data_bytes = file_len.saturating_sub(header.data_offset);
+if header.total_kmers > data_bytes / RECORD_SIZE_U64 {
+    return Err(crate::error::ProcessingError::new(format!(
+        "header claims {} k-mers but the file holds at most {}",
+        header.total_kmers, data_bytes / RECORD_SIZE_U64
+    )));
+}
+let mut entries = Vec::with_capacity(header.total_kmers as usize);
+```
+
+### WR-10: `frequency_distribution` zero-fills `min_count..=max_count` — unbounded allocation up to ~4.3 billion entries
+
+**File:** `src/database/stats.rs:229-247` (loop at `:241`)
+**Issue:** When `detailed` is set, the distribution is materialized by iterating `self.min_count..=self.max_count` and pushing one `(u32, u64)` per value, zero-filling gaps. Counts are u32, so a dataset whose max count is large (a high-coverage region, a repeated k-mer — values in the 1e8..1e9 range are reachable, `u32::MAX` is the bound) allocates and iterates up to ~4.29e9 entries (~51 GB) before returning — an out-of-memory abort, not slow-but-correct behavior, so this is a crash robustness defect rather than a performance nit. Pre-existing (outside the diff range), not previously reported.
+**Fix:** Either iterate the `frequency_histogram` directly (emit only observed counts plus explicit gap markers), or cap the zero-fill range with a documented bound (e.g. fill at most the first N count values and summarize the tail) and make `detailed` semantics reflect that.
 
 ## Info
 
-### IN-01: A 1 GB floor silently overrides a smaller `--max-memory` on the prefix-cache path
+### IN-01: `Drop for ExternalSortMerger` logs the wrong directory when `close()` fails
 
-**File:** `src/database/format.rs:1056` and `:1065`
-`merge_buffer_mb = config.max_memory_usage / 1024 / 1024` is then passed as
-`merge_buffer_mb.max(1024)` ("At least 1GB buffer"). That value is the per-bucket
-threshold at `prefix_cache_merge.rs:391-396`, so a user who sets
-`--max-memory 256MB` still gets up to 1 GB loaded per bucket via
-`merge_single_prefix_hashmap`. The floor may be deliberate; if so it deserves a
-comment explaining the tradeoff, since it reads as an oversight next to a
-memory-budget flag.
+**File:** `src/database/prefix_cache_merge.rs:1350-1359`
+**Issue:** After `self.merge_temp_subdir.take()`, the error log prints `self.shard_dir().display()` — but `shard_dir()` now reads the already-taken field and falls back to the bare `temp_dir`, so the warning names the parent temp root instead of the merge subdir that failed to be removed.
+**Fix:** Capture the path before taking: `let path = dir.path().to_path_lossy().to_string();` then `dir.close()` and log `path`.
 
-### IN-02: The `deferred-items.md` clippy entry is stale
+### IN-02: `merge_databases` runs `merge_prologue` twice per call via delegation
 
-**File:** `.planning/phases/03-memory-safety/deferred-items.md:5-16`
-The entry records 4 `clippy::useless_borrows_in_formatting` errors in
-`src/io/{fasta,fastq}.rs` as `status: open`. Commit `fc8da65` fixed exactly those
-(`&self.file_path` → `self.file_path` at `fasta.rs:56`, `fastq.rs:153`, `:215`,
-`:342`), so the status field is stale and the entry is closed in substance. Worth
-correcting so the disposition step does not re-open a fixed item.
+**File:** `src/database/format.rs:1265` and `:1285` (delegating into `merge_databases_to_path` at `:1177`)
+**Issue:** `merge_databases` calls `merge_prologue` itself, then its Streaming/PrefixCache arm calls `merge_databases_to_path`, which calls `merge_prologue` again — two sweeps and two empty-list checks per materializing merge, contradicting the documented "single sweep call site ... covers all three strategies from both entry points" invariant. Behaviorally harmless (the sweep is idempotent within the TTL window); the drift hazard is that the invariant's test can't distinguish one-site-reached-twice from one-site.
+**Fix:** Either skip the prologue in `merge_databases` and let the to-path core own it for the delegating arms, or reword the invariant to "single call site, possibly executed twice on the materializing path".
 
-### IN-03: `total_kmers` carries two different meanings across the codebase
+### IN-03: Stale admission-model constant copied into the integration tests
 
-**File:** `src/database/format.rs:478` vs. `src/database/index.rs:98`
-`from_kmer_pairs` sets the header's `total_kmers` to `entries.len()` (the number
-of records), while `DatabaseIndex` and the metadata/stats path treat
-`total_kmers` as the sum of counts. `pyo3/tests/test_database_merge.py:182`
-correctly asserts `stats.total_kmers == EXPECTED_UNIQUE`, i.e. the record-count
-reading. Pre-existing and not exercised incorrectly by this phase, but the name
-carries two incompatible meanings in one binary format and will mislead a future
-change to `estimate_total_kmers`.
+**File:** `tests/dense_merge_integration_tests.rs:441`
+**Issue:** `over_budget_config` computes `estimated_kmers.saturating_mul(24)` while its comment claims "Same model as RKDatabase::merge_databases" — the core's per-k-mer constant is now 96 (`INMEMORY_BYTES_PER_KMER`, format.rs:81, after 03-09's WR-01 fix). Functionally benign today (a smaller estimate is still over-budget, and the route is verified via the `assert_route` probe), but the comment is false and the copy invites a future budget change to silently invalidate the "over budget" premise of every test using this helper.
+**Fix:** Import or re-derive the constant from the core (expose `estimated_bytes_for_route` for tests, as `merge_routing_tests.rs` already does) instead of duplicating `24`.
 
----
+### IN-04: Dead magic-number clamp in `get_entry_by_index`
 
-## Known Deferred Items — Re-Examination
+**File:** `pyo3/src/database.rs:1048-1054`
+**Issue:** `if self.header.data_offset > 1000000 { 42 } else { self.header.data_offset }` silently rewrites a field that `from_file_path` already enforces to exactly 42 (the same D-12 silent-clamp pattern removed elsewhere in this phase). Unreachable on any database this class can open; if ever reached it would mask corruption instead of reporting it.
+**Fix:** Use `self.header.data_offset` directly (it is invariantly 42), or assert/error on a non-42 value.
 
-Recorded in `deferred-items.md` / `WINDOWS.md`; not re-reported as new findings.
+### IN-05: `DatabaseStreamIterator::header()` fabricates an invalid header
 
-| # | Item | Verdict |
-|---|---|---|
-| a | `merge_prefix_buckets` swallows bucket failures | **Worse than recorded** — escalated to `WR-04`. The D-06 edit deleted failed buckets' shards before the error was swallowed (`:404-408`), and the integrity check at `:872` is itself a tautology. |
-| b | `external_sort_merge_output.tmp` outside the subdir, never deleted | Confirmed accurate. `format.rs:1072` writes it to the shared `temp_dir` with a fixed name and `:1078` reads it back with no delete. Adjacent finding not in the record: `merge_databases_prefix_cache` holds every input database in `db_refs` (`:1048-1052`) through that final read, so peak is all-inputs-plus-full-output — folded into `CR-02`. |
-| c | `rustkmer_sort_*.chunk` loose in `temp_dir`, not swept | Confirmed accurate and correctly scoped by the 03-04 narrowing note. `sweep_stale_merge_dirs` selects on `rustkmer-merge-` directories only (`temp_lifecycle.rs:125`) and `TempFileManager` writes into `config.temp_dir` (`streaming_merge.rs:254`). Normal-path RAII cleanup is fine; only the sweep gap is open. |
-| d | Dense width only in `KmerCounter` | Confirmed accurate. `merge_databases_inmemory` uses `HashMapBrown<u128, u32>` (`format.rs:912`) and the `RKDatabase` read path is `Vec<KmerEntry>`. Correctly scoped as out of 03-03's DENSE-01 scope; it is also a contributing cause of `CR-02`'s peak. |
-| e | `cargo fmt --all --check` pre-existing drift | Not re-verified this run (outside review scope); consistent with the record's file list. |
-| f | `pyo3/pyproject.toml` `python-source` blocks `maturin` | Not re-verified this run; consistent with the record. |
-| g | `--cov-fail-under=80` makes every `pyo3` pytest run exit 1 | Not re-verified this run; consistent with the record. |
+**File:** `src/database/streaming_merge.rs:78-91`
+**Issue:** The public `header()` returns `kmer_size: 0`, `data_offset: 0`, `sorted: false`, `canonical: false` — values that would fail the very `data_offset == 42` check the constructor itself enforces and that misrepresent the underlying file to any caller that trusts them (no production callers today; `remaining`/`total_kmers` is the only field that reflects reality).
+**Fix:** Store the real header read in `new` (it is already parsed there) and return a clone, or make the method private/remove it.
 
-## Deliberately Not Raised
+### IN-06: `extract_by_prefix` reloads the entire database from disk on every call
 
-- **`KmerCounter::merge`'s overflow-poisoning and non-concurrent-`merge` contracts**
-  (`table.rs:395-432`) — both are documented at the definition site with the
-  reasoning and a recommended recovery. Flagging documented, intentional API
-  contracts as warnings would be noise, not signal.
-- **Clippy/rustfmt style drift and the `mod common;` test-count noise** — recorded
-  as deferred items (e) and the 03-04 stub-grep entry; not code-quality defects.
-- **`merge_databases_inmemory`'s `HashMap<u128, u32>` not using `KmerKey`** — this
-  is known item (d). I mention it only as a contributing factor to `CR-02`, not as
-  an independent finding, to avoid double-counting a documented deferral.
-- **The streaming merge's silent `if let Ok(next_entry)` at
-  `streaming_merge.rs:394`** — a corrupt chunk *is* silently truncated rather than
-  erroring. This is a real latent issue, but it is pre-existing, unchanged in
-  structure by the refill reordering, and strictly less severe than `CR-01`
-  (which corrupts data on a normal path rather than only on a damaged input).
-  Recorded here rather than as a numbered finding so the count stays honest.
-- **`unwrap()` in the phase's own tests** — the agent contract excludes test-file
-  issues unless they affect reliability, and these are self-contained fixtures.
-  The tests are, on inspection, unusually well-built: `over_budget_config`
-  (`dense_merge_integration_tests.rs:422`) derives its budget from the production
-  estimator rather than hard-coding one, and `assert_route` (`:402`) proves the
-  route was actually taken — which is precisely the vacuous-test trap the 03-04
-  deferred note records having been found and fixed.
+**File:** `pyo3/src/database.rs:945`
+**Issue:** The method ignores `self.rk_database` (already open) and calls `RKDatabase::from_file_path(Path::new(&self.path))` per invocation, re-reading and re-materializing the full database each time. Correctness is unaffected; the quality defect is redundant full loads on a repeat-call Python API.
+**Fix:** Reuse `self.rk_database` (or the cached entries) when its loading mode already holds the data.
+
+### IN-07: `test_prefix_extraction_values` tests nothing about the production prefix extraction
+
+**File:** `src/database/prefix_cache_merge.rs:1389-1396`
+**Issue:** The unit test computes `(kmer >> (2 * (57 - 4))) & 0xFFF` itself — it never calls `get_prefix_4mer` — and with a 64-bit kmer shifted right by 106 the result is always 0, so the final `assert!(prefix < 256)` is a tautology. This is the only unit-level test naming prefix extraction, on exactly the function that carries CR-02, and it provides false confidence (it also disagrees with the production mask: `0xFFF`/12 bits vs the production `0xFF`/8 bits).
+**Fix:** Test the real function across representative k values and assert bucket semantics (e.g. `get_prefix_4mer(0x00FF) == 0xFF`, `get_prefix_4mer(0x0100) == 0x00`), pinning whichever end (first vs last 4 bases) the fix in CR-02 settles on.
 
 ---
 
-_Reviewed: 2026-10-07T04:07:16Z_
-_Reviewer: the agent (gsd-code-reviewer)_
+_Reviewed: 2026-10-08T15:59:04Z_
+_Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
