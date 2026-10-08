@@ -3,12 +3,12 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 03
 current_phase_name: Memory Safety
-status: gap-closure-in-progress
-stopped_at: "Completed 03-09-PLAN.md (G2a closed: every merge route's inputs are header-only; the in-memory route is charged 96 B/k-mer derived from its three live structures; the Python copy of the model repaired and paired to the core's own echoed figures)"
-last_updated: "2026-10-07T12:58:02.459Z"
-last_activity: 2026-10-07
-last_activity_desc: "Completed 03-08 (WR-03: the DENSE-02 guard now drives the production write path; both new write-path tests observed RED under an injected u64 -> u128 widening)"
-state_head: dc1c25ae3dddff294b27e20f2e2ef42913f09615
+status: executing
+stopped_at: "Completed 03-10-PLAN.md (G2b closed: streaming merge writes to destination entry-by-entry)"
+last_updated: "2026-10-08T15:01:13.942Z"
+last_activity: 2026-10-08
+last_activity_desc: Phase 03 execution started
+state_head: a316e4f2aac7cbb905a98ff4c86b79a634ce5167
 progress:
   total_phases: 4
   completed_phases: 2
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 
 ## Current Position
 
-Phase: 03 (Memory Safety) — GAP CLOSURE in progress (9/11 plans complete)
-Plan: 10 of 11
-Status: 03-09 closed G2a — the HEADER half of gap G2. Every merge route now learns an input's shape from a 42-byte `read_header_of` instead of materializing a database: the streaming route no longer loads `input_paths[0]` on the over-budget path, the prefix-cache route holds `Vec<DatabaseHeader>` instead of `Vec<RKDatabase>` through the final read-back, and `ExternalSortMerger::new` no longer loads every input twice. The in-memory route is charged 96 B/k-mer derived from its three live structures, so a budget the old 24 B/k-mer model admitted in memory now hard-routes to streaming — proven with a `48 * N` budget, observed RED with the old constant restored. The `total_kmers` sum saturates (two crafted headers used to panic the admission gate in debug). `merge_databases(&[], ..)` errors instead of panicking. The prefix-cache intermediate `.rkdb` moved into the RAII subdir and the 1 GB per-bucket floor no longer overrides `--max-memory`. Remaining: 03-10 (streams the merged OUTPUT — the substantive half of G2, and the `/proc/self/status` measurement of the peak this plan's comment declines to claim), 03-11, then `/gsd-verify-work 03`.
-Last activity: 2026-10-07 — Completed 03-09 (G2a: header-only reads on all three merge routes; 24 -> 96 B/k-mer admission model derived from live structures; the Python copy of the model repaired from 24 to 96 and paired to the core's own echoed figures, after arithmetic showed the unrepaired value would have made `test_inmemory_route_never_touches_temp_dir` raise outright)
+Phase: 03 (Memory Safety) — EXECUTING
+Plan: 2 of 11
+Status: Ready to execute
+Last activity: 2026-10-08 — Phase 03 execution started
 
 Progress: [█████████░] 9/11 plans (Phase 03)
 
@@ -84,6 +84,7 @@ Progress: [█████████░] 9/11 plans (Phase 03)
 | Phase 03 P07 | 34 min | 3 tasks | 3 files |
 | Phase 03 P08 | 4 min | 1 tasks | 2 files |
 | Phase 03 P09 | 12 min | 3 tasks | 6 files |
+| Phase 03 P10 | 31min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -181,6 +182,11 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-09: the Python copy of the admission model was not cosmetic to repair - with BYTES_PER_KMER_ESTIMATE left at 24, _within_budget returns 5760 against the core's new 11520, so test_inmemory_route_never_touches_temp_dir would have raised the D-02 RuntimeError outright and the streaming/in-memory parity test would have silently taken the streaming route on BOTH arms. The two copies are now paired BEHAVIOURALLY by parsing the figures the core echoes in its own rejection, because two comments cannot be shown to agree
 - [Phase 03]: 03-09: WR-07's use_streaming is DOCUMENTED, not deprecated and not removed. Deprecating a public field with five construction sites would fail -D warnings in three files this plan has no business touching; removal is a breaking public-API change. IN-03's two total_kmers meanings are named at both sites for the same reason - a silent trap is now a labelled one
 - [Phase 03]: 03-09: the external-sort compatibility error strings are byte-identical by construction, but nothing asserted it - test_validate_compatibility_kmer_size_mismatch exercises the IN-MEMORY validator, not the external-sort one. Found by checking a claim the SUMMARY was about to make rather than asserting it, then closed with a real test
+- [Phase 03-10]: 03-10: merge_prologue (empty-input guard + single sweep call site) is the first statement of BOTH merge entry points — the only shape where the in-memory route sweeps and the call-site grep still reads 1
+- [Phase 03-10]: 03-10: streaming writer keeps file_size: 0 via placeholder-then-seek-back header — populating it would be a silent on-disk format change; every .rkdb this route produced carries 0
+- [Phase 03-10]: 03-10: RSS bound derived from the pinned working set (4 x chunk_size x 32B), not from N — GREEN 3,440,640 B vs RED 36,257,792 B sit on opposite sides of the 6,400,000 B bound
+- [Phase 03-10]: 03-10: WR-02 deferred not fixed — rejecting merge_mode='memory' on the PrefixCache route would change outcomes for every existing prefix-cache caller; now warned + documented instead
+- [Phase 03-10]: 03-10: PyDatabase::merge save folded into the merge (semantic change) with zero Python-level verification — recorded as MERGE-04 residual because the installed pyrustkmer.so is prebuilt
 
 ### Pending Todos
 
@@ -205,6 +211,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-07T12:57:41.364Z
-Stopped at: Completed 03-09-PLAN.md (G2a closed: every merge route's inputs are header-only; the in-memory route is charged 96 B/k-mer derived from its three live structures; the Python copy of the model repaired and paired to the core's own echoed figures)
+Last session: 2026-10-08T15:01:13.848Z
+Stopped at: Completed 03-10-PLAN.md (G2b closed: streaming merge writes to destination entry-by-entry)
 Resume file: None
