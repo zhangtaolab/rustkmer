@@ -5,7 +5,7 @@ status: validated
 nyquist_compliant: true
 wave_0_complete: true
 created: 2026-07-02
-validated: 2026-10-08
+validated: 2026-10-09
 ---
 
 # Phase 3 — Validation Strategy
@@ -96,6 +96,19 @@ Recorded in `.planning/WINDOWS.md`.
 `grep -rnE '^\s*#\s*\[\s*ignore' tests/{merge_routing,merge_cleanup,dense_differential,dense_proptest,golden_sha256,dense_merge_integration}_tests.rs` → no matches).
 This closes the 03-04 deferred item that flagged 3 prose-level grep hits.
 
+### Measured Results (2026-10-09, post gap-closure 03-12..03-15)
+
+| Suite | Result |
+|-------|--------|
+| `cargo test` (full, post-merge gate) | **exit 0** — all binaries green, 0 failed |
+| `cargo test --test merge_routing_tests` | **37 passed**, 0 failed, 0 ignored (03-12 added 4 cross-input validation tests) |
+| `cargo test --test prefix_cache_conservation_tests` | 2 passed, 0 failed, 0 ignored (new, plan 03-13) |
+| `cargo test --test merge_frontend_validation_tests` | 3 passed, 0 failed, 0 ignored (new, plan 03-14; smoke through the real binary) |
+| `cargo test --test prefix_cache_output_order_tests` | 2 passed, 0 failed, 0 ignored (new, plan 03-15: global windows(2) ascending + truthful `sorted` flag + query parity vs in-memory route) |
+| `cargo test --test merge_cleanup_tests` | 29 passed, 0 failed, 0 ignored (unchanged by the round) |
+| `cargo test --lib prefix_cache_merge` | 8 passed, 0 failed (03-13 conservation green under 03-15 re-bucketing) |
+| `cargo clippy --all-targets -- -D warnings` (root + `pyo3`) | **clean** (03-15 round) |
+
 ### Per-Task Verification Map
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
@@ -115,6 +128,10 @@ This closes the 03-04 deferred item that flagged 3 prose-level grep hits.
 | 03-09-* | 09 | gap | MERGE-01, MERGE-02, MERGE-03 | CR-02, WR-01, WR-06, IN-01 | Header-only merge routes (no `from_file_path` materialization in the three strategies); 96 B/k-mer admission model | unit + integration | `cargo test --test merge_routing_tests -- estimator_reads_header_only_no_materialization` | ✅ | ✅ green |
 | 03-10-* | 10 | gap | MERGE-01, MERGE-02, MERGE-04 | G2b, WR-05 | `merge_databases_to_path` streaming entry point; both front-ends retargeted; `parse_memory_size` checked chains; RSS bound proven | unit + integration | `cargo test --test merge_bounded_memory_tests` | ✅ | ✅ green |
 | 03-11-* | 11 | gap | MERGE-01, MERGE-03 | WR-04, WR-08 | `merge_prefix_buckets` errs on bucket failure + preserves shards; non-tautological conservation accounting; fixed-block concatenate; loose-chunk sweep | integration | `cargo test --test merge_cleanup_tests` (29) | ✅ | ✅ green |
+| 03-12-* | 12 | gap | MERGE-01, MERGE-04 | CR-03 | `merge_prologue` header-only cross-input k/canonical validation — every merge route + both front-ends (CLI, `PyDatabase.merge`) reject incompatible input sets from 42-byte header reads before any merge work | unit + integration | `cargo test --test merge_routing_tests` (37) | ✅ | ✅ green |
+| 03-13-* | 13 | gap | MERGE-01, MERGE-03 | CR-01, WR-03 | Record-aligned, tail-carrying, error-propagating `read_batch_from_file_sync` + unstranding `VecDeque` k-way merge for prefix-cache streaming; conservation red-proven pre-fix and under 2 targeted mutations | integration | `cargo test --test prefix_cache_conservation_tests` (2) | ✅ | ✅ green |
+| 03-14-* | 14 | gap | MERGE-01 | WR-05 | `validate_merge_compatibility` extracted; CLI merge front-end validates from headers only — materializing loader calls in `merge.rs` 6 → 0, rejection texts preserved | integration | `cargo test --test merge_frontend_validation_tests` (3) | ✅ | ✅ green |
+| 03-15-* | 15 | gap | MERGE-01, DENSE-02 | CR-02 | `get_prefix_4mer` selects the first-4-bases high byte (`(kmer >> 2*(k-4)) & 0xFF`) so bucket order matches output order — `sorted: true` header truthful; IN-07 tautology closed; red evidence recorded pre-fix | unit + integration | `cargo test --test prefix_cache_output_order_tests` (2); `cargo test --lib prefix_cache_merge` (8) | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ partial/flaky*
 
@@ -234,7 +251,13 @@ still compile (Phase 2 D-05 carry-forward).
 
 ## Validation Sign-Off
 
-- [x] All tasks have `<automated>` verify or Wave 0 dependencies — 9/9 tasks (plans 01-05) + 6 gap-closure plans (03-06..03-11), each with per-plan test evidence
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies — 9/9 tasks (plans 01-05) + 10 gap-closure plans (03-06..03-15), each with per-plan test evidence
+
+**Coverage summary (2026-10-09):** **7 of 7 requirements fully covered** (MERGE-01, MERGE-02,
+MERGE-03, MERGE-04, DENSE-01, DENSE-02, DENSE-03). The second gap-closure round (03-12..03-15)
+added 4 test suites / 11 tests, all green; MERGE-01 (held by the shared-ID gate during the round)
+is now fully closed across all declaring plans. MERGE-04 carries the prebuilt-`.so` caveat recorded
+above and in `.planning/WINDOWS.md`.
 - [x] Sampling continuity: no 3 consecutive tasks without automated verify
 - [x] Wave 0 covers all MISSING references — all 8 planned files exist and run green
 - [x] No watch-mode flags
@@ -282,4 +305,12 @@ remaining instance was found**. Specifically:
 |---|---|
 | Gaps found | 1 |
 | Resolved | 1 |
+| Escalated | 0 |
+
+## Validation Audit 2026-10-08
+
+| Metric | Count |
+|---|---|
+| Gaps found | 0 |
+| Resolved | 0 |
 | Escalated | 0 |
