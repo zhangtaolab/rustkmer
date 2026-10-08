@@ -1324,9 +1324,12 @@ impl PyDatabase {
     ///
     /// This static method merges multiple k-mer databases into a single output database.
     /// The merge goes through the same bounded core the CLI uses
-    /// (`RKDatabase::merge_databases`): the total k-mer count is read from the
-    /// 42-byte `.rkdb` headers, compared against the memory budget, and the
-    /// merge is routed to the in-memory or the streaming path accordingly.
+    /// (`RKDatabase::merge_databases_to_path`): the total k-mer count is read
+    /// from the 42-byte `.rkdb` headers, compared against the memory budget,
+    /// and the merge is routed to the in-memory or the streaming path
+    /// accordingly. The output file is written DIRECTLY by the merge as it
+    /// produces the merged bytes (plan 03-10) — the merged database is never
+    /// held in RAM and there is no separate save step afterwards.
     ///
     /// Args:
     ///     databases: List of database file paths to merge
@@ -1432,27 +1435,29 @@ impl PyDatabase {
             ..defaults
         };
 
-        // Call Rust core merge functionality.
+        // Call the Rust core's bounded, path-shaped merge.
         //
-        // This is the same bounded dispatcher the CLI calls, so the header-only
-        // estimator (D-01), the hard route to streaming when over budget
-        // (MERGE-02) and the over-budget `merge_mode="memory"` rejection
-        // (D-02) apply here by inheritance rather than by duplication. The
-        // rejection surfaces as a PyRuntimeError carrying the core's message,
-        // which names both the memory mode and the streaming alternative.
-        let merged_db = RKDatabase::merge_databases(&input_paths, &config).map_err(|e| {
+        // This is the same entry point the CLI calls (plan 03-10 / MERGE-04),
+        // so the header-only estimator (D-01), the hard route to streaming
+        // when over budget (MERGE-02) and the over-budget `merge_mode="memory"`
+        // rejection (D-02) apply here by inheritance rather than by
+        // duplication, AND the merged database is never materialized in RAM:
+        // the core writes the output file itself as the merge yields the
+        // bytes. The rejection surfaces as a PyRuntimeError carrying the
+        // core's message, which names both the memory mode and the streaming
+        // alternative.
+        //
+        // SEMANTIC CHANGE (plan 03-10): the save used to be a separate step
+        // after `merge_databases`, whose failure raised
+        // `Failed to save merged database to {output}`. The save is now part
+        // of the merge, so that message no longer exists — every failure,
+        // merge or write, surfaces under the single `Merge operation failed:`
+        // prefix below.
+        let output_path = Path::new(&output);
+        RKDatabase::merge_databases_to_path(&input_paths, &config, output_path).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Merge operation failed: {}",
                 e
-            ))
-        })?;
-
-        // Save merged database to output file
-        let output_path = Path::new(&output);
-        merged_db.write_to_file(output_path).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to save merged database to {}: {}",
-                output, e
             ))
         })?;
 

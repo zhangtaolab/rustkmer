@@ -444,14 +444,20 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
         eprintln!("Starting merge operation...");
     }
 
-    let merged_db = RKDatabase::merge_databases(&args.input, &config)?;
-
-    // Save merged database
+    // The destination is announced BEFORE the merge starts so the user sees
+    // it ahead of a long-running merge. The line's text is user-facing
+    // behaviour and stays byte-identical to the pre-03-10 output even though
+    // the save is now part of the merge itself rather than a separate step
+    // afterwards (plan 03-10: the merge writes straight to the destination).
     if !args.quiet {
         eprintln!("Saving merged database to: {}", args.output.display());
     }
 
-    merged_db.to_file_path(&args.output)?;
+    // Plan 03-10 / G2b: the merge writes its output DIRECTLY to the
+    // destination. The pre-plan shape — `merge_databases` into RAM, then
+    // `to_file_path` — meant even the "streaming" route materialized the
+    // whole merged dataset before writing it (CR-02's substantive half).
+    let summary = RKDatabase::merge_databases_to_path(&args.input, &config, &args.output)?;
 
     // Report results
     let elapsed = start_time.elapsed();
@@ -459,13 +465,12 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
         eprintln!("Merge completed successfully!");
         eprintln!("  Total input databases: {}", args.input.len());
         eprintln!("  Output database: {}", args.output.display());
-        eprintln!("  K-mer size: {}", merged_db.kmer_size());
-        eprintln!("  Total k-mers: {}", merged_db.total_kmers());
+        eprintln!("  K-mer size: {}", summary.kmer_size);
+        eprintln!("  Total k-mers: {}", summary.total_kmers);
         eprintln!("  Time elapsed: {:.2}s", elapsed.as_secs_f64());
 
-        let info = merged_db.header();
-        eprintln!("  Canonical mode: {}", info.canonical);
-        eprintln!("  Sorted: {}", info.sorted);
+        eprintln!("  Canonical mode: {}", summary.canonical);
+        eprintln!("  Sorted: {}", summary.sorted);
     }
 
     Ok(())
@@ -504,12 +509,34 @@ pub fn parse_memory_size(size_str: &str) -> Result<usize, String> {
         .parse()
         .map_err(|_| format!("Invalid number: {}", number_str))?;
 
+    // WR-05: every unit multiplier is `checked_mul`. The pre-fix chains
+    // (`number * 1024`, `number * 1024 * 1024`, ...) panicked on arithmetic
+    // overflow in a debug build BEFORE the bound checks below could run, and
+    // the PyO3 binding calls this exact function for `max_memory=`, so a
+    // Python caller could abort the host interpreter with an over-large
+    // budget string (e.g. "18446744073709551615KB"). Any overflow is mapped
+    // onto the SAME `Err` the existing 1TB ceiling returns, so the only
+    // observable change is "ValueError instead of a crash".
     let bytes = match unit {
         "B" => number,
-        "KB" => number * 1024,
-        "MB" => number * 1024 * 1024,
-        "GB" => number * 1024 * 1024 * 1024,
-        "TB" => number * 1024 * 1024 * 1024 * 1024,
+        "KB" => number
+            .checked_mul(1024)
+            .ok_or_else(|| "Memory size too large (maximum 1TB)".to_string())?,
+        "MB" => number
+            .checked_mul(1024)
+            .and_then(|bytes| bytes.checked_mul(1024))
+            .ok_or_else(|| "Memory size too large (maximum 1TB)".to_string())?,
+        "GB" => number
+            .checked_mul(1024)
+            .and_then(|bytes| bytes.checked_mul(1024))
+            .and_then(|bytes| bytes.checked_mul(1024))
+            .ok_or_else(|| "Memory size too large (maximum 1TB)".to_string())?,
+        "TB" => number
+            .checked_mul(1024)
+            .and_then(|bytes| bytes.checked_mul(1024))
+            .and_then(|bytes| bytes.checked_mul(1024))
+            .and_then(|bytes| bytes.checked_mul(1024))
+            .ok_or_else(|| "Memory size too large (maximum 1TB)".to_string())?,
         "" => number, // Default to bytes
         _ => return Err(format!("Unknown unit: {}", unit)),
     };
@@ -531,6 +558,75 @@ pub fn parse_memory_size(size_str: &str) -> Result<usize, String> {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    /// WR-05: `parse_memory_size` must never panic on an overflowing size —
+    /// it must return the ordinary `too large` `Err` instead.
+    ///
+    /// The four cases below are derived from the REAL overflow boundary of
+    /// each unit multiplier (`2^64 / 1024^k`, the smallest numeric part whose
+    /// k-fold `* 1024` product reaches `usize::MAX + 1`), so each one
+    /// genuinely reaches the multiplication it targets rather than failing
+    /// earlier in the parser:
+    ///
+    /// | unit | multiply that overflows | numeric part        | why                    |
+    /// |------|--------------------------|---------------------|------------------------|
+    /// | KB   | 1st (`* 1024`)           | 18446744073709551615| equals `usize::MAX` exactly |
+    /// | MB   | 2nd                      | 17592186044416      | 1st fits, 2nd reaches 2^64 |
+    /// | GB   | 3rd                      | 17179869184         | first two fit, 3rd reaches 2^64 |
+    /// | TB   | 4th                      | 16777216            | first three fit, 4th reaches 2^64 |
+    ///
+    /// All four were RED against the pre-fix source (each panicked with
+    /// "attempt to multiply with overflow" in a debug build, aborting the
+    /// test before any assertion ran) and pass with `checked_mul`. The
+    /// `pyo3` binding calls this parser for `max_memory=`, so a Python caller
+    /// now gets a `ValueError` where it previously could crash the host
+    /// interpreter.
+    #[test]
+    fn parse_memory_size_rejects_an_overflowing_size_without_panicking() {
+        for size in [
+            "18446744073709551615KB",
+            "17592186044416MB",
+            "17179869184GB",
+            "16777216TB",
+        ] {
+            match parse_memory_size(size) {
+                Ok(bytes) => panic!(
+                    "an overflowing size must be rejected, but {} parsed as {} bytes",
+                    size, bytes
+                ),
+                Err(e) => assert!(
+                    e.contains("too large"),
+                    "{} must be rejected with the ordinary 'too large' error (WR-05: same \
+                     observable behaviour as the 1TB ceiling, no panic); got: {}",
+                    size,
+                    e
+                ),
+            }
+        }
+
+        // The DIFFERENT case, recorded so the file documents the boundary of
+        // the fix: a numeric part ABOVE `usize::MAX` (20 digits, one more
+        // than `usize::MAX`) never reaches the multiplication — it fails
+        // earlier, at `.parse::<usize>()`, and returns the parser's own
+        // `Invalid number` message. That path was always safe (no panic) and
+        // is unchanged by this fix.
+        let oversized = parse_memory_size("99999999999999999999TB")
+            .expect_err("a numeric part above usize::MAX must fail at the parser");
+        assert!(
+            oversized.contains("Invalid number"),
+            "an over-usize numeric part is rejected by the PARSER with a different, \
+             always-safe message; got: {}",
+            oversized
+        );
+
+        // The fix did not narrow the accepted range: the smallest and a
+        // mid-range size still parse exactly as before.
+        assert_eq!(parse_memory_size("1KB").expect("1KB is the floor"), 1024);
+        assert_eq!(
+            parse_memory_size("512MB").expect("512MB is well within range"),
+            512 * 1024 * 1024
+        );
+    }
 
     #[test]
     fn test_merge_validation() {
