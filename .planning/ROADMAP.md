@@ -93,7 +93,7 @@ Plans:
   5. Dense storage maintains correctness — canonicalization and counts match the `u128` path exactly
   6. `pyrustkmer`'s `PyDatabase` merge uses the same bounded path as the CLI
 
-**Plans**: 12/15 plans executed (gap-closure round 1 done; round 2 pending: 03-12..03-15)
+**Plans**: 13/15 plans executed (gap-closure round 1 done; round 2 pending: 03-12..03-15)
 
 **Wave 1** *(parallel, no dependencies)*
 
@@ -118,7 +118,7 @@ Plans:
 **Gap Closure Round 2** *(opened 2026-10-09 by `03-VERIFICATION.md` re-verification — status `gaps_found`, 7/11 truths verified; CR-01/CR-02/CR-03 + WR-05 from `03-REVIEW.md`)*
 
 - [x] 03-12-PLAN.md — **CR-03**: header-only cross-input k/canonical validation in `merge_prologue` (read_header_of + validate_header_compatibility), inherited by all three routes and both entry points incl. PyDatabase.merge; streaming-route rejection tests (Wave 1; MERGE-01, MERGE-04)
-- [ ] 03-13-PLAN.md — **CR-01 + WR-03**: record-aligned batch reads with carried tails and propagated read errors, unstranded duplicate runs (VecDeque buffer), plus >4 MB single-bucket conservation proof through merge_single_prefix_streaming and the full route (Wave 1; MERGE-01, MERGE-03)
+- [x] 03-13-PLAN.md — **CR-01 + WR-03**: record-aligned batch reads with carried tails and propagated read errors, unstranded duplicate runs (VecDeque buffer), plus >4 MB single-bucket conservation proof through merge_single_prefix_streaming and the full route (Wave 1; MERGE-01, MERGE-03)
 - [ ] 03-14-PLAN.md — **WR-05**: CLI front-end validation reads 42-byte headers only — the full-load reference and both serial validation loops replaced by one extracted header-only pass (`validate_merge_compatibility`), proven on body-absent inputs (Wave 1; MERGE-01)
 - [ ] 03-15-PLAN.md — **CR-02**: bucket by the FIRST 4 bases (high 8 bits) so index-order concatenation is globally ascending and the `sorted: true` header is truthful, plus query_kmer / prefix-extraction / route-parity proofs and the IN-07 tautological test rewritten (Wave 2; depends on 03-13; MERGE-01, DENSE-02)
 
@@ -152,5 +152,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation & Quality | 4/4 | Complete    | 2026-07-01 |
 | 2. Parallel Counting | 5/5 | Complete    | 2026-07-01 |
-| 3. Memory Safety | 12/15 | In Progress | - |
+| 3. Memory Safety | 13/15 | In Progress | - |
 | 4. Benchmark & Validation | 0/4 | Not started | - |
