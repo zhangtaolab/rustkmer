@@ -1,5 +1,6 @@
 //! True external sort merge implementation for large k-mer database merging
 
+use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -433,8 +434,7 @@ impl ExternalSortMerger {
         // `concatenate_final_output(&self)` can compare them against values
         // derived from the concatenation phase — the two sides of WR-04's
         // replacement for the deleted tautological check.
-        let merged_records_recorded =
-            std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let merged_records_recorded = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
         let non_empty_buckets_recorded =
             std::sync::Arc::new(std::sync::Mutex::new(std::collections::BTreeSet::new()));
 
@@ -512,7 +512,8 @@ impl ExternalSortMerger {
                 // file back — deriving the count from its size would be the
                 // deleted tautology with new variable names.
                 if let Ok(emitted) = result.as_ref() {
-                    merged_records_recorded.fetch_add(*emitted, std::sync::atomic::Ordering::SeqCst);
+                    merged_records_recorded
+                        .fetch_add(*emitted, std::sync::atomic::Ordering::SeqCst);
                 }
 
                 let done = completed.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
@@ -832,18 +833,33 @@ impl ExternalSortMerger {
 
         const BATCH_READ: usize = 100_000;
 
-        let mut file_states: Vec<(std::io::BufReader<File>, Vec<u8>, Vec<KmerEntry>)> = Vec::new();
+        // WR-03: the buffered-entries container is a `VecDeque` — one batch
+        // is ~200,294 entries (`BATCH_BYTES / RECORD_SIZE` in the reader
+        // below) and the per-record `Vec::remove(0)` this replaces is
+        // O(batch) per heap pop, i.e. O(n^2) per shard, which makes the
+        // >4 MB path this reader exists for unusable within a test-time
+        // budget. `pop_front`/`front` preserve the semantics exactly at
+        // O(1) per record.
+        let mut file_states: Vec<(std::io::BufReader<File>, Vec<u8>, VecDeque<KmerEntry>)> =
+            Vec::new();
         let mut heap: BinaryHeap<HeapEntry> = BinaryHeap::new();
 
         for (idx, (file_path, _)) in files.iter().enumerate() {
             let file = File::open(file_path)?;
             let reader = std::io::BufReader::new(file);
             let data = Vec::with_capacity(BATCH_READ * RECORD_SIZE);
-            let entries = Vec::new();
+            let entries = VecDeque::new();
             file_states.push((reader, data, entries));
 
-            let first_entries = Self::read_batch_from_file_sync(&mut file_states[idx])?;
-            if let Some(entry) = first_entries.first() {
+            let first_entries =
+                Self::read_batch_from_file_sync(&mut file_states[idx]).map_err(|e| {
+                    anyhow::anyhow!(
+                        "failed reading bucket shard '{}': {}",
+                        files[idx].0.display(),
+                        e
+                    )
+                })?;
+            if let Some(entry) = first_entries.front() {
                 heap.push(HeapEntry {
                     kmer: entry.kmer,
                     count: entry.count,
@@ -876,33 +892,56 @@ impl ExternalSortMerger {
                 current_count = top.count;
             }
 
-            file_states[top.file_idx].2.remove(0);
+            // WR-03: ONE tail step, iterated. The heap-consumed head is
+            // ALWAYS removed from its file's buffer first; then, for as long
+            // as the file's next head duplicates the run being accumulated,
+            // it is consumed too (removed, count added with the existing
+            // `+=` arithmetic — WR-02's saturating-add proposal is triaged
+            // separately in 03-REVIEW-DISPOSITION.md and deliberately NOT
+            // introduced here); the first non-duplicate head is pushed onto
+            // the heap, restoring the invariant that the heap holds the head
+            // of every live file. The pre-fix peek-and-add branches
+            // (:886-887/:897-899 pre-plan) consumed a duplicate without
+            // removing it and without re-queueing its file, so the rest of
+            // that file's run was silently stranded.
+            file_states[top.file_idx].2.pop_front();
 
-            if file_states[top.file_idx].2.is_empty() {
-                let new_entries = Self::read_batch_from_file_sync(&mut file_states[top.file_idx])?;
-                if !new_entries.is_empty() {
-                    file_states[top.file_idx].2 = new_entries;
-                    let first_entry = &file_states[top.file_idx].2[0];
-                    if current_kmer == Some(first_entry.kmer) {
-                        current_count += first_entry.count;
-                    } else {
-                        heap.push(HeapEntry {
-                            kmer: first_entry.kmer,
-                            count: first_entry.count,
-                            file_idx: top.file_idx,
-                        });
+            loop {
+                if file_states[top.file_idx].2.is_empty() {
+                    let new_entries = Self::read_batch_from_file_sync(
+                        &mut file_states[top.file_idx],
+                    )
+                    .map_err(|e| {
+                        anyhow::anyhow!(
+                            "failed reading bucket shard '{}': {}",
+                            files[top.file_idx].0.display(),
+                            e
+                        )
+                    })?;
+                    if new_entries.is_empty() {
+                        // The file is exhausted — no live head remains.
+                        break;
                     }
+                    file_states[top.file_idx].2 = new_entries;
                 }
-            } else {
-                let first_entry = &file_states[top.file_idx].2[0];
-                if current_kmer == Some(first_entry.kmer) {
-                    current_count += first_entry.count;
+
+                let head = file_states[top.file_idx]
+                    .2
+                    .front()
+                    .expect("buffer was just checked non-empty");
+                if current_kmer == Some(head.kmer) {
+                    let consumed = file_states[top.file_idx]
+                        .2
+                        .pop_front()
+                        .expect("head was just checked present");
+                    current_count += consumed.count;
                 } else {
                     heap.push(HeapEntry {
-                        kmer: first_entry.kmer,
-                        count: first_entry.count,
+                        kmer: head.kmer,
+                        count: head.count,
                         file_idx: top.file_idx,
                     });
+                    break;
                 }
             }
         }
@@ -935,12 +974,20 @@ impl ExternalSortMerger {
     }
 
     fn read_batch_from_file_sync(
-        file_state: &mut (std::io::BufReader<File>, Vec<u8>, Vec<KmerEntry>),
-    ) -> ProcessingResult<Vec<KmerEntry>> {
+        file_state: &mut (std::io::BufReader<File>, Vec<u8>, VecDeque<KmerEntry>),
+    ) -> ProcessingResult<VecDeque<KmerEntry>> {
         const BATCH_BYTES: u64 = 4_000_000;
         let (reader, data, _) = &mut *file_state;
-        data.clear();
 
+        // CR-01: do NOT clear `data` — its leading bytes are the
+        // partial-record tail carried from the previous call (the same
+        // pending-carry discipline `merge_single_prefix_hashmap`'s reader
+        // uses). The pre-fix `data.clear()` here dropped that tail and left
+        // the `BufReader` 8 bytes mid-record at every ~4 MB batch boundary
+        // (489 x 8192 = 4,005,888 bytes consumed; 4,005,888 mod 20 = 8), so
+        // every subsequent record of the shard parsed from a shifted
+        // offset. Only NEWLY read bytes count toward `BATCH_BYTES` — the
+        // carried tail already belongs to this batch.
         let mut bytes_read = 0u64;
         let mut buffer = [0u8; 8192];
 
@@ -951,18 +998,32 @@ impl ExternalSortMerger {
                     data.extend_from_slice(&buffer[..n]);
                     bytes_read += n as u64;
                 }
-                Err(_) => break,
+                // CR-01: a read error is damage, not end-of-stream. The
+                // pre-fix `break` here swallowed mid-shard IO failures as a
+                // clean end-of-batch, silently truncating the merge. The
+                // shard's path is attached by the callers' `map_err`.
+                Err(e) => {
+                    return Err(crate::error::ProcessingError::io_error(format!(
+                        "failed reading shard stream: {e}"
+                    )));
+                }
             }
         }
 
-        let mut entries = Vec::new();
+        let mut entries = VecDeque::new();
         let mut offset = 0usize;
 
         while offset + RECORD_SIZE <= data.len() {
             let (kmer, count) = read_record_at(data, offset);
-            entries.push(KmerEntry::new(kmer, count));
+            entries.push_back(KmerEntry::new(kmer, count));
             offset += RECORD_SIZE;
         }
+
+        // CR-01: keep only the sub-record tail (the bytes past the last
+        // whole record) for the next call. The reader's position and this
+        // carried tail together conserve every byte — nothing is dropped at
+        // a batch boundary.
+        data.drain(..offset);
 
         Ok(entries)
     }
@@ -1142,10 +1203,8 @@ impl ExternalSortMerger {
             )));
         }
         if buckets_seen != *declared {
-            let never_consumed: Vec<usize> =
-                declared.difference(&buckets_seen).copied().collect();
-            let undeclared: Vec<usize> =
-                buckets_seen.difference(&declared).copied().collect();
+            let never_consumed: Vec<usize> = declared.difference(&buckets_seen).copied().collect();
+            let undeclared: Vec<usize> = buckets_seen.difference(&declared).copied().collect();
             return Err(crate::error::ProcessingError::new(format!(
                 "prefix-cache merge integrity failure: prefixes {:?} were merged by the bucket \
                  phase but their merged files were never consumed by the concatenation \
