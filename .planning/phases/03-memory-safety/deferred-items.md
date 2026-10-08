@@ -279,3 +279,27 @@
   stats.rs, mirroring the 03-01 precedent. A thiserror upgrade (2.x codegen
   uses the shorthand) would let the allow be dropped.
   status: closed (plan 03-10, module-level allow in src/database/stats.rs)
+
+- `src/config/manager.rs`'s unit tests have a parallel-execution env-var race:
+  `test_env_overrides` does `env::set_var("RUSTKMER_DEFAULT_K", "21")` while
+  `test_config_file_operations` concurrently loads a temp config file whose
+  `default_k = 25` and asserts `Some(25)`. Env beats file (which
+  `test_env_overrides` itself is the proof of), so when the two tests'
+  `load()` calls interleave under the full 230-test lib run's thread
+  contention, the file test observes `Some(21)` and fails with
+  `left: Some(21), right: Some(25)`.
+  status: open
+  **What:** Found during plan 03-12 Task 2's full-suite gate — one `cargo
+  test` invocation failed on exactly this pair, then 20+ subsequent runs
+  (filtered, paired with `--test-threads 2`, and full-suite) were all green;
+  the failure is a rare scheduling-dependent flake, not deterministic. Not
+  caused by 03-12 (that plan touches only `src/database/format.rs` and
+  `tests/merge_routing_tests.rs`; the config module is untouched), so it is
+  logged here rather than fixed — fixing it means editing a test this plan
+  has no business touching.
+  **Suggested fix:** make `test_config_file_operations` robust to ambient env
+  (clear the `RUSTKMER_*` vars it does not set, or serialise the two tests
+  behind a shared mutex), or convert `test_env_overrides` to a subprocess so
+  its `set_var` cannot leak into sibling tests.
+  **How to reproduce:** `cargo test --lib` repeatedly under load; observed
+  once in ~25 full runs on this machine.

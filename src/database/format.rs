@@ -1270,8 +1270,7 @@ impl RKDatabase {
             // `Hybrid` is never returned by `resolve_merge_route`; if it ever
             // is, it starts in-memory, so the in-memory writer is the right
             // arm for it too.
-            crate::database::MergeStrategy::InMemory
-            | crate::database::MergeStrategy::Hybrid => {
+            crate::database::MergeStrategy::InMemory | crate::database::MergeStrategy::Hybrid => {
                 let merged = Self::merge_databases_inmemory(input_paths, config)?;
                 merged.to_file_path(output_path)?;
                 Ok(MergeSummary {
@@ -1352,8 +1351,7 @@ impl RKDatabase {
             // Unchanged cost profile: only selected when the admission model
             // says the whole merge fits (and for `merge_mode = "memory"`,
             // only when it fits or the D-02 rejection fired first).
-            crate::database::MergeStrategy::InMemory
-            | crate::database::MergeStrategy::Hybrid => {
+            crate::database::MergeStrategy::InMemory | crate::database::MergeStrategy::Hybrid => {
                 Self::merge_databases_inmemory(input_paths, config)
             }
             crate::database::MergeStrategy::Streaming
@@ -1489,13 +1487,15 @@ impl RKDatabase {
         let mut written: u64 = 0;
         for result in merge_iter {
             let (kmer, count) = result?;
-            KmerEntry::new(kmer, count).write_to(&mut writer).map_err(|e| {
-                crate::error::ProcessingError::io_error(format!(
-                    "Failed to write merged k-mer to '{}': {}",
-                    output_path.display(),
-                    e
-                ))
-            })?;
+            KmerEntry::new(kmer, count)
+                .write_to(&mut writer)
+                .map_err(|e| {
+                    crate::error::ProcessingError::io_error(format!(
+                        "Failed to write merged k-mer to '{}': {}",
+                        output_path.display(),
+                        e
+                    ))
+                })?;
             written += 1;
         }
 
@@ -1521,15 +1521,13 @@ impl RKDatabase {
                 ))
             })?;
         use std::io::{Seek, SeekFrom};
-        header_file
-            .seek(SeekFrom::Start(0))
-            .map_err(|e| {
-                crate::error::ProcessingError::io_error(format!(
-                    "Failed to seek to header of '{}': {}",
-                    output_path.display(),
-                    e
-                ))
-            })?;
+        header_file.seek(SeekFrom::Start(0)).map_err(|e| {
+            crate::error::ProcessingError::io_error(format!(
+                "Failed to seek to header of '{}': {}",
+                output_path.display(),
+                e
+            ))
+        })?;
         DatabaseHeader {
             total_kmers: written,
             unique_kmers: written,

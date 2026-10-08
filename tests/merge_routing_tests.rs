@@ -1182,10 +1182,9 @@ fn streaming_route_rejects_cross_input_kmer_size_mismatch() -> anyhow::Result<()
     // Arm 2: the SAME inputs under an explicit `merge_mode: "streaming"` —
     // same rejection, same message.
     let streaming_config = routing_config(work.path(), 1, "streaming");
-    let err2 =
-        RKDatabase::merge_databases_to_path(&[a_path, b_path], &streaming_config, &out)
-            .expect_err("explicit merge_mode='streaming' must reject the mismatch too")
-            .to_string();
+    let err2 = RKDatabase::merge_databases_to_path(&[a_path, b_path], &streaming_config, &out)
+        .expect_err("explicit merge_mode='streaming' must reject the mismatch too")
+        .to_string();
     assert!(
         err2.contains("has k-mer size"),
         "the explicit-streaming arm must carry the same compatibility text; got: {}",
@@ -1205,7 +1204,10 @@ fn streaming_route_rejects_cross_input_kmer_size_mismatch() -> anyhow::Result<()
     let out_ok = work.path().join("merged_same_k.rkdb");
     RKDatabase::merge_databases_to_path(&[c_path, d_path], &config, &out_ok)
         .expect("same-k inputs under the same over-budget config must merge Ok");
-    assert!(out_ok.exists(), "the compatible merge must have written its output");
+    assert!(
+        out_ok.exists(),
+        "the compatible merge must have written its output"
+    );
 
     Ok(())
 }
