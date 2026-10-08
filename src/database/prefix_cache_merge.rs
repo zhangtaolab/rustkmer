@@ -697,19 +697,39 @@ impl ExternalSortMerger {
                 anyhow::anyhow!("Failed to open file {}: {}", file_path.display(), e)
             })?;
 
+            // WR-08 discipline, applied to the shard reader too: decode in
+            // fixed-size blocks (`RECORD_SIZE * 100_000`, the file's one
+            // block-size convention) instead of `read_to_end`, carrying any
+            // partial-record tail into the next block. Behaviour is
+            // identical — the same records are decoded, trailing bytes
+            // shorter than one record are ignored exactly as before — but
+            // the transient buffer no longer scales with the shard's size.
             let mut reader = BufReader::with_capacity(1_000_000, file);
-            let mut buffer = Vec::new();
+            let mut block = vec![0u8; RECORD_SIZE * 100_000];
+            let mut pending: Vec<u8> = Vec::new();
 
-            reader.read_to_end(&mut buffer).map_err(|e| {
-                anyhow::anyhow!("Failed to read file {}: {}", file_path.display(), e)
-            })?;
-
-            let mut offset = 0usize;
-            while offset + RECORD_SIZE <= buffer.len() {
-                let (kmer, count) = read_record_at(&buffer, offset);
-                *kmer_counts.entry(kmer).or_insert(0) += count;
-                offset += RECORD_SIZE;
-                processed_kmers += 1;
+            loop {
+                match reader.read(&mut block) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        pending.extend_from_slice(&block[..n]);
+                        let mut offset = 0usize;
+                        while offset + RECORD_SIZE <= pending.len() {
+                            let (kmer, count) = read_record_at(&pending, offset);
+                            *kmer_counts.entry(kmer).or_insert(0) += count;
+                            offset += RECORD_SIZE;
+                            processed_kmers += 1;
+                        }
+                        pending.drain(..offset);
+                    }
+                    Err(e) => {
+                        return Err(anyhow::anyhow!(
+                            "Failed to read file {}: {}",
+                            file_path.display(),
+                            e
+                        ));
+                    }
+                }
             }
 
             let file_elapsed = file_start.elapsed();
@@ -981,6 +1001,11 @@ impl ExternalSortMerger {
         // lands in both sets and equality holds. The zero-length case is
         // caught by `merged_records_recorded` instead.
         let mut buckets_seen: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        // WR-08: one fixed-size copy block, the SAME size the final
+        // streaming write below uses (`RECORD_SIZE * 100_000`), so there is
+        // one block-size convention in this file, not two. No allocation in
+        // this function scales with the size of the largest bucket.
+        let mut copy_block = vec![0u8; RECORD_SIZE * 100_000];
 
         for prefix in 0..self.num_buckets {
             let dna = Self::prefix_to_dna(prefix);
@@ -1003,11 +1028,29 @@ impl ExternalSortMerger {
                 total_kmers_in_files += kmers_in_file;
 
                 let mut input_file = File::open(&prefix_file)?;
-                let mut buffer = Vec::new();
-                input_file.read_to_end(&mut buffer)?;
 
-                temp_file.write_all(&buffer)?;
-                data_size += buffer.len() as u64;
+                // WR-08: copy in fixed-size blocks instead of `read_to_end` —
+                // the prefix-cache path is advertised as memory-efficient, so
+                // its peak must be bounded by one block, not by the largest
+                // single bucket. `data_size` accumulates the bytes ACTUALLY
+                // written (`n`), which is what the integrity comparison above
+                // and the `file_size` header field are derived from.
+                loop {
+                    match input_file.read(&mut copy_block) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            temp_file.write_all(&copy_block[..n])?;
+                            data_size += n as u64;
+                        }
+                        Err(e) => {
+                            return Err(crate::error::ProcessingError::new(format!(
+                                "Failed to read merged bucket '{}': {}",
+                                prefix_file.display(),
+                                e
+                            )));
+                        }
+                    }
+                }
 
                 if !self.keep_intermediate {
                     let _ = std::fs::remove_file(&prefix_file);
@@ -1098,7 +1141,7 @@ impl ExternalSortMerger {
                 self.num_buckets
             )));
         }
-        if &buckets_seen != &*declared {
+        if buckets_seen != *declared {
             let never_consumed: Vec<usize> =
                 declared.difference(&buckets_seen).copied().collect();
             let undeclared: Vec<usize> =
