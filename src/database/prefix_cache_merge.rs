@@ -1471,6 +1471,175 @@ mod tests {
         assert!(!should_remove_shards(&err, true));
     }
 
+    /// Write one raw shard file of ascending 20-byte LE records — distinct
+    /// keys `i << 8` with every 3rd key repeated TWICE in a row (the
+    /// adjacent within-file duplicate the WR-03 peek-and-add used to strand
+    /// on) and counts `(i % 7 + 1)` — folding every record into `oracle`.
+    ///
+    /// This is the on-disk shard format `split_files_by_prefix` produces
+    /// (raw `kmer`/`count` LE appends, no header); writing it directly lets
+    /// the tests below call `merge_single_prefix_streaming` on shards whose
+    /// exact byte layout — including batch-boundary position — is known.
+    fn write_dup_run_shard(
+        dir: &Path,
+        name: &str,
+        distinct: u128,
+        oracle: &mut std::collections::BTreeMap<u128, u32>,
+    ) -> (PathBuf, u64) {
+        let mut buf: Vec<u8> = Vec::with_capacity(6_000_000);
+        for i in 0..distinct {
+            let kmer = i << 8;
+            let count = (i % 7 + 1) as u32;
+            let repeats = if i % 3 == 0 { 2 } else { 1 };
+            for _ in 0..repeats {
+                buf.extend_from_slice(&kmer.to_le_bytes());
+                buf.extend_from_slice(&count.to_le_bytes());
+                *oracle.entry(kmer).or_insert(0) += count;
+            }
+        }
+        let path = dir.join(name);
+        std::fs::write(&path, &buf).expect("write raw shard");
+        let len = std::fs::metadata(&path).expect("stat raw shard").len();
+        (path, len)
+    }
+
+    /// Parse a merged shard output back and assert it equals `oracle`
+    /// EXACTLY: every (kmer, summed count) in ascending order, no extra
+    /// records. Pairwise against the BTreeMap's ascending iteration, so a
+    /// single misordered or misdecoded record fails loudly with its offset.
+    fn assert_output_equals_oracle(
+        out_path: &Path,
+        oracle: &std::collections::BTreeMap<u128, u32>,
+    ) {
+        let mut data = Vec::new();
+        std::fs::File::open(out_path)
+            .expect("open merged output")
+            .read_to_end(&mut data)
+            .expect("read merged output");
+        let mut offset = 0usize;
+        for (want_kmer, want_count) in oracle {
+            assert!(
+                offset + RECORD_SIZE <= data.len(),
+                "output truncated at offset {offset}"
+            );
+            let (kmer, count) = read_record_at(&data, offset);
+            assert_eq!(&kmer, want_kmer, "kmer at offset {offset}");
+            assert_eq!(&count, want_count, "count for kmer {kmer}");
+            offset += RECORD_SIZE;
+        }
+        assert_eq!(
+            offset,
+            data.len(),
+            "output carries {} extra byte(s) beyond the oracle sequence",
+            data.len() - offset
+        );
+    }
+
+    /// CR-01 direct unit proof: ONE shard larger than the reader's first
+    /// batch is merged with exact record and content conservation across
+    /// the batch boundary.
+    ///
+    /// The pre-fix reader's first call consumed exactly 4,005,888 bytes
+    /// (489 x 8192) and dropped the trailing 8 partial-record bytes,
+    /// leaving the stream misaligned for every later batch. With 200,000
+    /// distinct keys + 66,667 duplicate repeats = 266,667 records
+    /// (5,333,340 bytes), the boundary sits deep inside the run — the
+    /// vacuousness guard asserts it.
+    #[test]
+    fn merge_single_prefix_streaming_conserves_records_across_batch_boundaries() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut oracle = std::collections::BTreeMap::new();
+        let (shard_path, shard_len) =
+            write_dup_run_shard(dir.path(), "shard_boundary.bin", 200_000, &mut oracle);
+
+        assert!(
+            shard_len > 4_005_888,
+            "vacuousness guard: the shard ({shard_len} bytes) must exceed the pre-fix first \
+             batch's exact 4,005,888-byte consumption, or the boundary is never crossed"
+        );
+
+        let out_path = dir.path().join("merged_boundary.bin");
+        let emitted = ExternalSortMerger::merge_single_prefix_streaming(
+            vec![(shard_path, shard_len)],
+            &out_path,
+        )
+        .expect("streaming bucket merge over a >4 MB shard");
+
+        assert_eq!(
+            emitted as usize,
+            oracle.len(),
+            "emitted record count must equal the oracle's unique-key count"
+        );
+        assert_eq!(
+            std::fs::metadata(&out_path)
+                .expect("stat merged output")
+                .len() as usize,
+            oracle.len() * RECORD_SIZE,
+            "output file size must be exactly oracle.len() records"
+        );
+        assert_output_equals_oracle(&out_path, &oracle);
+    }
+
+    /// WR-03 direct unit proof: TWO shards — the first >4 MB with
+    /// within-file duplicates, the second small with keys that DUPLICATE
+    /// file 1's (cross-file dedup: counts must sum) and keys that INTERLEAVE
+    /// strictly between file 1's keys (forcing genuine heap interleaving,
+    /// not concatenation). Nothing strands; the oracle over both files is
+    /// conserved exactly.
+    ///
+    /// Pre-fix, the first within-file duplicate in file 1 peeked-and-added
+    /// without removal or re-queue, stranding the rest of file 1's run —
+    /// this comparison failed by the entire stranded mass.
+    #[test]
+    fn merge_single_prefix_streaming_two_files_strand_nothing_and_dedupe_across_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut oracle = std::collections::BTreeMap::new();
+
+        let (file1, file1_len) =
+            write_dup_run_shard(dir.path(), "shard_two_file1.bin", 200_000, &mut oracle);
+        assert!(
+            file1_len > 4_005_888,
+            "vacuousness guard: file 1 ({file1_len} bytes) must exceed one batch"
+        );
+
+        // File 2: 100 records — 50 duplicating file 1's keys (`i << 8`) and
+        // 50 interleaved between them (`i << 8 | 0x80` sits strictly between
+        // `i << 8` and `(i + 1) << 8`), interleaved with each other in value
+        // order so file 2's own run alternates the two shapes.
+        let mut buf2: Vec<u8> = Vec::with_capacity(100 * RECORD_SIZE);
+        for i in (0..200_000u128).step_by(4_000) {
+            for (kmer, count) in [(i << 8, 3_u32), ((i << 8) | 0x80, 5)] {
+                buf2.extend_from_slice(&kmer.to_le_bytes());
+                buf2.extend_from_slice(&count.to_le_bytes());
+                *oracle.entry(kmer).or_insert(0) += count;
+            }
+        }
+        let file2 = dir.path().join("shard_two_file2.bin");
+        std::fs::write(&file2, &buf2).expect("write raw shard 2");
+        let file2_len = std::fs::metadata(&file2).expect("stat raw shard 2").len();
+
+        let out_path = dir.path().join("merged_two_files.bin");
+        let emitted = ExternalSortMerger::merge_single_prefix_streaming(
+            vec![(file1, file1_len), (file2, file2_len)],
+            &out_path,
+        )
+        .expect("two-file streaming bucket merge");
+
+        assert_eq!(
+            emitted as usize,
+            oracle.len(),
+            "emitted record count must equal the two-file oracle's unique-key count"
+        );
+        assert_eq!(
+            std::fs::metadata(&out_path)
+                .expect("stat merged output")
+                .len() as usize,
+            oracle.len() * RECORD_SIZE,
+            "output file size must be exactly oracle.len() records"
+        );
+        assert_output_equals_oracle(&out_path, &oracle);
+    }
+
     /// Build two small real `.rkdb` inputs (valid 42-byte headers) under
     /// `dir`, so `ExternalSortMerger::new` can read them.
     fn write_two_real_inputs(dir: &Path) -> Vec<PathBuf> {
