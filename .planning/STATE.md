@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 03
 current_phase_name: Memory Safety
 status: executing
-stopped_at: "Completed 03-10-PLAN.md (G2b closed: streaming merge writes to destination entry-by-entry)"
-last_updated: "2026-10-08T15:01:13.942Z"
+stopped_at: "Completed 03-11-PLAN.md (WR-04+WR-08 closed: failed bucket shards preserved+logged, partial merges return Err, non-tautological integrity accounting, fixed-block concatenate, loose-chunk sweep)"
+last_updated: "2026-10-08T15:31:55.220Z"
 last_activity: 2026-10-08
 last_activity_desc: Phase 03 execution started
-state_head: a316e4f2aac7cbb905a98ff4c86b79a634ce5167
+state_head: f8e8355f923dea8bf3cb0e427b6c42d3f5650dd8
 progress:
   total_phases: 4
   completed_phases: 2
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 ## Current Position
 
 Phase: 03 (Memory Safety) — EXECUTING
-Plan: 2 of 11
+Plan: 3 of 11
 Status: Ready to execute
 Last activity: 2026-10-08 — Phase 03 execution started
 
@@ -85,6 +85,7 @@ Progress: [█████████░] 9/11 plans (Phase 03)
 | Phase 03 P08 | 4 min | 1 tasks | 2 files |
 | Phase 03 P09 | 12 min | 3 tasks | 6 files |
 | Phase 03 P10 | 31min | 3 tasks | 6 files |
+| Phase 03 P11 | 21min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -187,6 +188,10 @@ Recent decisions affecting current work:
 - [Phase 03-10]: 03-10: RSS bound derived from the pinned working set (4 x chunk_size x 32B), not from N — GREEN 3,440,640 B vs RED 36,257,792 B sit on opposite sides of the 6,400,000 B bound
 - [Phase 03-10]: 03-10: WR-02 deferred not fixed — rejecting merge_mode='memory' on the PrefixCache route would change outcomes for every existing prefix-cache caller; now warned + documented instead
 - [Phase 03-10]: 03-10: PyDatabase::merge save folded into the merge (semantic change) with zero Python-level verification — recorded as MERGE-04 residual because the installed pyrustkmer.so is prebuilt
+- [Phase 03-11]: 03-11: Partial prefix-cache merges now FAIL loudly — merge_prefix_buckets returns Err when any bucket failed (names failed/total buckets, points at preserved shards); the deferred 03-02 item closed as the intended behaviour change, propagating unchanged to CLI and PyO3
+- [Phase 03-11]: 03-11: should_remove_shards() is the ONE place deciding shard removal — success releases shards (D-06 peak-disk), Err and keep_intermediate preserve them (WR-04 recovery path, paths logged)
+- [Phase 03-11]: 03-11: The tautological total_kmers != total_kmers_in_files check is replaced by TWO phase-independent signals — merged_records_recorded (writer-emitted count, catches zero-length/truncated buckets) and non_empty_buckets_recorded vs buckets_seen (catches a merged file missing at concatenation); valid for OVERLAPPING inputs, deliberately not compared against the Phase-1 input total; observed red under a -1 operand perturbation
+- [Phase 03-11]: 03-11: The orphan sweep reclaims loose rustkmer_sort_*/rustkmer_merge_*.chunk files older than the TTL (CHUNK_FILE_PREFIXES/SUFFIX pub consts mirror TempFileManager's naming); routing streaming chunks into the RAII subdir was considered and REJECTED as an ExternalMerger::new contract change — recorded in 03-11-SUMMARY for a future plan
 
 ### Pending Todos
 
@@ -211,6 +216,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-08T15:01:13.848Z
-Stopped at: Completed 03-10-PLAN.md (G2b closed: streaming merge writes to destination entry-by-entry)
+Last session: 2026-10-08T15:31:55.150Z
+Stopped at: Completed 03-11-PLAN.md (WR-04+WR-08 closed: failed bucket shards preserved+logged, partial merges return Err, non-tautological integrity accounting, fixed-block concatenate, loose-chunk sweep)
 Resume file: None
