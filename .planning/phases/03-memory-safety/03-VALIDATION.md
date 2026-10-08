@@ -2,10 +2,10 @@
 phase: 3
 slug: memory-safety
 status: validated
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: true
 created: 2026-07-02
-validated: 2026-10-07
+validated: 2026-10-08
 ---
 
 # Phase 3 — Validation Strategy
@@ -63,28 +63,34 @@ validated: 2026-10-07
 
 | Req ID | Behavior | Test Type | Automated Command | Test File | Status |
 |--------|----------|-----------|-------------------|-----------|--------|
-| MERGE-01 | Merge defaults to streaming; oversized estimate routes to streaming, not in-memory | unit + integration | `cargo test --test merge_routing_tests` | ✅ `tests/merge_routing_tests.rs` | ✅ covered |
-| MERGE-02 | Admission control: estimate > budget hard-routes to streaming; header-only read (NO entry materialization) | unit + integration | `cargo test --test merge_routing_tests`; `cargo test --test merge_routing_tests -- estimator_reads_header_only_no_materialization` | ✅ `tests/merge_routing_tests.rs` + `src/database/format.rs` unit mod `merge_admission_control` | ✅ covered |
-| MERGE-03 | Failed/interrupted streaming merge cleans up temp shards (RAII + process-unique subdir + startup sweep) | integration | `cargo test --test merge_cleanup_tests` | ✅ `tests/merge_cleanup_tests.rs` (5 tests) | ✅ covered |
-| MERGE-04 | `PyDatabase.merge` threads `max_memory`/`merge_mode` kwargs through to the bounded core | Python contract | `pytest tests/test_database_merge.py -o addopts=""` | ✅ `pyo3/tests/test_database_merge.py` (11 tests) | ✅ covered |
-| DENSE-01 | k ≤ 32 counter uses u64 internally; `memory_usage()` reflects ~50% reduction vs u128 | unit + integration | `cargo test --lib dense_counter_memory` | ⚠️ `src/hash/table.rs` `dense_counter_memory_usage_halved_for_k21` + `tests/dense_differential_tests.rs` | ⚠️ **PARTIAL — assertion is self-fulfilling; see BLOCKER-1 below** |
+| MERGE-01 | Merge defaults to streaming; oversized estimate routes to streaming, not in-memory | unit + integration | `cargo test --test merge_routing_tests`; `cargo test --test merge_bounded_memory_tests` | ✅ `tests/merge_routing_tests.rs` (33) + `tests/merge_bounded_memory_tests.rs` (6, plan 03-10) | ✅ covered |
+| MERGE-02 | Admission control: estimate > budget hard-routes to streaming; header-only read (NO entry materialization) | unit + integration | `cargo test --test merge_routing_tests`; `cargo test --test merge_routing_tests -- estimator_reads_header_only_no_materialization` | ✅ `tests/merge_routing_tests.rs` + `src/database/format.rs` unit mod `merge_admission_control` + `parse_memory_size` checked_mul boundary tests (plan 03-10, WR-05) | ✅ covered |
+| MERGE-03 | Failed/interrupted streaming merge cleans up temp shards (RAII + process-unique subdir + startup sweep) | integration | `cargo test --test merge_cleanup_tests` | ✅ `tests/merge_cleanup_tests.rs` (29 tests; plan 03-11 added failure-preservation, output-count conservation, loose-chunk sweep) | ✅ covered |
+| MERGE-04 | `PyDatabase.merge` threads `max_memory`/`merge_mode` kwargs through to the bounded core | Python contract | `pytest tests/test_database_merge.py -o addopts=""` | ✅ `pyo3/tests/test_database_merge.py` (11 tests) — see caveat below | ✅ covered* |
+| DENSE-01 | k ≤ 32 counter uses u64 internally; `memory_usage()` reflects ~50% reduction vs u128 | unit + integration | `cargo test --lib dense_counter_memory`; `cargo test --lib stored_key_bytes` | ✅ `src/hash/table.rs` variant-matched `stored_key_bytes()` (:190-191) + size_of asserts (:1318, :1327); `tests/dense_differential_tests.rs` | ✅ covered — **BLOCKER-1 RESOLVED by plan 03-06** (see below) |
 | DENSE-02 | `.rkdb` v2 byte-identity preserved post-dense; golden sha256 baselines unchanged | integration (golden re-verification) | `cargo test --test golden_sha256_tests` | ✅ `tests/golden_sha256_tests.rs` (12 fixtures re-hashed) + `tests/dense_merge_integration_tests.rs::dense_merge_output_preserves_rkdb_v2_layout` | ✅ covered |
 | DENSE-03 | u64 path canonicalization + counts == u128 path (decoded-level differential, D-04/D-05) | integration + property | `cargo test --test dense_differential_tests`; `cargo test --test dense_proptest_tests` | ✅ `tests/dense_differential_tests.rs` (6) + `tests/dense_proptest_tests.rs` (3) | ✅ covered |
 
-### Measured Results (2026-10-07)
+### Measured Results (2026-10-08, post gap-closure 03-06..03-11)
 
 | Suite | Result |
 |-------|--------|
-| `cargo test` (full) | **exit 0** — 221 lib + all integration binaries, 0 failed |
-| `cargo test --test merge_routing_tests` | 26 passed, 0 failed, **0 ignored** |
-| `cargo test --test merge_cleanup_tests` | 26 passed, 0 failed, **0 ignored** |
+| `cargo test` (full, post-merge gate) | **exit 0** — 20 binaries, **421 passed, 0 failed** |
+| `cargo test --test merge_routing_tests` | 33 passed, 0 failed, **0 ignored** |
+| `cargo test --test merge_cleanup_tests` | 29 passed, 0 failed, **0 ignored** |
+| `cargo test --test merge_bounded_memory_tests` | 6 passed, 0 failed, 0 ignored (plan 03-10; incl. RSS bound GREEN 3,440,640 B < 6,400,000 B and mutation-RED) |
 | `cargo test --test dense_differential_tests` | 6 passed, 0 failed, 0 ignored |
 | `cargo test --test dense_proptest_tests` | 3 passed, 0 failed, 0 ignored |
-| `cargo test --test golden_sha256_tests` | 2 passed, 0 failed, 0 ignored |
+| `cargo test --test golden_sha256_tests` | 2 passed, 0 failed, 0 ignored (re-pointed at live format by plan 03-08, WR-03) |
 | `cargo test --test dense_merge_integration_tests` | 3 passed, 0 failed, 0 ignored |
-| `cargo test --lib dense_counter_memory` | 1 passed (`dense_counter_memory_usage_halved_for_k21`) |
-| `pytest tests/test_database_merge.py -o addopts=""` | **11 passed, 0 skipped** |
 | `cargo clippy --all-targets -- -D warnings` (root + `pyo3`) | **clean** |
+
+**MERGE-04 caveat (covered*):** plan 03-10 retargeted `PyDatabase::merge` at
+`RKDatabase::merge_databases_to_path`. The 11 pytest tests pass but run against the **prebuilt
+installed `pyrustkmer.so`** (the pyo3 python-source build misconfiguration noted above), so the
+Python-level observation covers the kwargs/routing contract, while the new to-path core's
+byte-identity and header equality are proven at Rust level in `tests/merge_bounded_memory_tests.rs`.
+Recorded in `.planning/WINDOWS.md`.
 
 **Zero `#[ignore]` attributes remain** in any Phase 3 test file (verified via
 `grep -rnE '^\s*#\s*\[\s*ignore' tests/{merge_routing,merge_cleanup,dense_differential,dense_proptest,golden_sha256,dense_merge_integration}_tests.rs` → no matches).
@@ -103,6 +109,12 @@ This closes the 03-04 deferred item that flagged 3 prose-level grep hits.
 | 03-04-01 | 04 | 2 | MERGE-01, MERGE-02, DENSE-02, DENSE-03 | T-03-13 | Cross-plan composition: u64 count → `.rkdb` → bounded merge → decode, 4-way equality on **both** routes | integration | `cargo test --test dense_merge_integration_tests` | ✅ | ✅ green |
 | 03-05-01 | 05 | 0 | MERGE-04 | — | Wave-0 RED stubs for the Python merge contract | Python | `pytest tests/test_database_merge.py` | ✅ | ✅ green |
 | 03-05-02 | 05 | 1 | MERGE-04 | T-03-17 | `max_memory`/`merge_mode` kwargs threaded into `MergeConfig` | Python | `pytest tests/test_database_merge.py -o addopts=""` | ✅ | ✅ green |
+| 03-06-* | 06 | gap | DENSE-01, DENSE-02, DENSE-03 | — | **BLOCKER-1 fix**: `KmerKey` enum removed; `CounterTable::{Dense(Wide)}` monomorphized `DashMap<u64|u128, u32>`; `stored_key_bytes()` matches the live variant | unit | `cargo test --lib` (size_of asserts :1318/:1327) | ✅ | ✅ green |
+| 03-07-* | 07 | gap | MERGE-01, MERGE-02, DENSE-02 | CR-01 | Endianness heuristic deleted from `KmerEntry::read_from`; counts > 1,000,000 no longer byte-swapped | unit + integration | `cargo test --test merge_routing_tests` (33) | ✅ | ✅ green |
+| 03-08-* | 08 | gap | DENSE-02 | WR-03 | golden_sha256 re-pointed at the live format output instead of static Phase-1 artifacts | integration | `cargo test --test golden_sha256_tests` | ✅ | ✅ green |
+| 03-09-* | 09 | gap | MERGE-01, MERGE-02, MERGE-03 | CR-02, WR-01, WR-06, IN-01 | Header-only merge routes (no `from_file_path` materialization in the three strategies); 96 B/k-mer admission model | unit + integration | `cargo test --test merge_routing_tests -- estimator_reads_header_only_no_materialization` | ✅ | ✅ green |
+| 03-10-* | 10 | gap | MERGE-01, MERGE-02, MERGE-04 | G2b, WR-05 | `merge_databases_to_path` streaming entry point; both front-ends retargeted; `parse_memory_size` checked chains; RSS bound proven | unit + integration | `cargo test --test merge_bounded_memory_tests` | ✅ | ✅ green |
+| 03-11-* | 11 | gap | MERGE-01, MERGE-03 | WR-04, WR-08 | `merge_prefix_buckets` errs on bucket failure + preserves shards; non-tautological conservation accounting; fixed-block concatenate; loose-chunk sweep | integration | `cargo test --test merge_cleanup_tests` (29) | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ partial/flaky*
 
@@ -133,7 +145,7 @@ because they are either measurement-limited or blocked on an implementation defe
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
 | Real per-entry memory cost of the dense counter | DENSE-01 | `memory_usage()` is a **model** (24 B overhead + key + 4 B), not a measurement. Deferred from 03-03; Phase 4's benchmark harness is the right place. See `deferred-items.md`. | Measure a heap delta or allocator stats for k=21 vs k=64 at equal entry counts. |
-| **DENSE-01 storage-width claim** | DENSE-01 | **BLOCKER-1** — the automated assertion cannot fail for the reason it claims. Escalated to developer; not fixable by a test. | See BLOCKER-1 below. |
+| ~~DENSE-01 storage-width claim~~ | DENSE-01 | **RESOLVED 2026-10-08** — plan 03-06 removed `KmerKey` and monomorphized `CounterTable`, exactly the fix suggested below; `stored_key_bytes()` now matches the live variant, so the assertion observes the branch rather than restating `k`. | Closed — no manual step. |
 
 > Note: the actual human-scale no-OOM behavior on CRR1936095 is validated in **Phase 4** (benchmark
 > harness). Phase 3 proves the routing/cleanup/correctness **logic** on synthetic inputs at toy scale —
@@ -144,6 +156,13 @@ because they are either measurement-limited or blocked on an implementation defe
 ---
 
 ## BLOCKER-1 — DENSE-01's storage-width assertion is vacuous (ESCALATED)
+
+> **RESOLVED 2026-10-08 by gap-closure plan 03-06.** The suggested fix below was adopted:
+> `KmerKey` is gone and the width lives on `CounterTable::{Dense(DashMap<u64, u32>), Wide(DashMap<u128, u32>)}`.
+> `stored_key_bytes()` (`src/hash/table.rs:190-191`) now matches the **live variant**, so the
+> "always store wide" mutation is rejected by the type system, and `size_of` asserts at
+> `:1318`/`:1327` observe the stored key type directly. The section below is retained as the
+> historical audit record.
 
 **Severity:** BLOCKER — a requirement reported as verified that no test can actually falsify.
 **Owner:** developer (implementation defect — NOT fixable by writing a test).
@@ -215,16 +234,17 @@ still compile (Phase 2 D-05 carry-forward).
 
 ## Validation Sign-Off
 
-- [x] All tasks have `<automated>` verify or Wave 0 dependencies — 9/9 tasks
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies — 9/9 tasks (plans 01-05) + 6 gap-closure plans (03-06..03-11), each with per-plan test evidence
 - [x] Sampling continuity: no 3 consecutive tasks without automated verify
 - [x] Wave 0 covers all MISSING references — all 8 planned files exist and run green
 - [x] No watch-mode flags
 - [x] Feedback latency < 120s (full `cargo test` measured well under)
-- [ ] `nyquist_compliant: true` set in frontmatter — **NOT set**: BLOCKER-1 is open
+- [x] `nyquist_compliant: true` set in frontmatter — **set 2026-10-08**: BLOCKER-1 resolved by plan 03-06
 
-**Coverage summary:** 6 of 7 requirements fully covered (MERGE-01, MERGE-02, MERGE-03, MERGE-04,
-DENSE-02, DENSE-03). **DENSE-01 is PARTIAL** — its correctness consequences are covered transitively
-by DENSE-03, but its central storage-width claim is asserted by a test that cannot fail (BLOCKER-1).
+**Coverage summary (2026-10-08):** **7 of 7 requirements fully covered** (MERGE-01, MERGE-02,
+MERGE-03, MERGE-04, DENSE-01, DENSE-02, DENSE-03). DENSE-01's storage-width claim is now asserted
+non-vacuously against the monomorphized `CounterTable` (BLOCKER-1 resolved). MERGE-04 carries the
+prebuilt-`.so` caveat recorded above and in `.planning/WINDOWS.md`.
 
 **Non-vacuity audit result.** The vacuity class the phase's own executors twice caught (a routing test
 that passes with the routing removed) was re-checked here requirement-by-requirement and **no
@@ -246,7 +266,7 @@ remaining instance was found**. Specifically:
   `src/database/prefix_cache_merge.rs`, the path that actually leaked — so MERGE-03 is tested against
   the defective path, not a stand-in.
 
-**Approval:** validated 2026-10-07 — **PARTIAL** (1 requirement blocked; 6 requirements verified)
+**Approval:** validated 2026-10-08 — **FULL** (7/7 requirements verified; BLOCKER-1 resolved by plan 03-06)
 
 ## Validation Audit
 
@@ -255,3 +275,11 @@ remaining instance was found**. Specifically:
 | Gaps found | 1 |
 | Resolved | 0 |
 | Escalated | 1 |
+
+## Validation Audit 2026-10-08
+
+| Metric | Count |
+|---|---|
+| Gaps found | 1 |
+| Resolved | 1 |
+| Escalated | 0 |
