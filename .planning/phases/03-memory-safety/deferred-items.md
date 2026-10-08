@@ -264,3 +264,18 @@
   surface carries 11 new contract tests. Not done here: editing the crate's
   test configuration is outside MERGE-04's scope and would change the quality
   bar every later contributor runs under.
+
+- `clippy::redundant_field_names` fires on `src/database/stats.rs`'s
+  `StatsError::Io { #[from] source: std::io::Error }` under the local clippy
+  1.99 toolchain (same bump that produced the 03-01 entry above). The lint
+  targets thiserror's `#[from]` expansion — the generated `From` impl
+  initializes the variant with `{ source: source }` — and the span is mapped
+  back onto the field definition, so neither a field-level nor an enum-level
+  `#[allow]` reaches the generated code. Pre-existing and not caused by plan
+  03-10 (stats.rs is untouched by merge work), but the plan's blocking
+  criterion `cargo clippy --all-targets -- -D warnings exits 0` cannot pass
+  while it stands. Fixed as a Rule 3 (blocking) fix with a module-level
+  `#![allow(clippy::redundant_field_names)]` plus an explanatory comment in
+  stats.rs, mirroring the 03-01 precedent. A thiserror upgrade (2.x codegen
+  uses the shorthand) would let the allow be dropped.
+  status: closed (plan 03-10, module-level allow in src/database/stats.rs)

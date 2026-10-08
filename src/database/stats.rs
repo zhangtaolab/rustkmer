@@ -4,6 +4,15 @@
 //! for RKDB databases including k-mer counts, frequency distributions,
 //! and statistical measures.
 
+// Toolchain drift (clippy 1.99, logged to deferred-items.md by plan 03-10):
+// thiserror's `#[from]` on `StatsError::Io { source: std::io::Error }` expands
+// to a struct init of the form `{ source: source }`, which new clippy lints as
+// `redundant_field_names` with the span mapped back onto the field definition,
+// so neither a field-level nor an enum-level `#[allow]` reaches the generated
+// code. The field name is thiserror's `#[source]` convention; the shorthand is
+// not ours to write. Same situation as the 03-01 clippy-drift fixes.
+#![allow(clippy::redundant_field_names)]
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;

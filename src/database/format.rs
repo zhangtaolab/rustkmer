@@ -375,6 +375,28 @@ impl DatabaseFormat {
     }
 }
 
+/// What a merge that wrote its output straight to a file produced.
+///
+/// Carries exactly the header fields the two front-ends report after a merge
+/// (the CLI's summary block and the Python binding's completion contract), so
+/// neither needs to hold a whole [`RKDatabase`] in RAM just to print four
+/// values. That is the point of [`RKDatabase::merge_databases_to_path`]:
+/// before plan 03-10 both front-ends merged into an `RKDatabase` and then
+/// wrote it out, so even the "streaming" route materialized its full output
+/// (code-review finding CR-02's substantive half).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MergeSummary {
+    /// K-mer size of the merged database.
+    pub kmer_size: usize,
+    /// Number of distinct k-mer RECORDS written (the header's `total_kmers`,
+    /// not the sum of counts).
+    pub total_kmers: u64,
+    /// Whether the merged database uses canonical k-mers.
+    pub canonical: bool,
+    /// Whether the merged database is sorted.
+    pub sorted: bool,
+}
+
 /// RustKmer Database - main structure for storing and querying k-mers
 #[derive(Debug)]
 pub struct RKDatabase {
@@ -917,18 +939,38 @@ impl RKDatabase {
         total_kmers.saturating_mul(per_kmer)
     }
 
-    /// - Memory is insufficient for the operation
-    pub fn merge_databases(
+    /// The startup work every merge route runs, exactly once per entry point.
+    ///
+    /// Holds the WR-06 empty-input guard and the D-06 / MERGE-03 startup
+    /// orphan sweep, and nothing else. Both public entry points
+    /// ([`Self::merge_databases`] and [`Self::merge_databases_to_path`]) call
+    /// this as their FIRST statement, before [`Self::resolve_merge_route`],
+    /// which is what keeps two invariants true at once:
+    ///
+    ///   - **exactly one sweep call site** (the `temp_lifecycle` stale-dir
+    ///     sweep) exists in the whole merge subsystem (the 03-02 property),
+    ///     and
+    ///   - **every route sweeps** — including the in-memory route, which never
+    ///     touches `temp_dir` for anything else, so MERGE-03's orphan
+    ///     reclamation cannot be opted out of by picking a route.
+    ///
+    /// An earlier revision of plan 03-10 put the sweep at the top of
+    /// `merge_databases_to_path` alone and left `merge_databases`'s in-memory
+    /// branch on its original body; that shape is not satisfiable — it either
+    /// orphans the in-memory route from the sweep or duplicates the call site
+    /// and breaks the single-call-site property. The behavioural guard for
+    /// this placement is `in_memory_route_still_sweeps_stale_orphans` in
+    /// `tests/merge_bounded_memory_tests.rs`: a source-shape grep can count
+    /// call sites but cannot tell "one site reached by every route" apart
+    /// from "one site some route skips".
+    fn merge_prologue(
         input_paths: &[std::path::PathBuf],
         config: &crate::database::MergeConfig,
-    ) -> crate::error::ProcessingResult<Self> {
-        // WR-06 / threat T-03-35: hoisted to the TOP of the dispatcher.
-        // `merge_databases_streaming` indexes `input_paths[0]` unconditionally,
-        // so an empty input list panicked with an index-out-of-bounds before
-        // any strategy-specific guard could run. One guard here covers all
-        // three routes; the per-strategy guards are left in place as defence in
-        // depth for any direct private-fn caller (removing them would be an
-        // unrequested behaviour change for callers the plan does not own).
+    ) -> crate::error::ProcessingResult<()> {
+        // WR-06 / threat T-03-35: the streaming route indexes `input_paths[0]`
+        // unconditionally, so an empty input list panicked with an
+        // index-out-of-bounds before any strategy-specific guard could run.
+        // One guard here covers all three routes from both entry points.
         if input_paths.is_empty() {
             return Err(crate::error::ProcessingError::new(
                 "At least one input database is required",
@@ -936,19 +978,43 @@ impl RKDatabase {
         }
 
         // D-06 / MERGE-03: reclaim temp shards orphaned by a merge that could
-        // not clean up after itself — SIGKILL, `panic = "abort"` (this project's
-        // release profile), `process::exit`, power loss. RAII handles the
-        // unwind cases; this handles the ones where `Drop` never runs.
+        // not clean up after itself — SIGKILL, `panic = "abort"` (this
+        // project's release profile), `process::exit`, power loss. RAII
+        // handles the unwind cases; this handles the ones where `Drop` never
+        // runs.
         //
-        // This is the single sweep call site for the whole merge subsystem, so
-        // it covers all three strategies. It is deliberately placed BEFORE any
-        // temp shard this merge creates, and is a no-op on a temp_dir that does
-        // not exist yet.
+        // This is the single sweep call site for the whole merge subsystem,
+        // so it covers all three strategies from both entry points. It is
+        // deliberately placed BEFORE any temp shard this merge creates, and
+        // is a no-op on a temp_dir that does not exist yet.
         crate::database::temp_lifecycle::sweep_stale_merge_dirs(
             &config.temp_dir,
             crate::database::temp_lifecycle::DEFAULT_MERGE_TEMP_TTL,
         );
 
+        Ok(())
+    }
+
+    /// Decide which merge route `config` selects for `input_paths`.
+    ///
+    /// Extracted from the top of [`Self::merge_databases`]'s pre-03-10 body
+    /// (the `use_prefix_cache` branch, the D-02 over-budget rejection, the
+    /// explicit-`streaming` override and the MERGE-02 hard route) so that
+    /// BOTH public entry points dispatch through ONE decision: the route
+    /// decides the output's byte content, so a routing divergence between the
+    /// to-path and the in-RAM forms would be silent data drift (threat
+    /// T-03-39).
+    ///
+    /// The arm ordering is load-bearing and preserved exactly: the
+    /// `use_prefix_cache` early return sits ABOVE the D-02 rejection. That
+    /// ordering IS finding WR-02 — with `--use-prefix-cache` set, a
+    /// `merge_mode` of `"memory"` never reaches the over-budget rejection —
+    /// and re-ordering it silently would change merge outcomes for every
+    /// existing prefix-cache caller, which a gap-closure plan must not do.
+    fn resolve_merge_route(
+        input_paths: &[std::path::PathBuf],
+        config: &crate::database::MergeConfig,
+    ) -> crate::error::ProcessingResult<crate::database::MergeStrategy> {
         // D-01: header-only estimate. The pre-fix loop called
         // `Self::from_file_path(path)` per input, materializing every entry
         // into RAM just to read `total_kmers` — OOMing during the estimate.
@@ -957,8 +1023,6 @@ impl RKDatabase {
         // overflow in a debug build, so two crafted headers each claiming just
         // over `u64::MAX / 2` k-mers would abort an admission gate — the one
         // component that must never be the thing that dies on hostile input.
-        // `saturating_add` turns that into a saturated estimate, which the
-        // budget comparison then correctly treats as over budget.
         let total_kmers = input_paths
             .iter()
             .map(|path| Self::estimate_total_kmers(path))
@@ -966,15 +1030,33 @@ impl RKDatabase {
             .into_iter()
             .fold(0u64, |total, count| total.saturating_add(count));
 
-        // WR-01: charge the route its real peak. This was a bare
-        // 24-bytes-per-k-mer multiply with no derivation, modelling roughly a
-        // quarter of what the in-memory route actually holds, so a merge the
-        // gate admitted could still exhaust memory.
+        // WR-01: charge the route its real peak, via the one place a route's
+        // per-k-mer cost is turned into a number.
         let estimated_memory =
             Self::estimated_bytes_for_route(crate::database::MergeStrategy::InMemory, total_kmers);
 
-        // Use prefix cache merge if enabled
+        // Use prefix cache merge if enabled.
+        //
+        // WR-02, DEFERRED BY DESIGN: this arm returns before the D-02
+        // over-budget rejection below can run, so `merge_mode = "memory"`
+        // with `--use-prefix-cache` is NEVER rejected for exceeding
+        // `max_memory` — on this path `merge_mode` selects the PER-BUCKET
+        // strategy inside `ExternalSortMerger`
+        // (`prefix_cache_merge.rs`'s bucket merge), not the route. Actually
+        // rejecting `merge_mode == "memory"` when the route is `PrefixCache`
+        // would be a behaviour change for every existing prefix-cache caller
+        // and needs its own decision; what this plan does instead is make
+        // the dual meaning VISIBLE rather than silent.
         if config.use_prefix_cache {
+            if config.merge_mode != "auto" {
+                log::warn!(
+                    "use_prefix_cache is set: merge_mode='{}' does not select the merge ROUTE \
+                     here — it selects the per-bucket strategy inside the external sorter, and \
+                     the over-budget merge_mode='memory' rejection is therefore unreachable \
+                     with --use-prefix-cache",
+                    config.merge_mode
+                );
+            }
             if config.verbose {
                 log::info!(
                     "DEBUG: Using prefix cache merge for {} k-mers (estimated {} bytes)",
@@ -982,7 +1064,7 @@ impl RKDatabase {
                     estimated_memory
                 );
             }
-            return Self::merge_databases_prefix_cache(input_paths, config);
+            return Ok(crate::database::MergeStrategy::PrefixCache);
         }
 
         let over_budget = estimated_memory > config.max_memory_usage as u64;
@@ -991,6 +1073,11 @@ impl RKDatabase {
         // REJECTED with an actionable error rather than attempted and left to
         // OOM the process (MERGE-01's "no longer OOM" promise). The in-memory
         // path itself is retained — this only bounds when it may run.
+        //
+        // The message text is quoted by `pyo3/src/database.rs`'s docstring,
+        // `tests/merge_routing_tests.rs`, and
+        // `pyo3/tests/test_database_merge.py` asserts the substring
+        // `rejected` — it must stay byte-identical.
         if config.merge_mode == "memory" && over_budget {
             return Err(crate::error::ProcessingError::new(format!(
                 "merge_mode='memory' rejected: estimated memory ({} bytes for {} k-mers) exceeds \
@@ -1046,7 +1133,7 @@ impl RKDatabase {
                     estimated_memory
                 );
             }
-            Self::merge_databases_streaming(input_paths, config)
+            Ok(crate::database::MergeStrategy::Streaming)
         } else {
             if config.verbose {
                 log::info!(
@@ -1055,7 +1142,154 @@ impl RKDatabase {
                     estimated_memory
                 );
             }
-            Self::merge_databases_inmemory(input_paths, config)
+            Ok(crate::database::MergeStrategy::InMemory)
+        }
+    }
+
+    /// Merge `input_paths` and write the result DIRECTLY to `output_path`.
+    ///
+    /// The bounded entry point both shipped front-ends call (the CLI's
+    /// `execute_merge` and `pyo3`'s `PyDatabase::merge`): the streaming route
+    /// emits `.rkdb` bytes as the merge yields them
+    /// ([`Self::merge_databases_streaming_to_path`]), the prefix-cache route
+    /// hands its finished file over by rename
+    /// ([`Self::merge_databases_prefix_cache_to_path`]), and only the
+    /// in-memory route — selected when the admission model says the whole
+    /// merge fits — ever holds the merged dataset, which it then writes out
+    /// once. A production merge through this entry point never materializes
+    /// its output just to write it again.
+    ///
+    /// Runs [`Self::merge_prologue`] first (empty-input guard + the single
+    /// stale-orphan sweep call site) and dispatches through the same
+    /// [`Self::resolve_merge_route`] as [`Self::merge_databases`], so a
+    /// budget cannot select different implementations for the two forms.
+    ///
+    /// # Errors
+    /// Same conditions as [`Self::merge_databases`], plus an I/O failure
+    /// creating or writing `output_path`. An error mid-stream propagates
+    /// rather than yielding a summary, so a truncated file is never reported
+    /// as a successful merge (threat T-03-40).
+    pub fn merge_databases_to_path(
+        input_paths: &[std::path::PathBuf],
+        config: &crate::database::MergeConfig,
+        output_path: &std::path::Path,
+    ) -> crate::error::ProcessingResult<MergeSummary> {
+        Self::merge_prologue(input_paths, config)?;
+
+        match Self::resolve_merge_route(input_paths, config)? {
+            crate::database::MergeStrategy::PrefixCache => {
+                Self::merge_databases_prefix_cache_to_path(input_paths, config, output_path)
+            }
+            crate::database::MergeStrategy::Streaming => {
+                Self::merge_databases_streaming_to_path(input_paths, config, output_path)
+            }
+            // `Hybrid` is never returned by `resolve_merge_route`; if it ever
+            // is, it starts in-memory, so the in-memory writer is the right
+            // arm for it too.
+            crate::database::MergeStrategy::InMemory
+            | crate::database::MergeStrategy::Hybrid => {
+                let merged = Self::merge_databases_inmemory(input_paths, config)?;
+                merged.to_file_path(output_path)?;
+                Ok(MergeSummary {
+                    kmer_size: merged.kmer_size(),
+                    total_kmers: merged.total_kmers(),
+                    canonical: merged.is_canonical(),
+                    sorted: merged.header().sorted,
+                })
+            }
+        }
+    }
+
+    /// Where [`Self::merge_databases`]'s materializing shim writes its
+    /// intermediate result: inside a fresh process-unique merge subdir when
+    /// `config.temp_dir` allows one (RAII-reclaimed on return), else a
+    /// uniquely named file directly under `config.temp_dir`.
+    fn compat_materialization_target(
+        config: &crate::database::MergeConfig,
+    ) -> (Option<tempfile::TempDir>, std::path::PathBuf) {
+        match crate::database::temp_lifecycle::create_merge_temp_subdir(&config.temp_dir) {
+            Ok(subdir) => {
+                let path = subdir.path().join("merge_databases_materialized.rkdb");
+                (Some(subdir), path)
+            }
+            Err(e) => {
+                log::warn!(
+                    "Could not create a merge temp subdir under '{}' for the materializing \
+                     merge ({}); falling back to a uniquely named file there",
+                    config.temp_dir.display(),
+                    e
+                );
+                let unique = format!(
+                    "rustkmer-merge-compat-{}-{}.rkdb",
+                    std::process::id(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_nanos())
+                        .unwrap_or(0),
+                );
+                (None, config.temp_dir.join(unique))
+            }
+        }
+    }
+
+    /// Merge multiple RKDB databases into a new one — the MATERIALIZING form.
+    ///
+    /// # This entry point holds the merged database in RAM
+    ///
+    /// It exists for library callers that want an [`RKDatabase`] out of a
+    /// merge. The CLI and the Python binding call
+    /// [`Self::merge_databases_to_path`] instead and never take this path;
+    /// both of this route's non-in-memory arms delegate to the to-path core
+    /// and then load the result once, so the merged dataset is resident
+    /// exactly once — in the returned database, not in an intermediate
+    /// collection. Do not add new callers of this form from front-end code:
+    /// a caller that immediately writes the result to a file wants
+    /// `merge_databases_to_path`.
+    ///
+    /// # Arguments
+    /// * `input_paths` - Paths to the input database files
+    /// * `config` - Configuration for the merge operation
+    ///
+    /// # Returns
+    /// A new RKDatabase containing the merged k-mers
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - Any input file cannot be read
+    /// - Databases have incompatible k-mer sizes or canonical modes
+    /// - Memory is insufficient for the operation
+    pub fn merge_databases(
+        input_paths: &[std::path::PathBuf],
+        config: &crate::database::MergeConfig,
+    ) -> crate::error::ProcessingResult<Self> {
+        Self::merge_prologue(input_paths, config)?;
+
+        match Self::resolve_merge_route(input_paths, config)? {
+            // Unchanged cost profile: only selected when the admission model
+            // says the whole merge fits (and for `merge_mode = "memory"`,
+            // only when it fits or the D-02 rejection fired first).
+            crate::database::MergeStrategy::InMemory
+            | crate::database::MergeStrategy::Hybrid => {
+                Self::merge_databases_inmemory(input_paths, config)
+            }
+            crate::database::MergeStrategy::Streaming
+            | crate::database::MergeStrategy::PrefixCache => {
+                // The compatibility hand-off: write through the bounded
+                // to-path core into a temp file inside a process-unique merge
+                // subdir, then load that file once. `to_path_and_in_ram_
+                // entry_points_agree_byte_for_byte` in
+                // `tests/merge_bounded_memory_tests.rs` pins that the file
+                // this writes and the to-path entry point's own output are
+                // byte-identical, so the shim cannot drift from the core.
+                let (subdir, temp_path) = Self::compat_materialization_target(config);
+                Self::merge_databases_to_path(input_paths, config, &temp_path)?;
+                let merged = Self::from_file_path(&temp_path)?;
+                if subdir.is_none() {
+                    // The fallback target is not RAII-owned; reclaim it here.
+                    let _ = std::fs::remove_file(&temp_path);
+                }
+                Ok(merged)
+            }
         }
     }
 
@@ -1072,12 +1306,33 @@ impl RKDatabase {
         estimated_memory > config.max_memory_usage as u64
     }
 
-    fn merge_databases_streaming(
+    /// The streaming merge, writing `.rkdb` bytes as the merge yields them.
+    ///
+    /// This is CR-02's substantive fix (gap G2b / threat T-03-38). The
+    /// pre-plan body drained the whole merged stream into
+    /// `sorted_kmers: Vec<(u128, u32)>` and then called `from_kmer_pairs`,
+    /// which built a SECOND full copy as a `Vec<KmerEntry>` — so the route
+    /// chosen precisely because the inputs do not fit held roughly 2x the
+    /// entire dataset at peak, strictly worse than the in-memory path it
+    /// replaced. Here the iterator is consumed exactly once, one
+    /// `KmerEntry::write_to` per yielded pair, with no intermediate
+    /// collection of any size.
+    ///
+    /// The header dance is placeholder-then-seek-back: the 42-byte header is
+    /// written up front with zero counts (the exact bytes
+    /// `from_kmer_pairs(vec![], kmer_size, canonical, true)` would produce),
+    /// the entries stream past it, and the header is rewritten in place with
+    /// the real counts before `sync_all`. `file_size` stays `0` on both
+    /// writes — see the placeholder comment for why that is load-bearing
+    /// (threat T-03-37).
+    fn merge_databases_streaming_to_path(
         input_paths: &[std::path::PathBuf],
         config: &crate::database::MergeConfig,
-    ) -> crate::error::ProcessingResult<Self> {
+        output_path: &std::path::Path,
+    ) -> crate::error::ProcessingResult<MergeSummary> {
         use crate::database::format::RKDatabase;
         use crate::database::streaming_merge::ExternalMerger;
+        use std::io::BufWriter;
         use std::time::Instant;
 
         if config.verbose {
@@ -1086,11 +1341,10 @@ impl RKDatabase {
 
         let start_time = Instant::now();
 
-        // G2a / threat T-03-31: this is the OVER-BUDGET path — the one chosen
-        // precisely because the inputs do not fit — and it used to
-        // `from_file_path(&input_paths[0])` (materializing a whole input
-        // database into RAM) purely to read `kmer_size` and `canonical`, two
-        // fields of a 42-byte header. A 42-byte read is all that is needed.
+        // G2a / threat T-03-31 (kept from 03-09): this is the OVER-BUDGET
+        // path — the one chosen precisely because the inputs do not fit — and
+        // it reads `kmer_size` and `canonical` from the 42-byte header, never
+        // from a materialized input database.
         let header = RKDatabase::read_header_of(&input_paths[0])?;
         let kmer_size = header.kmer_size;
         let canonical = header.canonical;
@@ -1109,14 +1363,109 @@ impl RKDatabase {
         }
 
         let merge_iter = merger.merge_sorted_chunks()?;
-        let mut sorted_kmers: Vec<(u128, u32)> = Vec::new();
 
+        let file = std::fs::File::create(output_path).map_err(|e| {
+            crate::error::ProcessingError::io_error(format!(
+                "Failed to create merge output file '{}': {}",
+                output_path.display(),
+                e
+            ))
+        })?;
+        let mut writer = BufWriter::new(file);
+
+        // The PLACEHOLDER header: field-for-field the header
+        // `from_kmer_pairs(vec![], kmer_size, canonical, true)` produces —
+        // `magic`, `version`, `kmer_size`, `canonical`, `sorted: true`,
+        // `total_kmers: 0`, `unique_kmers: 0`, `data_offset: 42`,
+        // `index_offset: 0`, and `file_size: 0`.
+        //
+        // `file_size: 0` is load-bearing: `from_kmer_pairs` sets it to 0 and
+        // `write_to_file` writes the header verbatim, so every `.rkdb` the
+        // streaming route has ever produced carries `file_size == 0`
+        // (the field is not even serialized in the 42-byte on-disk header).
+        // "Fixing" it while streaming would be a silent on-disk format
+        // change; `streaming_to_path_header_equals_the_from_kmer_pairs_
+        // header_field_for_field` guards this field by field.
+        let placeholder = DatabaseHeader {
+            magic: *DATABASE_MAGIC,
+            version: DATABASE_VERSION,
+            kmer_size,
+            total_kmers: 0,
+            sorted: true,
+            data_offset: 42,
+            index_offset: 0,
+            canonical,
+            unique_kmers: 0,
+            file_size: 0,
+        };
+        placeholder.write_to(&mut writer)?;
+
+        // The whole substance of CR-02's fix: one `write_to` per yielded
+        // pair, no `Vec`, no `from_kmer_pairs`, no second collection.
+        let mut written: u64 = 0;
         for result in merge_iter {
-            match result {
-                Ok((kmer, count)) => sorted_kmers.push((kmer, count)),
-                Err(e) => return Err(e),
-            }
+            let (kmer, count) = result?;
+            KmerEntry::new(kmer, count).write_to(&mut writer).map_err(|e| {
+                crate::error::ProcessingError::io_error(format!(
+                    "Failed to write merged k-mer to '{}': {}",
+                    output_path.display(),
+                    e
+                ))
+            })?;
+            written += 1;
         }
+
+        writer.flush().map_err(|e| {
+            crate::error::ProcessingError::io_error(format!(
+                "Failed to flush merged database to '{}': {}",
+                output_path.display(),
+                e
+            ))
+        })?;
+        drop(writer);
+
+        // Rewrite the header in place with the real counts. Everything else
+        // is identical to the placeholder — `file_size` still 0.
+        let mut header_file = std::fs::OpenOptions::new()
+            .write(true)
+            .open(output_path)
+            .map_err(|e| {
+                crate::error::ProcessingError::io_error(format!(
+                    "Failed to reopen merge output file '{}': {}",
+                    output_path.display(),
+                    e
+                ))
+            })?;
+        use std::io::{Seek, SeekFrom};
+        header_file
+            .seek(SeekFrom::Start(0))
+            .map_err(|e| {
+                crate::error::ProcessingError::io_error(format!(
+                    "Failed to seek to header of '{}': {}",
+                    output_path.display(),
+                    e
+                ))
+            })?;
+        DatabaseHeader {
+            total_kmers: written,
+            unique_kmers: written,
+            ..placeholder
+        }
+        .write_to(&mut header_file)
+        .map_err(|e| {
+            crate::error::ProcessingError::io_error(format!(
+                "Failed to rewrite header of '{}': {}",
+                output_path.display(),
+                e
+            ))
+        })?;
+        header_file.sync_all().map_err(|e| {
+            crate::error::ProcessingError::io_error(format!(
+                "Failed to sync merged database '{}': {}",
+                output_path.display(),
+                e
+            ))
+        })?;
 
         if config.verbose {
             let stats = merger.stats();
@@ -1128,9 +1477,15 @@ impl RKDatabase {
             log::info!("  Merge time: {:?}", stats.merge_time);
             log::info!("  Write time: {:?}", stats.write_time);
             log::info!("  Total time: {:?}", start_time.elapsed());
+            log::info!("  Merged unique k-mers written: {}", written);
         }
 
-        Self::from_kmer_pairs(sorted_kmers, kmer_size, canonical, true)
+        Ok(MergeSummary {
+            kmer_size: kmer_size as usize,
+            total_kmers: written,
+            canonical,
+            sorted: true,
+        })
     }
 
     fn merge_databases_inmemory(
@@ -1270,16 +1625,34 @@ impl RKDatabase {
         Self::from_kmer_pairs(sorted_kmers, kmer_size as u8, canonical, sorted)
     }
 
-    /// Prefix cache merge implementation (memory-efficient with error isolation)
-    fn merge_databases_prefix_cache(
+    /// Prefix cache merge (memory-efficient with error isolation), handed off
+    /// to `output_path` by RENAME.
+    ///
+    /// The route already writes a complete `.rkdb` at its `temp_output` path
+    /// inside the merger's RAII subdir (plan 03-09 moved it there). The
+    /// pre-plan code then read that file BACK with `from_file_path` purely to
+    /// return it as an `RKDatabase` — re-materializing the entire merged
+    /// dataset on the route selected for memory efficiency. The to-path
+    /// handoff is a single `std::fs::rename` performed while the merger (and
+    /// its `TempDir`) is still alive, so the merged bytes move to their
+    /// destination without ever entering RAM; after the rename there is
+    /// nothing left for the subdir's `Drop` to reclaim except the shards,
+    /// which is exactly what `prefix_cache_to_path_leaves_no_intermediate_
+    /// behind` asserts.
+    fn merge_databases_prefix_cache_to_path(
         input_paths: &[std::path::PathBuf],
         config: &crate::database::MergeConfig,
-    ) -> crate::error::ProcessingResult<Self> {
+        output_path: &std::path::Path,
+    ) -> crate::error::ProcessingResult<MergeSummary> {
         use crate::database::prefix_cache_merge::ExternalSortMerger;
         use std::time::Instant;
 
         let start_time = Instant::now();
 
+        // Defence in depth: the prologue of both public entry points already
+        // rejects an empty input list; this private fn keeps its own guard so
+        // any future direct caller cannot index `input_paths[0]` out of
+        // bounds (WR-06).
         if input_paths.is_empty() {
             return Err(crate::error::ProcessingError::new(
                 "At least one input database is required",
@@ -1351,10 +1724,41 @@ impl RKDatabase {
 
         let _elapsed = start_time.elapsed();
 
-        // Read the merged result
-        let result_db = Self::from_file_path(&temp_output)?;
+        // The O(1) handoff. It must happen while `merger` is still alive: the
+        // merger's `TempDir` owns `temp_output`'s parent directory, and
+        // dropping it first would delete the merged result along with the
+        // shards. A cross-device rename (EXDEV — e.g. a `--temp-dir` on a
+        // different volume than the output) falls back to a streamed copy,
+        // which moves the bytes through kernel buffers, never through a
+        // resident copy of the dataset.
+        if let Err(rename_err) = std::fs::rename(&temp_output, output_path) {
+            log::warn!(
+                "Rename of the prefix-cache result onto '{}' failed ({}); falling back to a \
+                 streamed copy",
+                output_path.display(),
+                rename_err
+            );
+            std::fs::copy(&temp_output, output_path).map_err(|e| {
+                crate::error::ProcessingError::io_error(format!(
+                    "Failed to move merged database from '{}' to '{}': {} (rename error: {})",
+                    temp_output.display(),
+                    output_path.display(),
+                    e,
+                    rename_err
+                ))
+            })?;
+            let _ = std::fs::remove_file(&temp_output);
+        }
 
-        Ok(result_db)
+        // The summary comes from the written file's own header, so it reports
+        // what is on disk rather than what this function believes it wrote.
+        let out_header = Self::read_header_of(output_path)?;
+        Ok(MergeSummary {
+            kmer_size: out_header.kmer_size as usize,
+            total_kmers: out_header.total_kmers,
+            canonical: out_header.canonical,
+            sorted: out_header.sorted,
+        })
     }
 
     /// The external-sort compatibility rules, over headers rather than
