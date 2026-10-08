@@ -157,146 +157,9 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
         }
     }
 
-    // Load first database to get reference metadata
-    let first_db_path = &args.input[0];
-    if !args.quiet {
-        eprintln!("Loading reference database: {}", first_db_path.display());
-    }
-    let reference_db = RKDatabase::from_file_path(first_db_path)?;
-
-    // Validate all databases have compatible settings (skip if using prefix cache)
-    if !args.use_prefix_cache {
-        if args.verbose {
-            eprintln!("Validating database compatibility...");
-        }
-
-        let ref_kmer_size = reference_db.kmer_size();
-        let ref_canonical = reference_db.is_canonical();
-
-        for (_i, db_path) in args.input.iter().enumerate().skip(1) {
-            let db = match RKDatabase::from_file_path(db_path) {
-                Ok(db) => db,
-                Err(e) => {
-                    return Err(anyhow::anyhow!(
-                        "Failed to load database '{}': {}",
-                        db_path.display(),
-                        e
-                    ));
-                }
-            };
-
-            if db.kmer_size() != ref_kmer_size {
-                let mut error_msg = format!(
-                    "Database '{}' has k-mer size {}, expected {}",
-                    db_path.display(),
-                    db.kmer_size(),
-                    ref_kmer_size
-                );
-
-                // Add recovery suggestions
-                error_msg.push_str("\n\nRecovery suggestions:");
-                error_msg.push_str(&format!(
-                    "\n  • Create a new database with k-mer size {}",
-                    ref_kmer_size
-                ));
-                error_msg.push_str(
-                    "\n  • Use 'rustkmer stats' to verify database parameters before merging",
-                );
-                error_msg.push_str(
-                    "\n  • Use 'rustkmer count --k <size>' to create compatible databases",
-                );
-
-                return Err(anyhow::anyhow!("{}", error_msg));
-            }
-
-            if db.is_canonical() != ref_canonical {
-                let mut error_msg = format!(
-                    "Database '{}' has canonical mode {}, expected {}",
-                    db_path.display(),
-                    db.is_canonical(),
-                    ref_canonical
-                );
-
-                // Add recovery suggestions
-                error_msg.push_str("\n\nRecovery suggestions:");
-                error_msg.push_str(&format!(
-                    "\n  • Create a new database with canonical mode {}",
-                    ref_canonical
-                ));
-                error_msg.push_str("\n  • Use 'rustkmer count --canonical' or 'rustkmer count --no-canonical' as needed");
-                error_msg.push_str(
-                    "\n  • Verify all databases use the same canonical mode before merging",
-                );
-
-                return Err(anyhow::anyhow!("{}", error_msg));
-            }
-        }
-    } else if args.verbose {
-        eprintln!("Skipping compatibility validation (using prefix cache merge)");
-    }
-
-    let ref_kmer_size = reference_db.kmer_size();
-    let ref_canonical = reference_db.is_canonical();
-
-    for (_i, db_path) in args.input.iter().enumerate().skip(1) {
-        let db = match RKDatabase::from_file_path(db_path) {
-            Ok(db) => db,
-            Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "Failed to load database '{}': {}",
-                    db_path.display(),
-                    e
-                ));
-            }
-        };
-
-        if db.kmer_size() != ref_kmer_size {
-            let mut error_msg = format!(
-                "Database '{}' has k-mer size {}, expected {}",
-                db_path.display(),
-                db.kmer_size(),
-                ref_kmer_size
-            );
-
-            // Add recovery suggestions
-            error_msg.push_str("\n\nRecovery suggestions:");
-            error_msg.push_str(&format!(
-                "\n  • Create a new database with k-mer size {}",
-                ref_kmer_size
-            ));
-            error_msg.push_str(
-                "\n  • Use 'rustkmer stats' to verify database parameters before merging",
-            );
-
-            return Err(anyhow::anyhow!(error_msg));
-        }
-
-        // Only check canonical mode if not using prefix cache
-        if !args.use_prefix_cache && db.is_canonical() != ref_canonical {
-            let mut error_msg = format!(
-                "Database '{}' has canonical mode {}, expected {}",
-                db_path.display(),
-                db.is_canonical(),
-                ref_canonical
-            );
-
-            // Add recovery suggestions
-            error_msg.push_str("\n\nRecovery suggestions:");
-            error_msg.push_str(&format!(
-                "\n  • Create a new database with canonical mode {}",
-                if ref_canonical { "enabled" } else { "disabled" }
-            ));
-            error_msg.push_str("\n  • Use 'rustkmer count --canonical' or 'rustkmer count --no-canonical' as needed");
-            error_msg
-                .push_str("\n  • Verify all databases use the same canonical mode before merging");
-
-            return Err(anyhow::anyhow!("{}", error_msg));
-        }
-
-        if args.verbose {
-            eprintln!("  ✓ Database '{}' is compatible", db_path.display());
-        }
-    }
+    // WR-05 (gap-closure 03-14): compatibility validation is the extracted,
+    // integration-testable unit below — see `validate_merge_compatibility`.
+    validate_merge_compatibility(&args.input, args.use_prefix_cache, args.verbose, args.quiet)?;
 
     // Configure merge options
     let mut config = MergeConfig::default();
@@ -390,11 +253,18 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
             eprintln!("Checking database compatibility only...");
         }
 
-        // Load all databases for compatibility checking
+        // WR-05 (plan 03-14): headers only. The pre-plan block called
+        // `from_file_path` per input — fully materializing every database
+        // just to compare header fields. `RKDatabase::new(header)` carries
+        // the header (everything `validate_compatibility_verbose` reads:
+        // `kmer_size()`, `is_canonical()`, `header().total_kmers`) with an
+        // empty entry list, so the enhanced validation and its message text
+        // run UNCHANGED on 42 bytes per input.
         let mut databases = Vec::new();
+        let mut total_kmers_across_inputs: u64 = 0;
         for db_path in &args.input {
-            let db = match RKDatabase::from_file_path(db_path) {
-                Ok(db) => db,
+            let header = match RKDatabase::read_header_of(db_path) {
+                Ok(header) => header,
                 Err(e) => {
                     return Err(anyhow::anyhow!(
                         "Failed to load database '{}': {}",
@@ -403,7 +273,8 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
                     ));
                 }
             };
-            databases.push(db);
+            total_kmers_across_inputs += header.total_kmers;
+            databases.push(RKDatabase::new(header));
         }
 
         // Use the enhanced compatibility validation
@@ -411,10 +282,19 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
             &databases.iter().collect::<Vec<_>>(),
             args.verbose,
         ) {
-            Ok((total_kmers, _)) => {
+            Ok(_) => {
                 if !args.quiet {
                     eprintln!("✓ All {} databases are compatible!", args.input.len());
-                    eprintln!("Total k-mers across all databases: {}", total_kmers);
+                    // Pre-plan this line printed the validation tuple's first
+                    // element — which is the reference k-mer SIZE
+                    // (`validate_compatibility_verbose` returns
+                    // `(kmer_size, canonical)`), so `--check-compatibility`
+                    // reported "Total k-mers: 31" on any k=31 set. The real
+                    // sum of the headers' record counts is computed above.
+                    eprintln!(
+                        "Total k-mers across all databases: {}",
+                        total_kmers_across_inputs
+                    );
 
                     // Show individual database stats
                     if args.verbose {
@@ -471,6 +351,135 @@ pub fn execute_merge(args: &MergeArgs) -> Result<()> {
 
         eprintln!("  Canonical mode: {}", summary.canonical);
         eprintln!("  Sorted: {}", summary.sorted);
+    }
+
+    Ok(())
+}
+
+/// Validate that all merge inputs are compatible BEFORE the core merge runs —
+/// reading each input's 42-byte header only, never its body.
+///
+/// WR-05 (03-REVIEW.md; closed by this plan): the pre-plan front-end fully
+/// materialized every input here — `from_file_path(input[0])` held for the
+/// whole function plus two serial loops each loading every remaining input,
+/// one at a time — including on `--use-prefix-cache`, the memory-bounded
+/// route it exists to protect. The compatibility facts being checked (k-mer
+/// size, canonical mode) live in the 42-byte header, so this pass reads
+/// exactly that: one [`RKDatabase::read_header_of`] per input, the same
+/// header-only door the bounded core's own prologue (plan 03-12) validates
+/// through — neither layer performs a body load, so they cannot disagree on
+/// one. The core's prologue remains the authoritative cross-route gate; this
+/// front-end pass exists for the CLI's recovery-guidance UX only.
+///
+/// `pub` on the cli module path following the `parse_memory_size` /
+/// `resolve_thread_count_from` precedents so an integration test (an external
+/// crate) can assert the header-only property directly.
+///
+/// # Deliberate message deltas vs the pre-plan loops
+///
+/// The two serial loops collapsed into this single pass had diverging error
+/// texts; loop 1 (`!use_prefix_cache`) always ran first, so its texts are the
+/// ones preserved verbatim. The two resulting deltas:
+///
+/// 1. On the `--use-prefix-cache` path the k-mismatch error now carries the
+///    third recovery bullet (`rustkmer count --k <size>`) that loop 2's
+///    two-bullet message lacked — one more suggestion, same headline.
+/// 2. The canonical error uses loop 1's boolean formatting (`true`/`false`)
+///    rather than loop 2's `enabled`/`disabled` wording. Loop 2's canonical
+///    arm was unreachable on the non-prefix-cache path (loop 1 fires first
+///    on the same predicate) and skipped on the prefix-cache path, so no
+///    user-visible rejection outcome changes.
+pub fn validate_merge_compatibility(
+    input_paths: &[PathBuf],
+    use_prefix_cache: bool,
+    verbose: bool,
+    quiet: bool,
+) -> Result<()> {
+    // Reference header: the only input-shape read before the core merge.
+    let first_db_path = &input_paths[0];
+    if !quiet {
+        eprintln!(
+            "Reading reference database header: {}",
+            first_db_path.display()
+        );
+    }
+    let ref_header = RKDatabase::read_header_of(first_db_path).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to load database '{}': {}",
+            first_db_path.display(),
+            e
+        )
+    })?;
+
+    if !use_prefix_cache {
+        if verbose {
+            eprintln!("Validating database compatibility...");
+        }
+    } else if verbose {
+        // k-mer size is still checked below; only the canonical comparison
+        // is the prefix-cache route's to skip (it converts mixed-canonical
+        // inputs — its advertised capability).
+        eprintln!("Skipping canonical-mode validation (k-mer size still checked; using prefix cache merge)");
+    }
+
+    let ref_kmer_size = ref_header.kmer_size as usize;
+    let ref_canonical = ref_header.canonical;
+
+    for (_i, db_path) in input_paths.iter().enumerate().skip(1) {
+        let header = RKDatabase::read_header_of(db_path).map_err(|e| {
+            anyhow::anyhow!("Failed to load database '{}': {}", db_path.display(), e)
+        })?;
+
+        if header.kmer_size as usize != ref_kmer_size {
+            let mut error_msg = format!(
+                "Database '{}' has k-mer size {}, expected {}",
+                db_path.display(),
+                header.kmer_size,
+                ref_kmer_size
+            );
+
+            // Add recovery suggestions
+            error_msg.push_str("\n\nRecovery suggestions:");
+            error_msg.push_str(&format!(
+                "\n  • Create a new database with k-mer size {}",
+                ref_kmer_size
+            ));
+            error_msg.push_str(
+                "\n  • Use 'rustkmer stats' to verify database parameters before merging",
+            );
+            error_msg
+                .push_str("\n  • Use 'rustkmer count --k <size>' to create compatible databases");
+
+            return Err(anyhow::anyhow!("{}", error_msg));
+        }
+
+        // Only check canonical mode if not using prefix cache.
+        if !use_prefix_cache && header.canonical != ref_canonical {
+            let mut error_msg = format!(
+                "Database '{}' has canonical mode {}, expected {}",
+                db_path.display(),
+                header.canonical,
+                ref_canonical
+            );
+
+            // Add recovery suggestions
+            error_msg.push_str("\n\nRecovery suggestions:");
+            error_msg.push_str(&format!(
+                "\n  • Create a new database with canonical mode {}",
+                ref_canonical
+            ));
+            error_msg.push_str(
+                "\n  • Use 'rustkmer count --canonical' or 'rustkmer count --no-canonical' as needed",
+            );
+            error_msg
+                .push_str("\n  • Verify all databases use the same canonical mode before merging");
+
+            return Err(anyhow::anyhow!("{}", error_msg));
+        }
+
+        if verbose {
+            eprintln!("  ✓ Database '{}' is compatible", db_path.display());
+        }
     }
 
     Ok(())
@@ -662,17 +671,17 @@ mod tests {
         // Execute merge
         execute_merge(&args).unwrap();
 
-        // Verify output
+        // Verify output. WR-05 (plan 03-14): verified header-only here so
+        // this file keeps its zero-materializing-loader discipline; the deep
+        // merged-COUNTS assertions live in
+        // tests/merge_frontend_validation_tests.rs's end-to-end smoke.
         assert!(output_path.exists());
-        let merged_db = RKDatabase::from_file_path(&output_path).unwrap();
-
-        // Check that k-mers were properly merged
-        let all_kmers = merged_db.all_kmers().unwrap();
-        let kmer_map: std::collections::HashMap<_, _> = all_kmers.into_iter().collect();
-
-        assert_eq!(kmer_map.get(&0x1234), Some(&15)); // 10 + 5
-        assert_eq!(kmer_map.get(&0x5678), Some(&20));
-        assert_eq!(kmer_map.get(&0x9ABC), Some(&15));
+        let header = RKDatabase::read_header_of(&output_path).unwrap();
+        assert_eq!(header.kmer_size, 31);
+        assert_eq!(
+            header.total_kmers, 3,
+            "2 unique k-mers in db1 + 1 additional unique k-mer in db2"
+        );
     }
 
     #[test]
@@ -707,12 +716,15 @@ mod tests {
         let merged_db = RKDatabase::merge_databases(&[db1_path, db2_path], &config).unwrap();
         merged_db.to_file_path(&output_path).unwrap();
 
-        // Verify output
+        // Verify output. WR-05 (plan 03-14): the merged COUNTS are asserted
+        // on the in-memory result; the written file is round-trip checked
+        // via its header only (no materializing load in this file).
         assert!(output_path.exists());
-        let loaded_db = RKDatabase::from_file_path(&output_path).unwrap();
+        let header = RKDatabase::read_header_of(&output_path).unwrap();
+        assert_eq!(header.total_kmers, 3);
 
         // Check that k-mers were properly merged
-        let all_kmers = loaded_db.all_kmers().unwrap();
+        let all_kmers = merged_db.all_kmers().unwrap();
         let kmer_map: std::collections::HashMap<_, _> = all_kmers.into_iter().collect();
 
         assert_eq!(kmer_map.get(&0x1234), Some(&15)); // 10 + 5
