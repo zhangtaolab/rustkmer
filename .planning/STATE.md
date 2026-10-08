@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 03
 current_phase_name: Memory Safety
 status: executing
-stopped_at: "Completed 03-11-PLAN.md (WR-04+WR-08 closed: failed bucket shards preserved+logged, partial merges return Err, non-tautological integrity accounting, fixed-block concatenate, loose-chunk sweep)"
-last_updated: "2026-10-08T16:46:12.432Z"
-last_activity: 2026-10-08
+stopped_at: "Completed 03-12-PLAN.md (CR-03 closed: cross-input k/canonical validation in merge_prologue, all routes + both front-ends)"
+last_updated: "2026-10-08T17:10:42.461Z"
+last_activity: 2026-10-09
 last_activity_desc: Phase 03 execution started
-state_head: 6ad6b2b537b202ab6a4f601455407134b4fcf620
+state_head: a35b9168000d74fdeaf0e29c69849c6282a4d5c8
 progress:
   total_phases: 4
   completed_phases: 2
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 
 ## Current Position
 
-Phase: 03 (Memory Safety) — READY TO EXECUTE
-Plan: 3 of 11
+Phase: 03 (Memory Safety) — EXECUTING
+Plan: 2 of 15
 Status: Ready to execute
-Last activity: 2026-10-08 — Phase 03 execution started
+Last activity: 2026-10-09 — Phase 03 execution started
 
 Progress: [█████████░] 9/11 plans (Phase 03)
 
@@ -86,6 +86,7 @@ Progress: [█████████░] 9/11 plans (Phase 03)
 | Phase 03 P09 | 12 min | 3 tasks | 6 files |
 | Phase 03 P10 | 31min | 3 tasks | 6 files |
 | Phase 03 P11 | 21min | 3 tasks | 3 files |
+| Phase 03 P12 | 12min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -192,6 +193,9 @@ Recent decisions affecting current work:
 - [Phase 03-11]: 03-11: should_remove_shards() is the ONE place deciding shard removal — success releases shards (D-06 peak-disk), Err and keep_intermediate preserve them (WR-04 recovery path, paths logged)
 - [Phase 03-11]: 03-11: The tautological total_kmers != total_kmers_in_files check is replaced by TWO phase-independent signals — merged_records_recorded (writer-emitted count, catches zero-length/truncated buckets) and non_empty_buckets_recorded vs buckets_seen (catches a merged file missing at concatenation); valid for OVERLAPPING inputs, deliberately not compared against the Phase-1 input total; observed red under a -1 operand perturbation
 - [Phase 03-11]: 03-11: The orphan sweep reclaims loose rustkmer_sort_*/rustkmer_merge_*.chunk files older than the TTL (CHUNK_FILE_PREFIXES/SUFFIX pub consts mirror TempFileManager's naming); routing streaming chunks into the RAII subdir was considered and REJECTED as an ExternalMerger::new contract change — recorded in 03-11-SUMMARY for a future plan
+- [Phase 03]: 03-12: Canonical cross-input check is a separate merge_prologue loop gated on !use_prefix_cache, NOT inside validate_header_compatibility — that fn's contract is the prefix-cache route's convert-to-canonical semantics; overloading it would revoke the advertised mixed-canonical capability (WR-04 triage)
+- [Phase 03]: 03-12: The prologue's k-mer-size check reuses validate_header_compatibility verbatim so the k-mismatch message cannot drift — prefix_cache_kmer_size_mismatch_keeps_its_error_text stayed green byte-for-byte; route-level calls kept as defense-in-depth
+- [Phase 03]: 03-12: CR-03 closed in merge_prologue so PyDatabase.merge inherits the rejection through merge_databases_to_path with zero pyo3 edits; RED evidence captured for BOTH streaming rejection axes (k mismatch and mixed canonical) against the pre-fix tree
 
 ### Pending Todos
 
@@ -216,6 +220,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-08T15:31:55.150Z
-Stopped at: Completed 03-11-PLAN.md (WR-04+WR-08 closed: failed bucket shards preserved+logged, partial merges return Err, non-tautological integrity accounting, fixed-block concatenate, loose-chunk sweep)
+Last session: 2026-10-08T17:10:32.681Z
+Stopped at: Completed 03-12-PLAN.md (CR-03 closed: cross-input k/canonical validation in merge_prologue, all routes + both front-ends)
 Resume file: None
