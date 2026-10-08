@@ -1028,9 +1028,25 @@ impl ExternalSortMerger {
         Ok(entries)
     }
 
+    /// CR-02 (03-VERIFICATION.md gaps[2]): the bucket key is the FIRST 4
+    /// bases — the HIGH 8 bits of the right-aligned 2k-bit key.
+    ///
+    /// The encoding is right-aligned (`encoding.rs` builds the value
+    /// low-to-high: `encoded = (encoded << 2) | value`), so the first bases
+    /// of the sequence occupy the HIGH bits of the key. `saturating_sub`
+    /// makes k < 4 shift by 0, where the whole key occupies fewer than 8
+    /// bits and bucket == key — still monotone in the key (each such bucket
+    /// holds one k-mer at most for k = 3). With bucket == high byte,
+    /// `concatenate_final_output`'s index-order loop (`0..num_buckets`)
+    /// emits globally ascending output, which is what makes the header's
+    /// `sorted: true` it writes truthful — the pre-fix `kmer & 0xFF`
+    /// selected the LAST 4 bases instead, ordering the output by
+    /// `(low_byte, kmer)` while still claiming sorted, and breaking every
+    /// binary-search consumer of the flag (`query_kmer`,
+    /// `extract_prefix_optimized`).
     fn get_prefix_4mer(&self, kmer: u128) -> usize {
-        let prefix_bits = kmer & 0xFF;
-        prefix_bits as usize
+        let shift = 2 * self.kmer_size.saturating_sub(4);
+        ((kmer >> shift) & 0xFF) as usize
     }
 
     fn concatenate_final_output(&self, output_path: &Path) -> ProcessingResult<()> {
@@ -1445,13 +1461,86 @@ mod tests {
         assert!(temp_dir.path().exists());
     }
 
+    /// IN-07's closure: a REAL test of the production bucketing function.
+    ///
+    /// The pre-plan body computed `(kmer >> (2 * (57 - 4))) & 0xFFF` itself —
+    /// it never called `get_prefix_4mer` — and with a 64-bit k-mer shifted
+    /// right by 106 the result was always 0, so `assert!(prefix < 256)` was a
+    /// tautology (it also disagreed with the production mask: `0xFFF`/12
+    /// bits vs the production 8).
+    ///
+    /// The merger is built from a real `.rkdb` input because
+    /// `get_prefix_4mer` reads `self.kmer_size`, which comes from the input's
+    /// header; the test never merges anything — it only needs the `&self`
+    /// method.
     #[test]
     fn test_prefix_extraction_values() {
-        let kmer_size = 57;
-        let kmer: u128 = 0x123456789ABCDEF0;
-        let prefix_bits = (kmer >> (2 * (kmer_size - 4))) & 0xFFF;
-        let prefix = (prefix_bits >> 4) as usize;
-        assert!(prefix < 256);
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("bucketing_input.rkdb");
+        let db = RKDatabase::from_kmer_pairs(vec![(1, 1)], 16, false, true).unwrap();
+        db.to_file_path(&input).unwrap();
+        let merger = ExternalSortMerger::new(
+            vec![input],
+            dir.path().to_path_buf(),
+            1024,
+            1,
+            "auto".to_string(),
+            false,
+        )
+        .unwrap();
+
+        // Identity: the HIGH byte of the right-aligned 2k-bit key (k=16 ->
+        // 32-bit key, so bits 24..31) is selected, not the low byte.
+        assert_eq!(merger.get_prefix_4mer((0xAB_u128 << 24) | 0x123456), 0xAB);
+        assert_eq!(merger.get_prefix_4mer((0x00_u128 << 24) | 0xFF), 0x00);
+
+        // The CR-02 order discriminator pair: a < b and the buckets go
+        // 0x00 < 0x01 — bucket order AGREES with key order. Under the old
+        // low-byte code these same two keys bucketed 0xFF > 0x00 (DESCENDING
+        // against key order), which is exactly the defect that made the
+        // concatenation's index-order loop emit non-ascending output while
+        // the header claimed `sorted: true`. `(0x00 << 24) | 0xFF` is
+        // 0x0000FF; `(0x01 << 24) | 0x00` is its k=16-rendered successor.
+        let a = 0x0000FF_u128; // high byte 0x00, low byte 0xFF
+        let b = (0x01_u128 << 24) | 0x00; // high byte 0x01, low byte 0x00
+        assert!(a < b);
+        assert_eq!(merger.get_prefix_4mer(a), 0x00);
+        assert_eq!(merger.get_prefix_4mer(b), 0x01);
+        assert!(merger.get_prefix_4mer(a) < merger.get_prefix_4mer(b));
+
+        // Monotonicity spot checks across high bytes 0x00 / 0x7F / 0x80 /
+        // 0xFF — the 0x7F/0x80 boundary flips the top bit, which is exactly
+        // where a sign-like bucketing bug would live.
+        for high in [0x00_u8, 0x7F, 0x80, 0xFF] {
+            let key = ((high as u128) << 24) | 0x123456;
+            assert_eq!(
+                merger.get_prefix_4mer(key),
+                high as usize,
+                "high byte {high:#04x} must be the bucket"
+            );
+        }
+        assert!(
+            merger.get_prefix_4mer((0x7F_u128 << 24) | 1)
+                < merger.get_prefix_4mer((0x80_u128 << 24) | 1),
+            "the 0x7F/0x80 high-byte boundary must bucket ascending"
+        );
+
+        // The k < 4 arm: the shift saturates to 0, so the whole sub-byte key
+        // IS the bucket — still monotone in the key (each such bucket holds
+        // one k-mer at most for k=3).
+        let small_input = dir.path().join("bucketing_input_k3.rkdb");
+        let small_db = RKDatabase::from_kmer_pairs(vec![(0b101101, 1)], 3, false, true).unwrap();
+        small_db.to_file_path(&small_input).unwrap();
+        let small_merger = ExternalSortMerger::new(
+            vec![small_input],
+            dir.path().to_path_buf(),
+            1024,
+            1,
+            "auto".to_string(),
+            false,
+        )
+        .unwrap();
+        assert_eq!(small_merger.get_prefix_4mer(0b101101), 0b101101);
     }
 
     /// WR-04 truth table for the one-place shard-removal decision:
