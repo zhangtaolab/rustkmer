@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 5
+open_count: 7
 waived_count: 3
 fixed_count: 5
-total_count: 13
-last_updated: 2026-10-07T12:52:47.343Z
+total_count: 15
+last_updated: 2026-10-08T15:02:29.985Z
 ---
 
 # Broken Windows Ledger
@@ -28,6 +28,8 @@ last_updated: 2026-10-07T12:52:47.343Z
 | 11 | 03 | unrun-verify | pyo3/tests/test_database_merge.py |  | 03-09's Python half could not be EXECUTED: pyo3/pyproject.toml sets python-source="." with module-name="pyrustkmer" while pyo3/pyrustkmer/ has never existed, so maturin build/develop both refuse; and addopts hard-codes --cov-fail-under=80 against a compiled extension, so every pytest run exits 1. test_python_budget_model_tracks_the_core and the BYTES_PER_KMER_ESTIMATE 24->96 repair are grep-verified and arithmetically verified (extension-free) only. | open |  | 2026-10-07T12:52:42.303Z |  |
 | 12 | 03 | deviation | src/database/format.rs |  | 03-09 Deviation: the plan's literal 'grep -c db_refs' gate reads 2, not 0 — both remaining occurrences are a test local for the unrelated validate_compatibility(&[&RKDatabase]) path. Renaming it to satisfy a grep would make the gate green without making the property truer, so the measurement is reported and a discriminating gate (no from_file_path and no Vec<RKDatabase> inside merge_databases_prefix_cache) is used instead. | open |  | 2026-10-07T12:52:47.081Z |  |
 | 13 | 03 | deviation | src/database/format.rs |  | 03-09 Deviation: the plan's literal 'grep -c saturating_add(total)' gate is unsatisfiable — the saturating fold is written \|total, count\| total.saturating_add(count), which cannot contain that substring. Reported as 0 with the discriminating evidence being the RED-observed unit test summing_two_near_max_headers_saturates_instead_of_panicking (pre-fix: 'attempt to add with overflow'). | open |  | 2026-10-07T12:52:47.343Z |  |
+| 14 | 03 | deviation | src/database/format.rs |  | WR-02 deferred by design: resolve_merge_route's use_prefix_cache arm returns above the D-02 rejection; merge_mode='memory' under --use-prefix-cache warns but is never rejected — needs its own behaviour-change decision | open |  | 2026-10-08T15:02:14.517Z |  |
+| 15 | 03 | unrun-verify | pyo3/src/database.rs | 1457 | MERGE-04 residual: PyDatabase::merge no longer emits 'Failed to save merged database to {}' (save folded into merge); no Python-level assertion covers the semantic change because installed pyrustkmer.so is prebuilt | open |  | 2026-10-08T15:02:29.985Z |  |
 
 ````json
 [
@@ -197,6 +199,32 @@ last_updated: 2026-10-07T12:52:47.343Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-07T12:52:47.343Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 14,
+    "kind": "deviation",
+    "phase": "03",
+    "file": "src/database/format.rs",
+    "line": null,
+    "description": "WR-02 deferred by design: resolve_merge_route's use_prefix_cache arm returns above the D-02 rejection; merge_mode='memory' under --use-prefix-cache warns but is never rejected — needs its own behaviour-change decision",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-08T15:02:14.517Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 15,
+    "kind": "unrun-verify",
+    "phase": "03",
+    "file": "pyo3/src/database.rs",
+    "line": 1457,
+    "description": "MERGE-04 residual: PyDatabase::merge no longer emits 'Failed to save merged database to {}' (save folded into merge); no Python-level assertion covers the semantic change because installed pyrustkmer.so is prebuilt",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-08T15:02:29.985Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
