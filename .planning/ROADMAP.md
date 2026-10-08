@@ -93,7 +93,7 @@ Plans:
   5. Dense storage maintains correctness — canonicalization and counts match the `u128` path exactly
   6. `pyrustkmer`'s `PyDatabase` merge uses the same bounded path as the CLI
 
-**Plans**: 11/11 plans executed + 6 gap-closure plans pending (03-06..03-11)
+**Plans**: 11/15 plans executed (gap-closure round 1 done; round 2 pending: 03-12..03-15)
 
 **Wave 1** *(parallel, no dependencies)*
 
@@ -114,6 +114,13 @@ Plans:
 - [x] 03-09-PLAN.md — **G2a / CR-02 header half + WR-01 + WR-06 + IN-01**: add `RKDatabase::read_header_of` and use it at all four `from_file_path` call sites, charge the in-memory route 96 B/k-mer instead of 24, hoist the empty-input guard, and relocate the prefix-cache intermediate into the RAII subdir (Wave 2; depends on 03-07; MERGE-01, MERGE-02, MERGE-03)
 - [x] 03-10-PLAN.md — **G2b / CR-02 substance + MERGE-04**: add `RKDatabase::merge_databases_to_path` + `MergeSummary`, stream the merged output to disk instead of accumulating it, rename the prefix-cache handoff, and point the CLI and PyO3 binding at the bounded entry point (Wave 3; depends on 03-09; MERGE-01, MERGE-02, MERGE-04)
 - [x] 03-11-PLAN.md — **WR-04 + WR-08 + MERGE-03 sweep gap**: a failed prefix bucket aborts the merge and preserves its shards, the tautological integrity check is replaced with one that can fire, buckets concatenate in blocks, and the orphan sweep reclaims loose `rustkmer_*_*.chunk` files (Wave 3; depends on 03-09; MERGE-01, MERGE-03)
+
+**Gap Closure Round 2** *(opened 2026-10-09 by `03-VERIFICATION.md` re-verification — status `gaps_found`, 7/11 truths verified; CR-01/CR-02/CR-03 + WR-05 from `03-REVIEW.md`)*
+
+- [ ] 03-12-PLAN.md — **CR-03**: header-only cross-input k/canonical validation in `merge_prologue` (read_header_of + validate_header_compatibility), inherited by all three routes and both entry points incl. PyDatabase.merge; streaming-route rejection tests (Wave 1; MERGE-01, MERGE-04)
+- [ ] 03-13-PLAN.md — **CR-01 + WR-03**: record-aligned batch reads with carried tails and propagated read errors, unstranded duplicate runs (VecDeque buffer), plus >4 MB single-bucket conservation proof through merge_single_prefix_streaming and the full route (Wave 1; MERGE-01, MERGE-03)
+- [ ] 03-14-PLAN.md — **WR-05**: CLI front-end validation reads 42-byte headers only — the full-load reference and both serial validation loops replaced by one extracted header-only pass (`validate_merge_compatibility`), proven on body-absent inputs (Wave 1; MERGE-01)
+- [ ] 03-15-PLAN.md — **CR-02**: bucket by the FIRST 4 bases (high 8 bits) so index-order concatenation is globally ascending and the `sorted: true` header is truthful, plus query_kmer / prefix-extraction / route-parity proofs and the IN-07 tautological test rewritten (Wave 2; depends on 03-13; MERGE-01, DENSE-02)
 
 ### Phase 4: Benchmark & Validation
 
