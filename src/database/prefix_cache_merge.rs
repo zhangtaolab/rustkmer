@@ -1492,17 +1492,17 @@ mod tests {
         // Identity: the HIGH byte of the right-aligned 2k-bit key (k=16 ->
         // 32-bit key, so bits 24..31) is selected, not the low byte.
         assert_eq!(merger.get_prefix_4mer((0xAB_u128 << 24) | 0x123456), 0xAB);
-        assert_eq!(merger.get_prefix_4mer((0x00_u128 << 24) | 0xFF), 0x00);
+        // 0x0000FF == (0x00 << 24) | 0xFF: high byte 0x00, low byte 0xFF.
+        assert_eq!(merger.get_prefix_4mer(0x0000FF), 0x00);
 
         // The CR-02 order discriminator pair: a < b and the buckets go
         // 0x00 < 0x01 — bucket order AGREES with key order. Under the old
         // low-byte code these same two keys bucketed 0xFF > 0x00 (DESCENDING
         // against key order), which is exactly the defect that made the
         // concatenation's index-order loop emit non-ascending output while
-        // the header claimed `sorted: true`. `(0x00 << 24) | 0xFF` is
-        // 0x0000FF; `(0x01 << 24) | 0x00` is its k=16-rendered successor.
-        let a = 0x0000FF_u128; // high byte 0x00, low byte 0xFF
-        let b = (0x01_u128 << 24) | 0x00; // high byte 0x01, low byte 0x00
+        // the header claimed `sorted: true`.
+        let a = 0x0000FF_u128; // == (0x00 << 24) | 0xFF: high byte 0x00, low byte 0xFF
+        let b = 0x0100_0000_u128; // == (0x01 << 24) | 0x00: high byte 0x01, low byte 0x00
         assert!(a < b);
         assert_eq!(merger.get_prefix_4mer(a), 0x00);
         assert_eq!(merger.get_prefix_4mer(b), 0x01);
