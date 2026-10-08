@@ -1109,3 +1109,242 @@ fn prefix_cache_kmer_size_mismatch_keeps_its_error_text() -> anyhow::Result<()> 
 
     Ok(())
 }
+
+/// CR-03 (03-VERIFICATION.md gaps[0]): the streaming merge route — the DEFAULT
+/// over-budget route, reachable directly from `PyDatabase.merge` — performed no
+/// cross-input k-mer-size validation. `merge_databases_streaming_to_path` read
+/// `kmer_size`/`canonical` from `read_header_of(input_paths[0])` only, so a
+/// k=21 + k=31 merge under a streaming-selecting budget silently wrote a
+/// corrupt database whose header claimed input[0]'s k-mer size. The in-memory
+/// and prefix-cache routes already rejected; streaming was the outlier.
+///
+/// This test drove that gap RED on the pre-fix tree: the merge returned `Ok`
+/// and wrote the corrupt output. The fix routes the rejection through
+/// `merge_prologue`, so all three routes and both entry points now share it.
+///
+/// Route-proof discipline (03-04/03-05): a "streaming" arm is only proven if
+/// the route ITSELF is asserted. The budget is derived from
+/// `estimate_total_kmers` with the over-budget premise asserted first — a
+/// hard-coded small budget silently goes vacuous if the fixture ever shrinks
+/// below it.
+#[test]
+fn streaming_route_rejects_cross_input_kmer_size_mismatch() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let work = tempfile::tempdir()?;
+
+    // Two well-formed .rkdb files at DIFFERENT k (the construction pattern the
+    // message-identity test above uses), each with a handful of records.
+    let a = RKDatabase::from_kmer_pairs(vec![(0x1234, 10), (0x5678, 20)], 21, true, true)?;
+    let b = RKDatabase::from_kmer_pairs(vec![(0x9ABC, 30), (0xDEF0, 40)], 31, true, true)?;
+    let a_path = dir.path().join("k21.rkdb");
+    let b_path = dir.path().join("k31.rkdb");
+    a.to_file_path(&a_path)?;
+    b.to_file_path(&b_path)?;
+
+    // Premise: the estimator sees a positive total, and the budget of 1 byte
+    // puts that total strictly over it — `total * 96 > 1` selects the MERGE-02
+    // hard route to streaming under "auto".
+    let total =
+        RKDatabase::estimate_total_kmers(&a_path)? + RKDatabase::estimate_total_kmers(&b_path)?;
+    assert!(total > 0, "fixture must carry a positive k-mer estimate");
+    assert!(
+        total * 96 > 1,
+        "the over-budget premise must hold: {} k-mers estimate to {} bytes against a 1-byte budget",
+        total,
+        total * 96
+    );
+
+    let out = work.path().join("merged_kmismatch.rkdb");
+
+    // Arm 1: over-budget "auto" — the streaming route is selected, then the
+    // prologue must reject the incompatible set BEFORE any merge work runs.
+    let config = routing_config(work.path(), 1, "auto");
+    let err = RKDatabase::merge_databases_to_path(&[a_path.clone(), b_path.clone()], &config, &out)
+        .expect_err("a k-mer-size mismatch must be rejected on the streaming route")
+        .to_string();
+    assert!(
+        err.contains("Database 2 has k-mer size 31, expected 21"),
+        "the rejection must be the compatibility message naming the mismatch; got: {}",
+        err
+    );
+    // Header-only rejection proof: the failure is the compatibility check, not
+    // a temp-dir/IO error from chunk work that already started.
+    assert!(
+        !err.contains("Failed to create temp file") && !err.contains("No such file"),
+        "the rejection must fire at validation, before any temp chunk is created; got: {}",
+        err
+    );
+    assert!(
+        !out.exists(),
+        "an incompatible input set must not write any output byte"
+    );
+
+    // Arm 2: the SAME inputs under an explicit `merge_mode: "streaming"` —
+    // same rejection, same message.
+    let streaming_config = routing_config(work.path(), 1, "streaming");
+    let err2 =
+        RKDatabase::merge_databases_to_path(&[a_path, b_path], &streaming_config, &out)
+            .expect_err("explicit merge_mode='streaming' must reject the mismatch too")
+            .to_string();
+    assert!(
+        err2.contains("has k-mer size"),
+        "the explicit-streaming arm must carry the same compatibility text; got: {}",
+        err2
+    );
+    assert!(!out.exists(), "still no output byte after the second arm");
+
+    // Arm 3 (premise, mirroring the file's premise-assertion style): two
+    // SAME-k inputs under the SAME over-budget config merge Ok — so the
+    // rejection above is attributable to the mismatch, not to the budget.
+    let c = RKDatabase::from_kmer_pairs(vec![(0x1234, 10), (0x5678, 20)], 21, true, true)?;
+    let d = RKDatabase::from_kmer_pairs(vec![(0x9ABC, 30), (0xDEF0, 40)], 21, true, true)?;
+    let c_path = dir.path().join("k21_c.rkdb");
+    let d_path = dir.path().join("k21_d.rkdb");
+    c.to_file_path(&c_path)?;
+    d.to_file_path(&d_path)?;
+    let out_ok = work.path().join("merged_same_k.rkdb");
+    RKDatabase::merge_databases_to_path(&[c_path, d_path], &config, &out_ok)
+        .expect("same-k inputs under the same over-budget config must merge Ok");
+    assert!(out_ok.exists(), "the compatible merge must have written its output");
+
+    Ok(())
+}
+
+/// CR-03's second axis: mixed CANONICAL modes were as silently merged as the
+/// k-mismatch above — the streaming route read `canonical` from input[0]'s
+/// header alone. The prologue now rejects mixed canonical on every route
+/// EXCEPT the prefix-cache route, whose mixed-canonical merging is an
+/// advertised capability (see the capability-guard test below).
+///
+/// Same route-proof discipline: the budget is derived from
+/// `estimate_total_kmers`, and the over-budget premise is asserted first.
+#[test]
+fn streaming_route_rejects_mixed_canonical_without_prefix_cache() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let work = tempfile::tempdir()?;
+
+    // Same k, DIFFERENT canonical modes.
+    let a = RKDatabase::from_kmer_pairs(vec![(0x1234, 10), (0x5678, 20)], 21, true, true)?;
+    let b = RKDatabase::from_kmer_pairs(vec![(0x9ABC, 30), (0xDEF0, 40)], 21, false, true)?;
+    let a_path = dir.path().join("canon_true.rkdb");
+    let b_path = dir.path().join("canon_false.rkdb");
+    a.to_file_path(&a_path)?;
+    b.to_file_path(&b_path)?;
+
+    // Over-budget premise, derived not hard-coded.
+    let total =
+        RKDatabase::estimate_total_kmers(&a_path)? + RKDatabase::estimate_total_kmers(&b_path)?;
+    assert!(total > 0, "fixture must carry a positive k-mer estimate");
+    assert!(
+        total * 96 > 1,
+        "the over-budget premise must hold: {} k-mers estimate to {} bytes against a 1-byte budget",
+        total,
+        total * 96
+    );
+
+    let out = work.path().join("merged_canon_mismatch.rkdb");
+    let config = routing_config(work.path(), 1, "auto");
+    let err = RKDatabase::merge_databases_to_path(&[a_path, b_path], &config, &out)
+        .expect_err("mixed canonical modes must be rejected on the streaming route")
+        .to_string();
+    assert!(
+        err.contains("Database 2 has canonical mode false, expected true"),
+        "the rejection must be the canonical compatibility message; got: {}",
+        err
+    );
+    assert!(
+        !err.contains("Failed to create temp file") && !err.contains("No such file"),
+        "the rejection must fire at validation, before any temp chunk is created; got: {}",
+        err
+    );
+    assert!(
+        !out.exists(),
+        "an incompatible input set must not write any output byte"
+    );
+
+    Ok(())
+}
+
+/// The capability guard that makes the prologue's `!use_prefix_cache` gate
+/// load-bearing: the SAME mixed-canonical pair that the test above rejects
+/// MUST still merge successfully under `use_prefix_cache: true`, because the
+/// prefix-cache route advertises flexible-canonical merging (its own error
+/// hint sends users there). Tightening the prologue unconditionally would
+/// break this route's contract — that change belongs to WR-04's developer
+/// triage, not to CR-03.
+#[test]
+fn prefix_cache_route_still_merges_mixed_canonical() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let work = tempfile::tempdir()?;
+
+    // The exact pair the rejection test above refuses on the streaming route.
+    let a = RKDatabase::from_kmer_pairs(vec![(0x1234, 10), (0x5678, 20)], 21, true, true)?;
+    let b = RKDatabase::from_kmer_pairs(vec![(0x9ABC, 30), (0xDEF0, 40)], 21, false, true)?;
+    let a_path = dir.path().join("canon_true.rkdb");
+    let b_path = dir.path().join("canon_false.rkdb");
+    a.to_file_path(&a_path)?;
+    b.to_file_path(&b_path)?;
+
+    let out = work.path().join("merged_prefix_cache_mixed.rkdb");
+    let config = MergeConfig {
+        use_prefix_cache: true,
+        temp_dir: work.path().to_path_buf(),
+        ..routing_config(work.path(), HUGE_BUDGET_BYTES, "auto")
+    };
+    RKDatabase::merge_databases_to_path(&[a_path.clone(), b_path], &config, &out)
+        .expect("the prefix-cache route must still merge mixed canonical modes");
+
+    // The output header's canonical mode equals input[0]'s — the documented
+    // convert-to-canonical semantics of `validate_header_compatibility`.
+    let out_header = RKDatabase::read_header_of(&out)?;
+    let in0_header = RKDatabase::read_header_of(&a_path)?;
+    assert_eq!(
+        out_header.canonical, in0_header.canonical,
+        "the prefix-cache output header must claim input[0]'s canonical mode"
+    );
+    assert!(
+        out.exists(),
+        "the capability merge must have written its output"
+    );
+
+    Ok(())
+}
+
+/// Parity guarantee for the route that ALREADY rejected: the in-memory route
+/// refused a k-mismatched set (via `validate_compatibility_verbose`, after
+/// `from_file_path` had loaded every input). With the prologue validation in
+/// place the rejection now fires EARLIER — from 42-byte header reads, before
+/// any body is materialized — but the OUTCOME is unchanged: `Err`, same
+/// message shape. This test pins that the prologue did not make the
+/// previously-safe route stricter or looser for incompatible sets.
+#[test]
+fn inmemory_route_still_rejects_mismatched_inputs() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let work = tempfile::tempdir()?;
+
+    let a = RKDatabase::from_kmer_pairs(vec![(0x1234, 10), (0x5678, 20)], 21, true, true)?;
+    let b = RKDatabase::from_kmer_pairs(vec![(0x9ABC, 30), (0xDEF0, 40)], 31, true, true)?;
+    let a_path = dir.path().join("k21.rkdb");
+    let b_path = dir.path().join("k31.rkdb");
+    a.to_file_path(&a_path)?;
+    b.to_file_path(&b_path)?;
+
+    // Within budget + explicit in-memory mode: the route that always
+    // rejected, unchanged in outcome.
+    let config = routing_config(work.path(), HUGE_BUDGET_BYTES, "memory");
+    let out = work.path().join("merged_inmemory_kmismatch.rkdb");
+    let err = RKDatabase::merge_databases_to_path(&[a_path, b_path], &config, &out)
+        .expect_err("the in-memory route must keep rejecting mismatched inputs")
+        .to_string();
+    assert!(
+        err.contains("Database 2 has k-mer size 31, expected 21"),
+        "the in-memory rejection must keep the same message shape; got: {}",
+        err
+    );
+    assert!(
+        !out.exists(),
+        "the rejected in-memory merge must not write any output byte"
+    );
+
+    Ok(())
+}

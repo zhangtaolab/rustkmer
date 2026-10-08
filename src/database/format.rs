@@ -941,8 +941,9 @@ impl RKDatabase {
 
     /// The startup work every merge route runs, exactly once per entry point.
     ///
-    /// Holds the WR-06 empty-input guard and the D-06 / MERGE-03 startup
-    /// orphan sweep, and nothing else. Both public entry points
+    /// Holds three things: the WR-06 empty-input guard, the CR-03 cross-input
+    /// compatibility validation (42-byte header reads only), and the D-06 /
+    /// MERGE-03 startup orphan sweep. Both public entry points
     /// ([`Self::merge_databases`] and [`Self::merge_databases_to_path`]) call
     /// this as their FIRST statement, before [`Self::resolve_merge_route`],
     /// which is what keeps two invariants true at once:
@@ -953,6 +954,19 @@ impl RKDatabase {
     ///   - **every route sweeps** — including the in-memory route, which never
     ///     touches `temp_dir` for anything else, so MERGE-03's orphan
     ///     reclamation cannot be opted out of by picking a route.
+    ///
+    /// CR-03 (03-VERIFICATION.md gaps[0]): the cross-input validation below
+    /// covers all three routes from both entry points precisely BECAUSE the
+    /// prologue is the shared first statement. Pre-fix, only the in-memory and
+    /// prefix-cache routes rejected a k-mismatched input set; the streaming
+    /// route — the default over-budget route, reachable directly from
+    /// `PyDatabase::merge` — silently wrote a corrupt database whose header
+    /// claimed input[0]'s k-mer size. The canonical arm is conditional on
+    /// `!config.use_prefix_cache` because that route ADVERTISES
+    /// mixed-canonical merging (its own hint text points users at
+    /// `--use-prefix-cache` for it); WR-04 records the raw-record-write
+    /// correctness debt on that route — developer triage, deliberately not
+    /// this check's decision to make.
     ///
     /// An earlier revision of plan 03-10 put the sweep at the top of
     /// `merge_databases_to_path` alone and left `merge_databases`'s in-memory
@@ -975,6 +989,76 @@ impl RKDatabase {
             return Err(crate::error::ProcessingError::new(
                 "At least one input database is required",
             ));
+        }
+
+        // CR-03 / threat T-03-48: cross-input compatibility, from 42-byte
+        // header reads only — the D-01 rule, so the over-budget route never
+        // materializes an input database body just to reject it. A
+        // missing/corrupt input therefore fails HERE, earlier than it used
+        // to, on every route, with `read_header_of`'s own error (the same
+        // rejection `from_file_path` applies).
+        let headers: Vec<DatabaseHeader> = input_paths
+            .iter()
+            .map(|path| Self::read_header_of(path))
+            .collect::<crate::error::ProcessingResult<Vec<_>>>()?;
+
+        // The k-mer-size check reuses the exact fn that produces the
+        // prefix-cache route's k-mismatch message
+        // (`prefix_cache_kmer_size_mismatch_keeps_its_error_text` pins that
+        // text byte-for-byte), so the message cannot drift: the same text now
+        // simply surfaces from the prologue, earlier. The route-level call
+        // sites — the prefix-cache route's own invocation below, the
+        // in-memory route's `validate_compatibility_verbose` — become
+        // redundant defense-in-depth and are deliberately left in place.
+        Self::validate_header_compatibility(&headers, config.verbose)?;
+
+        // The canonical check is a SEPARATE loop, deliberately NOT inside
+        // `validate_header_compatibility`: that fn's contract is the
+        // prefix-cache route's convert-to-canonical semantics — it
+        // deliberately ALLOWS mixed canonical modes (returning
+        // `final_canonical`) — and overloading it would change the
+        // prefix-cache route's advertised capability. This gate instead
+        // mirrors the CLI front-end's pre-validation semantics: reject mixed
+        // canonical on every route EXCEPT the one that advertises
+        // flexible-canonical merging.
+        if !config.use_prefix_cache {
+            let reference = &headers[0];
+            for (i, header) in headers.iter().enumerate().skip(1) {
+                if header.canonical != reference.canonical {
+                    // Message shape of `validate_compatibility_verbose`'s
+                    // canonical arm (the in-memory validator): one-liner
+                    // first, verbose diagnostics after, 1-based indices.
+                    let mut msg = format!(
+                        "Database {} has canonical mode {}, expected {}",
+                        i + 1,
+                        header.canonical,
+                        reference.canonical
+                    );
+
+                    if config.verbose {
+                        msg.push_str(&format!(
+                            "\n  Database 1: k-mer size={}, canonical={}, k-mers={}",
+                            reference.kmer_size, reference.canonical, reference.total_kmers
+                        ));
+                        msg.push_str(&format!(
+                            "\n  Database {}: k-mer size={}, canonical={}, k-mers={}",
+                            i + 1,
+                            header.kmer_size,
+                            header.canonical,
+                            header.total_kmers
+                        ));
+                        msg.push_str(
+                            "\n  Hint: All databases must have the same canonical mode to merge",
+                        );
+                        msg.push_str("\n  Canonical mode merges reverse complements together");
+                        msg.push_str(
+                            "\n  Note: Use --use-prefix-cache for flexible canonical mode merging",
+                        );
+                    }
+
+                    return Err(crate::error::ProcessingError::new(msg));
+                }
+            }
         }
 
         // D-06 / MERGE-03: reclaim temp shards orphaned by a merge that could
