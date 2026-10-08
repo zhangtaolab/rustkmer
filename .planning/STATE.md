@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 03
 current_phase_name: Memory Safety
 status: executing
-stopped_at: "Completed 03-13-PLAN.md (CR-01+WR-03 closed: record-aligned tail-carrying reader, unstranding VecDeque k-way merge, >4 MB conservation proofs red-demonstrated)"
-last_updated: "2026-10-08T17:33:10.375Z"
+stopped_at: "Completed 03-14-PLAN.md (WR-05 closed: header-only CLI merge validation, loader calls 6->0)"
+last_updated: "2026-10-08T17:54:13.504Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 03 execution started
-state_head: 65afa07ddf676d4ef1743c180c6030514935c49b
+state_head: e718a97e2c0d09655e8d0b3dcd9e421fb887d427
 progress:
   total_phases: 4
   completed_phases: 2
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 ## Current Position
 
 Phase: 03 (Memory Safety) — EXECUTING
-Plan: 3 of 15
+Plan: 4 of 15
 Status: Ready to execute
 Last activity: 2026-10-09 — Phase 03 execution started
 
@@ -88,6 +88,7 @@ Progress: [█████████░] 9/11 plans (Phase 03)
 | Phase 03 P11 | 21min | 3 tasks | 3 files |
 | Phase 03 P12 | 12min | 2 tasks | 3 files |
 | Phase 03 P13 | 17 min | 2 tasks | 2 files |
+| Phase 03 P14 | 11min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -197,6 +198,10 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-12: Canonical cross-input check is a separate merge_prologue loop gated on !use_prefix_cache, NOT inside validate_header_compatibility — that fn's contract is the prefix-cache route's convert-to-canonical semantics; overloading it would revoke the advertised mixed-canonical capability (WR-04 triage)
 - [Phase 03]: 03-12: The prologue's k-mer-size check reuses validate_header_compatibility verbatim so the k-mismatch message cannot drift — prefix_cache_kmer_size_mismatch_keeps_its_error_text stayed green byte-for-byte; route-level calls kept as defense-in-depth
 - [Phase 03]: 03-12: CR-03 closed in merge_prologue so PyDatabase.merge inherits the rejection through merge_databases_to_path with zero pyo3 edits; RED evidence captured for BOTH streaming rejection axes (k mismatch and mixed canonical) against the pre-fix tree
+- [Phase 03]: 03-14: validate_merge_compatibility is pub on the cli module path (parse_memory_size/resolve_thread_count_from precedent) so the header-only property is assertable from an external integration test crate
+- [Phase 03]: 03-14: --check-compatibility validates via read_header_of + RKDatabase::new(header) feeding validate_compatibility_verbose UNCHANGED — the header-only DB carries everything that fn reads (kmer_size/is_canonical/header.total_kmers), so its message text cannot drift and zero entries materialize
+- [Phase 03]: 03-14: loop-1's error texts are the preserved ones; two documented deltas — prefix-cache k error gains the third recovery bullet, canonical error keeps boolean formatting (loop 2's canonical arm was unreachable pre-plan)
+- [Phase 03]: 03-14 Rule 1 fix: --check-compatibility's 'Total k-mers' line printed the k-mer SIZE (validate_compatibility_verbose returns (kmer_size, canonical)); now prints the summed header record counts
 
 ### Pending Todos
 
@@ -221,6 +226,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-08T17:33:10.299Z
-Stopped at: Completed 03-13-PLAN.md (CR-01+WR-03 closed: record-aligned tail-carrying reader, unstranding VecDeque k-way merge, >4 MB conservation proofs red-demonstrated)
+Last session: 2026-10-08T17:53:56.451Z
+Stopped at: Completed 03-14-PLAN.md (WR-05 closed: header-only CLI merge validation, loader calls 6->0)
 Resume file: None
