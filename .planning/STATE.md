@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 03
 current_phase_name: Memory Safety
 status: executing
-stopped_at: "Completed 03-14-PLAN.md (WR-05 closed: header-only CLI merge validation, loader calls 6->0)"
-last_updated: "2026-10-08T17:54:13.504Z"
+stopped_at: "Completed 03-15-PLAN.md (CR-02 closed: first-4-bases bucketing, sorted flag truthful, query proofs green)"
+last_updated: "2026-10-08T23:38:59.282Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 03 execution started
-state_head: e718a97e2c0d09655e8d0b3dcd9e421fb887d427
+state_head: ad19683884546dd0e9ba38e81d4c34d28aa40b57
 progress:
   total_phases: 4
   completed_phases: 2
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 ## Current Position
 
 Phase: 03 (Memory Safety) — EXECUTING
-Plan: 4 of 15
+Plan: 5 of 15
 Status: Ready to execute
 Last activity: 2026-10-09 — Phase 03 execution started
 
@@ -89,6 +89,7 @@ Progress: [█████████░] 9/11 plans (Phase 03)
 | Phase 03 P12 | 12min | 2 tasks | 3 files |
 | Phase 03 P13 | 17 min | 2 tasks | 2 files |
 | Phase 03 P14 | 11min | 2 tasks | 2 files |
+| Phase 03 P15 | 10min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -202,6 +203,9 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-14: --check-compatibility validates via read_header_of + RKDatabase::new(header) feeding validate_compatibility_verbose UNCHANGED — the header-only DB carries everything that fn reads (kmer_size/is_canonical/header.total_kmers), so its message text cannot drift and zero entries materialize
 - [Phase 03]: 03-14: loop-1's error texts are the preserved ones; two documented deltas — prefix-cache k error gains the third recovery bullet, canonical error keeps boolean formatting (loop 2's canonical arm was unreachable pre-plan)
 - [Phase 03]: 03-14 Rule 1 fix: --check-compatibility's 'Total k-mers' line printed the k-mer SIZE (validate_compatibility_verbose returns (kmer_size, canonical)); now prints the summed header record counts
+- [Phase 03]: 03-15: get_prefix_4mer buckets by the HIGH byte (first 4 bases) so index-order concatenation is globally ascending and the header's sorted:true is truthful by construction — option (a) chosen over (b) sorted:false (linear-scan degradation) and (c) sort-at-concatenation (re-sorts the dataset the route exists to avoid); header write/concatenation/prefix_to_dna deliberately untouched, their labels become correct for the first time
+- [Phase 03]: 03-15: the plan's unit-test literal 0x010000 rendered as 0x0100_0000 at k=16 — the literal is a 24-bit number (high byte 0x00) so the plan's own strict bucket==0x01 assertion was unsatisfiable; the integration fixture keeps the literal pair 0x0000FF/0x010000 (red pre-fix, green post-fix at k=16)
+- [Phase 03]: 03-15: CR-02's consumer proof captured red on the pre-fix tree — prefix-cache query_kmer answered None where the in-memory route answered Some(1) on k-mer 0x1 (binary search over (low_byte, kmer)-ordered entries); route parity of ANSWERS is asserted, not assumed
 
 ### Pending Todos
 
@@ -226,6 +230,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-08T17:53:56.451Z
-Stopped at: Completed 03-14-PLAN.md (WR-05 closed: header-only CLI merge validation, loader calls 6->0)
+Last session: 2026-10-08T23:38:59.208Z
+Stopped at: Completed 03-15-PLAN.md (CR-02 closed: first-4-bases bucketing, sorted flag truthful, query proofs green)
 Resume file: None
