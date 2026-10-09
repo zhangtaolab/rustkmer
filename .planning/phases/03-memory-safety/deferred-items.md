@@ -303,3 +303,56 @@
   its `set_var` cannot leak into sibling tests.
   **How to reproduce:** `cargo test --lib` repeatedly under load; observed
   once in ~25 full runs on this machine.
+
+- `merge_single_prefix_streaming` (src/database/prefix_cache_merge.rs) assumes
+  each shard is an ascending run; after the 03-16 fix a NON-canonical input's
+  shard under a mixed-canonical merge (ANY input canonical) can violate that
+  assumption, so the mixed-canonical correctness CR-01 closed holds on the
+  auto/hashmap path but NOT on the streaming-writer subset.
+  status: open
+  **What:** Found during plan 03-16 Task 2 analysis. `split_files_by_prefix`
+  now writes the canonicalized `processed_kmer`, but it writes records in
+  input-stream (raw-key) order — for a sorted non-canonical input the stored
+  canonical values need not be ascending (e.g. raw 0xFFFFFFFF sorts last in
+  stream order but stores canonical 0x000000 last in the shard). The hashmap
+  bucket writer folds into a map and sorts (unaffected); the streaming bucket
+  writer is a k-way heap merge over runs it assumes ascending, so a
+  non-ascending shard can produce non-ascending bucket output and miss
+  equal-key dedup/summing (traced by hand on the 03-16 fixture: shard
+  [0x0000AB, 0x007F1234, 0x00AB8053, 0x00FF1234, 0x000000] emits 0x0000AB
+  before 0x000001 and emits 0x000000 twice un-summed). Reachable with
+  merge_mode="streaming" or any bucket whose shards exceed the per-bucket
+  `merge_buffer_mb` threshold (auto). Not fixed in 03-16 because the plan
+  explicitly froze both bucket writers ("both bucket merge writers stay as
+  03-13 delivered them"); the fix is a design decision (re-sort shards,
+  sort-at-bucket-writer-entry, or drop the sorted-run assumption) — Rule 4
+  scale.
+  **Suggested fix:** for `self.canonical` merges, sort each shard's records
+  before the bucket phase reads them (or make
+  `merge_single_prefix_streaming` heap-per-shard / read-then-sort each run),
+  then add a mixed-canonical conservation test that forces
+  merge_mode="streaming".
+  **How to reproduce:** merge the 03-16 mixed-canonical fixture
+  (tests/prefix_cache_output_order_tests.rs build_mixed_canonical_inputs)
+  with `MergeConfig{use_prefix_cache: true, merge_mode: "streaming", ..}`;
+  the output is non-ascending and 0x000000 appears twice (counts 5 and 3)
+  where the oracle holds one summed record (8).
+
+- `cargo fmt --check` fails on 4 files untouched by phase 03 (21 diff hunks:
+  4x src/cli/commands/count.rs, 4x tests/merge_bounded_memory_tests.rs, 3x
+  tests/merge_cleanup_tests.rs, 10x tests/parallel_count_tests.rs) — the
+  03-16 full-phase fmt gate cannot pass while it stands.
+  status: open
+  **What:** Found during plan 03-16 Task 3's gate. The drift pattern
+  (collapsing short multi-line calls, breaking long method chains) matches a
+  local rustfmt style-version change rather than any phase-03 edit —
+  `git log` shows zero phase-03 commits touching these files (last touches:
+  26cbf36, a316e4f, f8e8355, 1e56098) and 03-15's SUMMARY records the same
+  drift being scoped out then ("rustfmt applied to the two touched files",
+  porcelain check on count.rs / parallel_count_tests.rs). Every 03-16
+  touched file is fmt-clean (rustfmt --check per-file exits 0).
+  **Suggested fix:** one `cargo fmt` commit touching exactly these 4 files
+  (verify CI's rustfmt version agrees first — if CI is green on fmt, the
+  local toolchain drifted and `rustup component add rustfmt@<ci-version>`
+  is the fix instead).
+  **How to reproduce:** `cargo fmt --check` on this tree.

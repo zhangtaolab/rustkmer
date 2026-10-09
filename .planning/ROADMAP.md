@@ -93,7 +93,7 @@ Plans:
   5. Dense storage maintains correctness — canonicalization and counts match the `u128` path exactly
   6. `pyrustkmer`'s `PyDatabase` merge uses the same bounded path as the CLI
 
-**Plans**: 15/16 plans executed (gap-closure rounds 1-2 done; round 3 opened 2026-10-09: 03-16)
+**Plans**: 16/16 plans executed (gap-closure rounds 1-2 done; round 3 opened 2026-10-09: 03-16)
 
 **Wave 1** *(parallel, no dependencies)*
 
@@ -124,7 +124,7 @@ Plans:
 
 **Gap Closure Round 3** *(opened 2026-10-09 by the user triage of `03-VERIFICATION.md` human decision item 1 — fix fresh-review CR-01 / open WR-03 in-phase via a third round)*
 
-- [ ] 03-16-PLAN.md — **CR-01 / WR-03 root cause**: `split_files_by_prefix` writes the canonicalized bucket key to the shard (bucket key == stored key) and propagates canonicalization errors — closes mixed-canonical content (summed encodings), header semantics (ANY-input), and output order at once; RED-provable mixed-canonical order/conservation/query test plus the corrected ANY-canonical routing pin (Wave 3; depends on 03-15; MERGE-01, DENSE-02)
+- [x] 03-16-PLAN.md — **CR-01 / WR-03 root cause**: `split_files_by_prefix` writes the canonicalized bucket key to the shard (bucket key == stored key) and propagates canonicalization errors — closes mixed-canonical content (summed encodings), header semantics (ANY-input), and output order at once; RED-provable mixed-canonical order/conservation/query test plus the corrected ANY-canonical routing pin (Wave 3; depends on 03-15; MERGE-01, DENSE-02)
 
 ### Phase 4: Benchmark & Validation
 
@@ -156,5 +156,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation & Quality | 4/4 | Complete    | 2026-07-01 |
 | 2. Parallel Counting | 5/5 | Complete    | 2026-07-01 |
-| 3. Memory Safety | 15/15 | In Progress | - |
+| 3. Memory Safety | 16/16 | In Progress | - |
 | 4. Benchmark & Validation | 0/4 | Not started | - |

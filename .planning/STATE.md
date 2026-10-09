@@ -2,13 +2,13 @@
 gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 03
-current_phase_name: memory-safety
+current_phase_name: Memory Safety
 status: executing
-stopped_at: "Completed 03-15-PLAN.md (CR-02 closed: first-4-bases bucketing, sorted flag truthful, query proofs green)"
-last_updated: "2026-10-09T04:49:11.468Z"
+stopped_at: "Completed 03-16-PLAN.md (CR-01 closed on auto path: canonicalized shard writes, mixed-canonical order+sum+query RED->GREEN, ANY-input header pinned)"
+last_updated: "2026-10-09T05:27:30.466Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 03 execution started
-state_head: 6022340a344bcdee05964ddf17f49535c983eb12
+state_head: 9cd77957156211f38a62b74684b6feeabccc061e
 progress:
   total_phases: 4
   completed_phases: 2
@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 
 ## Current Position
 
-Phase: 03 (memory-safety) — READY TO EXECUTE
-Plan: 5 of 15
+Phase: 03 (Memory Safety) — EXECUTING
+Plan: 2 of 16
 Status: Ready to execute
 Last activity: 2026-10-09 — Phase 03 execution started
 
@@ -90,6 +90,7 @@ Progress: [█████████░] 9/11 plans (Phase 03)
 | Phase 03 P13 | 17 min | 2 tasks | 2 files |
 | Phase 03 P14 | 11min | 2 tasks | 2 files |
 | Phase 03 P15 | 10min | 2 tasks | 2 files |
+| Phase 03 P16 | 27min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -207,6 +208,10 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-15: the plan's unit-test literal 0x010000 rendered as 0x0100_0000 at k=16 — the literal is a 24-bit number (high byte 0x00) so the plan's own strict bucket==0x01 assertion was unsatisfiable; the integration fixture keeps the literal pair 0x0000FF/0x010000 (red pre-fix, green post-fix at k=16)
 - [Phase 03]: 03-15: CR-02's consumer proof captured red on the pre-fix tree — prefix-cache query_kmer answered None where the in-memory route answered Some(1) on k-mer 0x1 (binary search over (low_byte, kmer)-ordered entries); route parity of ANSWERS is asserted, not assumed
 - [Phase 03]: CR-01 (mixed-canonical prefix-cache ordering residual) triaged by user 2026-10-09: fix in-phase via third gap round (/gsd-plan-phase 03 --gaps) rather than accepting as advisory — Fresh-review critical on the opt-in mixed-canonical prefix-cache route: split_files_by_prefix buckets by canonicalized high byte but writes raw kmer, so output can be non-ascending under sorted:true (silent wrong results for binary-search consumers). One-site fix (write processed_kmer + propagate canonicalization errors). Verifier scored 10/11 with 0 failures; user chose fix-now over accept-as-advisory.
+- [Phase 03]: 03-16: The fix is exactly one site - the shard stores processed_kmer (bucket key == sort key == stored key) and canonicalization errors propagate via ?, making index-order concatenation globally ascending and letting bucket writers sum the two encodings of one k-mer (CR-01/WR-03, T-03-53/T-03-54)
+- [Phase 03]: the plan's 0xFFFFFF literal is a 24-bit key at k=16 whose canonical form is 0x0000FF - the all-T meet-and-sum intent requires 0xFFFFFFFF; same k=16 literal trap as 03-15's 0x010000
+- [Phase 03]: a mixed-canonical ORDER violation is only RED-provable when a later bucket exists - 24-bit literals all have high byte 0x00 at k=16 so everything collapses into bucket 0x00 where the hashmap writer's sort erases misplacement; a true-high-byte key (0x0100_0000) was added to make windows(2) discriminate
+- [Phase 03]: 03-16 KNOWN RESIDUAL (deferred): merge_single_prefix_streaming assumes ascending shard runs, but post-fix a non-canonical input's shard can be non-ascending under mixed-canonical merges - correctness proven on the auto/hashmap path only; plan froze both bucket writers, logged deferred-items.md + WINDOWS.md #17
 
 ### Pending Todos
 
@@ -231,6 +236,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-08T23:38:59.208Z
-Stopped at: Completed 03-15-PLAN.md (CR-02 closed: first-4-bases bucketing, sorted flag truthful, query proofs green)
+Last session: 2026-10-09T05:27:06.006Z
+Stopped at: Completed 03-16-PLAN.md (CR-01 closed on auto path: canonicalized shard writes, mixed-canonical order+sum+query RED->GREEN, ANY-input header pinned)
 Resume file: None
