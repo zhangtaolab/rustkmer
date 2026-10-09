@@ -859,6 +859,12 @@ impl ExternalSortMerger {
     /// WR-04: same contract as [`Self::merge_single_prefix_hashmap`] — the
     /// count comes from the writer itself (one increment per emitted record),
     /// never from the merged file's size.
+    ///
+    /// 03-17 option (b): every shard must be a NON-DECREASING run — the
+    /// k-way merge assumes it. A shard carrying an adjacent descending pair
+    /// is refused with `Err` naming the shard and both keys (equal adjacent
+    /// keys stay legal); the `Err` propagates into the WR-04 bucket abort
+    /// with the failed bucket's shards preserved.
     fn merge_single_prefix_streaming(
         files: Vec<(PathBuf, u64)>,
         output_path: &Path,
@@ -938,6 +944,26 @@ impl ExternalSortMerger {
         // record write below and returned — never derived from the file.
         let mut records_emitted = 0u64;
 
+        // 03-17 option (b) — record-level run validation. Every record
+        // leaving a shard's buffer is checked at one of the two `pop_front`
+        // sites below (a heap entry mirrors its file's buffer front, so
+        // `top.kmer` IS the popped record's key), so the refusal covers any
+        // caller and any input shape — unsorted or mislabeled inputs of ANY
+        // canonical mode — not just the mixed-canonical case the
+        // `ExternalSortMerger::new` override intercepts from headers.
+        // Equal adjacent keys (duplicate runs) remain legal: the check
+        // fires on strictly-less-than only.
+        let mut last_key_per_file: Vec<Option<u128>> = vec![None; files.len()];
+        let descending_run_err = |file_idx: usize, prev: u128, kmer: u128| -> anyhow::Error {
+            anyhow::anyhow!(
+                "shard '{}' is not a non-decreasing run: key {kmer:#x} follows {prev:#x}; the \
+                 streaming bucket writer requires each shard to be a non-decreasing run so \
+                 sorted output cannot be guaranteed — refusing the merge rather than emitting \
+                 records a sorted: true header would misdescribe",
+                files[file_idx].0.display()
+            )
+        };
+
         while let Some(top) = heap.pop() {
             if let Some(kmer) = current_kmer {
                 if kmer == top.kmer {
@@ -966,6 +992,15 @@ impl ExternalSortMerger {
             // (:886-887/:897-899 pre-plan) consumed a duplicate without
             // removing it and without re-queueing its file, so the rest of
             // that file's run was silently stranded.
+            // 03-17 option (b): validate the record leaving the buffer —
+            // the heap entry mirrors its file's buffer front, so `top.kmer`
+            // is exactly the popped record's key.
+            if let Some(prev) = last_key_per_file[top.file_idx] {
+                if top.kmer < prev {
+                    return Err(descending_run_err(top.file_idx, prev, top.kmer));
+                }
+            }
+            last_key_per_file[top.file_idx] = Some(top.kmer);
             file_states[top.file_idx].2.pop_front();
 
             loop {
@@ -996,6 +1031,15 @@ impl ExternalSortMerger {
                         .2
                         .pop_front()
                         .expect("head was just checked present");
+                    // 03-17 option (b): the same validation at the second
+                    // consumption site — every record exiting a buffer is
+                    // checked exactly once.
+                    if let Some(prev) = last_key_per_file[top.file_idx] {
+                        if consumed.kmer < prev {
+                            return Err(descending_run_err(top.file_idx, prev, consumed.kmer));
+                        }
+                    }
+                    last_key_per_file[top.file_idx] = Some(consumed.kmer);
                     current_count += consumed.count;
                 } else {
                     heap.push(HeapEntry {
@@ -1884,6 +1928,53 @@ mod tests {
             "output file size must be exactly oracle.len() records"
         );
         assert_output_equals_oracle(&out_path, &oracle);
+    }
+
+    /// 03-17 option (b): the streaming bucket writer REFUSES a shard whose
+    /// successive records contain an adjacent DESCENDING pair, instead of
+    /// emitting misordered output a `sorted: true` header would
+    /// misdescribe. The check reads the RECORDS, not any header — an
+    /// unsorted or mislabeled input of ANY canonical mode still feeds
+    /// non-ascending runs to this writer, and no header-based gate can
+    /// catch that (the `ExternalSortMerger::new` override keys on the
+    /// canonical-mode mixture alone). Direct call, so the Task 2 override
+    /// is bypassed by construction.
+    #[test]
+    fn streaming_writer_refuses_a_descending_run() {
+        let dir = tempfile::tempdir().unwrap();
+        // A small shard that descends mid-run: 0x000200 then 0x000100 (k is
+        // irrelevant — the writer consumes width-agnostic raw records).
+        let mut buf: Vec<u8> = Vec::new();
+        for (kmer, count) in [(0x000200_u128, 4_u32), (0x000100_u128, 2_u32)] {
+            buf.extend_from_slice(&kmer.to_le_bytes());
+            buf.extend_from_slice(&count.to_le_bytes());
+        }
+        let shard_path = dir.path().join("descending_shard.bin");
+        std::fs::write(&shard_path, &buf).expect("write descending shard");
+        let shard_len = std::fs::metadata(&shard_path)
+            .expect("stat descending shard")
+            .len();
+
+        let out_path = dir.path().join("refused_merge.bin");
+        let result = ExternalSortMerger::merge_single_prefix_streaming(
+            vec![(shard_path.clone(), shard_len)],
+            &out_path,
+        );
+
+        let err = result.expect_err("a descending run must be refused, not merged");
+        let message = err.to_string();
+        assert!(
+            message.contains(&shard_path.display().to_string()),
+            "the refusal must name the offending shard's path, got: {message}"
+        );
+        assert!(
+            message.contains("0x200") && message.contains("0x100"),
+            "the refusal must name both offending keys in hex, got: {message}"
+        );
+        assert!(
+            message.contains("non-decreasing"),
+            "the refusal must state the non-decreasing-run requirement, got: {message}"
+        );
     }
 
     /// Build two small real `.rkdb` inputs (valid 42-byte headers) under
