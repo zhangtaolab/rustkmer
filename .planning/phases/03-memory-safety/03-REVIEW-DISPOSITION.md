@@ -6,7 +6,63 @@ findings:
   - id: CR-01
     severity: critical
     disposition: open
-    title: "`read_batch_from_file_sync` drops the partial-record tail at every batch boundary and swallows read errors — silent shard corruption above ~4 MB"
+    title: "Mixed-canonical prefix-cache merges still write non-ascending output under `sorted: true` — CR-02's fix does not hold on the route's advertised mixed-canonical capability"
+  - id: WR-01
+    severity: warning
+    disposition: open
+    title: "The failed-bucket \"shard files PRESERVED for recovery\" promise is voided by RAII Drop the moment the error propagates"
+  - id: WR-02
+    severity: warning
+    disposition: open
+    title: "u32 count overflow in prefix-cache bucket merges — debug panic, release wrap; the in-memory route saturates (open re-report)"
+  - id: WR-03
+    severity: warning
+    disposition: open
+    title: "Mixed-canonical route writes RAW records while the output header claims canonical (from ANY input) — plus swallowed canonicalization errors (open re-report, prior WR-04)"
+  - id: WR-04
+    severity: warning
+    disposition: open
+    title: "The CLI `--batch-size` flag is a silent no-op"
+  - id: WR-05
+    severity: warning
+    disposition: open
+    title: "`--check-compatibility --use-prefix-cache` rejects mixed-canonical input sets that the merge with the same flags accepts"
+  - id: WR-06
+    severity: warning
+    disposition: open
+    title: "`validate_merge_compatibility` panics on an empty input slice"
+  - id: IN-01
+    severity: info
+    disposition: open
+    title: "`merge_prologue` runs twice on the materializing delegating path (re-report)"
+  - id: IN-02
+    severity: info
+    disposition: open
+    title: "`Drop for ExternalSortMerger` logs the wrong directory when `close()` fails (re-report)"
+  - id: IN-03
+    severity: info
+    disposition: open
+    title: "Phase-1 log claims parallel bucketing; the loop is serial"
+  - id: IN-04
+    severity: info
+    disposition: open
+    title: "Dead duplicate shard readers masked by `#[allow(dead_code)]`"
+  - id: IN-05
+    severity: info
+    disposition: open
+    title: "Merger's `total_kmers`/`estimated_kmers_per_file` come from the FIRST input only — startup log under-reports multi-input merges"
+  - id: IN-06
+    severity: info
+    disposition: open
+    title: "Stale \"24 B/k-mer\" comments contradict the 96 model the same test file asserts"
+  - id: IN-07
+    severity: info
+    disposition: open
+    title: "`is_multiple_of` raises the effective MSRV above the documented Rust 1.80+ baseline"
+  - id: IN-08
+    severity: info
+    disposition: open
+    title: "Final prefix-cache output is flushed but never fsync'd, unlike every other artifact in the route"
   - id: CR-02
     severity: critical
     disposition: open
@@ -15,30 +71,6 @@ findings:
     severity: critical
     disposition: open
     title: "Streaming merge route performs no cross-input k-mer-size/canonical validation — Python API silently merges incompatible databases"
-  - id: WR-01
-    severity: warning
-    disposition: open
-    title: "`StreamingMergeIterator`'s `pending_error` machinery is dead code and the iterator is not actually finished after an `Err`"
-  - id: WR-02
-    severity: warning
-    disposition: open
-    title: "u32 count overflow in prefix-cache bucket merges — panics in debug, wraps in release; in-memory route saturates"
-  - id: WR-03
-    severity: warning
-    disposition: open
-    title: "`merge_single_prefix_streaming` peek-and-add strands the rest of a file's run on within-file duplicate k-mers"
-  - id: WR-04
-    severity: warning
-    disposition: open
-    title: "Prefix-cache mixed-canonical merge writes raw (non-canonical) records while the output header claims `canonical` from input[0]"
-  - id: WR-05
-    severity: warning
-    disposition: open
-    title: "CLI merge fully materializes every input database just to validate — including on `--use-prefix-cache`, the memory-bounded route it exists for"
-  - id: WR-06
-    severity: warning
-    disposition: open
-    title: "Compat-shim fallback file leaks on error and is never swept"
   - id: WR-07
     severity: warning
     disposition: open
@@ -55,37 +87,9 @@ findings:
     severity: warning
     disposition: open
     title: "`frequency_distribution` zero-fills `min_count..=max_count` — unbounded allocation up to ~4.3 billion entries"
-  - id: IN-01
-    severity: info
-    disposition: open
-    title: "`Drop for ExternalSortMerger` logs the wrong directory when `close()` fails"
-  - id: IN-02
-    severity: info
-    disposition: open
-    title: "`merge_databases` runs `merge_prologue` twice per call via delegation"
-  - id: IN-03
-    severity: info
-    disposition: open
-    title: "Stale admission-model constant copied into the integration tests"
-  - id: IN-04
-    severity: info
-    disposition: open
-    title: "Dead magic-number clamp in `get_entry_by_index`"
-  - id: IN-05
-    severity: info
-    disposition: open
-    title: "`DatabaseStreamIterator::header()` fabricates an invalid header"
-  - id: IN-06
-    severity: info
-    disposition: open
-    title: "`extract_by_prefix` reloads the entire database from disk on every call"
-  - id: IN-07
-    severity: info
-    disposition: open
-    title: "`test_prefix_extraction_values` tests nothing about the production prefix extraction"
-open: 20
-total: 20
-recorded: 2026-10-08T16:02:21.748Z
+open: 21
+total: 21
+recorded: 2026-10-09T04:15:58.021Z
 ---
 
 # Phase 03: Code Review Disposition
@@ -93,18 +97,12 @@ recorded: 2026-10-08T16:02:21.748Z
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
 | CR-01 | critical | open | - |
-| CR-02 | critical | open | - |
-| CR-03 | critical | open | - |
 | WR-01 | warning | open | - |
 | WR-02 | warning | open | - |
 | WR-03 | warning | open | - |
 | WR-04 | warning | open | - |
 | WR-05 | warning | open | - |
 | WR-06 | warning | open | - |
-| WR-07 | warning | open | - |
-| WR-08 | warning | open | - |
-| WR-09 | warning | open | - |
-| WR-10 | warning | open | - |
 | IN-01 | info | open | - |
 | IN-02 | info | open | - |
 | IN-03 | info | open | - |
@@ -112,6 +110,13 @@ recorded: 2026-10-08T16:02:21.748Z
 | IN-05 | info | open | - |
 | IN-06 | info | open | - |
 | IN-07 | info | open | - |
+| IN-08 | info | open | - |
+| CR-02 | critical | open | - (not in the current review) |
+| CR-03 | critical | open | - (not in the current review) |
+| WR-07 | warning | open | - (not in the current review) |
+| WR-08 | warning | open | - (not in the current review) |
+| WR-09 | warning | open | - (not in the current review) |
+| WR-10 | warning | open | - (not in the current review) |
 
 Dispositions: `open` (recorded, not yet triaged), `fixed`, `skipped`, `deferred`.
 Set `deferred` by hand and put the reason in the Source cell; both are preserved. A `|` in the reason is kept as prose and escaped on the next run.
