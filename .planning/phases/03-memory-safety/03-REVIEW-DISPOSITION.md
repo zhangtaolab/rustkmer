@@ -3,18 +3,70 @@ phase: 03
 review: 03-REVIEW.md
 titles: json
 findings:
+  - id: WR-01
+    severity: warning
+    disposition: open
+    title: "The failed-bucket \"shard files PRESERVED for recovery\" promise is voided by RAII Drop before the error reaches the caller (carried, still open; the abort message making the false promise is new this round)"
+  - id: WR-02
+    severity: warning
+    disposition: open
+    title: "u32 count accumulation can overflow — debug panic, silent wrap in release; the in-memory route saturates (carried, still open)"
+  - id: WR-11
+    severity: warning
+    disposition: open
+    title: "The metadata JSON sidecar is written to a path the to-path route guarantees to delete (new this round)"
+  - id: WR-12
+    severity: warning
+    disposition: open
+    title: "`ExternalSortMerger::new` panics on an empty input list — public API, unguarded index (new this round; same class as carried WR-06 but a distinct, in-scope site)"
+  - id: WR-13
+    severity: warning
+    disposition: open
+    title: "Zero-length merged buckets are deleted even under `--keep-intermediate`, contradicting the flag's documented \"keeps everything\" contract (new this round)"
+  - id: WR-14
+    severity: warning
+    disposition: open
+    title: "No k-mer-size range validation — headers with `kmer_size` in 65..=127 or 0 pass every check, then shift-overflow (debug panic) or silently collapse every canonical key to 0 (new this round)"
+  - id: IN-02
+    severity: info
+    disposition: open
+    title: "`Drop` logs the wrong directory when `TempDir::close()` fails (carried, still open)"
+  - id: IN-03
+    severity: info
+    disposition: open
+    title: "Phase-1 log claims parallel bucketing; the loop is serial (carried, still open)"
+  - id: IN-04
+    severity: info
+    disposition: open
+    title: "Dead duplicate shard readers masked by an impl-level `#[allow(dead_code)]` (carried, still open)"
+  - id: IN-05
+    severity: info
+    disposition: open
+    title: "`total_kmers` reflects the FIRST input only; `estimated_kmers_per_file` and `num_threads` are never read (carried, still open)"
+  - id: IN-07
+    severity: info
+    disposition: open
+    title: "`is_multiple_of` raises the effective MSRV above the documented Rust 1.80+ baseline (carried, still open)"
+  - id: IN-08
+    severity: info
+    disposition: open
+    title: "Final prefix-cache output is flushed but never fsync'd, unlike every other artifact in the route (carried, still open)"
+  - id: IN-09
+    severity: info
+    disposition: open
+    title: "The 03-16 \"canonicalization failure propagates with `?`\" claim is vacuous (carried, still open)"
+  - id: IN-10
+    severity: info
+    disposition: open
+    title: "A streaming-writer refusal aborts the whole merge with no fallback and no remediation hint (new this round)"
+  - id: IN-11
+    severity: info
+    disposition: open
+    title: "Two vacuous tests in the module's test module (new this round)"
   - id: CR-01
     severity: critical
     disposition: open
     title: "The 03-16 canonicalization fix holds only for the hashmap bucket writer — the streaming bucket writer still emits non-ascending, un-summed mixed-canonical output under an unconditional `sorted: true` header"
-  - id: WR-01
-    severity: warning
-    disposition: open
-    title: "The failed-bucket \"shard files PRESERVED for recovery\" promise is voided by RAII Drop the moment the error propagates (carried, still open)"
-  - id: WR-02
-    severity: warning
-    disposition: open
-    title: "u32 count overflow in prefix-cache bucket merges — debug panic, release wrap; the in-memory route saturates (carried, still open)"
   - id: WR-04
     severity: warning
     disposition: open
@@ -31,38 +83,10 @@ findings:
     severity: info
     disposition: open
     title: "`merge_prologue` runs twice on the materializing delegating path (carried; file outside this round's scope, unchanged)"
-  - id: IN-02
-    severity: info
-    disposition: open
-    title: "`Drop for ExternalSortMerger` logs the wrong directory when `close()` fails (carried, still open)"
-  - id: IN-03
-    severity: info
-    disposition: open
-    title: "Phase-1 log claims parallel bucketing; the loop is serial (carried, still open)"
-  - id: IN-04
-    severity: info
-    disposition: open
-    title: "Dead duplicate shard readers masked by `#[allow(dead_code)]` (carried, still open)"
-  - id: IN-05
-    severity: info
-    disposition: open
-    title: "Merger's `total_kmers`/`estimated_kmers_per_file` come from the FIRST input only (carried, still open)"
   - id: IN-06
     severity: info
     disposition: open
     title: "Stale \"24 B/k-mer\" comments contradict the 96 model the same test file asserts (carried, still open)"
-  - id: IN-07
-    severity: info
-    disposition: open
-    title: "`is_multiple_of` raises the effective MSRV above the documented Rust 1.80+ baseline (carried, still open)"
-  - id: IN-08
-    severity: info
-    disposition: open
-    title: "Final prefix-cache output is flushed but never fsync'd, unlike every other artifact in the route (carried, still open)"
-  - id: IN-09
-    severity: info
-    disposition: open
-    title: "The 03-16 error-propagation claim is vacuous — `canonical_kmer_u128` has no error path (new this round)"
   - id: WR-03
     severity: warning
     disposition: open
@@ -91,30 +115,36 @@ findings:
     severity: warning
     disposition: open
     title: "`frequency_distribution` zero-fills `min_count..=max_count` — unbounded allocation up to ~4.3 billion entries"
-open: 22
-total: 22
-recorded: 2026-10-09T05:48:18.010Z
+open: 28
+total: 28
+recorded: 2026-10-09T12:21:37.511Z
 ---
 
 # Phase 03: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | open | - |
 | WR-01 | warning | open | - |
 | WR-02 | warning | open | - |
-| WR-04 | warning | open | - |
-| WR-05 | warning | open | - |
-| WR-06 | warning | open | - |
-| IN-01 | info | open | - |
+| WR-11 | warning | open | - |
+| WR-12 | warning | open | - |
+| WR-13 | warning | open | - |
+| WR-14 | warning | open | - |
 | IN-02 | info | open | - |
 | IN-03 | info | open | - |
 | IN-04 | info | open | - |
 | IN-05 | info | open | - |
-| IN-06 | info | open | - |
 | IN-07 | info | open | - |
 | IN-08 | info | open | - |
 | IN-09 | info | open | - |
+| IN-10 | info | open | - |
+| IN-11 | info | open | - |
+| CR-01 | critical | open | - (not in the current review) |
+| WR-04 | warning | open | - (not in the current review) |
+| WR-05 | warning | open | - (not in the current review) |
+| WR-06 | warning | open | - (not in the current review) |
+| IN-01 | info | open | - (not in the current review) |
+| IN-06 | info | open | - (not in the current review) |
 | WR-03 | warning | open | - (not in the current review) |
 | CR-02 | critical | open | - (not in the current review) |
 | CR-03 | critical | open | - (not in the current review) |
