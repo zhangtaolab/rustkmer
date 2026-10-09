@@ -29,7 +29,7 @@ REPO_ROOT = HERE.parent.parent                    # repo root
 GEN_SYNTHETIC = HERE / "gen_synthetic.py"
 DEFAULT_SCRATCH = HERE / "scratch"
 
-# Synthetic provisioning constants (Task 1: synthetic mode only).
+# Synthetic provisioning constants (two disjoint seeded inputs per run).
 SYNTHETIC_LENGTH = 150
 SEED_A = 42
 SEED_B = 1337
@@ -218,6 +218,125 @@ def provision_synthetic(reads, scratch):
     return [in_a, in_b]
 
 
+# --- BENCH-04 degradation ladder -------------------------------------------
+VALID_MODES = ("synthetic", "slice", "full")
+DEFAULT_SIZE_THRESHOLD_BYTES = 1 << 30  # 1 GiB: at/above -> full, below -> slice
+
+
+def gather_inputs(spec):
+    """Resolve an input spec to a sorted list of existing input paths.
+
+    A directory is scanned for .fq.gz/.fastq.gz (sorted); a plain file is
+    returned as-is; a glob pattern expands via pathlib. Read-only — no
+    filesystem mutation happens during resolution.
+    """
+    p = Path(spec)
+    if p.is_dir():
+        return sorted(x for x in p.iterdir()
+                      if x.is_file()
+                      and x.name.endswith((".fq.gz", ".fastq.gz")))
+    if p.is_file():
+        return [p]
+    if any(ch in spec for ch in "*?["):
+        return sorted(x for x in p.parent.glob(p.name) if x.is_file())
+    return []
+
+
+def resolve_mode(explicit_mode, input_arg, env,
+                 size_threshold_bytes=DEFAULT_SIZE_THRESHOLD_BYTES):
+    """Pure BENCH-04 ladder: explicit --mode beats RUSTKMER_BENCH_MODE beats
+    size-based resolution; a missing or empty input resolves to synthetic.
+
+    Returns (mode, resolved_input_paths). The caller must record both in
+    results.json — the resolver never guesses silently. Raises ValueError on
+    an invalid mode string from the environment (V5: env is a trust boundary).
+    """
+    if size_threshold_bytes < 1:
+        raise ValueError("size_threshold_bytes must be >= 1")
+    mode = explicit_mode if explicit_mode is not None \
+        else env.get("RUSTKMER_BENCH_MODE")
+    spec = input_arg if input_arg is not None \
+        else env.get("RUSTKMER_BENCH_INPUT")
+    inputs = gather_inputs(spec) if spec else []
+    if mode is not None:
+        if mode not in VALID_MODES:
+            raise ValueError(
+                f"invalid mode {mode!r} (expected one of {VALID_MODES})")
+        return mode, inputs
+    if not inputs:
+        return "synthetic", []
+    total = sum(p.stat().st_size for p in inputs)
+    if total >= size_threshold_bytes:
+        return "full", inputs
+    return "slice", inputs
+
+
+def extract_slice(gz_path, n_reads, output_path):
+    """Write the first n_reads (4 lines each) of gunzip -c output to a file.
+
+    Deterministic: identical bytes for the same input and N on every machine.
+    Decompresses with gunzip -c (portable) — the macOS compress-family zcat
+    variant is never invoked (RESEARCH Pitfall 1). Pure subprocess (no shell),
+    so environment-provided paths cannot inject commands. Raises on an empty
+    result (zero reads would measure nothing) or a failed decompressor.
+    """
+    line_limit = 4 * n_reads
+    proc = subprocess.Popen(["gunzip", "-c", str(gz_path)],
+                            stdout=subprocess.PIPE)
+    written = 0
+    truncated = False
+    try:
+        with open(output_path, "wb") as out:
+            for line in proc.stdout:
+                if written >= line_limit:
+                    truncated = True
+                    break
+                out.write(line)
+                written += 1
+    finally:
+        proc.stdout.close()
+        if truncated:
+            proc.terminate()  # head semantics: stop the producer early
+        proc.wait()
+    if written == 0:
+        raise RuntimeError(
+            f"slice of {gz_path} produced 0 lines — empty or invalid gz input")
+    if not truncated and proc.returncode != 0:
+        raise RuntimeError(
+            f"gunzip failed rc={proc.returncode} on {gz_path}")
+
+
+def provision_slice(resolved_inputs, slice_reads, scratch):
+    """Provision two slice inputs (first two resolved sources; a single
+    source is extracted once and measured twice)."""
+    if not resolved_inputs:
+        raise RuntimeError("slice mode requires a resolved input")
+    scratch.mkdir(parents=True, exist_ok=True)
+    srcs = resolved_inputs[:2] if len(resolved_inputs) >= 2 \
+        else [resolved_inputs[0], resolved_inputs[0]]
+    slices = []
+    extracted = {}
+    for i, src in enumerate(srcs):
+        if src in extracted:
+            slices.append(extracted[src])
+            continue
+        dst = scratch / f"slice-{i}.fq"
+        extract_slice(src, slice_reads, dst)
+        extracted[src] = dst
+        slices.append(dst)
+    return slices
+
+
+def provision_full(resolved_inputs):
+    """Measure the resolved inputs directly (first two; a single input is
+    measured twice — an honest repeated measurement, not a fabrication)."""
+    if not resolved_inputs:
+        raise RuntimeError("full mode requires a resolved input")
+    if len(resolved_inputs) >= 2:
+        return resolved_inputs[:2]
+    return [resolved_inputs[0], resolved_inputs[0]]
+
+
 def measure_arm(name, cmd, reps, rustkmer, out_db):
     """Run one measured arm: reps x measure(), then stats sanity (Pitfall 1)."""
     rep_results = []
@@ -241,19 +360,18 @@ def measure_arm(name, cmd, reps, rustkmer, out_db):
 
 def run_bench(args):
     """Provision, measure, sanity-assert, emit. Returns the results dict."""
-    mode = args.mode
-    if mode is None:
-        mode = "synthetic"  # default ladder resolution arrives in Task 3
-    if mode in ("slice", "full"):
-        raise RuntimeError(
-            f"mode '{mode}' arrives with the degradation ladder (plan 04-01 "
-            f"Task 3); this tracer slice provisions synthetic input only")
+    mode, resolved_inputs = resolve_mode(args.mode, args.input, os.environ)
 
     out_path = Path(args.out)
     scratch = out_path.parent
     scratch.mkdir(parents=True, exist_ok=True)
 
-    inputs = provision_synthetic(args.reads, scratch)
+    if mode == "synthetic":
+        inputs = provision_synthetic(args.reads, scratch)
+    elif mode == "slice":
+        inputs = provision_slice(resolved_inputs, args.slice_reads, scratch)
+    else:
+        inputs = provision_full(resolved_inputs)
     db_a = scratch / "db_count-A.rkdb"
     db_b = scratch / "db_count-B.rkdb"
     db_merged = scratch / "db_merged.rkdb"
@@ -273,13 +391,17 @@ def run_bench(args):
     ]
 
     if args.self_check:
-        expected_total = args.reads * (SYNTHETIC_LENGTH - args.k + 1)
-        for arm in (arms[0], arms[1]):
-            if arm["total_kmers"] != expected_total:
-                raise RuntimeError(
-                    f"self-check: arm {arm['name']!r} total_kmers "
-                    f"{arm['total_kmers']} != reads x (L - k + 1) = "
-                    f"{expected_total}")
+        # Exact per-input formula holds only for synthetic input (known
+        # reads x length); merge conservation and distinct-union hold for
+        # every mode.
+        if mode == "synthetic":
+            expected_total = args.reads * (SYNTHETIC_LENGTH - args.k + 1)
+            for arm in (arms[0], arms[1]):
+                if arm["total_kmers"] != expected_total:
+                    raise RuntimeError(
+                        f"self-check: arm {arm['name']!r} total_kmers "
+                        f"{arm['total_kmers']} != reads x (L - k + 1) = "
+                        f"{expected_total}")
         merged_total = arms[0]["total_kmers"] + arms[1]["total_kmers"]
         if arms[2]["total_kmers"] != merged_total:
             raise RuntimeError(
@@ -295,6 +417,7 @@ def run_bench(args):
     results = {
         "schema_version": SCHEMA_VERSION,
         "mode": mode,
+        "resolved_inputs": [str(p) for p in resolved_inputs],
         "input_fingerprint": [fingerprint(p) for p in inputs],
         "platform": {
             "system": platform.system(),
@@ -344,6 +467,9 @@ def main():
                         help="thread count passed to rustkmer")
     parser.add_argument("--reads", type=int, default=200000,
                         help="reads per synthetic input")
+    parser.add_argument("--slice-reads", type=int, default=1000000,
+                        help="reads per slice in slice mode (deterministic "
+                             "first-N extraction)")
     parser.add_argument("--reps", type=int, default=1,
                         help="repetitions per arm (multi-rep protocol is "
                              "04-02's scope)")
@@ -357,6 +483,8 @@ def main():
         parser.error("--reps must be >= 1")
     if args.reads < 1:
         parser.error("--reads must be >= 1")
+    if args.slice_reads < 1:
+        parser.error("--slice-reads must be >= 1")
 
     run_bench(args)
 
