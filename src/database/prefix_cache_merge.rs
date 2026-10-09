@@ -291,8 +291,22 @@ impl ExternalSortMerger {
             for chunk_result in stream_iter {
                 let chunk = chunk_result?;
                 for entry in chunk {
+                    // CR-01/WR-03 (03-16): when ANY input is canonical
+                    // (`self.canonical`, folded from every input header by
+                    // `ExternalSortMerger::new`), each record is
+                    // canonicalized BEFORE bucketing — and the shard must
+                    // store that SAME canonicalized value, so bucket key ==
+                    // sort key == stored key. That identity is what makes
+                    // index-order concatenation globally ascending (CR-02's
+                    // construction argument, extended to mixed-canonical
+                    // input) and what lets the bucket writers sum the raw
+                    // and canonical encodings of one k-mer once they meet
+                    // in the same bucket. A canonicalization failure
+                    // propagates with `?`, aborting the merge loudly — the
+                    // pre-fix swallowed-error fallback silently substituted
+                    // the raw key and broke the identity (T-03-53/T-03-54).
                     let processed_kmer = if self.canonical {
-                        canonical_kmer_u128(entry.kmer, self.kmer_size).unwrap_or(entry.kmer)
+                        canonical_kmer_u128(entry.kmer, self.kmer_size)?
                     } else {
                         entry.kmer
                     };
@@ -300,7 +314,7 @@ impl ExternalSortMerger {
                     let prefix = self.get_prefix_4mer(processed_kmer);
 
                     if prefix < self.num_buckets {
-                        bucket_buffers[prefix].extend_from_slice(&entry.kmer.to_le_bytes());
+                        bucket_buffers[prefix].extend_from_slice(&processed_kmer.to_le_bytes());
                         bucket_buffers[prefix].extend_from_slice(&entry.count.to_le_bytes());
                         file_kmers += 1;
 
