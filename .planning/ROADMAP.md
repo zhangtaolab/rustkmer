@@ -93,7 +93,7 @@ Plans:
   5. Dense storage maintains correctness — canonicalization and counts match the `u128` path exactly
   6. `pyrustkmer`'s `PyDatabase` merge uses the same bounded path as the CLI
 
-**Plans**: 15/15 plans executed (gap-closure round 1 done; round 2 pending: 03-12..03-15)
+**Plans**: 15/16 plans executed (gap-closure rounds 1-2 done; round 3 opened 2026-10-09: 03-16)
 
 **Wave 1** *(parallel, no dependencies)*
 
@@ -121,6 +121,10 @@ Plans:
 - [x] 03-13-PLAN.md — **CR-01 + WR-03**: record-aligned batch reads with carried tails and propagated read errors, unstranded duplicate runs (VecDeque buffer), plus >4 MB single-bucket conservation proof through merge_single_prefix_streaming and the full route (Wave 1; MERGE-01, MERGE-03)
 - [x] 03-14-PLAN.md — **WR-05**: CLI front-end validation reads 42-byte headers only — the full-load reference and both serial validation loops replaced by one extracted header-only pass (`validate_merge_compatibility`), proven on body-absent inputs (Wave 1; MERGE-01)
 - [x] 03-15-PLAN.md — **CR-02**: bucket by the FIRST 4 bases (high 8 bits) so index-order concatenation is globally ascending and the `sorted: true` header is truthful, plus query_kmer / prefix-extraction / route-parity proofs and the IN-07 tautological test rewritten (Wave 2; depends on 03-13; MERGE-01, DENSE-02)
+
+**Gap Closure Round 3** *(opened 2026-10-09 by the user triage of `03-VERIFICATION.md` human decision item 1 — fix fresh-review CR-01 / open WR-03 in-phase via a third round)*
+
+- [ ] 03-16-PLAN.md — **CR-01 / WR-03 root cause**: `split_files_by_prefix` writes the canonicalized bucket key to the shard (bucket key == stored key) and propagates canonicalization errors — closes mixed-canonical content (summed encodings), header semantics (ANY-input), and output order at once; RED-provable mixed-canonical order/conservation/query test plus the corrected ANY-canonical routing pin (Wave 3; depends on 03-15; MERGE-01, DENSE-02)
 
 ### Phase 4: Benchmark & Validation
 
