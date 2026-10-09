@@ -309,7 +309,7 @@
   shard under a mixed-canonical merge (ANY input canonical) can violate that
   assumption, so the mixed-canonical correctness CR-01 closed holds on the
   auto/hashmap path but NOT on the streaming-writer subset.
-  status: open
+  status: closed
   **What:** Found during plan 03-16 Task 2 analysis. `split_files_by_prefix`
   now writes the canonicalized `processed_kmer`, but it writes records in
   input-stream (raw-key) order — for a sorted non-canonical input the stored
@@ -337,6 +337,22 @@
   with `MergeConfig{use_prefix_cache: true, merge_mode: "streaming", ..}`;
   the output is non-ascending and 0x000000 appears twice (counts 5 and 3)
   where the oracle holds one summed record (8).
+  **Closed by:** plan 03-17 (03-VERIFICATION round-3 gaps[0]) with the
+  override-plus-refusal design, not the suggested re-sort: option (a) —
+  `ExternalSortMerger::new` detects the mixed-canonical header set (folded
+  canonical true + any input non-canonical) and forces the sorting (hashmap)
+  per-bucket writer for every bucket with a `log::warn` override (a
+  requested merge_mode="streaming"/"auto" merge still SUCCEEDS, correctly,
+  instead of erroring); option (b) — `merge_single_prefix_streaming`
+  validates every record at both `pop_front` consumption sites against a
+  per-file last-seen-key tracker and refuses the first adjacent DESCENDING
+  pair with an Err naming the shard (propagates into the WR-04 bucket abort,
+  shards preserved), so no header check is trusted and unsorted/mislabeled
+  inputs of any canonical mode are caught too. Equal adjacent keys stay
+  legal. Proven RED->GREEN by the streaming arm of
+  `mixed_canonical_prefix_cache_output_is_ascending_summed_and_queryable`
+  plus unit tests (override matrix + same-mode control + descending-run
+  refusal). Full suite 439/0; root + pyo3 clippy -D warnings green.
 
 - `cargo fmt --check` fails on 4 files untouched by phase 03 (21 diff hunks:
   4x src/cli/commands/count.rs, 4x tests/merge_bounded_memory_tests.rs, 3x

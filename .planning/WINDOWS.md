@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 11
+open_count: 9
 waived_count: 3
-fixed_count: 5
-total_count: 19
-last_updated: 2026-10-09T05:23:31.385Z
+fixed_count: 6
+total_count: 18
+last_updated: 2026-10-09T12:01:10.226Z
 ---
 
 # Broken Windows Ledger
@@ -31,7 +31,7 @@ last_updated: 2026-10-09T05:23:31.385Z
 | 14 | 03 | deviation | src/database/format.rs |  | WR-02 deferred by design: resolve_merge_route's use_prefix_cache arm returns above the D-02 rejection; merge_mode='memory' under --use-prefix-cache warns but is never rejected — needs its own behaviour-change decision | open |  | 2026-10-08T15:02:14.517Z |  |
 | 15 | 03 | unrun-verify | pyo3/src/database.rs | 1457 | MERGE-04 residual: PyDatabase::merge no longer emits 'Failed to save merged database to {}' (save folded into merge); no Python-level assertion covers the semantic change because installed pyrustkmer.so is prebuilt | open |  | 2026-10-08T15:02:29.985Z |  |
 | 16 | 03 | unrun-verify | pyo3/src/database.rs | 1457 | Plan 03-12: PyDatabase.merge now rejects cross-input k-mer-size/canonical mismatches (CR-03 fix) via inheritance through merge_databases_to_path -> merge_prologue with zero pyo3 edits; the PyRuntimeError manifestation is verified by call-graph inspection and pyo3 clippy compile only, not pytest — the maturin python-source blocker (WINDOWS.md entries 4/5/11) makes every pyo3 pytest run impossible this phase | open |  | 2026-10-08T17:09:14.524Z |  |
-| 17 | 03 | unmet-truth | src/database/prefix_cache_merge.rs | 800 | merge_single_prefix_streaming assumes ascending shard runs; post-03-16 a non-canonical input's shard under a mixed-canonical merge can be non-ascending, so mixed-canonical output is only proven correct on the auto/hashmap path (merge_mode=streaming or >threshold buckets still wrong) | open |  | 2026-10-09T05:23:24.392Z |  |
+| 17 | 03 | unmet-truth | src/database/prefix_cache_merge.rs | 800 | merge_single_prefix_streaming assumes ascending shard runs; post-03-16 a non-canonical input's shard under a mixed-canonical merge can be non-ascending, so mixed-canonical output is only proven correct on the auto/hashmap path (merge_mode=streaming or >threshold buckets still wrong) | fixed | Closed in plan 03-17 (03-VERIFICATION round-3 gaps[0]): ExternalSortMerger::new forces the sorting (hashmap) per-bucket writer for mixed-canonical header sets (log::warn override), and merge_single_prefix_streaming refuses adjacent descending runs at both record-consumption sites — mixed-canonical output is ascending, summed, and exactly queryable on BOTH bucket writers; the streaming arm of mixed_canonical_prefix_cache_output_is_ascending_summed_and_queryable pins it RED->GREEN. | 2026-10-09T05:23:24.392Z | 2026-10-09T12:01:10.226Z |
 | 18 | 03 | lint-warning | src/cli/commands/count.rs |  | cargo fmt --check fails on 4 phase-03-untouched files (21 hunks: count.rs, merge_bounded_memory_tests.rs, merge_cleanup_tests.rs, parallel_count_tests.rs) - pre-existing rustfmt version drift; all 03-16 touched files fmt-clean | open |  | 2026-10-09T05:23:24.458Z |  |
 
 ````json
@@ -251,10 +251,10 @@ last_updated: 2026-10-09T05:23:31.385Z
     "file": "src/database/prefix_cache_merge.rs",
     "line": 800,
     "description": "merge_single_prefix_streaming assumes ascending shard runs; post-03-16 a non-canonical input's shard under a mixed-canonical merge can be non-ascending, so mixed-canonical output is only proven correct on the auto/hashmap path (merge_mode=streaming or >threshold buckets still wrong)",
-    "status": "open",
-    "reason": "",
+    "status": "fixed",
+    "reason": "Closed in plan 03-17 (03-VERIFICATION round-3 gaps[0]): ExternalSortMerger::new forces the sorting (hashmap) per-bucket writer for mixed-canonical header sets (log::warn override), and merge_single_prefix_streaming refuses adjacent descending runs at both record-consumption sites - mixed-canonical output is ascending, summed, and exactly queryable on BOTH bucket writers; the streaming arm of mixed_canonical_prefix_cache_output_is_ascending_summed_and_queryable pins it RED->GREEN.",
     "recorded_at": "2026-10-09T05:23:24.392Z",
-    "resolved_at": null,
+    "resolved_at": "2026-10-09T12:01:10.226Z",
     "milestone": "v1.0"
   },
   {
