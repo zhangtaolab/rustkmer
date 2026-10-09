@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Quality** - Establish CI protection, consolidate format logic, and clean library I/O (completed 2026-07-01)
 - [x] **Phase 2: Parallel Counting** - Implement lock-free concurrent counting for multi-core speedup (completed 2026-07-01)
-- [ ] **Phase 3: Memory Safety** - Bounded merge routing and dense k-mer storage
+- [x] **Phase 3: Memory Safety** - Bounded merge routing and dense k-mer storage (completed 2026-10-09)
 - [ ] **Phase 4: Benchmark & Validation** - Reproducible harness and Jellyfish2 comparison on CRR1936095
 
 ## Phase Details
@@ -93,7 +93,7 @@ Plans:
   5. Dense storage maintains correctness — canonicalization and counts match the `u128` path exactly
   6. `pyrustkmer`'s `PyDatabase` merge uses the same bounded path as the CLI
 
-**Plans**: 17/17 plans executed (gap-closure rounds 1-3 done; round 4 opened 2026-10-09: 03-17)
+**Plans**: 17/17 plans complete (gap-closure rounds 1-3 done; round 4 opened 2026-10-09: 03-17)
 
 **Wave 1** *(parallel, no dependencies)*
 
@@ -160,7 +160,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation & Quality | 4/4 | Complete    | 2026-07-01 |
 | 2. Parallel Counting | 5/5 | Complete    | 2026-07-01 |
-| 3. Memory Safety | 17/17 | In Progress | - |
+| 3. Memory Safety | 17/17 | Complete    | 2026-10-09 |
 | 4. Benchmark & Validation | 0/4 | Not started | - |
 
 ## Backlog

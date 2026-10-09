@@ -1,19 +1,20 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 03
-current_phase_name: memory-safety
-status: executing
-stopped_at: "Completed 03-17-PLAN.md (streaming-writer arm of truth 10: mixed-canonical override + descending-run refusal, RED->GREEN on both layers, 439/0, WINDOWS #17 closed)"
-last_updated: "2026-10-09T12:04:28.791Z"
+current_phase: 4
+current_phase_name: Benchmark & Validation
+status: planning
+stopped_at: Phase 03 complete, ready to plan Phase 4
+last_updated: "2026-10-09T12:58:48.853Z"
 last_activity: 2026-10-09
-last_activity_desc: Phase 03 execution started
-state_head: 62f7c4719b42cdc53f15b82c6bd8bfd1618848d0
+last_activity_desc: Phase 03 complete, transitioned to Phase 4
+state_head: bfb02b86166a4baa9caadb2ddc28eff1939c2f85
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 17
   completed_plans: 9
+  percent: 75
 milestone_name: milestone
 ---
 
@@ -21,25 +22,25 @@ milestone_name: milestone
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-30)
+See: .planning/PROJECT.md (updated 2026-10-09)
 
 **Core value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools, from both the CLI and Python.
-**Current focus:** Phase 03 — Memory Safety
+**Current focus:** Phase 4 — Benchmark & Validation (validation of v1 performance on CRR1936095)
 
 ## Current Position
 
-Phase: 03 (memory-safety) — READY TO EXECUTE
-Plan: 3 of 16
-Status: Ready to execute
-Last activity: 2026-10-09 — Phase 03 execution started
+Phase: 4 — Benchmark & Validation
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-09 — Phase 03 complete, transitioned to Phase 4
 
-Progress: [█████████░] 9/11 plans (Phase 03)
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 9
+- Total plans completed: 26
 - Average duration: - min
 - Total execution time: 0.0 hours
 
@@ -53,6 +54,7 @@ Progress: [█████████░] 9/11 plans (Phase 03)
 | 4. Benchmark & Validation | 0/4 | - | - |
 | 01 | 4 | - | - |
 | 02 | 5 | - | - |
+| 03 | 17 | - | - |
 
 **Recent Trend:**
 
@@ -231,6 +233,7 @@ None yet.
 
 - No pyo3 test in phase 3 can be EXECUTED: pyo3/pyproject.toml sets python-source="." with module-name="pyrustkmer" while pyo3/pyrustkmer/ has never existed, so maturin build/develop both refuse (and CI's pyo3-build job runs maturin build, so that job cannot be green as configured); addopts also hard-codes --cov-fail-under=80 against a compiled extension, so every pytest run exits 1 even when green; and .github/workflows/ci.yml has no pyo3 pytest job at all. Consequence: 03-09's admission-model change and 03-10's PyDatabase::merge semantics change both ship with ZERO Python-level verification. One-line fix that would unblock all of it: delete the python-source key from [tool.maturin] (a pure-Rust extension has no Python sources to package). Carried in deferred-items.md + WINDOWS.md with open status.
 - deferred-items.md's IN-02 clippy entry is STALE and should be marked closed: the 4 `useless_borrows_in_formatting` sites it names no longer exist (src/io/fastq.rs:216 writes `self.file_path`, :343 writes `path`, src/io/fasta.rs:56 writes `self.file_path`, and fasta.rs:153 is not a `format!` at all), and `cargo clippy --all-targets -- -D warnings` — the entry's own reproduction command — exits 0. Verified by plan 03-09; the file itself was outside that plan's scope.
+- [Phase 03 UAT 2026-10-09] Partially superseded by the UAT session: the pyo3 extension WAS built and the merge suite EXECUTED 12/12 green (manual PYO3_PYTHON build + RUSTFLAGS dynamic_lookup + manual .so install — see 03-UAT test 22); the maturin/CI structural issues (python-source key, --cov-fail-under, missing CI pytest job) remain open. pyo3 0.27 additionally needs the extension crate's build.rs to call pyo3_build_config::add_extension_module_link_args() — deferred to ROADMAP backlog 999.1.
 
 ## Deferred Items
 
@@ -243,5 +246,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-10-09T12:04:28.706Z
-Stopped at: Completed 03-17-PLAN.md (streaming-writer arm of truth 10: mixed-canonical override + descending-run refusal, RED->GREEN on both layers, 439/0, WINDOWS #17 closed)
+Stopped at: Phase 03 complete, ready to plan Phase 4
 Resume file: None
