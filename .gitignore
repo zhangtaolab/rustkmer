@@ -231,3 +231,6 @@ external_sort_*
 # Debug files
 *.tmp
 merged_test*.rkd
+
+# Benchmark harness scratch artifacts (slices, .rkdb, scratch results)
+scripts/bench/scratch/
