@@ -109,6 +109,16 @@ This closes the 03-04 deferred item that flagged 3 prose-level grep hits.
 | `cargo test --lib prefix_cache_merge` | 8 passed, 0 failed (03-13 conservation green under 03-15 re-bucketing) |
 | `cargo clippy --all-targets -- -D warnings` (root + `pyo3`) | **clean** (03-15 round) |
 
+### Measured Results (2026-10-09, post gap-closure 03-16)
+
+| Suite | Result |
+|-------|--------|
+| `cargo test` (full) | **435 passed**, 0 failed (baseline 434 + 1 new mixed-canonical test) |
+| `cargo test --test prefix_cache_output_order_tests` | 3 passed, 0 failed, 0 ignored (new: `mixed_canonical_prefix_cache_output_is_ascending_summed_and_queryable`, plan 03-16 — RED-preprovably fails on the pre-fix tree) |
+| `cargo test --test merge_routing_tests` | 37 passed, 0 failed (03-16 extends `prefix_cache_route_still_merges_mixed_canonical` with a reversed-input-order ANY-canonical header pin) |
+| `cargo clippy --all-targets -- -D warnings` (root + `pyo3`) | **clean** (03-16 round) |
+| `cargo fmt --check` | ⚠ 21 pre-existing drift hunks in 4 files no phase-03 plan touches (rustfmt version drift, same as 03-15 observed); all 03-16-touched files fmt-clean |
+
 ### Per-Task Verification Map
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
@@ -132,6 +142,7 @@ This closes the 03-04 deferred item that flagged 3 prose-level grep hits.
 | 03-13-* | 13 | gap | MERGE-01, MERGE-03 | CR-01, WR-03 | Record-aligned, tail-carrying, error-propagating `read_batch_from_file_sync` + unstranding `VecDeque` k-way merge for prefix-cache streaming; conservation red-proven pre-fix and under 2 targeted mutations | integration | `cargo test --test prefix_cache_conservation_tests` (2) | ✅ | ✅ green |
 | 03-14-* | 14 | gap | MERGE-01 | WR-05 | `validate_merge_compatibility` extracted; CLI merge front-end validates from headers only — materializing loader calls in `merge.rs` 6 → 0, rejection texts preserved | integration | `cargo test --test merge_frontend_validation_tests` (3) | ✅ | ✅ green |
 | 03-15-* | 15 | gap | MERGE-01, DENSE-02 | CR-02 | `get_prefix_4mer` selects the first-4-bases high byte (`(kmer >> 2*(k-4)) & 0xFF`) so bucket order matches output order — `sorted: true` header truthful; IN-07 tautology closed; red evidence recorded pre-fix | unit + integration | `cargo test --test prefix_cache_output_order_tests` (2); `cargo test --lib prefix_cache_merge` (8) | ✅ | ✅ green |
+| 03-16-* | 16 | gap | MERGE-01, DENSE-02 | CR-01 | CR-01/WR-03 one-site fix: `split_files_by_prefix` stores the canonicalized `processed_kmer` (bucket key == sort key == stored key) and propagates canonicalization `Err` (swallowed `unwrap_or` fallback gone, grep 0); mixed-canonical output globally ascending, raw+canonical encodings summed per input-only oracle, `query_kmer` exact, ANY-input canonical header pinned in both input orders; RED evidence (order pair 0xffffffff→0x1000000, conservation 3+5 vs 8) recorded pre-fix | unit + integration | `cargo test --test prefix_cache_output_order_tests` (3); `cargo test --test merge_routing_tests` (37); full `cargo test` 435 | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ partial/flaky*
 
@@ -251,7 +262,15 @@ still compile (Phase 2 D-05 carry-forward).
 
 ## Validation Sign-Off
 
-- [x] All tasks have `<automated>` verify or Wave 0 dependencies — 9/9 tasks (plans 01-05) + 10 gap-closure plans (03-06..03-15), each with per-plan test evidence
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies — 9/9 tasks (plans 01-05) + 11 gap-closure plans (03-06..03-16), each with per-plan test evidence
+
+**Coverage summary (2026-10-09, post 03-16):** **7 of 7 requirements fully covered** (MERGE-01, MERGE-02,
+MERGE-03, MERGE-04, DENSE-01, DENSE-02, DENSE-03). The third gap-closure round (03-16) closed
+fresh-review CR-01: mixed-canonical prefix-cache merges are now ascending, summed, queryable, and
+truthfully headed on the auto/hashmap path. Residuals carried forward: the streaming-writer
+mixed-canonical case (WINDOWS.md #17 + deferred-items.md, Rule 4-scale) and pre-existing fmt drift
+in untouched files (WINDOWS.md #18). MERGE-04 carries the prebuilt-`.so` caveat recorded above and
+in `.planning/WINDOWS.md`.
 
 **Coverage summary (2026-10-09):** **7 of 7 requirements fully covered** (MERGE-01, MERGE-02,
 MERGE-03, MERGE-04, DENSE-01, DENSE-02, DENSE-03). The second gap-closure round (03-12..03-15)
