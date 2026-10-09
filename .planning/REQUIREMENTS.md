@@ -30,10 +30,10 @@ Requirements for this performance milestone. Each maps to a roadmap phase (trace
 
 ### Benchmark / Validation
 
-- [ ] **BENCH-01**: A reproducible benchmark harness measures counting and merge wall-clock time and peak memory, runnable in CI as a regression gate
+- [x] **BENCH-01**: A reproducible benchmark harness measures counting and merge wall-clock time and peak memory, runnable in CI as a regression gate
 - [ ] **BENCH-02**: rustkmer matches or beats **Jellyfish2** on counting speed on the CRR1936095 human-scale dataset, under fair methodology (cold cache, decompression counted, matched k / canonicalization / input settings)
 - [ ] **BENCH-03**: The benchmark reports peak memory alongside wall-clock, so memory wins (not just speed) are visible
-- [ ] **BENCH-04**: The harness degrades gracefully to a slice or synthetic input on machines without the full CRR1936095 dataset, so CI can still run
+- [x] **BENCH-04**: The harness degrades gracefully to a slice or synthetic input on machines without the full CRR1936095 dataset, so CI can still run
 
 ### Foundation / Quality
 
@@ -98,10 +98,10 @@ Explicitly excluded from this milestone. Documented to prevent scope creep.
 | DENSE-01 | Phase 3 | Complete |
 | DENSE-02 | Phase 3 | Complete |
 | DENSE-03 | Phase 3 | Complete |
-| BENCH-01 | Phase 4 | Pending |
+| BENCH-01 | Phase 4 | Complete |
 | BENCH-02 | Phase 4 | Pending |
 | BENCH-03 | Phase 4 | Pending |
-| BENCH-04 | Phase 4 | Pending |
+| BENCH-04 | Phase 4 | Complete |
 
 **Coverage:**
 
