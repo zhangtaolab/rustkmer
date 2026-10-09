@@ -65,6 +65,11 @@ yarn-error.log*
 !tests/fixtures/golden_*.rkdb
 !tests/fixtures/legacy_v2_offset42.rkdb
 
+# Benchmark harness time-output fixtures (plan 04-01) — real captured
+# /usr/bin/time bytes pinned by unit tests; committed despite blanket *.txt.
+!scripts/bench/tests/fixtures/time_l_macos.txt
+!scripts/bench/tests/fixtures/time_v_linux.txt
+
 # Examples output and data
 examples/output/
 examples/data/*.fa
