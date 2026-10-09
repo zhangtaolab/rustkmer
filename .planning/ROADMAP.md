@@ -142,14 +142,14 @@ Plans:
   3. The benchmark reports peak memory alongside wall-clock — memory wins (not just speed) are visible and validated
   4. The harness degrades gracefully to a slice or synthetic input on machines without the full CRR1936095 dataset — CI can run without the full 5.2 GB data
 
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
 
-- [ ] 04-01: Build reproducible benchmark harness with wall-clock and peak memory measurement
-- [ ] 04-02: Implement fair comparison methodology against Jellyfish2 (cold cache, matched settings)
-- [ ] 04-03: Add graceful degradation for CI environments without full CRR1936095 dataset
-- [ ] 04-04: Run milestone validation on CRR1936095 and generate performance report
+- [ ] 04-01-PLAN.md — Harness core: stdlib measurement (wall + peak RSS both platforms), results schema, deterministic synthetic generator, degradation ladder (full/slice/synthetic), dead-infra deletion (Wave 1; BENCH-01, BENCH-03, BENCH-04)
+- [ ] 04-02-PLAN.md — Jellyfish2 fair-comparison methodology: matched BenchmarkConfig argv matrix, count-parity gate, interleaved cold-cache protocol, disk guardrail (Wave 2; depends 04-01; BENCH-02)
+- [ ] 04-03-PLAN.md — CI regression gate: compare.py thresholds (25% wall / 15% RSS), benchmark.yml ubuntu+macOS matrix, per-platform committed baselines + CI-artifact bootstrap (Wave 2; depends 04-01; BENCH-01, BENCH-04)
+- [ ] 04-04-PLAN.md — Milestone validation on CRR2044018 (user-approved substitute for missing CRR1936095): slice parity pilot, full k=31/k=21 runs, mechanically rendered report (Wave 3; depends 04-01..04-03; BENCH-02, BENCH-03)
 
 ## Progress
 
