@@ -53,6 +53,17 @@
 //!    asserted-absent negative), and carries `canonical: true` under
 //!    ANY-input semantics — true iff at least one input is canonical, here
 //!    pinned with input[0] NON-canonical.
+//! 4. The STREAMING-writer arm of the mixed-canonical proof (plan 03-17,
+//!    closing 03-VERIFICATION round-3 gaps[0]): the same fixture merged
+//!    with `merge_mode: "streaming"` still produces ascending,
+//!    oracle-summed, exactly-queryable output under a truthful
+//!    `sorted: true` header — because `ExternalSortMerger::new` detects the
+//!    mixed-canonical header set and forces the sorting (hashmap)
+//!    per-bucket writer, while `merge_single_prefix_streaming` refuses
+//!    descending shard runs as the record-level backstop. Pre-03-17 this
+//!    configuration emitted key `0x000000` twice (un-summed 5 + 3) under
+//!    the same header and `query_kmer` answered `Some(5)` where the oracle
+//!    holds `Some(8)`.
 //!
 //! No `mod common;` — the fixtures are self-contained and mirror
 //! `tests/prefix_cache_conservation_tests.rs`'s `use` list.
@@ -91,12 +102,29 @@ const DISCRIMINATOR_LARGE: u128 = 0x010000;
 /// intent requires the full-width `0xFFFFFFFF` literal.)
 const ALL_T_RAW: u128 = 0xFFFF_FFFF;
 
-/// A prefix-cache merge config (tiny inputs take the per-bucket hashmap
-/// strategy under "auto" — irrelevant here: ordering is the concatenation
-/// concern and every bucket writer emits ascending).
-fn prefix_cache_config(temp_dir: &std::path::Path) -> MergeConfig {
+/// A prefix-cache merge config with an explicit per-bucket `merge_mode`.
+///
+/// Writer-contract note (03-17, correcting this helper's earlier claim that
+/// ordering was a concatenation-only concern because each bucket writer
+/// emits ascending output — false for the streaming writer on
+/// mixed-canonical input): the ordering
+/// guarantee holds on every configuration this route admits, but for two
+/// different reasons. The hashmap ("memory") bucket writer folds a bucket's
+/// shards into a map and sorts by key, so its output is ascending
+/// regardless of shard order. The streaming bucket writer is a k-way merge
+/// that REQUIRES each shard to be a non-decreasing run — and a
+/// mixed-canonical merge's non-canonical input stores canonicalized keys in
+/// raw stream order, which need not be ascending. Such merges therefore
+/// force the hashmap writer (`ExternalSortMerger::new`'s mixed-canonical
+/// override, plan 03-17), and the streaming writer refuses descending runs
+/// outright (03-17's record-level backstop). The streaming arm of
+/// `mixed_canonical_prefix_cache_output_is_ascending_summed_and_queryable`
+/// pins exactly that: a streaming-mode merge of mixed-canonical inputs
+/// succeeds correctly through the override.
+fn prefix_cache_config(temp_dir: &std::path::Path, merge_mode: &str) -> MergeConfig {
     MergeConfig {
         use_prefix_cache: true,
+        merge_mode: merge_mode.to_string(),
         temp_dir: temp_dir.to_path_buf(),
         ..Default::default()
     }
@@ -303,7 +331,7 @@ fn prefix_cache_output_is_globally_sorted_and_queries_correctly() -> anyhow::Res
     let out = work.path().join("merged_prefix_cache.rkdb");
     RKDatabase::merge_databases_to_path(
         &[a_path, b_path],
-        &prefix_cache_config(work.path()),
+        &prefix_cache_config(work.path(), "auto"),
         &out,
     )?;
     let db = RKDatabase::from_file_path(&out)?;
@@ -395,7 +423,7 @@ fn prefix_cache_answers_match_the_inmemory_route() -> anyhow::Result<()> {
     let out_prefix_cache = work.path().join("parity_prefix_cache.rkdb");
     RKDatabase::merge_databases_to_path(
         &[a_path.clone(), b_path.clone()],
-        &prefix_cache_config(work.path()),
+        &prefix_cache_config(work.path(), "auto"),
         &out_prefix_cache,
     )?;
     let prefix_cache_db = RKDatabase::from_file_path(&out_prefix_cache)?;
@@ -469,8 +497,9 @@ fn mixed_canonical_prefix_cache_output_is_ascending_summed_and_queryable() -> an
 
     let out = work.path().join("merged_prefix_cache_mixed_order.rkdb");
     RKDatabase::merge_databases_to_path(
-        &[a_path, b_path],
-        &prefix_cache_config(work.path()),
+        // cloned so the streaming arm below can merge the SAME fixture
+        &[a_path.clone(), b_path.clone()],
+        &prefix_cache_config(work.path(), "auto"),
         &out,
     )?;
     let db = RKDatabase::from_file_path(&out)?;
@@ -539,6 +568,97 @@ fn mixed_canonical_prefix_cache_output_is_ascending_summed_and_queryable() -> an
         db.header.canonical,
         "mixed-canonical output header must be canonical (ANY-input semantics; \
          input[0] is NON-canonical)"
+    );
+
+    // ------------------------------------------------------------------
+    // 03-17: the STREAMING-writer arm — the SAME fixture, merge_mode
+    // "streaming". Pre-03-17 this configuration reproduced the round-3
+    // verifier's corruption (03-VERIFICATION.md gaps[0]): key 0x000000
+    // emitted twice (counts 5 and 3, un-summed), non-ascending output under
+    // the same sorted: true header, total_kmers 11 vs the oracle's 10, and
+    // query_kmer on the all-A key answering Some(5) where the oracle holds
+    // Some(8) — the streaming bucket writer heap-merges assuming ascending
+    // shard runs, which a non-canonical input's
+    // canonicalized-keys-in-raw-stream-order shard violates. Plan 03-17
+    // forces the sorting (hashmap) writer for mixed-canonical header sets
+    // in ExternalSortMerger::new, so this arm must hold EVERY assertion the
+    // auto/hashmap arm above holds.
+    let out_streaming = work.path().join("merged_prefix_cache_mixed_streaming.rkdb");
+    RKDatabase::merge_databases_to_path(
+        &[a_path.clone(), b_path.clone()],
+        &prefix_cache_config(work.path(), "streaming"),
+        &out_streaming,
+    )?;
+    let db = RKDatabase::from_file_path(&out_streaming)?;
+
+    // ORDER: strictly ascending across the WHOLE entries vector under a
+    // truthful header.
+    assert!(
+        db.entries.windows(2).all(|w| w[0].kmer < w[1].kmer),
+        "streaming-mode mixed-canonical prefix-cache output must be globally ascending by \
+         encoded u128"
+    );
+    assert!(
+        db.header.sorted,
+        "the streaming-mode header must not claim sorted: true unless it is"
+    );
+
+    // CONTENT: same oracle, same summing — the meet-and-sum key 0x000000 is
+    // ONE record with count 8, never two records 5 and 3.
+    assert_eq!(
+        decode_observations(&db),
+        oracle,
+        "streaming-mode content conservation: every output (kmer, summed count) must equal \
+         the canonicalizing input-only oracle"
+    );
+    assert_eq!(
+        db.header.total_kmers,
+        oracle.len() as u64,
+        "streaming-mode header total_kmers must equal the oracle's unique-k-mer count"
+    );
+
+    // BOUNDARY pin: the first and last output entries equal the oracle
+    // BTreeMap's first and last keys.
+    let oracle_first = *oracle.keys().next().expect("oracle is non-empty");
+    let oracle_last = *oracle.keys().next_back().expect("oracle is non-empty");
+    assert_eq!(
+        db.entries.first().expect("output is non-empty").kmer,
+        oracle_first,
+        "the FIRST streaming-mode output entry must equal the oracle's smallest key"
+    );
+    assert_eq!(
+        db.entries.last().expect("output is non-empty").kmer,
+        oracle_last,
+        "the LAST streaming-mode output entry must equal the oracle's largest key"
+    );
+
+    // QUERY — the consumer proof through the binary-search path (header
+    // sorted: true): exact oracle answers for every key, including the
+    // meet-and-sum key 0x000000 -> Some(8), where the pre-fix tree answered
+    // Some(5).
+    for (kmer, count) in &oracle {
+        let query_string = decode_kmer_u128(*kmer, K as usize);
+        assert_eq!(
+            db.query_kmer(&query_string),
+            Some(*count as u64),
+            "streaming-mode query_kmer must return the oracle count for k-mer {kmer:#010x} \
+             ({query_string})"
+        );
+    }
+
+    // One negative: the same asserted-absent canonical k-mer queries to
+    // None on the streaming-mode output.
+    assert_eq!(
+        db.query_kmer(&decode_kmer_u128(absent_canonical, K as usize)),
+        None,
+        "an absent canonical k-mer must query to None on the streaming-mode output"
+    );
+
+    // HEADER: ANY-input canonical semantics on the streaming arm too.
+    assert!(
+        db.header.canonical,
+        "streaming-mode mixed-canonical output header must be canonical (ANY-input \
+         semantics; input[0] is NON-canonical)"
     );
 
     Ok(())
