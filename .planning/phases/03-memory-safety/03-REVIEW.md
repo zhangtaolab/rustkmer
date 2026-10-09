@@ -1,138 +1,138 @@
 ---
 phase: 03-memory-safety
-reviewed: 2026-10-09T14:40:00Z
+reviewed: 2026-10-09T12:18:13Z
 depth: standard
-files_reviewed: 3
+files_reviewed: 2
 files_reviewed_list:
   - src/database/prefix_cache_merge.rs
-  - tests/merge_routing_tests.rs
   - tests/prefix_cache_output_order_tests.rs
 findings:
-  critical: 1
-  warning: 5
+  critical: 0
+  warning: 6
   info: 9
   total: 15
 status: issues_found
 ---
 
-# Phase 3: Code Review Report (gap-closure round, plan 03-16)
+# Phase 3: Code Review Report (streaming-writer gap-closure round, plan 03-17)
 
-**Reviewed:** 2026-10-09T14:40:00Z
+**Reviewed:** 2026-10-09T12:18:13Z
 **Depth:** standard
-**Files Reviewed:** 3
+**Files Reviewed:** 2
 **Status:** issues_found
 
 ## Summary
 
-Incremental review of the delta since `6b878b7` (commits b0b4189..9cd7795, plan 03-16): the one-site CR-01 fix in `split_files_by_prefix` (canonicalize before bucketing, store the canonicalized `processed_kmer` in the shard, `?` instead of `unwrap_or(entry.kmer)`), the RED-provable mixed-canonical e2e test in `tests/prefix_cache_output_order_tests.rs`, and the ANY-input canonical-header pin with corrected comment in `tests/merge_routing_tests.rs`. This report replaces the 03-12..03-15 round's report; prior findings are traced below. Only the three listed files changed in the range (plus `.planning/` artifacts), so prior line numbers in `src/cli/commands/merge.rs` and `src/database/format.rs` still hold.
+Full re-review of `src/database/prefix_cache_merge.rs` and `tests/prefix_cache_output_order_tests.rs` at standard depth, with cross-file verification of every contract the module depends on (`format.rs` header/`KmerEntry` layout, `DatabaseStreamIterator`, `canonical_kmer_u128` / `reverse_complement_u128`, `temp_lifecycle.rs`, and the sole production caller `merge_databases_prefix_cache_to_path` at `src/database/format.rs:1724-1844`). All 12 unit tests in the module and all 3 integration tests in the order-proof file were run and pass.
 
-**Verified closed by this delta (traced through the code and confirmed empirically, not assumed):**
+**Verified closed by this round's delta (traced through code, not assumed from green tests):**
 
-- Prior **CR-01** — `split_files_by_prefix` now stores the canonicalized key (prefix_cache_merge.rs:308-318), so on the per-bucket **hashmap** writer path the identity bucket key == sort key == stored key holds, the two encodings of one k-mer meet in one bucket and SUM, and index-order concatenation is globally ascending. Confirmed by running the delta's tests (all green) and by a control merge built for this review: mixed-canonical inputs through the hashmap writer produce `[0x00000001/9, 0x000000FF/1]`, ascending, with `query_kmer` returning the summed count.
-- Prior **WR-03** (root cause) — closed by the same fix: the raw-record write is gone (:317), and the ANY-input canonical semantics that the old report flagged as unpinned are now pinned NON-coincidentally in both input orders (merge_routing_tests.rs:1299-1330 asserts `canonical: true` with the NON-canonical input first; prefix_cache_output_order_tests.rs:536-542 pins the same with a content-level oracle).
+- Prior **CR-01** — the streaming bucket writer's mixed-canonical corruption is now double-guarded: `ExternalSortMerger::new` forces the sorting (hashmap) writer when the folded mode is canonical AND any input header is not (`prefix_cache_merge.rs:174-190`), and `merge_single_prefix_streaming` refuses a descending run at both record-consumption sites (`:998-1002`, `:1037-1041`). I traced every path by which a record can leave a shard buffer (initial heap push, main-loop pop, inner-loop duplicate consumption) and each record is validated against its own file's previous key exactly once; on refusal the partially-written merged file is abandoned inside the RAII temp dir, so no corrupt bytes escape. The k-way-merge invariant (each live file holds exactly one heap entry mirroring its buffer front) holds at every push/pop site.
+- Prior **CR-02 / WR-03** — `get_prefix_4mer` selects the HIGH byte (`:1153-1156`, monotone in the key, `saturating_sub` arm correct for k<4), and phase 1 stores the same canonicalized key it bucketed by (`:356-366`). Index-order concatenation is therefore globally ascending and the `sorted: true` header is truthful; pinned end-to-end by the strict `windows(2)` assertions in the order-proof tests.
+- The `read_batch_from_file_sync` partial-record carry (CR-01 of 03-16) is correct across batch boundaries: the tail is retained, only newly read bytes count toward `BATCH_BYTES`, read errors propagate instead of masquerading as EOF.
 
-**Key concern in the new findings:** the fix is only half a fix. Phase 1 appends records to each shard in the input's RAW order while storing CANONICAL keys, so a shard from a NON-canonical input is no longer an ascending run — and `merge_single_prefix_streaming` (the per-bucket writer forced by `merge_mode: "streaming"` and auto-selected for any bucket over the buffer threshold) is a k-way heap merge that REQUIRES ascending runs. For mixed-canonical input it still emits non-ascending, un-summed output under the same unconditional `sorted: true` header — the exact CR-01 damage class, now **empirically demonstrated** (new CR-01 below; the delta's e2e tests use tiny inputs that route to the hashmap writer, so this path is untested). Additionally, the fix's error-propagation half is vacuous: `canonical_kmer_u128` has no error path (new IN-09).
+**The test file is clean.** `tests/prefix_cache_output_order_tests.rs` builds its oracles independently of production merge code, asserts fixture honesty (already-canonical B keys, the differing-high-byte vacuousness guard, the summed all-T/0x000000 fold), and its strict-ascending + `total_kmers` assertions cannot be satisfied by the pre-03-17 duplicate/un-summed shapes. No defects found in it. The two vacuous tests flagged below (IN-11) live in the source file's own `#[cfg(test)]` module.
+
+**No critical findings this round.** The strongest remaining defect is WR-01 (carried): the failed-bucket "PRESERVED for recovery" promise — now also baked into the user-facing abort error this delta added — is voided by the merger's own `Drop` before the caller ever sees the error.
 
 ## Narrative Findings (AI reviewer)
 
-## Critical Issues
-
-### CR-01: The 03-16 canonicalization fix holds only for the hashmap bucket writer — the streaming bucket writer still emits non-ascending, un-summed mixed-canonical output under an unconditional `sorted: true` header
-
-**File:** `src/database/prefix_cache_merge.rs:308-318` (canonicalize-and-append in raw input order), `:482-493` (per-bucket writer selection), `:857-884` and `:893-960` (`merge_single_prefix_streaming`'s k-way merge), `:302-304` (comment claiming both bucket writers sum), `:1264` (`sorted: true` written unconditionally); dispatcher passthrough `src/database/format.rs:1134-1151`; consumer `src/database/format.rs:591-596`
-**Issue:** Phase 1 iterates each input's records in file order and appends the CANONICALIZED key to the shard in that order. For a NON-canonical input in a mixed set (`self.canonical` true), the input is sorted by RAW key, but `canonical_kmer_u128` returns `min(k, revcomp(k))` (src/kmer/canonical.rs:72-82), which can move a record to a completely different position in value order. Concrete pair at k=16: raw `0x000000FF` canonicalizes to itself (high byte `0x00`), raw `0xBFFFFFFF` canonicalizes to `0x00000001` (high byte `0x00`) — raw-ascending order stores the descending run `[0x000000FF, 0x00000001]` in bucket 0x00's shard. The hashmap writer sorts explicitly (`sorted_kmers.sort_by_key`, :778) so it is unaffected, but `merge_single_prefix_streaming` pushes each file's front entry into a `BinaryHeap` and pops assuming each file is an ascending run; its duplicate handling (:946) consumes only CONSECUTIVE duplicates. On a non-ascending shard it emits records out of order and emits non-adjacent duplicate encodings of one k-mer as separate un-summed records — and `concatenate_final_output` still writes `sorted: true` (:1264), so `query_kmer`'s binary search (format.rs:591-596) silently returns wrong counts. **Empirically proven for this review** (scratch crate outside the repo, public API only): mixed-canonical inputs A=`{(0x000000FF,1),(0xBFFFFFFF,7)}` (non-canonical, raw-sorted) and B=`{(0x00000001,2)}` (canonical) merged with `use_prefix_cache: true, merge_mode: "streaming"` produced entries `[0x00000001/2, 0x000000FF/1, 0x00000001/7]` — non-ascending, the two encodings of `0x00000001` un-summed, header `sorted=true total_kmers=3`, and `query_kmer` answered `Some(2)` where the oracle is `Some(9)`. The same inputs through the hashmap writer were correct. Reachability is not exotic: `use_prefix_cache` routes unconditionally to `ExternalSortMerger` (format.rs:1134-1151, only a warning about the dual meaning of `merge_mode`) and passes `merge_mode` through, so `"streaming"` forces this writer for every bucket; under `"auto"`, any bucket whose shards exceed `merge_buffer_mb` MB (floor 1 MB — i.e., any real-scale bucket) selects streaming. The delta's e2e tests exercise only the hashmap writer (prefix_cache_output_order_tests.rs:94-96 acknowledges tiny inputs take the per-bucket hashmap strategy under "auto"), so the defect is untested. The comment at :302-304 ("what lets the bucket writers sum the raw and canonical encodings of one k-mer once they meet in the same bucket") is false for the streaming writer. The WR-04 conservation check cannot catch it either: both sides count the wrongly emitted records.
-**Fix:** Make the stored-key ordering guarantee hold for every writer, or refuse configurations that break it. Options, in order of safety: (a) in `ExternalSortMerger::new` (which already reads every input's header, :135-139) record whether any input is non-canonical while `self.canonical` is true, and force the sorting (hashmap) writer for all buckets in that case, logging why `merge_mode`'s streaming choice is overridden; (b) have `merge_single_prefix_streaming` validate its runs — on the first adjacent descending pair in a shard, fail loudly instead of emitting corrupt order (cheapest guard, converts silent corruption into an error); (c) sort each shard by stored key at finalize (equivalent memory cost to (a) per bucket). Regardless of choice, extend `mixed_canonical_prefix_cache_output_is_ascending_summed_and_queryable` with a `merge_mode: "streaming"` arm (tiny inputs, explicit streaming writer) asserting the same ascending + summed + queryable oracles, so this exact regression cannot recur untested. Also correct the :302-304 comment.
-
 ## Warnings
 
-### WR-01: The failed-bucket "shard files PRESERVED for recovery" promise is voided by RAII Drop the moment the error propagates (carried, still open)
+### WR-01: The failed-bucket "shard files PRESERVED for recovery" promise is voided by RAII Drop before the error reaches the caller (carried, still open; the abort message making the false promise is new this round)
 
-**File:** `src/database/prefix_cache_merge.rs:635-643` (error text promising preservation), `:52-54` and `:503-523` (`should_remove_shards` + "PRESERVED on disk" log), `:1418-1451` (`Drop` removes every tracked shard and closes the `TempDir`); test asserting the wrong moment `:1776-1818`
-**Issue:** When a bucket merge fails, its shards are deliberately kept and the abort error tells the operator they were "PRESERVED for recovery". But the error leaves via `?` while `merger` is still the owning local — `Drop` then runs immediately and, with `keep_intermediate == false`, removes every path in `self.shard_paths` (all shards were registered up front, :272-273) and `TempDir::close()` removes the whole tree. The promised preservation never survives to the caller; only `--keep-intermediate` actually preserves anything. The unit test asserts `shard_path.exists()` while `merger` is still alive, before the `?` propagation triggers `Drop`, so it proves the wrong thing. Unchanged by this delta.
-**Fix:** Either (a) make the promise true — on the error path remove the failed buckets' shard paths from `self.shard_paths` and `keep()` the `TempDir` before returning the error; or (b) stop promising it — reword the error/log to point at `--keep-intermediate`. Either way, extend the test to assert the on-disk state AFTER the merger is dropped.
+**File:** `src/database/prefix_cache_merge.rs:683-691` (abort error promising preservation under a named dir), `:551-571` (`should_remove_shards` decision + "PRESERVED on disk for recovery" log), `:306-307` (every shard path registered up front), `:1510-1543` (`Drop` removes every registered shard then `TempDir::close()` removes the whole tree); sole production caller `src/database/format.rs:1805` (`merger.external_sort_merge(&temp_output)?` drops the merger on return)
+**Issue:** When a bucket merge fails, phase 2 deliberately keeps that bucket's shards and returns an error stating they "were PRESERVED for recovery under '<dir>'". But the error propagates through `external_sort_merge`'s `?` (line 255) to `merge_databases_prefix_cache_to_path`, whose own `?` (format.rs:1805) drops `merger` at function exit. `Drop` then `remove_file`s every path in `self.shard_paths` — which includes exactly the failed buckets' shards, kept precisely so they would survive — and `dir.close()` deletes the entire `rustkmer-merge-<rand>` tree. The directory named in the error does not exist by the time the operator reads it. The 03-17 delta made this worse in one respect: the false promise now ships in the returned `ProcessingError` (not just a mid-flight log line). The unit test `failed_bucket_aborts_the_merge_with_err` (`:2010-2052`) asserts `shard_path.exists()` while `merger` is still alive — before the `?` chain triggers `Drop` — so it proves the wrong moment. Recovery-by-rerun is still possible (the inputs are intact), so no permanent data loss; but the advertised recovery path is unreachable in every default-configuration production flow.
+**Fix:** Either make the promise true or stop making it. (a) In `merge_prefix_buckets`, on the `error_count > 0` path, disarm cleanup before returning: `if let Some(dir) = self.merge_temp_subdir.take() { let kept = dir.keep(); /* name `kept` in the error */ }` — mirroring the `keep_intermediate` arm of `Drop`; the stale-dir sweep (`temp_lifecycle::sweep_stale_merge_dirs`) eventually reclaims it. Or (b) reword the error to state the shards were cleaned up and that `--keep-intermediate` preserves them. Either way, extend `failed_bucket_aborts_the_merge_with_err` to assert the on-disk state AFTER the merger is dropped.
 
-### WR-02: u32 count overflow in prefix-cache bucket merges — debug panic, release wrap; the in-memory route saturates (carried, still open)
+### WR-02: u32 count accumulation can overflow — debug panic, silent wrap in release; the in-memory route saturates (carried, still open)
 
-**File:** `src/database/prefix_cache_merge.rs:734` (hashmap writer `*kmer_counts.entry(kmer).or_insert(0) += count`), `:896` and `:951` (streaming writer `current_count += top.count` / `+= consumed.count`); contrast `src/database/format.rs:1644` (`saturating_add`)
-**Issue:** Both per-bucket merge writers accumulate counts with plain `+=`, so a merged count exceeding `u32::MAX` panics in debug and silently wraps in release. The in-memory route deliberately uses `saturating_add`; the prefix-cache route — selected for merges large enough to be over budget — keeps the weaker behavior where overflow is most reachable. The disposition file records this as deliberately deferred; it remains a live defect in an in-scope file.
-**Fix:** `*e = e.saturating_add(count)` in the hashmap writer and `current_count = current_count.saturating_add(...)` at both streaming sites, matching the in-memory route's policy.
+**File:** `src/database/prefix_cache_merge.rs:782` (`*kmer_counts.entry(kmer).or_insert(0) += count`), `:970` (`current_count += top.count`), `:1043` (`current_count += consumed.count`)
+**Issue:** Both per-bucket writers sum counts with plain `+=`. A merged count exceeding `u32::MAX` panics in debug builds and silently wraps in release — and the WR-04 conservation check cannot catch it, because it compares record COUNTS, not count VALUES; the wrapped value flows straight into the output records under a truthful-looking header. The in-memory merge route deliberately uses `saturating_add`; the prefix-cache route — selected precisely for merges too large for memory, where summing many high-count inputs is most reachable — keeps the weaker arithmetic. The in-code comment (:986-989) records this as deliberately deferred to 03-REVIEW-DISPOSITION.md (WR-02, disposition `open`); it remains a live defect in an in-scope file.
+**Fix:** `*e = e.saturating_add(count)` in the hashmap writer; `current_count = current_count.saturating_add(top.count)` / `.saturating_add(consumed.count)` at both streaming sites — matching the in-memory route's policy.
 
-### WR-04: The CLI `--batch-size` flag is a silent no-op (carried from 03-12..03-15 round; file outside this round's scope, unchanged by the delta)
+### WR-11: The metadata JSON sidecar is written to a path the to-path route guarantees to delete (new this round)
 
-**File:** `src/cli/commands/merge.rs:114-120` (arg declaration), `:141-357` (`execute_merge` never reads it)
-**Issue:** `MergeArgs::batch_size` is documented to users as controlling buffer flush size, but nothing reads it: the splitter's flush threshold is hard-coded `BATCH_SIZE = 10_000` (prefix_cache_merge.rs:277) and the phase-1 stream iterator uses a fixed `500_000` (:289). A user tuning `--batch-size` gets silently identical behavior.
-**Fix:** Wire it through (e.g., thread it into `ExternalSortMerger` for the splitter's flush threshold and/or `config.chunk_size`), or remove the flag.
+**File:** `src/database/prefix_cache_merge.rs:1436-1442` (`output_path.with_extension("json")` write), `:1411-1435` (the metadata block); route handoff `src/database/format.rs:1801-1816` (output written to `<merge-subdir>/external_sort_merge_output.tmp`, only the `.tmp` is renamed to the destination), Drop at `prefix_cache_merge.rs:1510-1543`
+**Issue:** `concatenate_final_output` unconditionally writes a `create_metadata` JSON next to `output_path`. On the only production route, `output_path` is the temp file INSIDE the merger's RAII subdir: the caller renames only the `.rkdb` temp file to the destination, and the merger's `Drop` then deletes the whole subdir — sidecar included. The merged database at its final destination never receives a metadata sidecar; the serialize+write work executes on every merge and its result is guaranteed garbage. With `--keep-intermediate` the sidecar survives, but at a random `rustkmer-merge-<rand>/` path, not next to the output. Either the sidecar is supposed to accompany the output (then it is silently lost — a route-parity defect: databases built via the `save` path do get one, `src/core/database/persistence.rs:77`), or it is not (then the block is dead work).
+**Fix:** Move the sidecar write out of `concatenate_final_output` into `merge_databases_prefix_cache_to_path`, after the rename/copy succeeds, keyed on the FINAL `output_path` (`output_path.with_extension("json")`); or delete the block if merged databases are not meant to carry sidecars.
 
-### WR-05: `--check-compatibility --use-prefix-cache` rejects mixed-canonical input sets that the merge with the same flags accepts (carried; file outside this round's scope, unchanged)
+### WR-12: `ExternalSortMerger::new` panics on an empty input list — public API, unguarded index (new this round; same class as carried WR-06 but a distinct, in-scope site)
 
-**File:** `src/cli/commands/merge.rs:414-423` (front-end skips the canonical check on the prefix-cache route), `:281-317` (the `--check-compatibility` branch runs `validate_compatibility_verbose`, which rejects mixed canonical unconditionally)
-**Issue:** With `--use-prefix-cache`, the pre-flight check prints the skipping notice and then fails with a canonical-mode incompatibility on the same input set the actual merge accepts and merges correctly — the check contradicts the operation it is previewing within a single run.
-**Fix:** Gate the canonical comparison in the `--check-compatibility` branch the same way the front-end pass does (skip/annotate when `args.use_prefix_cache`), so the verdict matches the merge's behavior.
+**File:** `src/database/prefix_cache_merge.rs:129` (`RKDatabase::read_header_of(&input_files[0])`)
+**Issue:** The constructor indexes `input_files[0]` before any guard. `ExternalSortMerger` is re-exported as public API (`src/database/mod.rs:23`) with a `pub fn new`, so any external caller (PyO3 bindings, downstream crates) passing an empty `Vec` gets an index-out-of-bounds panic instead of a `ProcessingError`. The sole in-crate caller guards this itself (format.rs:1738-1742, "WR-06 defence in depth"), but the public constructor remains the panic surface; the project's own gap-closure discipline added exactly this class of guard to the merge entry points.
+**Fix:** At the top of `new`: `if input_files.is_empty() { return Err(crate::error::ProcessingError::new("At least one input database is required")); }`.
 
-### WR-06: `validate_merge_compatibility` panics on an empty input slice (carried; file outside this round's scope, unchanged)
+### WR-13: Zero-length merged buckets are deleted even under `--keep-intermediate`, contradicting the flag's documented "keeps everything" contract (new this round)
 
-**File:** `src/cli/commands/merge.rs:399` (`let first_db_path = &input_paths[0];`)
-**Issue:** The function is `pub` for external tests but indexes `input_paths[0]` before any guard — an empty slice panics instead of returning `Err`. The CLI path is safe only because callers check length first; the core merge spent a gap-closure finding adding exactly this class of guard to every entry point, and the pub extraction reintroduced the unguarded shape.
-**Fix:** Add `if input_paths.is_empty() { return Err(anyhow::anyhow!("At least one input database is required")); }` before the index.
+**File:** `src/database/prefix_cache_merge.rs:1204-1208` (unconditional `let _ = std::fs::remove_file(&prefix_file);` on the empty-file branch); contract stated at `:46-47` ("`keep_intermediate` keeps everything, as its name promises") and `:1238-1240` (the correctly-gated non-empty branch)
+**Issue:** Phase 3 removes a zero-length merged bucket file unconditionally, while every other intermediate removal in the same loop and in `should_remove_shards` is gated on `!self.keep_intermediate`. Both per-bucket writers can legitimately leave an empty merged file (all shards shorter than one 20-byte record), so the branch is reachable. Impact is small (an empty file), but the flag's semantics are stated absolutely in this same file, and the inconsistency invites the next reader to trust the wrong pattern.
+**Fix:** Gate it like the sibling branch: `if !self.keep_intermediate { let _ = std::fs::remove_file(&prefix_file); }` (the warning log can stay unconditional).
+
+### WR-14: No k-mer-size range validation — headers with `kmer_size` in 65..=127 or 0 pass every check, then shift-overflow (debug panic) or silently collapse every canonical key to 0 (new this round)
+
+**File:** `src/database/prefix_cache_merge.rs:129-130` (`kmer_size = first_header.kmer_size as usize`, no range check), `:356-357` (canonicalization with that k), `:1153-1156` (`get_prefix_4mer`'s `kmer >> 2*(k-4)`); sentinel `src/kmer/encoding.rs:326-329` (`reverse_complement_u128` returns 0 for `length > 64`), `MAX_KMER_SIZE_IN_U128 = 64` at `encoding.rs:17`
+**Issue:** `read_header_of` checks only `data_offset` (format.rs:515-520) and `validate_header_compatibility` checks only cross-input equality (format.rs:1875-1877) — and even `DatabaseHeader::validate()` accepts 1..=127 (format.rs:273), wider than the u128 encoding's hard limit of 64. A foreign or corrupt header with k in 65..=127 therefore enters the merge unvalidated, and then: (a) `get_prefix_4mer` computes `kmer >> 128` for k=68+ — panic in debug, shift-amount masked in release so bucketing silently degenerates toward the low-byte shape CR-02 just fixed; (b) far worse, whenever `self.canonical` is true, `reverse_complement_u128`'s `return 0` sentinel makes `canonical_kmer_u128` = `min(kmer, 0)` = 0 for EVERY record — all k-mers collapse to key 0 with counts summed, emitted under a truthful-looking `sorted: true` header with `total_kmers = 1`. k=0 collapses identically (loop runs zero times, rc=0). The crate's own writers cannot produce these headers, but the codebase's stated policy for corrupt files is loud rejection, not silent garbage (cf. the data_offset comment at format.rs:51-56).
+**Fix:** In `ExternalSortMerger::new`, after reading the first header: `if kmer_size == 0 || kmer_size > crate::kmer::encoding::MAX_KMER_SIZE_IN_U128 { return Err(ProcessingError::new(format!("Unsupported k-mer size {kmer_size} (expected 1..=64) for prefix-cache merge"))); }` — and consider tightening `DatabaseHeader::validate()` separately.
 
 ## Info
 
-### IN-01: `merge_prologue` runs twice on the materializing delegating path (carried; file outside this round's scope, unchanged)
+### IN-02: `Drop` logs the wrong directory when `TempDir::close()` fails (carried, still open)
 
-**File:** `src/database/format.rs:1348` (`merge_databases` calls it), `:1367` (delegates to `merge_databases_to_path`), `:1261` (which calls it again)
-**Issue:** The prologue (header reads + stale-dir sweep) executes twice on the materializing path's delegating arms; behaviorally benign within the TTL window, but the documented "single sweep call site covers all three strategies from both entry points" invariant overstates what is guaranteed.
-**Fix:** Let the to-path core own the prologue for the delegating arms (in-memory arm gets its own call), or reword the invariant.
-
-### IN-02: `Drop for ExternalSortMerger` logs the wrong directory when `close()` fails (carried, still open)
-
-**File:** `src/database/prefix_cache_merge.rs:1439-1448`
-**Issue:** After `self.merge_temp_subdir.take()`, the failure log prints `self.shard_dir().display()` — which now reads the already-taken field and falls back to the bare parent `temp_dir`, so the warning names the wrong directory.
-**Fix:** Capture the path before taking (`let path = dir.path().to_path_buf();`) and log that.
+**File:** `src/database/prefix_cache_merge.rs:1531-1541` (`.take()` then `self.shard_dir().display()`), fallback at `:226-231`
+**Issue:** After `self.merge_temp_subdir.take()`, `shard_dir()` falls back to the PARENT `temp_dir`, so the `close()`-failure warning names the parent, not the `rustkmer-merge-<rand>` subdir it failed to remove.
+**Fix:** Capture `dir.path()` before `close()` and log that.
 
 ### IN-03: Phase-1 log claims parallel bucketing; the loop is serial (carried, still open)
 
-**File:** `src/database/prefix_cache_merge.rs:249-253` (log: "Using N worker threads for parallel bucketing"), `:280` (plain serial `for` over `input_files`)
-**Issue:** Only phase 2 uses rayon; the phase-1 progress output misleads an operator about where parallelism applies.
-**Fix:** Reword the log, or parallelize per-file bucketing.
+**File:** `src/database/prefix_cache_merge.rs:283-287` ("Using {} worker threads for parallel bucketing") vs the serial `for` loop at `:314`
+**Issue:** `split_files_by_prefix` logs a worker-thread count but iterates input files serially; `num_workers` is used only in that misleading log. (Phase 2 IS parallel — the false claim is phase-1-specific.)
+**Fix:** Reword the log to describe sequential bucketing (or drop the worker count from it).
 
-### IN-04: Dead duplicate shard readers masked by `#[allow(dead_code)]` (carried, still open)
+### IN-04: Dead duplicate shard readers masked by an impl-level `#[allow(dead_code)]` (carried, still open)
 
-**File:** `src/database/prefix_cache_merge.rs:973-988` (`read_entries_from_file_sync`), `:1382-1397` (`read_entries_from_file`), `:106` (the `#[allow(dead_code)]` that keeps them alive)
-**Issue:** Two byte-identical whole-file `read_to_end` readers with zero callers; if revived they would contradict the bounded-memory discipline (block reads + pending carry) the rest of the file enforces.
-**Fix:** Delete both, or consolidate into one block-based reader if a caller ever materializes.
+**File:** `src/database/prefix_cache_merge.rs:106` (`#[allow(dead_code)]` on the whole impl), `:1065-1080` (`read_entries_from_file_sync`), `:1474-1489` (`read_entries_from_file` — a byte-for-byte duplicate with a `&self` receiver); also the always-true guard `:364` (`prefix < self.num_buckets` after a `& 0xFF` mask)
+**Issue:** Neither reader has any caller in the crate (verified by grep across `src/` and `tests/`); they are near-identical duplicates, and the impl-wide `allow` also masks any FUTURE dead code in the module. `if prefix < self.num_buckets` can never be false (the mask guarantees 0..=255 against 256 buckets).
+**Fix:** Delete both readers (or keep one if a caller lands) and narrow the `#[allow(dead_code)]` to specific items if any legitimately need it; delete the dead `prefix` guard.
 
-### IN-05: Merger's `total_kmers`/`estimated_kmers_per_file` come from the FIRST input only (carried, still open)
+### IN-05: `total_kmers` reflects the FIRST input only; `estimated_kmers_per_file` and `num_threads` are never read (carried, still open)
 
-**File:** `src/database/prefix_cache_merge.rs:156`, `:175-176`, `:212`
-**Issue:** The constructor loops over every input's header for validation but takes the record count only from `input_files[0]`, so the "Total k-mers: X M" banner under-reports every multi-input merge.
-**Fix:** Sum the headers' `total_kmers` (saturating), or relabel the log.
-
-### IN-06: Stale "24 B/k-mer" comments contradict the 96 model the same test file asserts (carried, still open)
-
-**File:** `tests/merge_routing_tests.rs:24-25`, `:64-66`
-**Issue:** The module and `INPUT_KMERS` comments still describe the retired 24 B/k-mer admission model, while `estimated_bytes_per_route_reflects_each_routes_peak` in the same file pins 96 and asserts the old model "must not be back".
-**Fix:** Update both comments to the 96 B/k-mer model (400 kmers → 38,400 bytes estimated).
+**File:** `src/database/prefix_cache_merge.rs:156` (`total_kmers = first_header.total_kmers`), `:210` (`estimated_kmers_per_file: total_kmers`), `:246` ("Total k-mers: {} M" log), `:67` (`num_threads` field, assigned at `:211`, never read — rayon's global pool is used)
+**Issue:** The "Total k-mers" progress line reports input[0]'s record count as if it were the merge total, and `estimated_kmers_per_file` (name says per-file estimate; value is the first file's total) is write-only. Misleading observability on a route whose whole point is large merges.
+**Fix:** Sum `total_kmers` across all read headers, or relabel the log "first input k-mers"; delete the two dead fields or wire them.
 
 ### IN-07: `is_multiple_of` raises the effective MSRV above the documented Rust 1.80+ baseline (carried, still open)
 
-**File:** `src/database/prefix_cache_merge.rs:551`, `:1293`
-**Issue:** `u64::is_multiple_of` stabilized in Rust 1.87; the project documents "Rust 1.80+ stable" and `Cargo.toml` declares no `rust-version`, so a 1.80–1.86 toolchain fails to build with nothing explaining the requirement.
-**Fix:** Add `rust-version = "1.87"` to `Cargo.toml` (and update the documented baseline), or use `% == 0`.
+**File:** `src/database/prefix_cache_merge.rs:599`, `:1385`
+**Issue:** `u64/usize::is_multiple_of` was stabilized in Rust 1.87; CLAUDE.md declares "Rust 1.80+ stable channel" as the project baseline and `Cargo.toml` pins no `rust-version`, so a 1.80..1.86 toolchain fails to compile with an unexplained error.
+**Fix:** Either add `rust-version = "1.87"` to `Cargo.toml` (and update CLAUDE.md), or use `done % 10 == 0` / `processed_kmers % 1_000_000 == 0`.
 
 ### IN-08: Final prefix-cache output is flushed but never fsync'd, unlike every other artifact in the route (carried, still open)
 
-**File:** `src/database/prefix_cache_merge.rs:1316-1317` (`writer.flush()?; drop(writer);` — no `sync_all`)
-**Issue:** The route fsyncs the merged bucket files, the concatenated temp data (:1166), and each bucket writer's output; the FINAL database — the artifact the user keeps — gets only a `BufWriter::flush`, so a crash shortly after success can leave a truncated output.
-**Fix:** Retain/reopen the `File` and `sync_all()` it before returning from `concatenate_final_output`.
+**File:** `src/database/prefix_cache_merge.rs:1408` (`writer.flush()?` only — no `sync_all` on the final output file), contrast `:846`, `:1060`, `:1258` (intermediates all `sync_all`)
+**Issue:** Every intermediate artifact in the route is fsync'd, but the one file the user keeps is not — a crash after flush can leave a truncated/partial final database.
+**Fix:** After `writer.flush()?`, `drop(writer)` then `File::open(output_path)?.sync_all()` — or restructure to hold the `File` and `sync_all()` before dropping.
 
-### IN-09: The 03-16 error-propagation claim is vacuous — `canonical_kmer_u128` has no error path (new this round)
+### IN-09: The 03-16 "canonicalization failure propagates with `?`" claim is vacuous (carried, still open)
 
-**File:** `src/database/prefix_cache_merge.rs:304-312` (comment + `?`), `src/kmer/canonical.rs:72-82` (`Ok(if kmer_encoded <= rev_comp { ... })` — unconditionally `Ok`)
-**Issue:** The new comment states "A canonicalization failure propagates with `?`, aborting the merge loudly — the pre-fix swallowed-error fallback silently substituted the raw key (T-03-53/T-03-54)". But `canonical_kmer_u128` returns `Ok(...)` unconditionally; it cannot fail, so the `?` can never fire and the pre-fix `.unwrap_or(entry.kmer)` was equally dead code. The change is harmless (and defensive if the function ever becomes fallible), but the "closed a swallowed-error hole" claim in the comment, the commit message, and the threat tags describes a failure mode that cannot occur through this function — future maintainers will trace a phantom fix.
-**Fix:** Either soften the comment to "propagates the error if canonicalization ever becomes fallible" and drop the T-03-53/T-03-54 attribution, or make the vacuousness explicit (`canonical_kmer_u128` is currently infallible; the `?` is future-proofing).
+**File:** `src/database/prefix_cache_merge.rs:350-357` (comment + `?`); `src/kmer/canonical.rs:72-82` (`canonical_kmer_u128` always returns `Ok`)
+**Issue:** `canonical_kmer_u128` has no error path, so the `?` at line 357 can never fire and the comment's error-propagation story is documentation of a guard that does not exist.
+**Fix:** Reword the comment to state canonicalization is infallible for validated k, or make `canonical_kmer_u128` return `Err` for `k == 0 || k > 64` (which would also harden WR-14).
+
+### IN-10: A streaming-writer refusal aborts the whole merge with no fallback and no remediation hint (new this round)
+
+**File:** `src/database/prefix_cache_merge.rs:957-965` (refusal error text), `:530-541` (auto-mode dispatch with no post-refusal fallback), `:683-691` (any single bucket failure aborts)
+**Issue:** For same-mode inputs no header check can gate (e.g., a large UNsorted non-canonical database — `sorted: false` files are legal), auto mode selects the streaming writer for any bucket over the buffer threshold, the record-level backstop refuses it, and the entire merge fails — although the hashmap writer could complete it correctly. The T-03-57 trade-off is documented and refusing beats corrupting, but neither the refusal message nor the abort error tells the operator the one-flag workaround (`--merge-mode memory`).
+**Fix:** Append a remediation line to `descending_run_err` ("re-run with --merge-mode memory to use the sorting per-bucket writer"), or catch the refusal in the auto branch only and retry that bucket with `merge_single_prefix_hashmap`.
+
+### IN-11: Two vacuous tests in the module's test module (new this round)
+
+**File:** `src/database/prefix_cache_merge.rs:1564-1568` (`test_merger_structure` asserts only that a `tempfile::tempdir()` path exists — it tests tempfile, not the merger), `:1549-1562` (`test_external_sort_merger_creation` asserts only `is_err()` on two nonexistent paths — any failure cause passes)
+**Issue:** `test_merger_structure` proves nothing about the code under test; `test_external_sort_merger_creation` cannot distinguish "file not found" from a genuine constructor-contract rejection. Pure test noise in an otherwise high-discipline suite.
+**Fix:** Delete `test_merger_structure`; in the creation test, assert the error message mentions the missing file (e.g., `assert!(err.to_string().contains("test1.rkdb"))`).
 
 ---
 
-_Reviewed: 2026-10-09T14:40:00Z_
+_Reviewed: 2026-10-09T12:18:13Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
