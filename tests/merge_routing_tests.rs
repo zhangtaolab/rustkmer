@@ -1293,20 +1293,39 @@ fn prefix_cache_route_still_merges_mixed_canonical() -> anyhow::Result<()> {
         temp_dir: work.path().to_path_buf(),
         ..routing_config(work.path(), HUGE_BUDGET_BYTES, "auto")
     };
-    RKDatabase::merge_databases_to_path(&[a_path.clone(), b_path], &config, &out)
+    RKDatabase::merge_databases_to_path(&[a_path.clone(), b_path.clone()], &config, &out)
         .expect("the prefix-cache route must still merge mixed canonical modes");
 
-    // The output header's canonical mode equals input[0]'s — the documented
-    // convert-to-canonical semantics of `validate_header_compatibility`.
+    // The output header's canonical flag follows ANY-input semantics —
+    // `ExternalSortMerger::new` folds `has_canonical` from EVERY input
+    // header (true iff at least one input is canonical), not input[0]'s
+    // mode. After the 03-16 fix the output content is genuinely canonical
+    // too: `split_files_by_prefix` stores the canonicalized `processed_kmer`
+    // (CR-01), so the flag and the records agree.
     let out_header = RKDatabase::read_header_of(&out)?;
     let in0_header = RKDatabase::read_header_of(&a_path)?;
     assert_eq!(
         out_header.canonical, in0_header.canonical,
-        "the prefix-cache output header must claim input[0]'s canonical mode"
+        "the prefix-cache output header must be canonical — input[0] (a) is, \
+         and the flag folds ANY input"
     );
     assert!(
         out.exists(),
         "the capability merge must have written its output"
+    );
+
+    // ANY-input semantics pinned NON-coincidentally: the REVERSED input
+    // order puts the NON-canonical input first — the order under which an
+    // input[0]-mode claim would predict `false` — and the output header
+    // must still report `canonical: true` (03-16).
+    let out2 = work.path().join("merged_prefix_cache_mixed_rev.rkdb");
+    RKDatabase::merge_databases_to_path(&[b_path, a_path], &config, &out2)
+        .expect("the prefix-cache route must still merge mixed canonical modes (reversed)");
+    let out2_header = RKDatabase::read_header_of(&out2)?;
+    assert!(
+        out2_header.canonical,
+        "reversed input order (input[0] NON-canonical): the output header must \
+         still be canonical — ANY-input semantics"
     );
 
     Ok(())
