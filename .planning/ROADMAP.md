@@ -93,7 +93,7 @@ Plans:
   5. Dense storage maintains correctness — canonicalization and counts match the `u128` path exactly
   6. `pyrustkmer`'s `PyDatabase` merge uses the same bounded path as the CLI
 
-**Plans**: 16/16 plans executed (gap-closure rounds 1-2 done; round 3 opened 2026-10-09: 03-16)
+**Plans**: 16/17 plans executed (gap-closure rounds 1-3 done; round 4 opened 2026-10-09: 03-17)
 
 **Wave 1** *(parallel, no dependencies)*
 
@@ -126,6 +126,10 @@ Plans:
 
 - [x] 03-16-PLAN.md — **CR-01 / WR-03 root cause**: `split_files_by_prefix` writes the canonicalized bucket key to the shard (bucket key == stored key) and propagates canonicalization errors — closes mixed-canonical content (summed encodings), header semantics (ANY-input), and output order at once; RED-provable mixed-canonical order/conservation/query test plus the corrected ANY-canonical routing pin (Wave 3; depends on 03-15; MERGE-01, DENSE-02)
 
+**Gap Closure Round 4** *(opened 2026-10-09 by `03-VERIFICATION.md` round-3 re-verification — status `gaps_found`, 10/11 truths; truth 10's streaming-writer arm, the only open gap)*
+
+- [ ] 03-17-PLAN.md — **truth 10 streaming arm / round-3 CR-01 residual**: force the sorting (hashmap) per-bucket writer for mixed-canonical merges in `ExternalSortMerger::new` (option a) + per-file ascending-run validation refusing descending runs in `merge_single_prefix_streaming` (option b backstop), the `merge_mode='streaming'` e2e arm on the 03-16 fixture, corrected writer-contract comments, WINDOWS.md #17 / deferred-items closure (Wave 4; depends on 03-16; MERGE-01, DENSE-02)
+
 ### Phase 4: Benchmark & Validation
 
 **Goal**: Reproducible performance measurement and validation against Jellyfish2 on human-scale data
@@ -156,5 +160,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation & Quality | 4/4 | Complete    | 2026-07-01 |
 | 2. Parallel Counting | 5/5 | Complete    | 2026-07-01 |
-| 3. Memory Safety | 16/16 | In Progress | - |
+| 3. Memory Safety | 16/17 | In Progress | - |
 | 4. Benchmark & Validation | 0/4 | Not started | - |
