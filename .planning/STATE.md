@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 04
 current_phase_name: Benchmark & Validation
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-10-09T14:34:50.405Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-10-09T15:00:39.200Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 04 execution started
-state_head: 395c94558b41ea921ce3c573ef8f8b2101836e89
+state_head: 001b95ad72da70ec2e24f6e8b8f704c16ca78d33
 progress:
   total_phases: 4
   completed_phases: 3
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 ## Current Position
 
 Phase: 04 (Benchmark & Validation) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-10-09 — Phase 04 execution started
 
@@ -94,6 +94,7 @@ Progress: [████████░░] 75%
 | Phase 03 P16 | 27min | 3 tasks | 3 files |
 | Phase 03 P17 | 16min | 3 tasks | 4 files |
 | Phase 04 P01 | 15 min | 3 tasks | 15 files |
+| Phase 04 P02 | 16 min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -225,6 +226,10 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-01: mode precedence is --mode > RUSTKMER_BENCH_MODE > size ladder (1 GiB default, injectable); a single resolved input is measured twice honestly rather than fabricating a second input
 - [Phase 04]: 04-01: exact-count self-check (reads x (L-k+1)) scoped to synthetic mode; merge count-conservation and distinct-union assertions run in every mode
 - [Phase 04]: 04-01: blanket .gitignore *.txt rule silently excluded the time fixtures; negation entries added (golden *.rkdb precedent)
+- [Phase 04]: 04-02: comparison protocol engages at --reps >= 2 — multi-rep means both tools; CI's reps=1 synthetic path never needs jellyfish (must_haves satisfied by construction)
+- [Phase 04]: 04-02: hash_size and decompressor join paths in the T-04-03 screen (regex allowlists) — both cross into the single sh -c string from CLI args; screening paths alone would leave the pipe open
+- [Phase 04]: 04-02: -s 10G default commits ~85 GiB RSS even on smoke inputs (jellyfish touches the whole initial hash) — smoke comparisons pass --hash-size 1G; full-scale milestone runs keep the generous 10G fairness default
+- [Phase 04]: 04-02: every comparison run asserts count parity on the measured input itself — a timing comparison between tools that counted different things is meaningless; plan's builder sketch omitted -i, kept per args.rs (04-01 Rule 1 repeat)
 
 ### Pending Todos
 
@@ -250,6 +255,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-09T14:34:50.310Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-10-09T15:00:28.582Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
