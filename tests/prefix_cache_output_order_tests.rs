@@ -228,9 +228,20 @@ fn build_mixed_canonical_inputs(
     let a_path = dir.join("mixed_input_a.rkdb");
     a.to_file_path(&a_path)?;
 
-    // Canonical keys (header canonical=true).
-    let b_pairs: Vec<(u128, u32)> =
-        vec![(0x000000, 5), (0x000001, 9), (0x010001, 11), (0x400000, 4)];
+    // Canonical keys (header canonical=true). 0x0100_0000 is a TRUE
+    // high-byte-0x01 key at k=16 (a full 32-bit literal — the plan's
+    // 24-bit literals `0x010000`/`0x400000` all have high byte 0x00, so
+    // without it every record collapses into bucket 0x00 and the
+    // concatenation boundary is never exercised); it makes bucket 0x01
+    // non-empty so the raw all-T key's misplacement into bucket 0x00 is
+    // RED-provable as an ORDER violation, not just a content one.
+    let b_pairs: Vec<(u128, u32)> = vec![
+        (0x000000, 5),
+        (0x000001, 9),
+        (0x010001, 11),
+        (0x400000, 4),
+        (0x0100_0000, 13),
+    ];
     let b = RKDatabase::from_kmer_pairs(b_pairs.clone(), K, true, true)?;
     let b_path = dir.join("mixed_input_b.rkdb");
     b.to_file_path(&b_path)?;
