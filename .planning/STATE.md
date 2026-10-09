@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 04
 current_phase_name: Benchmark & Validation
 status: executing
-stopped_at: Phase 03 complete, ready to plan Phase 4
-last_updated: "2026-10-09T14:07:42.430Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-10-09T14:34:50.405Z"
 last_activity: 2026-10-09
-last_activity_desc: Phase 03 complete, transitioned to Phase 4
-state_head: 1dadc0332e109e55c703a98cab5e45922383a8ba
+last_activity_desc: Phase 04 execution started
+state_head: 395c94558b41ea921ce3c573ef8f8b2101836e89
 progress:
   total_phases: 4
   completed_phases: 3
@@ -24,14 +24,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-09)
 
 **Core value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools, from both the CLI and Python.
-**Current focus:** Phase 4 — Benchmark & Validation (validation of v1 performance on CRR1936095)
+**Current focus:** Phase 04 — Benchmark & Validation
 
 ## Current Position
 
-Phase: 04 (Benchmark & Validation) — READY TO EXECUTE
-Plan: Not started
+Phase: 04 (Benchmark & Validation) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-10-09 — Phase 03 complete, transitioned to Phase 4
+Last activity: 2026-10-09 — Phase 04 execution started
 
 Progress: [████████░░] 75%
 
@@ -93,6 +93,7 @@ Progress: [████████░░] 75%
 | Phase 03 P15 | 10min | 2 tasks | 2 files |
 | Phase 03 P16 | 27min | 3 tasks | 3 files |
 | Phase 03 P17 | 16min | 3 tasks | 4 files |
+| Phase 04 P01 | 15 min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -219,6 +220,11 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-17: T-03-57 accepted with rationale — forcing the in-memory per-bucket writer on mixed-canonical merges trades the streaming writer's bounded footprint for correctness on that corner; per-bucket scope (~1/256 of the data), the hashmap writer's own available-memory warning still fires, and the override is loudly logged
 - [Phase 03]: 03-17: The refusal unit test drives merge_single_prefix_streaming DIRECTLY on a raw shard so it stays RED on the post-override tree — proving the override and the refusal are independent layers (headers vs records)
 - [Phase 03]: 03-17: WINDOWS.md frontmatter counts repaired to the true entry census (10/3/5/18, drifted to 11/19) before running windows-fixed — the CLI recomputes and refuses to operate on a disagreeing ledger
+- [Phase 04]: 04-01: count inputs go through -i (num_args 1..) and FASTQ headers carry '@' — the plan's builder sketch failed clap and the bio reader; fixed against args.rs ground truth
+- [Phase 04]: 04-01: bench.py slice extraction streams gunzip -c via pure-subprocess list form (no sh -c) — removes the env-path command-injection surface instead of validating metacharacters
+- [Phase 04]: 04-01: mode precedence is --mode > RUSTKMER_BENCH_MODE > size ladder (1 GiB default, injectable); a single resolved input is measured twice honestly rather than fabricating a second input
+- [Phase 04]: 04-01: exact-count self-check (reads x (L-k+1)) scoped to synthetic mode; merge count-conservation and distinct-union assertions run in every mode
+- [Phase 04]: 04-01: blanket .gitignore *.txt rule silently excluded the time fixtures; negation entries added (golden *.rkdb precedent)
 
 ### Pending Todos
 
@@ -244,6 +250,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-09T12:04:28.706Z
-Stopped at: Phase 03 complete, ready to plan Phase 4
+Last session: 2026-10-09T14:34:50.310Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
