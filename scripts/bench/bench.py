@@ -11,6 +11,11 @@ matched command lines, a --parity-only gate proves the counts equal before
 any timing is trusted, and --reps >= 2 runs the interleaved counterbalanced
 protocol with honestly-recorded per-rep cache_state, medians, and CV%.
 
+04-04 milestone tooling: --merge-input provisions the second slice from a
+second gz input (the r1/r2 merge arrangement), and --skip-merge keeps a run
+to the counting comparison — the full-scale runs measure counting only;
+merge wall/RSS is measured at slice scale (plan 04-04 must_haves).
+
 Every headline number comes from a --release binary (never a debug build) and
 from OS rusage accounting (never a harness-internal clock). Python 3.10+
 stdlib only — no third-party imports, no pip installs.
@@ -373,6 +378,27 @@ def resolve_mode(explicit_mode, input_arg, env,
     return "slice", inputs
 
 
+def merge_input_for(mode, merge_input):
+    """Validate --merge-input against the resolved mode (04-04).
+
+    --merge-input is a slice-mode-only knob: it names the SECOND gz input
+    (the r2 side of the r1/r2 merge arrangement) whose slice joins the run.
+    Returns the validated Path, or None when no merge input was given.
+    Raises ValueError for a non-slice mode or a missing file — never a
+    silent ignore.
+    """
+    if merge_input is None:
+        return None
+    if mode != "slice":
+        raise ValueError(
+            f"--merge-input is only supported in slice mode (resolved mode "
+            f"is {mode!r})")
+    path = Path(merge_input)
+    if not path.is_file():
+        raise ValueError(f"--merge-input not found or not a file: {path}")
+    return path
+
+
 def extract_slice(gz_path, n_reads, output_path):
     """Write the first n_reads (4 lines each) of gunzip -c output to a file.
 
@@ -408,14 +434,23 @@ def extract_slice(gz_path, n_reads, output_path):
             f"gunzip failed rc={proc.returncode} on {gz_path}")
 
 
-def provision_slice(resolved_inputs, slice_reads, scratch):
+def provision_slice(resolved_inputs, slice_reads, scratch, merge_input=None):
     """Provision two slice inputs (first two resolved sources; a single
-    source is extracted once and measured twice)."""
+    source is extracted once and measured twice).
+
+    merge_input (04-04): provision the second slice from this gz path
+    instead — the r1/r2 arrangement the milestone merge measurement uses
+    (slice A from --input, slice B from --merge-input, same --slice-reads).
+    """
     if not resolved_inputs:
         raise RuntimeError("slice mode requires a resolved input")
     scratch.mkdir(parents=True, exist_ok=True)
-    srcs = resolved_inputs[:2] if len(resolved_inputs) >= 2 \
-        else [resolved_inputs[0], resolved_inputs[0]]
+    if merge_input is not None:
+        srcs = [resolved_inputs[0], Path(merge_input)]
+    elif len(resolved_inputs) >= 2:
+        srcs = resolved_inputs[:2]
+    else:
+        srcs = [resolved_inputs[0], resolved_inputs[0]]
     slices = []
     extracted = {}
     for i, src in enumerate(srcs):
@@ -557,6 +592,10 @@ def run_parity(input_path, k, threads, rustkmer, scratch,
 def run_parity_cli(args):
     """--parity-only: provision one input via the ladder, then run_parity."""
     mode, resolved_inputs = resolve_mode(args.mode, args.input, os.environ)
+    # Validation only — run_parity measures inputs[0]; a --merge-input given
+    # alongside --parity-only must still be a legal slice-mode value rather
+    # than being silently ignored.
+    merge_input_for(mode, args.merge_input)
     scratch = Path(args.out).parent
     scratch.mkdir(parents=True, exist_ok=True)
     if mode == "synthetic":
@@ -761,8 +800,13 @@ def run_bench(args):
     if mode == "synthetic":
         inputs = provision_synthetic(args.reads, scratch)
     elif mode == "slice":
-        inputs = provision_slice(resolved_inputs, args.slice_reads, scratch)
+        merge_src = merge_input_for(mode, args.merge_input)
+        inputs = provision_slice(resolved_inputs, args.slice_reads, scratch,
+                                 merge_input=merge_src)
     else:
+        if args.merge_input is not None:
+            # Fail loudly rather than silently ignoring the r2 input.
+            merge_input_for(mode, args.merge_input)
         inputs = provision_full(resolved_inputs)
     db_a = scratch / "db_count-A.rkdb"
     db_b = scratch / "db_count-B.rkdb"
@@ -790,9 +834,12 @@ def run_bench(args):
              "cmd": rustkmer_count_cmd(cfg_b, db_b, args.rustkmer)},
             {"name": "jellyfish-count-A", "tool": "jellyfish", "out": jf_a,
              "cmd": jellyfish_count_cmd(cfg_a, jf_a)},
-            {"name": "merge", "tool": "rustkmer", "out": db_merged,
-             "cmd": build_merge_cmd(args.rustkmer, db_merged, [db_a, db_b])},
         ]
+        if not args.skip_merge:
+            arm_specs.append(
+                {"name": "merge", "tool": "rustkmer", "out": db_merged,
+                 "cmd": build_merge_cmd(args.rustkmer, db_merged,
+                                        [db_a, db_b])})
         arms, round_sched = run_comparison_protocol(
             arm_specs, args.reps, args.cooldown_s, args.rustkmer)
 
@@ -819,10 +866,12 @@ def run_bench(args):
             measure_arm("count-B",
                         rustkmer_count_cmd(cfg_b, db_b, args.rustkmer),
                         args.reps, args.rustkmer, db_b),
-            measure_arm("merge",
-                        build_merge_cmd(args.rustkmer, db_merged, [db_a, db_b]),
-                        args.reps, args.rustkmer, db_merged),
         ]
+        if not args.skip_merge:
+            arms.append(measure_arm(
+                "merge",
+                build_merge_cmd(args.rustkmer, db_merged, [db_a, db_b]),
+                args.reps, args.rustkmer, db_merged))
 
     if args.self_check:
         # Exact per-input formula holds only for synthetic input (known
@@ -839,19 +888,22 @@ def run_bench(args):
                         f" = {expected_total}")
         merged_total = (by_name["count-A"]["total_kmers"]
                         + by_name["count-B"]["total_kmers"])
-        if by_name["merge"]["total_kmers"] != merged_total:
-            raise RuntimeError(
-                f"self-check: merged total_kmers "
-                f"{by_name['merge']['total_kmers']} != sum of inputs "
-                f"{merged_total} (count conservation)")
-        if by_name["merge"]["distinct_kmers"] < max(
-                by_name["count-A"]["distinct_kmers"],
-                by_name["count-B"]["distinct_kmers"]):
-            raise RuntimeError(
-                "self-check: merged distinct_kmers "
-                f"{by_name['merge']['distinct_kmers']} < max input distinct "
-                f"({by_name['count-A']['distinct_kmers']}, "
-                f"{by_name['count-B']['distinct_kmers']})")
+        if "merge" in by_name:
+            # Merge assertions apply only when the merge arm ran
+            # (--skip-merge keeps a run to the counting comparison).
+            if by_name["merge"]["total_kmers"] != merged_total:
+                raise RuntimeError(
+                    f"self-check: merged total_kmers "
+                    f"{by_name['merge']['total_kmers']} != sum of inputs "
+                    f"{merged_total} (count conservation)")
+            if by_name["merge"]["distinct_kmers"] < max(
+                    by_name["count-A"]["distinct_kmers"],
+                    by_name["count-B"]["distinct_kmers"]):
+                raise RuntimeError(
+                    "self-check: merged distinct_kmers "
+                    f"{by_name['merge']['distinct_kmers']} < max input "
+                    f"distinct ({by_name['count-A']['distinct_kmers']}, "
+                    f"{by_name['count-B']['distinct_kmers']})")
 
     params = {
         "k": args.k,
@@ -947,6 +999,14 @@ def main():
                         help="count the same input with rustkmer and "
                              "jellyfish, assert equal Distinct/Total, and "
                              "exit before any timing comparison")
+    parser.add_argument("--merge-input", default=None,
+                        help="slice mode only: provision the second slice "
+                             "from this gz input instead of a second resolved "
+                             "input — the r1/r2 merge arrangement (04-04)")
+    parser.add_argument("--skip-merge", action="store_true",
+                        help="omit the merge arm (04-04 full runs are "
+                             "counting comparisons; merge is measured at "
+                             "slice scale)")
     parser.add_argument("--rustkmer", default="target/release/rustkmer",
                         help="path to the rustkmer RELEASE binary")
     args = parser.parse_args()
