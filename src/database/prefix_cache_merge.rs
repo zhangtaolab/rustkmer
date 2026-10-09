@@ -155,6 +155,40 @@ impl ExternalSortMerger {
         let final_canonical = has_canonical;
         let total_kmers = first_header.total_kmers;
 
+        // 03-17 / 03-VERIFICATION round-3 gaps[0].missing[0], option (a):
+        // the mixed-canonical bucket-writer override. A non-canonical
+        // input's shard (post-03-16) stores CANONICALIZED keys in raw
+        // stream order, which need not be ascending — and the streaming
+        // per-bucket writer is a k-way merge that assumes every shard is an
+        // ascending run, so on a mixed-canonical header set it can emit
+        // non-ascending, un-summed output under
+        // `concatenate_final_output`'s unconditional `sorted: true`.
+        // When the folded mode is canonical AND at least one input header
+        // is not, force the sorting (hashmap) per-bucket writer for EVERY
+        // bucket instead; the streaming writer additionally refuses
+        // descending runs at record consumption (option (b), in
+        // `merge_single_prefix_streaming`) as the backstop for inputs no
+        // header check can gate. The override selects the per-bucket writer
+        // ONLY — the merge ROUTE is unchanged (threat T-03-56 mitigated;
+        // the bounded-footprint trade-off is T-03-57, accepted and logged).
+        let non_canonical_count = canonical_modes.iter().filter(|&&mode| !mode).count();
+        let merge_mode = if final_canonical && non_canonical_count > 0 && merge_mode != "memory" {
+            log::warn!(
+                "mixed-canonical merge: {} canonical and {} non-canonical input(s); the \
+                 streaming per-bucket writer is a k-way merge that assumes every shard is an \
+                 ascending run, and a non-canonical input's shard stores canonicalized keys in \
+                 raw stream order, so that assumption is not guaranteed — overriding \
+                 merge_mode '{}' to 'memory' (the sorting per-bucket writer) for every bucket; \
+                 the merge route itself is unchanged",
+                canonical_modes.len() - non_canonical_count,
+                non_canonical_count,
+                merge_mode
+            );
+            "memory".to_string()
+        } else {
+            merge_mode
+        };
+
         // D-06: every shard this merge writes lives under its own
         // `rustkmer-merge-<rand>/` subdir instead of loose in the shared
         // `temp_dir`. Two consequences, both load-bearing:
@@ -291,20 +325,34 @@ impl ExternalSortMerger {
             for chunk_result in stream_iter {
                 let chunk = chunk_result?;
                 for entry in chunk {
-                    // CR-01/WR-03 (03-16): when ANY input is canonical
-                    // (`self.canonical`, folded from every input header by
-                    // `ExternalSortMerger::new`), each record is
-                    // canonicalized BEFORE bucketing — and the shard must
-                    // store that SAME canonicalized value, so bucket key ==
-                    // sort key == stored key. That identity is what makes
-                    // index-order concatenation globally ascending (CR-02's
-                    // construction argument, extended to mixed-canonical
-                    // input) and what lets the bucket writers sum the raw
-                    // and canonical encodings of one k-mer once they meet
-                    // in the same bucket. A canonicalization failure
-                    // propagates with `?`, aborting the merge loudly — the
-                    // pre-fix swallowed-error fallback silently substituted
-                    // the raw key and broke the identity (T-03-53/T-03-54).
+                    // CR-01/WR-03 (03-16); writer contract corrected by
+                    // 03-17 (03-VERIFICATION round-3 gaps[0]): when ANY
+                    // input is canonical (`self.canonical`, folded from
+                    // every input header by `ExternalSortMerger::new`),
+                    // each record is canonicalized BEFORE bucketing — and
+                    // the shard must store that SAME canonicalized value,
+                    // so bucket key == sort key == stored key. That
+                    // identity makes index-order concatenation globally
+                    // ascending INTO THE HASHMAP ("memory") WRITER, which
+                    // folds every shard into a map and sorts by key, so
+                    // shard ORDER is irrelevant to it and it can sum the
+                    // raw and canonical encodings of one k-mer once they
+                    // meet in the same bucket. It does NOT by itself make
+                    // the STREAMING writer's output ascending: that writer
+                    // is a k-way merge requiring each shard to be a
+                    // non-decreasing run, and a non-canonical input's
+                    // shard stores canonicalized keys in raw stream order,
+                    // which need not be ascending. Mixed-canonical merges
+                    // therefore force the hashmap writer via the
+                    // `ExternalSortMerger::new` override 03-17 adds, and
+                    // the streaming writer refuses descending runs at
+                    // record consumption (03-17's option (b)) — the
+                    // sorted-output guarantee holds for every writer by
+                    // construction or by refusal. A canonicalization
+                    // failure propagates with `?`, aborting the merge
+                    // loudly — the pre-fix swallowed-error fallback
+                    // silently substituted the raw key and broke the
+                    // identity (T-03-53/T-03-54).
                     let processed_kmer = if self.canonical {
                         canonical_kmer_u128(entry.kmer, self.kmer_size)?
                     } else {
@@ -1555,6 +1603,101 @@ mod tests {
         )
         .unwrap();
         assert_eq!(small_merger.get_prefix_4mer(0b101101), 0b101101);
+    }
+
+    /// Build two small real `.rkdb` inputs under `dir` with EXPLICIT
+    /// canonical header flags — the canonical-mode mixture (or uniformity)
+    /// the 03-17 `ExternalSortMerger::new` override keys on. k=16,
+    /// sorted=true, mirroring `write_two_real_inputs`' construction.
+    fn write_canonical_mode_inputs(dir: &Path, flags: [bool; 2]) -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+        for (idx, canonical) in flags.iter().enumerate() {
+            let kmers: Vec<(u128, u32)> = (0..50u32)
+                .map(|i| (idx as u128 * 10_000 + i as u128 + 1, i + 1))
+                .collect();
+            let db =
+                RKDatabase::from_kmer_pairs(kmers, 16, *canonical, true).expect("build database");
+            let path = dir.join(format!("mode_unit_input_{idx}.rkdb"));
+            db.write_to_file(&path).expect("write database");
+            paths.push(path);
+        }
+        paths
+    }
+
+    /// 03-17 option (a): on a mixed-canonical input pair (one header
+    /// canonical=true, one canonical=false), `ExternalSortMerger::new`
+    /// overrides the requested per-bucket writer to the sorting (hashmap)
+    /// "memory" writer — for "streaming" AND "auto" — because the
+    /// streaming writer's k-way merge assumes ascending shard runs and a
+    /// non-canonical input's shard (canonicalized keys stored in raw
+    /// stream order) need not be one (03-VERIFICATION round-3 gaps[0]).
+    #[test]
+    fn mixed_canonical_inputs_force_the_sorting_bucket_writer() {
+        let parent = tempfile::tempdir().unwrap();
+        let inputs = write_canonical_mode_inputs(parent.path(), [false, true]);
+
+        for requested in ["streaming", "auto"] {
+            let merger = ExternalSortMerger::new(
+                inputs.clone(),
+                parent.path().to_path_buf(),
+                1024,
+                1,
+                requested.to_string(),
+                false,
+            )
+            .expect("merger over real mixed-canonical inputs");
+            assert_eq!(
+                merger.merge_mode, "memory",
+                "a mixed-canonical merge requested as '{requested}' must force the sorting \
+                 (hashmap) per-bucket writer"
+            );
+        }
+    }
+
+    /// 03-17 option (a), already-"memory" arm: requesting the sorting
+    /// writer explicitly on a mixed-canonical set is idempotent — the
+    /// override keeps it silently (no redundant log).
+    #[test]
+    fn mixed_canonical_inputs_requested_as_memory_stay_memory() {
+        let parent = tempfile::tempdir().unwrap();
+        let inputs = write_canonical_mode_inputs(parent.path(), [false, true]);
+        let merger = ExternalSortMerger::new(
+            inputs,
+            parent.path().to_path_buf(),
+            1024,
+            1,
+            "memory".to_string(),
+            false,
+        )
+        .expect("merger over real mixed-canonical inputs");
+        assert_eq!(
+            merger.merge_mode, "memory",
+            "an explicit 'memory' request must stay 'memory'"
+        );
+    }
+
+    /// 03-17 option (a) CONTROL: the override must not touch
+    /// same-canonical-mode input sets — a requested "streaming" merge
+    /// keeps the streaming writer, preserving the bounded-memory behavior
+    /// outside the mixed-canonical corner (the 03-13 conservation binary
+    /// pins the same property end-to-end on same-mode fixtures).
+    #[test]
+    fn same_mode_inputs_keep_the_requested_streaming_writer() {
+        let parent = tempfile::tempdir().unwrap();
+        let inputs = write_canonical_mode_inputs(parent.path(), [false, false]);
+        let merger = ExternalSortMerger::new(
+            inputs,
+            parent.path().to_path_buf(),
+            1024,
+            1,
+            "streaming".to_string(),
+            false,
+        )
+        .expect("merger over real same-mode inputs");
+        assert_eq!(
+            merger.merge_mode, "streaming",
+            "a same-mode merge requested as 'streaming' must keep the streaming writer"
+        );
     }
 
     /// WR-04 truth table for the one-place shard-removal decision:
