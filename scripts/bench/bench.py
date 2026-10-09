@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""rustkmer benchmark harness core (BENCH-01/03/04).
+"""rustkmer benchmark harness core (BENCH-01/02/03/04).
 
 Measures `rustkmer count` and `rustkmer merge` wall-clock and peak RSS via
 /usr/bin/time, emits a schema-versioned results.json, and sanity-asserts that
 every measured run actually counted k-mers (RESEARCH Pitfall 1: a silent
 zero-count success must abort the harness).
+
+BENCH-02 fairness lives here too: one BenchmarkConfig derives both tools'
+matched command lines, a --parity-only gate proves the counts equal before
+any timing is trusted, and --reps >= 2 runs the interleaved counterbalanced
+protocol with honestly-recorded per-rep cache_state, medians, and CV%.
 
 Every headline number comes from a --release binary (never a debug build) and
 from OS rusage accounting (never a harness-internal clock). Python 3.10+
