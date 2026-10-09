@@ -17,6 +17,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -337,6 +338,133 @@ def provision_full(resolved_inputs):
     return [resolved_inputs[0], resolved_inputs[0]]
 
 
+# --- BENCH-02 parity gate (04-02) --------------------------------------------
+# Exit codes are a contract: 0 parity holds, 1 count mismatch (a methodology
+# finding, never a silent pass), 2 jellyfish required but absent.
+PARITY_MISMATCH_EXIT = 1
+JELLYFISH_MISSING_EXIT = 2
+PARITY_SMOKE_HASH_SIZE = "1G"  # smoke-scale -s; real runs use the 10G default
+
+
+def require_jellyfish():
+    """Exit 2 with an explicit message when jellyfish arms are requested but
+    the binary is not on PATH (shutil.which presence check).
+
+    The CI synthetic path never requests jellyfish arms, so absence there is
+    never an error.
+    """
+    if shutil.which("jellyfish") is None:
+        print("bench.py: jellyfish arms were requested but `jellyfish` is "
+              "not on PATH — install jellyfish 2.3.x (e.g. brew install "
+              "jellyfish) or run without jellyfish arms", file=sys.stderr)
+        sys.exit(JELLYFISH_MISSING_EXIT)
+
+
+def parse_jellyfish_stats(text):
+    """Extract {'distinct': int, 'total': int} from `jellyfish stats` text.
+
+    Pure function pinned to the 2.3.1 output shape (verified verbatim:
+    'Distinct:  24000' / 'Total:     24000'). Text missing either line raises
+    ValueError — a parse that tolerated a missing line would let the parity
+    assertion run against nothing.
+    """
+    distinct = None
+    total = None
+    for line in text.splitlines():
+        m = re.match(r"^Distinct:\s*(\d+)\s*$", line)
+        if m:
+            distinct = int(m.group(1))
+        m = re.match(r"^Total:\s*(\d+)\s*$", line)
+        if m:
+            total = int(m.group(1))
+    if distinct is None:
+        raise ValueError(f"jellyfish stats text has no 'Distinct:' line: "
+                         f"{text!r}")
+    if total is None:
+        raise ValueError(f"jellyfish stats text has no 'Total:' line: "
+                         f"{text!r}")
+    return {"distinct": distinct, "total": total}
+
+
+def run_parity(input_path, k, threads, rustkmer, scratch,
+               hash_size=PARITY_SMOKE_HASH_SIZE):
+    """Count the same input with both tools and prove the counts equal.
+
+    The BENCH-02 correctness gate: runs before any timing comparison is
+    trusted. Parity equality (jellyfish Distinct == rustkmer unique_kmers,
+    jellyfish Total == rustkmer total_kmers, Distinct > 0) exits 0 printing
+    a PARITY OK line; any mismatch exits 1 with both tools' numbers and the
+    N-handling caveat. A mismatch is a methodology finding — real-data parity
+    (N-containing / lowercase reads) is re-proven on the actual slice in
+    04-04 before the full milestone run (RESEARCH Pitfall 10).
+    """
+    require_jellyfish()
+    input_path = Path(input_path)
+    rk_db = scratch / "parity_rustkmer.rkdb"
+    jf_db = scratch / "parity_jellyfish.jf"
+
+    # rustkmer arm: plain list-form invocation; stats via the shared helper.
+    rk_cmd = build_count_cmd(rustkmer, k, threads, rk_db, [input_path])
+    proc = subprocess.run(rk_cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"parity: rustkmer count failed rc="
+                           f"{proc.returncode}: {proc.stderr[-500:]}")
+    rk = stats(rk_db, rustkmer)
+
+    # jellyfish arm: a PLAIN input takes a direct path argument. The
+    # decompression pipe is required only for gz input — jellyfish aborts
+    # with exit 134 on .gz path arguments (RESEARCH Pitfall 3). The 04-02
+    # Task 2 config refactor gives this branch its golden-tested home.
+    if str(input_path).endswith(".gz"):
+        dec = "gzcat" if sys.platform == "darwin" else "gunzip -c"
+        jf_count = ["sh", "-c",
+                    f"{dec} {input_path} | jellyfish count -m {k} "
+                    f"-s {hash_size} -t {threads} -C -o {jf_db} /dev/stdin"]
+    else:
+        jf_count = ["jellyfish", "count", "-m", str(k), "-s", str(hash_size),
+                    "-t", str(threads), "-C", "-o", str(jf_db),
+                    str(input_path)]
+    proc = subprocess.run(jf_count, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"parity: jellyfish count failed rc="
+                           f"{proc.returncode}: {proc.stderr[-500:]}")
+    proc = subprocess.run(["jellyfish", "stats", str(jf_db)],
+                          capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"parity: jellyfish stats failed rc="
+                           f"{proc.returncode}: {proc.stderr[-500:]}")
+    jf = parse_jellyfish_stats(proc.stdout)
+
+    if (jf["distinct"] == rk["unique_kmers"]
+            and jf["total"] == rk["total_kmers"]
+            and jf["distinct"] > 0):
+        print(f"PARITY OK distinct={jf['distinct']} total={jf['total']}")
+        return {"distinct": jf["distinct"], "total": jf["total"]}
+
+    # Distinct == 0 with equal counts also lands here: a zero count is a
+    # silent-input failure (Pitfall 1), never a parity pass.
+    print(f"PARITY MISMATCH: jellyfish distinct={jf['distinct']} "
+          f"total={jf['total']} vs rustkmer unique_kmers={rk['unique_kmers']} "
+          f"total_kmers={rk['total_kmers']} — methodology finding, not a "
+          f"pass. N-containing/lowercase real data is re-checked on the "
+          f"actual slice before the full run (Pitfall 10).", file=sys.stderr)
+    sys.exit(PARITY_MISMATCH_EXIT)
+
+
+def run_parity_cli(args):
+    """--parity-only: provision one input via the ladder, then run_parity."""
+    mode, resolved_inputs = resolve_mode(args.mode, args.input, os.environ)
+    scratch = Path(args.out).parent
+    scratch.mkdir(parents=True, exist_ok=True)
+    if mode == "synthetic":
+        inputs = provision_synthetic(args.reads, scratch)
+    elif mode == "slice":
+        inputs = provision_slice(resolved_inputs, args.slice_reads, scratch)
+    else:
+        inputs = provision_full(resolved_inputs)
+    run_parity(inputs[0], args.k, args.threads, args.rustkmer, scratch)
+
+
 def measure_arm(name, cmd, reps, rustkmer, out_db):
     """Run one measured arm: reps x measure(), then stats sanity (Pitfall 1)."""
     rep_results = []
@@ -473,6 +601,10 @@ def main():
     parser.add_argument("--reps", type=int, default=1,
                         help="repetitions per arm (multi-rep protocol is "
                              "04-02's scope)")
+    parser.add_argument("--parity-only", action="store_true",
+                        help="count the same input with rustkmer and "
+                             "jellyfish, assert equal Distinct/Total, and "
+                             "exit before any timing comparison")
     parser.add_argument("--rustkmer", default="target/release/rustkmer",
                         help="path to the rustkmer RELEASE binary")
     args = parser.parse_args()
@@ -485,6 +617,10 @@ def main():
         parser.error("--reads must be >= 1")
     if args.slice_reads < 1:
         parser.error("--slice-reads must be >= 1")
+
+    if args.parity_only:
+        run_parity_cli(args)
+        return
 
     run_bench(args)
 
