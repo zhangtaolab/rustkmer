@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "platform": "darwin",
+  "platform": "linux",
   "mode": "synthetic",
-  "created": "2026-10-09T15:27:01.729158+00:00",
-  "generated": "2026-10-09T15:31:34.730452+00:00",
+  "created": "2026-10-09T15:24:57.901429+00:00",
+  "generated": "2026-10-09T15:31:34.695287+00:00",
   "input_fingerprint": [
     {
       "path": "inputA.fq",
@@ -19,18 +19,18 @@
   "params": {
     "k": 31,
     "canonical": true,
-    "threads": 3,
+    "threads": 4,
     "rustkmer": "target/release/rustkmer"
   },
-  "host_note": "Regenerated from the macOS CI runner (arm64, macOS 25.6.0) artifact of the same run 37951280461 on 2026-10-09, replacing the interim M4 Max dev-host baseline (whose 16-thread wall numbers were not comparable to the runner's)",
+  "host_note": "Bootstrapped from GitHub Actions ubuntu-latest runner (Linux 6.17.0-1022-azure, x86_64, 4 vCPU) artifact of run 37951280461 on 2026-10-09",
   "arms": [
     {
       "name": "count-A",
       "tool": "rustkmer",
       "reps": [
         {
-          "wall_s": 15.43,
-          "peak_rss_bytes": 2828140544
+          "wall_s": 5.51,
+          "peak_rss_bytes": 1747619840
         }
       ],
       "distinct_kmers": 24000000,
@@ -41,8 +41,8 @@
       "tool": "rustkmer",
       "reps": [
         {
-          "wall_s": 15.64,
-          "peak_rss_bytes": 2340143104
+          "wall_s": 5.43,
+          "peak_rss_bytes": 1746694144
         }
       ],
       "distinct_kmers": 24000000,
@@ -53,8 +53,8 @@
       "tool": "rustkmer",
       "reps": [
         {
-          "wall_s": 42.12,
-          "peak_rss_bytes": 3744071680
+          "wall_s": 8.02,
+          "peak_rss_bytes": 5632057344
         }
       ],
       "distinct_kmers": 48000000,
