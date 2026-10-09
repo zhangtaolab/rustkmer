@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 03
 current_phase_name: memory-safety
 status: executing
-stopped_at: "Completed 03-16-PLAN.md (CR-01 closed on auto path: canonicalized shard writes, mixed-canonical order+sum+query RED->GREEN, ANY-input header pinned)"
-last_updated: "2026-10-09T11:27:10.652Z"
+stopped_at: "Completed 03-17-PLAN.md (streaming-writer arm of truth 10: mixed-canonical override + descending-run refusal, RED->GREEN on both layers, 439/0, WINDOWS #17 closed)"
+last_updated: "2026-10-09T12:04:28.791Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 03 execution started
-state_head: 608b7ede6959944b7a962dc24b75ca85fe1e443f
+state_head: 62f7c4719b42cdc53f15b82c6bd8bfd1618848d0
 progress:
   total_phases: 4
   completed_phases: 2
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-30)
 ## Current Position
 
 Phase: 03 (memory-safety) — READY TO EXECUTE
-Plan: 2 of 16
+Plan: 3 of 16
 Status: Ready to execute
 Last activity: 2026-10-09 — Phase 03 execution started
 
@@ -91,6 +91,7 @@ Progress: [█████████░] 9/11 plans (Phase 03)
 | Phase 03 P14 | 11min | 2 tasks | 2 files |
 | Phase 03 P15 | 10min | 2 tasks | 2 files |
 | Phase 03 P16 | 27min | 3 tasks | 3 files |
+| Phase 03 P17 | 16min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -212,6 +213,11 @@ Recent decisions affecting current work:
 - [Phase 03]: the plan's 0xFFFFFF literal is a 24-bit key at k=16 whose canonical form is 0x0000FF - the all-T meet-and-sum intent requires 0xFFFFFFFF; same k=16 literal trap as 03-15's 0x010000
 - [Phase 03]: a mixed-canonical ORDER violation is only RED-provable when a later bucket exists - 24-bit literals all have high byte 0x00 at k=16 so everything collapses into bucket 0x00 where the hashmap writer's sort erases misplacement; a true-high-byte key (0x0100_0000) was added to make windows(2) discriminate
 - [Phase 03]: 03-16 KNOWN RESIDUAL (deferred): merge_single_prefix_streaming assumes ascending shard runs, but post-fix a non-canonical input's shard can be non-ascending under mixed-canonical merges - correctness proven on the auto/hashmap path only; plan froze both bucket writers, logged deferred-items.md + WINDOWS.md #17
+- [Phase 03]: 03-17: Option (a)+(b) over (c) for the streaming-writer gap — ExternalSortMerger::new forces the sorting (hashmap) per-bucket writer for mixed-canonical header sets (keeps merge_mode='streaming' merges SUCCEEDING correctly instead of erroring) while merge_single_prefix_streaming refuses adjacent descending runs; per-shard sorting was rejected for doubling phase-1 IO
+- [Phase 03]: 03-17: The refusal reads RECORDS at both pop_front consumption sites, not headers — a heap entry mirrors its file's buffer front and the run-adjacent duplicate pop is the only other buffer exit, so every record is validated exactly once for any caller, including direct calls that bypass the header-keyed override; equal adjacent keys stay legal (strictly-less-than only)
+- [Phase 03]: 03-17: T-03-57 accepted with rationale — forcing the in-memory per-bucket writer on mixed-canonical merges trades the streaming writer's bounded footprint for correctness on that corner; per-bucket scope (~1/256 of the data), the hashmap writer's own available-memory warning still fires, and the override is loudly logged
+- [Phase 03]: 03-17: The refusal unit test drives merge_single_prefix_streaming DIRECTLY on a raw shard so it stays RED on the post-override tree — proving the override and the refusal are independent layers (headers vs records)
+- [Phase 03]: 03-17: WINDOWS.md frontmatter counts repaired to the true entry census (10/3/5/18, drifted to 11/19) before running windows-fixed — the CLI recomputes and refuses to operate on a disagreeing ledger
 
 ### Pending Todos
 
@@ -236,6 +242,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-09T05:27:06.006Z
-Stopped at: Completed 03-16-PLAN.md (CR-01 closed on auto path: canonicalized shard writes, mixed-canonical order+sum+query RED->GREEN, ANY-input header pinned)
+Last session: 2026-10-09T12:04:28.706Z
+Stopped at: Completed 03-17-PLAN.md (streaming-writer arm of truth 10: mixed-canonical override + descending-run refusal, RED->GREEN on both layers, 439/0, WINDOWS #17 closed)
 Resume file: None
