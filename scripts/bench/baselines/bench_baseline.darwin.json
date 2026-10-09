@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "platform": "darwin",
+  "mode": "synthetic",
+  "created": "2026-10-09T15:19:15.193460+00:00",
+  "generated": "2026-10-09T15:21:35.826483+00:00",
+  "input_fingerprint": [
+    {
+      "path": "scripts/bench/scratch/inputA.fq",
+      "size_bytes": 62800000,
+      "sha256": "d92f25848871d741ef465b0e35dc873c2054c840272f9c80937ad540177a3f79"
+    },
+    {
+      "path": "scripts/bench/scratch/inputB.fq",
+      "size_bytes": 62800000,
+      "sha256": "6d7899698ff71e1596b34f383dd2688dc14819e98dad7177ea727881f087f6f7"
+    }
+  ],
+  "params": {
+    "k": 31,
+    "canonical": true,
+    "threads": 16,
+    "rustkmer": "target/release/rustkmer",
+    "hash_size": "10G",
+    "decompressor": "gzcat",
+    "reps": 3,
+    "cooldown_s": 5,
+    "round_schedule": {
+      "0": [
+        "rustkmer",
+        "jellyfish"
+      ],
+      "1": [
+        "jellyfish",
+        "rustkmer"
+      ],
+      "2": [
+        "rustkmer",
+        "jellyfish"
+      ]
+    }
+  },
+  "host_note": "Interim bootstrap baseline generated on the M4 Max dev machine (16 cores, macOS 15, rustkmer release build) via the --reps 3 comparison protocol; replace with the CI runner-measured baseline using the README bootstrap procedure",
+  "arms": [
+    {
+      "name": "count-A",
+      "tool": "rustkmer",
+      "reps": [
+        {
+          "wall_s": 4.71,
+          "peak_rss_bytes": 2861940736,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 4.68,
+          "peak_rss_bytes": 2855124992,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 4.57,
+          "peak_rss_bytes": 2856222720,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 0
+        }
+      ],
+      "distinct_kmers": 24000000,
+      "total_kmers": 24000000,
+      "median_wall_s": 4.68,
+      "median_peak_rss_bytes": 2856222720,
+      "cv_wall_pct": 1.5840504575570138,
+      "cv_warning": false
+    },
+    {
+      "name": "count-B",
+      "tool": "rustkmer",
+      "reps": [
+        {
+          "wall_s": 4.6,
+          "peak_rss_bytes": 2851717120,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 4.62,
+          "peak_rss_bytes": 2857271296,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 2
+        },
+        {
+          "wall_s": 4.82,
+          "peak_rss_bytes": 2856140800,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 1
+        }
+      ],
+      "distinct_kmers": 24000000,
+      "total_kmers": 24000000,
+      "median_wall_s": 4.62,
+      "median_peak_rss_bytes": 2856140800,
+      "cv_wall_pct": 2.5994711667941166,
+      "cv_warning": false
+    },
+    {
+      "name": "merge",
+      "tool": "rustkmer",
+      "reps": [
+        {
+          "wall_s": 3.69,
+          "peak_rss_bytes": 8272756736,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 2
+        },
+        {
+          "wall_s": 3.71,
+          "peak_rss_bytes": 8272723968,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 3
+        },
+        {
+          "wall_s": 3.65,
+          "peak_rss_bytes": 8272756736,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 2
+        }
+      ],
+      "distinct_kmers": 48000000,
+      "total_kmers": 48000000,
+      "median_wall_s": 3.69,
+      "median_peak_rss_bytes": 8272756736,
+      "cv_wall_pct": 0.829425465150379,
+      "cv_warning": false
+    }
+  ]
+}

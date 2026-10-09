@@ -1,0 +1,78 @@
+name: Benchmark
+
+# BENCH-01 regression gate: measures the release binary on the synthetic
+# input (BENCH-04 — needs neither jellyfish nor the human dataset, so this
+# runs on any runner) and gates against the committed per-platform baseline
+# via scripts/bench/compare.py.
+#
+# Gate semantics live ONLY in compare.py's exit codes (0 within / 1
+# regression / 2 invalid input). This workflow never softens, skips, or
+# re-derives a decision: every step fails loudly — no error-swallowing
+# flags, no exit-code laundering, no conditional skips on any step (the
+# ci.yml gate rule — the deleted performance-regression.yml died of exactly
+# those diseases). A red gate stays red until a human changes code or
+# baseline.
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+# Cancel superseded runs on the same ref (mirrors ci.yml).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: read-only contents via the standard pull_request trigger
+# (never its _target variant — untrusted PR code must not touch base repo
+# secrets, T-01-SC precedent).
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: gate (${{ matrix.flavor }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            flavor: linux
+          - os: macos-latest
+            flavor: darwin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # Benchmark-namespaced cache key (runner OS + Cargo.lock hash) so this
+      # job's target/ writes never race the CI jobs' cache slots (CR-04).
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: bench-${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: bench-${{ runner.os }}-cargo-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build release binary
+        run: cargo build --release  # never time a debug build
+      - name: Run synthetic benchmark
+        run: python3 scripts/bench/bench.py --mode synthetic --out results.json
+      # Uploaded BEFORE the gate step: a missing-baseline exit 2 (first run
+      # on a new platform) must still leave the artifact for the bootstrap
+      # procedure. Name contract: bench-results-<runner OS> (Linux/macOS).
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-${{ runner.os }}
+          path: results.json
+      - name: Gate against committed baseline
+        run: |
+          python3 scripts/bench/compare.py \
+            --baseline scripts/bench/baselines/bench_baseline.${{ matrix.flavor }}.json \
+            --current results.json \
+            --wall-threshold 0.25 --rss-threshold 0.15
