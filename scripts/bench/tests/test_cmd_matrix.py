@@ -184,12 +184,19 @@ class TestValidatePath(unittest.TestCase):
             _fn("validate_path")("")
 
     def test_rejects_hostile_filenames(self):
-        """Every hostile filename raises ValueError naming the path."""
+        """Every hostile filename raises ValueError naming the path.
+
+        The newline case is matched in repr form — the safe rendering for
+        hostile input (a literal newline inside an error message would be
+        smuggled formatting).
+        """
         for hostile in HOSTILE_PATHS:
             with self.assertRaises(ValueError) as ctx:
                 _fn("validate_path")(hostile)
-            self.assertIn(hostile, str(ctx.exception),
-                          f"message must name the offending path {hostile!r}")
+            msg = str(ctx.exception)
+            self.assertTrue(hostile in msg or repr(hostile) in msg,
+                            f"message must name the offending path "
+                            f"{hostile!r}: got {msg!r}")
 
     def test_jellyfish_cmd_refuses_hostile_input(self):
         """The builder itself refuses hostile inputs (no sh -c assembled)."""
@@ -259,13 +266,13 @@ class TestProtocolPrimitives(unittest.TestCase):
 
     def test_reduce_arm_medians_and_cv(self):
         """Median wall/RSS + CV% = stdev/mean*100, warning only above 10."""
-        reps = [{"wall_s": 1.0, "peak_rss_bytes": 10},
-                {"wall_s": 2.0, "peak_rss_bytes": 20},
-                {"wall_s": 3.0, "peak_rss_bytes": 30}]
+        walls = [1.0, 1.02, 0.98]          # cv = 2.0% — well under the threshold
+        reps = [{"wall_s": w, "peak_rss_bytes": r}
+                for w, r in zip(walls, [10, 20, 30])]
         out = _fn("reduce_arm")(reps)
-        self.assertEqual(out["median_wall_s"], 2.0)
+        self.assertEqual(out["median_wall_s"], 1.0)
         self.assertEqual(out["median_peak_rss_bytes"], 20)
-        expected_cv = statistics.stdev([1.0, 2.0, 3.0]) / 2.0 * 100
+        expected_cv = statistics.stdev(walls) / (sum(walls) / len(walls)) * 100
         self.assertAlmostEqual(out["cv_wall_pct"], expected_cv)
         self.assertFalse(out["cv_warning"])
 

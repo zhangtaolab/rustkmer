@@ -12,14 +12,17 @@ stdlib only — no third-party imports, no pip installs.
 """
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import os
 import platform
 import re
 import shutil
+import statistics
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -34,6 +37,16 @@ DEFAULT_SCRATCH = HERE / "scratch"
 SYNTHETIC_LENGTH = 150
 SEED_A = 42
 SEED_B = 1337
+
+# --- BENCH-02 fair-comparison constants (04-02) ------------------------------
+DEFAULT_RUSTKMER = "target/release/rustkmer"
+DEFAULT_HASH_SIZE = "10G"      # generous -s: undersizing silently penalizes
+                               # the comparator (Pitfall 4); recorded in results
+DEFAULT_COOLDOWN_S = 5         # thermal gap between measured runs (Pitfall 5)
+DEFAULT_DISK_FLOOR_GB = 150    # Pitfall 8: full-run .rkdb artifacts alone can
+                               # reach 55-60 GB per database + merge scratch
+CV_WARNING_THRESHOLD_PCT = 10.0
+DISK_FLOOR_EXIT = 3
 
 # --- /usr/bin/time output parsing (dual-platform, units-pinned) -------------
 # macOS BSD `time -l` reports peak RSS in BYTES (verified on this repo's dev
@@ -122,15 +135,98 @@ def measure(argv):
     return parse_time_output(proc.stderr, plat)
 
 
-def build_count_cmd(rustkmer, k, threads, out_db, inputs):
-    """rustkmer count command (list form).
+# --- BENCH-02 fairness matrix: one config derives both tools (04-02) ---------
+# T-04-03: the jellyfish gz arm is the ONLY place a shell string is assembled;
+# every path entering it is screened by validate_path against a strict
+# character allowlist first. All other invocations stay list-form (no shell).
+SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9./_-]+$")
+HASH_SIZE_RE = re.compile(r"^\d+[KMG]?$")
+DECOMPRESSOR_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 -]*$")
 
-    Inputs are passed via -i (num_args = 1.., per src/cli/args.rs) — they are
-    NOT positional arguments.
+
+def default_decompressor(platform_str=sys.platform):
+    """gzcat on darwin, gunzip -c otherwise — never macOS zcat (Pitfall 1)."""
+    return "gzcat" if platform_str == "darwin" else "gunzip -c"
+
+
+@dataclasses.dataclass(frozen=True)
+class BenchmarkConfig:
+    """Every knob for BOTH tools' count commands — the fairness matrix.
+
+    One config derives rustkmer's and jellyfish's command lines so the two
+    cannot drift: k mirrors -m, canonical mirrors -C, threads mirror
+    --threads/-t (identical literals), hash_size is jellyfish's generous -s,
+    and gz inputs reach jellyfish only through the decompressor pipe while
+    rustkmer reads them natively (decompression counted for BOTH arms).
     """
-    return [str(rustkmer), "count", "-k", str(k), "-C",
-            "--threads", str(threads), "-o", str(out_db),
-            "-i", *[str(p) for p in inputs]]
+
+    k: int
+    canonical: bool = True
+    threads: int = 1
+    hash_size: str = DEFAULT_HASH_SIZE
+    inputs: list = dataclasses.field(default_factory=list)
+    decompressor: str = dataclasses.field(default_factory=default_decompressor)
+
+
+def validate_path(path):
+    """T-04-03 mitigation: screen a path before it enters any shell string.
+
+    Accepts only characters within letters, digits, dot, slash, underscore,
+    and hyphen; anything else (spaces, metacharacters, $()/` forms) raises
+    ValueError naming the offending path. Returns the path as a string.
+    """
+    text = str(path)
+    if not text:
+        raise ValueError("path rejected (empty)")
+    if not SAFE_PATH_RE.match(text):
+        raise ValueError(f"path rejected (unsafe characters): {text!r}")
+    return text
+
+
+def rustkmer_count_cmd(cfg, out, rustkmer=DEFAULT_RUSTKMER):
+    """rustkmer count argv derived from one BenchmarkConfig (list form).
+
+    Inputs pass via -i (num_args = 1.., per src/cli/args.rs) — NOT as
+    positional arguments. List-form subprocess with no shell: paths cannot
+    inject here, so metacharacter screening is scoped to the sh -c arm.
+    """
+    argv = [str(rustkmer), "count", "-k", str(cfg.k)]
+    if cfg.canonical:
+        argv.append("-C")
+    argv += ["--threads", str(cfg.threads), "-o", str(out),
+             "-i", *[str(p) for p in cfg.inputs]]
+    return argv
+
+
+def jellyfish_count_cmd(cfg, out):
+    """jellyfish count argv derived from the same BenchmarkConfig.
+
+    Plain inputs: direct path arguments (list form — no shell). Any gz
+    input: ONE sh -c pipeline (decompressor | jellyfish count ... /dev/stdin),
+    the only shell string the harness ever assembles, built solely from
+    validate_path-screened paths and harness constants (T-04-03). The pipe
+    exists because jellyfish aborts on .gz path arguments (Pitfall 3); it
+    keeps decompression INSIDE jellyfish's measured wall-clock, mirroring
+    rustkmer's native gz reading.
+    """
+    if not HASH_SIZE_RE.match(str(cfg.hash_size)):
+        raise ValueError(f"hash_size rejected (unsafe characters): "
+                         f"{cfg.hash_size!r}")
+    if not DECOMPRESSOR_RE.match(str(cfg.decompressor)):
+        raise ValueError(f"decompressor rejected (unsafe characters): "
+                         f"{cfg.decompressor!r}")
+    inputs = [validate_path(p) for p in cfg.inputs]
+    out_v = validate_path(out)
+    common = ["-m", str(cfg.k), "-s", str(cfg.hash_size),
+              "-t", str(cfg.threads)]
+    if cfg.canonical:
+        common.append("-C")
+    common += ["-o", out_v]
+    if any(p.endswith(".gz") for p in inputs):
+        pipeline = (f"{cfg.decompressor} {' '.join(inputs)} | "
+                    f"jellyfish count {' '.join(common)} /dev/stdin")
+        return ["sh", "-c", pipeline]
+    return ["jellyfish", "count", *common, *inputs]
 
 
 def build_merge_cmd(rustkmer, out_db, input_dbs):
@@ -386,6 +482,16 @@ def parse_jellyfish_stats(text):
     return {"distinct": distinct, "total": total}
 
 
+def jellyfish_stats(jf_path):
+    """Return the parse_jellyfish_stats dict for a .jf database (list form)."""
+    proc = subprocess.run(["jellyfish", "stats", str(jf_path)],
+                          capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"jellyfish stats failed rc={proc.returncode} on "
+                           f"{jf_path}: {proc.stderr[-500:]}")
+    return parse_jellyfish_stats(proc.stdout)
+
+
 def run_parity(input_path, k, threads, rustkmer, scratch,
                hash_size=PARITY_SMOKE_HASH_SIZE):
     """Count the same input with both tools and prove the counts equal.
@@ -397,43 +503,35 @@ def run_parity(input_path, k, threads, rustkmer, scratch,
     N-handling caveat. A mismatch is a methodology finding — real-data parity
     (N-containing / lowercase reads) is re-proven on the actual slice in
     04-04 before the full milestone run (RESEARCH Pitfall 10).
+
+    Both commands derive from ONE BenchmarkConfig — the same fairness
+    guarantee the comparison protocol measures under.
     """
     require_jellyfish()
     input_path = Path(input_path)
     rk_db = scratch / "parity_rustkmer.rkdb"
     jf_db = scratch / "parity_jellyfish.jf"
+    cfg = BenchmarkConfig(k=k, canonical=True, threads=threads,
+                          hash_size=hash_size, inputs=[input_path],
+                          decompressor=default_decompressor())
 
-    # rustkmer arm: plain list-form invocation; stats via the shared helper.
-    rk_cmd = build_count_cmd(rustkmer, k, threads, rk_db, [input_path])
-    proc = subprocess.run(rk_cmd, capture_output=True, text=True)
+    # rustkmer arm: list-form invocation; stats via the shared helper.
+    proc = subprocess.run(rustkmer_count_cmd(cfg, rk_db, rustkmer),
+                          capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"parity: rustkmer count failed rc="
                            f"{proc.returncode}: {proc.stderr[-500:]}")
     rk = stats(rk_db, rustkmer)
 
-    # jellyfish arm: a PLAIN input takes a direct path argument. The
-    # decompression pipe is required only for gz input — jellyfish aborts
-    # with exit 134 on .gz path arguments (RESEARCH Pitfall 3). The 04-02
-    # Task 2 config refactor gives this branch its golden-tested home.
-    if str(input_path).endswith(".gz"):
-        dec = "gzcat" if sys.platform == "darwin" else "gunzip -c"
-        jf_count = ["sh", "-c",
-                    f"{dec} {input_path} | jellyfish count -m {k} "
-                    f"-s {hash_size} -t {threads} -C -o {jf_db} /dev/stdin"]
-    else:
-        jf_count = ["jellyfish", "count", "-m", str(k), "-s", str(hash_size),
-                    "-t", str(threads), "-C", "-o", str(jf_db),
-                    str(input_path)]
-    proc = subprocess.run(jf_count, capture_output=True, text=True)
+    # jellyfish arm: plain input takes a direct path argument; gz input goes
+    # through the decompression pipe (jellyfish aborts on .gz paths, Pitfall 3)
+    # — jellyfish_count_cmd owns that branch.
+    proc = subprocess.run(jellyfish_count_cmd(cfg, jf_db),
+                          capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"parity: jellyfish count failed rc="
                            f"{proc.returncode}: {proc.stderr[-500:]}")
-    proc = subprocess.run(["jellyfish", "stats", str(jf_db)],
-                          capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(f"parity: jellyfish stats failed rc="
-                           f"{proc.returncode}: {proc.stderr[-500:]}")
-    jf = parse_jellyfish_stats(proc.stdout)
+    jf = jellyfish_stats(jf_db)
 
     if (jf["distinct"] == rk["unique_kmers"]
             and jf["total"] == rk["total_kmers"]
@@ -465,6 +563,162 @@ def run_parity_cli(args):
     run_parity(inputs[0], args.k, args.threads, args.rustkmer, scratch)
 
 
+# --- BENCH-02 measurement protocol (04-02) ------------------------------------
+
+def round_schedule(n_rounds):
+    """Counterbalanced tool order per round (thermal/order-bias defense,
+    Pitfall 5): rustkmer measures first in even rounds, jellyfish first in
+    odd rounds. Recorded verbatim in results.json params.round_schedule."""
+    schedule = {}
+    for rnd in range(n_rounds):
+        first = "rustkmer" if rnd % 2 == 0 else "jellyfish"
+        second = "jellyfish" if first == "rustkmer" else "rustkmer"
+        schedule[str(rnd)] = [first, second]
+    return schedule
+
+
+def cache_state_from(in_ci, platform, purge_succeeded):
+    """Pure honest-label decision (T-04-04): the cache_state label derives
+    from the actual attempt context — the GITHUB_ACTIONS marker, the
+    platform, and the purge subprocess's real outcome — never from
+    configuration intent."""
+    if in_ci:
+        return "runner-fresh"
+    if platform != "darwin":
+        return "unavailable"
+    return "purged" if purge_succeeded else "unavailable"
+
+
+def attempt_cache_purge(env=None):
+    """Attempt a cold-cache purge before a measured run; return the honest
+    cache_state label.
+
+    GITHUB_ACTIONS set -> 'runner-fresh' (fresh runner; no purge attempted).
+    darwin -> `sudo -n purge` (non-interactive flag; rc 0 records 'purged',
+    any failure records 'unavailable'). Any other platform records
+    'unavailable' without attempting.
+    """
+    env = os.environ if env is None else env
+    if env.get("GITHUB_ACTIONS"):
+        return cache_state_from(True, sys.platform, None)
+    if sys.platform != "darwin":
+        return cache_state_from(False, sys.platform, None)
+    proc = subprocess.run(["sudo", "-n", "purge"],
+                          capture_output=True, text=True)
+    return cache_state_from(False, sys.platform, proc.returncode == 0)
+
+
+def reduce_arm(reps):
+    """Reduce an arm's reps to headline medians + CV% (order-insensitive).
+
+    CV% = stdev over mean x 100 on wall times; a single-rep arm records null
+    (stdev needs >= 2 points). CV above the threshold sets cv_warning in
+    results.json WITHOUT failing the run — a dirty measurement is a warning,
+    not an error.
+    """
+    walls = [r["wall_s"] for r in reps]
+    rss = [r["peak_rss_bytes"] for r in reps]
+    reduced = {
+        "median_wall_s": statistics.median(walls),
+        "median_peak_rss_bytes": statistics.median(rss),
+        "cv_wall_pct": None,
+        "cv_warning": False,
+    }
+    if len(walls) >= 2:
+        mean = sum(walls) / len(walls)
+        cv = (statistics.stdev(walls) / mean * 100) if mean > 0 else 0.0
+        reduced["cv_wall_pct"] = cv
+        reduced["cv_warning"] = cv > CV_WARNING_THRESHOLD_PCT
+    return reduced
+
+
+def check_disk_floor(directory, floor_gb):
+    """Abort with exit 3 before any mode=full measurement when free space on
+    the output directory's volume is below the floor (Pitfall 8: full-human
+    .rkdb artifacts alone can reach 55-60 GB per database, with merge scratch
+    on top). Returns the free bytes when the guard passes."""
+    st = os.statvfs(str(directory))
+    free_bytes = st.f_bavail * st.f_frsize
+    required_bytes = int(floor_gb * (1 << 30))
+    if free_bytes < required_bytes:
+        print(f"bench.py: disk guardrail: {free_bytes} bytes free on "
+              f"{directory} but the configured floor is {required_bytes} "
+              f"bytes ({floor_gb} GiB) — aborting before any measurement "
+              f"(exit {DISK_FLOOR_EXIT})", file=sys.stderr)
+        sys.exit(DISK_FLOOR_EXIT)
+    return free_bytes
+
+
+def run_comparison_protocol(arm_specs, reps, cooldown_s, rustkmer):
+    """Interleaved, counterbalanced, honestly-recorded protocol (BENCH-02).
+
+    One warmup run per tool is executed and discarded before round 1; tool
+    order alternates each round; a cooldown sleep separates runs; the two
+    tools never run concurrently (memory-pool and core contention — RESEARCH
+    anti-pattern); and every measured rep records the cache_state of its own
+    actual purge attempt plus its round index and arm-order position.
+
+    Returns (arms_list, round_schedule_dict).
+    """
+    schedule = round_schedule(reps)
+    tools = []
+    for spec in arm_specs:
+        if spec["tool"] not in tools:
+            tools.append(spec["tool"])
+    measured = {spec["name"]: {"name": spec["name"], "tool": spec["tool"],
+                               "reps": []}
+                for spec in arm_specs}
+    total_runs = len(tools) + reps * len(arm_specs)
+    done_runs = 0
+
+    def cooldown_gap():
+        nonlocal done_runs
+        done_runs += 1
+        if done_runs < total_runs:
+            time.sleep(cooldown_s)
+
+    # One warmup run per tool, executed and discarded before round 1.
+    for tool in tools:
+        spec = next(s for s in arm_specs if s["tool"] == tool)
+        measure(spec["cmd"])
+        cooldown_gap()
+
+    for rnd in range(reps):
+        position = 0
+        for tool in schedule[str(rnd)]:
+            for spec in [s for s in arm_specs if s["tool"] == tool]:
+                cache_state = attempt_cache_purge()
+                rep = measure(spec["cmd"])
+                rep["cache_state"] = cache_state
+                rep["round"] = rnd
+                rep["arm_order"] = position
+                measured[spec["name"]]["reps"].append(rep)
+                position += 1
+                cooldown_gap()
+
+    # Post-protocol stats, sanity assertion, and median/CV reduction per arm.
+    arms_out = []
+    for spec in arm_specs:
+        rec = measured[spec["name"]]
+        if spec["tool"] == "jellyfish":
+            jf = jellyfish_stats(spec["out"])
+            rec["distinct_kmers"] = jf["distinct"]
+            rec["total_kmers"] = jf["total"]
+        else:
+            st = stats(spec["out"], rustkmer)
+            rec["distinct_kmers"] = st["unique_kmers"]
+            rec["total_kmers"] = st["total_kmers"]
+        if rec["distinct_kmers"] <= 0:
+            # Silent zero-count trap (Pitfall 1): a tool can exit 0 with an
+            # empty database — that is a failure, not a success.
+            raise RuntimeError(
+                f"arm {rec['name']!r}: distinct_kmers == 0 after "
+                f"{spec['cmd']} — silent input failure? (Pitfall 1)")
+        rec.update(reduce_arm(rec["reps"]))
+        arms_out.append(rec)
+    return arms_out, schedule
+
+
 def measure_arm(name, cmd, reps, rustkmer, out_db):
     """Run one measured arm: reps x measure(), then stats sanity (Pitfall 1)."""
     rep_results = []
@@ -494,6 +748,11 @@ def run_bench(args):
     scratch = out_path.parent
     scratch.mkdir(parents=True, exist_ok=True)
 
+    # Disk guardrail (Pitfall 8) — aborts with exit 3 BEFORE any mode=full
+    # provisioning or measurement.
+    if mode == "full":
+        check_disk_floor(scratch, args.disk_floor_gb)
+
     if mode == "synthetic":
         inputs = provision_synthetic(args.reads, scratch)
     elif mode == "slice":
@@ -503,44 +762,106 @@ def run_bench(args):
     db_a = scratch / "db_count-A.rkdb"
     db_b = scratch / "db_count-B.rkdb"
     db_merged = scratch / "db_merged.rkdb"
+    jf_a = scratch / "db_jellyfish-A.jf"
 
-    arms = [
-        measure_arm("count-A",
-                    build_count_cmd(args.rustkmer, args.k, args.threads,
-                                    db_a, [inputs[0]]),
-                    args.reps, args.rustkmer, db_a),
-        measure_arm("count-B",
-                    build_count_cmd(args.rustkmer, args.k, args.threads,
-                                    db_b, [inputs[1]]),
-                    args.reps, args.rustkmer, db_b),
-        measure_arm("merge",
-                    build_merge_cmd(args.rustkmer, db_merged, [db_a, db_b]),
-                    args.reps, args.rustkmer, db_merged),
-    ]
+    # Both tools' count commands derive from ONE BenchmarkConfig per input —
+    # the fairness matrix in code (matched k/canonical/threads; gz piped for
+    # jellyfish only; generous hash_size).
+    cfg_a = BenchmarkConfig(k=args.k, canonical=True, threads=args.threads,
+                            hash_size=args.hash_size, inputs=[inputs[0]],
+                            decompressor=default_decompressor())
+    cfg_b = dataclasses.replace(cfg_a, inputs=[inputs[1]])
+
+    comparison = args.reps >= 2
+    round_sched = None
+    if comparison:
+        # Fair-comparison protocol (BENCH-02): jellyfish arms are part of a
+        # multi-rep run, so the binary must be present (explicit exit 2).
+        require_jellyfish()
+        arm_specs = [
+            {"name": "count-A", "tool": "rustkmer", "out": db_a,
+             "cmd": rustkmer_count_cmd(cfg_a, db_a, args.rustkmer)},
+            {"name": "count-B", "tool": "rustkmer", "out": db_b,
+             "cmd": rustkmer_count_cmd(cfg_b, db_b, args.rustkmer)},
+            {"name": "jellyfish-count-A", "tool": "jellyfish", "out": jf_a,
+             "cmd": jellyfish_count_cmd(cfg_a, jf_a)},
+            {"name": "merge", "tool": "rustkmer", "out": db_merged,
+             "cmd": build_merge_cmd(args.rustkmer, db_merged, [db_a, db_b])},
+        ]
+        arms, round_sched = run_comparison_protocol(
+            arm_specs, args.reps, args.cooldown_s, args.rustkmer)
+
+        # A timing comparison between tools that counted DIFFERENT things is
+        # meaningless — parity is asserted on the measured input itself.
+        by_name = {a["name"]: a for a in arms}
+        if (by_name["jellyfish-count-A"]["distinct_kmers"]
+                != by_name["count-A"]["distinct_kmers"]
+                or by_name["jellyfish-count-A"]["total_kmers"]
+                != by_name["count-A"]["total_kmers"]):
+            raise RuntimeError(
+                f"parity failed on the measured input: jellyfish "
+                f"distinct={by_name['jellyfish-count-A']['distinct_kmers']} "
+                f"total={by_name['jellyfish-count-A']['total_kmers']} vs "
+                f"rustkmer unique={by_name['count-A']['distinct_kmers']} "
+                f"total={by_name['count-A']['total_kmers']} — methodology "
+                f"finding (Pitfall 10), not a comparable measurement")
+    else:
+        # Single-rep run (CI path): rustkmer-only arms, no jellyfish needed.
+        arms = [
+            measure_arm("count-A",
+                        rustkmer_count_cmd(cfg_a, db_a, args.rustkmer),
+                        args.reps, args.rustkmer, db_a),
+            measure_arm("count-B",
+                        rustkmer_count_cmd(cfg_b, db_b, args.rustkmer),
+                        args.reps, args.rustkmer, db_b),
+            measure_arm("merge",
+                        build_merge_cmd(args.rustkmer, db_merged, [db_a, db_b]),
+                        args.reps, args.rustkmer, db_merged),
+        ]
 
     if args.self_check:
         # Exact per-input formula holds only for synthetic input (known
         # reads x length); merge conservation and distinct-union hold for
         # every mode.
+        by_name = {a["name"]: a for a in arms}
         if mode == "synthetic":
             expected_total = args.reads * (SYNTHETIC_LENGTH - args.k + 1)
-            for arm in (arms[0], arms[1]):
-                if arm["total_kmers"] != expected_total:
+            for name in ("count-A", "count-B"):
+                if by_name[name]["total_kmers"] != expected_total:
                     raise RuntimeError(
-                        f"self-check: arm {arm['name']!r} total_kmers "
-                        f"{arm['total_kmers']} != reads x (L - k + 1) = "
-                        f"{expected_total}")
-        merged_total = arms[0]["total_kmers"] + arms[1]["total_kmers"]
-        if arms[2]["total_kmers"] != merged_total:
+                        f"self-check: arm {name!r} total_kmers "
+                        f"{by_name[name]['total_kmers']} != reads x (L - k + 1)"
+                        f" = {expected_total}")
+        merged_total = (by_name["count-A"]["total_kmers"]
+                        + by_name["count-B"]["total_kmers"])
+        if by_name["merge"]["total_kmers"] != merged_total:
             raise RuntimeError(
-                f"self-check: merged total_kmers {arms[2]['total_kmers']} != "
-                f"sum of inputs {merged_total} (count conservation)")
-        if arms[2]["distinct_kmers"] < max(arms[0]["distinct_kmers"],
-                                           arms[1]["distinct_kmers"]):
+                f"self-check: merged total_kmers "
+                f"{by_name['merge']['total_kmers']} != sum of inputs "
+                f"{merged_total} (count conservation)")
+        if by_name["merge"]["distinct_kmers"] < max(
+                by_name["count-A"]["distinct_kmers"],
+                by_name["count-B"]["distinct_kmers"]):
             raise RuntimeError(
                 "self-check: merged distinct_kmers "
-                f"{arms[2]['distinct_kmers']} < max input distinct "
-                f"({arms[0]['distinct_kmers']}, {arms[1]['distinct_kmers']})")
+                f"{by_name['merge']['distinct_kmers']} < max input distinct "
+                f"({by_name['count-A']['distinct_kmers']}, "
+                f"{by_name['count-B']['distinct_kmers']})")
+
+    params = {
+        "k": args.k,
+        "canonical": True,
+        "threads": args.threads,
+        "rustkmer": str(args.rustkmer),
+    }
+    if comparison:
+        params.update({
+            "hash_size": args.hash_size,
+            "decompressor": default_decompressor(),
+            "reps": args.reps,
+            "cooldown_s": args.cooldown_s,
+            "round_schedule": round_sched,
+        })
 
     results = {
         "schema_version": SCHEMA_VERSION,
@@ -554,12 +875,7 @@ def run_bench(args):
             "python": platform.python_version(),
         },
         "created": datetime.now(timezone.utc).isoformat(),
-        "params": {
-            "k": args.k,
-            "canonical": True,
-            "threads": args.threads,
-            "rustkmer": str(args.rustkmer),
-        },
+        "params": params,
         "arms": arms,
     }
     validate_schema(results)
@@ -569,9 +885,17 @@ def run_bench(args):
 
     for arm in arms:
         rep = arm["reps"][-1]
-        print(f"{arm['name']}: wall={rep['wall_s']:.3f}s "
-              f"peak_rss={rep['peak_rss_bytes'] / (1 << 20):.1f}MiB "
-              f"distinct={arm['distinct_kmers']} total={arm['total_kmers']}")
+        line = (f"{arm['name']} [{arm['tool']}]: "
+                f"wall={rep['wall_s']:.3f}s "
+                f"peak_rss={rep['peak_rss_bytes'] / (1 << 20):.1f}MiB "
+                f"distinct={arm['distinct_kmers']} "
+                f"total={arm['total_kmers']}")
+        if "median_wall_s" in arm:
+            cv = arm["cv_wall_pct"]
+            line += (f" median_wall={arm['median_wall_s']:.3f}s "
+                     f"cv={'n/a' if cv is None else f'{cv:.1f}%'}"
+                     f"{' [cv_warning]' if arm['cv_warning'] else ''}")
+        print(line)
     print(f"results written to {out_path}")
     return results
 
@@ -599,8 +923,21 @@ def main():
                         help="reads per slice in slice mode (deterministic "
                              "first-N extraction)")
     parser.add_argument("--reps", type=int, default=1,
-                        help="repetitions per arm (multi-rep protocol is "
-                             "04-02's scope)")
+                        help="repetitions per arm; N >= 2 engages the "
+                             "fair-comparison protocol (jellyfish arms, "
+                             "counterbalanced interleaved rounds, medians)")
+    parser.add_argument("--hash-size", default=DEFAULT_HASH_SIZE,
+                        help="jellyfish -s initial hash size (generous by "
+                             "default — undersizing silently penalizes the "
+                             "comparator, Pitfall 4; recorded in results.json)")
+    parser.add_argument("--cooldown-s", type=int, default=DEFAULT_COOLDOWN_S,
+                        help="cooldown sleep in seconds between measured "
+                             "runs (thermal/order-bias defense, Pitfall 5)")
+    parser.add_argument("--disk-floor-gb", type=int,
+                        default=DEFAULT_DISK_FLOOR_GB,
+                        help="abort mode=full runs (exit 3) when free space "
+                             "on the output volume is below this floor in "
+                             "GiB (Pitfall 8)")
     parser.add_argument("--parity-only", action="store_true",
                         help="count the same input with rustkmer and "
                              "jellyfish, assert equal Distinct/Total, and "
@@ -617,6 +954,13 @@ def main():
         parser.error("--reads must be >= 1")
     if args.slice_reads < 1:
         parser.error("--slice-reads must be >= 1")
+    if not HASH_SIZE_RE.match(str(args.hash_size)):
+        parser.error("--hash-size must match ^\\d+[KMG]?$ (e.g. 10G, 100M, "
+                     "1000000)")
+    if args.cooldown_s < 0:
+        parser.error("--cooldown-s must be >= 0")
+    if args.disk_floor_gb < 0:
+        parser.error("--disk-floor-gb must be >= 0")
 
     if args.parity_only:
         run_parity_cli(args)
