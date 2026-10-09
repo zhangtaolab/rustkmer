@@ -458,15 +458,21 @@ gzcat CRR*_r1.fq.gz.part001 | head -n 4000000 > slice_1m_reads.fq   # 1,000,000 
 | A7 | `sudo purge` will be permitted/runnable on the dev host when the user executes the milestone run | Pattern 2 / Pitfall 9 | Cold-cache criterion records `cache_state` honestly; if purge never runs, BENCH-02's "cold cache" wording is only partially satisfied — surface to user |
 | A8 | The parity-check pipe (`/dev/stdin`) and generator mechanisms behave identically at full-dataset scale as at smoke scale | Patterns 1/3 | First full run should begin with a slice-scale pilot anyway; abort-on-discrepancy protects the milestone |
 
-## Open Questions
+## Open Questions (RESOLVED 2026-10-09)
+
+> All four questions were decided by the orchestrator/user on 2026-10-09 before planning; each resolution is implemented in plans 04-01..04-04 as annotated below.
 
 1. **The CRR1936095 dataset is missing — what is the milestone input?**
    - What we know: documented path absent; verified missing via directory listing + bounded `find` + `mdfind`. Nearest substitute `CRR2044018` (2.5 GB r1 + 2.5 GB r2, NovaSeq 150 bp) verified present in `~/Downloads`. Disk has 1.5 TB free, so a re-download fits.
    - What's unclear: whether the user can/will re-fetch CRR1936095 (source + auth for GSA data unverified), and whether BENCH-02's explicit "CRR1936095" wording may be amended to CRR2044018.
    - Recommendation: ask the user before planning 04-04. Options: (a) re-download CRR1936095 (keeps requirement text literal), (b) substitute CRR2044018 r1 (update requirement wording), (c) benchmark on CRR2044018 now and re-run the report on CRR1936095 when re-fetched. The harness is path-agnostic either way — only the report's input fingerprint changes.
+   - **RESOLVED (2026-10-09, orchestrator decision): option (c)** — CRR2044018 is the user-approved substitute dataset for the 04-04 headline run, explicitly labeled as substitute in the report; the harness stays path-configurable so CRR1936095 can be re-run via `--input` when it returns. Implemented in 04-04 (substitute labeling is a mandatory provenance line in the rendered report).
 2. **Headline k value** — recommend k=31 canonical (exercises the Phase-3 dense u64 path, standard for human genomics) + k=21 as a secondary datapoint; confirm in planning (A1).
+   - **RESOLVED (2026-10-09, orchestrator decision): k=31 primary + k=21 secondary.** Implemented in 04-04 Task 2 (two full runs, one per k; k=31 is the headline table, k=21 the secondary table in the report).
 3. **What to do with `performance-regression.yml`** — recommend deletion (superseded by benchmark.yml); alternative is fixing its branches/scripts. Planner decision, one task.
+   - **RESOLVED (2026-10-09, orchestrator decision): deletion** — of the dead workflow plus the unregistered `src/cli/commands/benchmark.rs`. Implemented in 04-01 Task 3 (git rm both after schema-mining; gates must stay green with zero reference fixes).
 4. **Gate strictness** — committed-baseline with 25%/15% thresholds recommended; if the user wants stricter, the same-job base-ref build comparison (mdt pattern) is the rigorous upgrade at ~2× CI build cost.
+   - **RESOLVED (2026-10-09, orchestrator decision): committed-baseline thresholds 25% wall / 15% RSS** on a stdlib-only harness (Python 3 unittest, zero new packages), with no product-behavior changes. Implemented in 04-03 (compare.py defaults + benchmark.yml gate step); the same-job base-ref comparison is documented in README.md as the upgrade path only.
 
 ## Environment Availability
 
