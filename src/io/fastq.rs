@@ -65,7 +65,12 @@ impl CompressedFileReader for DefaultCompressedFileReader {
         let reader: Box<dyn io::BufRead> = match compression_type {
             CompressionType::None => Box::new(io::BufReader::new(file)),
             CompressionType::Gzip => {
-                let decoder = flate2::read::GzDecoder::new(file);
+                // Multi-member (concatenated) gzip files are common for
+                // archive-downloaded FASTQ/FASTA inputs; a single-member
+                // decoder silently stops at the first member's EOF.
+                // MultiGzDecoder decodes all concatenated members and is
+                // byte-identical on single-member files.
+                let decoder = flate2::read::MultiGzDecoder::new(file);
                 Box::new(io::BufReader::new(decoder))
             }
             CompressionType::Bzip2 => {
@@ -484,6 +489,7 @@ pub fn average_quality<P: AsRef<Path>>(file_path: P) -> ProcessingResult<f64> {
 mod tests {
     use super::*;
     use std::io::Write;
+    use tempfile::Builder;
     use tempfile::NamedTempFile;
 
     #[test]
@@ -580,5 +586,61 @@ mod tests {
         assert_eq!(filtered.len(), 2);
         assert_eq!(filtered[0].id(), "seq1"); // bio crate returns ID without @ prefix
         assert_eq!(filtered[1].id(), "seq2");
+    }
+
+    #[test]
+    fn test_read_all_sequences_concatenated_gzip_members() {
+        // Regression: archive-downloaded .fastq.gz files are frequently
+        // multi-member (concatenated) gzip streams. The compressed reader must
+        // decode ALL members — a single-member decoder silently truncates the
+        // input after the first member (observed on CRR2044018_r1.fq.gz, where
+        // rustkmer counted 220,028 k-mers vs jellyfish's 4.4 B via `gzcat`).
+        let member_a = b"@memA_seq1\nATGCATGC\n+\nIIIIIIII\n@memA_seq2\nGGCCTTAA\n+\nHHHHHHHH\n";
+        let member_b = b"@memB_seq1\nTTACGGCA\n+\nJJJJJJJJ\n@memB_seq2\nCCGGAATT\n+\nKKKKKKKK\n@memB_seq3\nAAAATTTT\n+\nLLLLLLLL\n";
+
+        fn gzip_bytes(payload: &[u8]) -> Vec<u8> {
+            let mut encoder =
+                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            encoder.write_all(payload).unwrap();
+            encoder.finish().unwrap()
+        }
+
+        let mut concatenated = gzip_bytes(member_a);
+        concatenated.extend_from_slice(&gzip_bytes(member_b));
+
+        // Fixture sanity: exactly two independent gzip members (magic 1f 8b)
+        // must be present, or this regression test proves nothing.
+        let member_magic_count = concatenated.windows(2).filter(|w| w == b"\x1f\x8b").count();
+        assert_eq!(
+            member_magic_count, 2,
+            "fixture must contain two gzip members"
+        );
+
+        // The file must be detected as gzip, so it needs the .gz extension.
+        let mut temp_file = Builder::new().suffix(".gz").tempfile().unwrap();
+        temp_file.write_all(&concatenated).unwrap();
+
+        // Same read path the CLI uses: process_file -> open_compressed.
+        let processor = FastqProcessor::new(temp_file.path());
+        assert_eq!(processor.compression_type(), CompressionType::Gzip);
+        let sequences = processor.read_all().unwrap();
+
+        // Both members must be decoded: 2 records from A + 3 records from B.
+        assert_eq!(sequences.len(), 5, "all records from BOTH gzip members");
+        let ids: Vec<&str> = sequences.iter().map(|r| r.id()).collect();
+        assert_eq!(
+            ids,
+            vec![
+                "memA_seq1",
+                "memA_seq2",
+                "memB_seq1",
+                "memB_seq2",
+                "memB_seq3"
+            ]
+        );
+        assert_eq!(sequences[2].seq(), b"TTACGGCA"); // first record of member B
+        assert_eq!(sequences[2].qual(), b"JJJJJJJJ");
+        assert_eq!(sequences[4].seq(), b"AAAATTTT"); // last record of member B
+        assert_eq!(sequences[4].qual(), b"LLLLLLLL");
     }
 }
