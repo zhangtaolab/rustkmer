@@ -328,8 +328,15 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(100));
         let elapsed = timer.elapsed();
 
+        // The lower bound is the semantic check (the timer must not
+        // under-report a 100 ms sleep). The upper bound is deliberately
+        // generous: this self-test runs inside every full-`common` test
+        // binary, and on a loaded CI runner a 100 ms sleep can measure well
+        // past 150 ms (it failed the macOS leg of CI run 37952454763 that
+        // way). 2 s still proves the timer is measuring the sleep, not
+        // garbage.
         assert!(elapsed.as_millis() >= 100);
-        assert!(elapsed.as_millis() < 150);
+        assert!(elapsed.as_millis() < 2000);
     }
 
     #[test]

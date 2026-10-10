@@ -24,7 +24,7 @@
 //! **The bound is DERIVED FROM THE PINNED CHUNK SIZE, not from N.** The test
 //! pins `chunk_size = CHUNK_ENTRIES = 50_000` on its `MergeConfig` and
 //! asserts the resident-memory growth stays under
-//! `4 * CHUNK_ENTRIES * size_of::<KmerEntry>()` = 6,400,000 bytes:
+//! `12 * CHUNK_ENTRIES * size_of::<KmerEntry>()` = 19,200,000 bytes:
 //!
 //! - **Post-fix working set is O(chunk)**: `DatabaseStreamIterator::next`
 //!   allocates `Vec::with_capacity(min(chunk_size, remaining))` of
@@ -32,8 +32,9 @@
 //!   align 16 plus a 4-byte `u32` plus 4 bytes of tail padding — asserted
 //!   below so the derivation cannot quietly become false). With the pinned
 //!   value that is 1,600,000 B per chunk load, plus one `BufWriter` and the
-//!   run-head heap. Measured growth must stay under 6,400,000 B — 4x
-//!   headroom over a single chunk load.
+//!   run-head heap. Measured growth must stay under 19,200,000 B — 12x
+//!   headroom over a single chunk load (see `RSS_BOUND_BYTES` for why 12x,
+//!   not the original 4x).
 //! - **Pre-fix peak was O(N)**: `sorted_kmers` at 32 B per record
 //!   (32,000,000 B at N = 1,000,000) alive at the same time as the
 //!   `from_kmer_pairs` `Vec<KmerEntry>` (another 32,000,000 B) —
@@ -108,13 +109,20 @@ const KMER_ENTRY_BYTES: usize = 32;
 /// One chunk load of `KmerEntry` at the pinned chunk size: 1,600,000 B.
 const CHUNK_BYTES: u64 = (CHUNK_ENTRIES * KMER_ENTRY_BYTES) as u64;
 
-/// The RSS bound: 4x one chunk load = 6,400,000 B.
+/// The RSS bound: 12x one chunk load = 19,200,000 B.
 ///
-/// 4x headroom over a single chunk load covers the run-head heap, the
-/// `BufWriter`s and allocator granularity, while sitting 10x BELOW the
-/// pre-fix 64,000,000 B peak at N = 1,000,000 — the two figures land on
-/// opposite sides of it, which is what makes the bound a discriminator.
-const RSS_BOUND_BYTES: u64 = CHUNK_BYTES * 4;
+/// Originally 4x (6,400,000 B), calibrated on a dev machine under macOS
+/// libmalloc. That bound does not survive cross-platform allocator
+/// behaviour: ubuntu-latest (glibc malloc, arena retention) measured
+/// 11,943,936 B — 7.5x a chunk load, 1.9x over the 4x bound, with no code
+/// change (CI run 37952454763, linux leg). 12x clears the measured glibc
+/// figure with headroom while sitting 3.3x BELOW the pre-fix 64,000,000 B
+/// peak at N = 1,000,000 — the two figures still land on opposite sides of
+/// the bound, which is what makes it a discriminator. This is NOT the
+/// "loosen to fit a smaller N" move `MEASUREMENT_ENTRIES` forbids: N is
+/// unchanged; the widened factor absorbs allocator variance, not fixture
+/// shrinkage.
+const RSS_BOUND_BYTES: u64 = CHUNK_BYTES * 12;
 
 /// A budget no toy fixture can approach, so the within-budget branch is
 /// taken deterministically.
@@ -410,7 +418,7 @@ fn streaming_merge_peak_memory_is_bounded_by_chunk_not_dataset() -> Result<()> {
     assert!(
         rss_delta_bytes < RSS_BOUND_BYTES,
         "streaming merge added {} bytes of resident memory against the {} byte bound \
-         (4 x chunk_size {} x {} B/entry); the pre-fix accumulation measured ~64,000,000 B \
+         (12 x chunk_size {} x {} B/entry); the pre-fix accumulation measured ~64,000,000 B \
          at this N — if this assert fires with a figure near that, the accumulating body \
          is back (CR-02 regression)",
         rss_delta_bytes,
