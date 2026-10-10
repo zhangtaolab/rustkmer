@@ -434,22 +434,20 @@ fn prefix_cache_merge_conserves_the_total_kmer_count() {
     // Disjointness is ASSERTED, not assumed: compare the decoded key sets of
     // both inputs before merging, so a fixture regression fails loudly
     // instead of producing a spurious "loss".
-    let keys_a: std::collections::BTreeSet<u128> =
-        RKDatabase::from_file_path(&path_a)
-            .expect("read input a")
-            .all_kmers()
-            .expect("decode input a")
-            .into_iter()
-            .map(|(kmer, _)| kmer)
-            .collect();
-    let keys_b: std::collections::BTreeSet<u128> =
-        RKDatabase::from_file_path(&path_b)
-            .expect("read input b")
-            .all_kmers()
-            .expect("decode input b")
-            .into_iter()
-            .map(|(kmer, _)| kmer)
-            .collect();
+    let keys_a: std::collections::BTreeSet<u128> = RKDatabase::from_file_path(&path_a)
+        .expect("read input a")
+        .all_kmers()
+        .expect("decode input a")
+        .into_iter()
+        .map(|(kmer, _)| kmer)
+        .collect();
+    let keys_b: std::collections::BTreeSet<u128> = RKDatabase::from_file_path(&path_b)
+        .expect("read input b")
+        .all_kmers()
+        .expect("decode input b")
+        .into_iter()
+        .map(|(kmer, _)| kmer)
+        .collect();
     let overlap: Vec<u128> = keys_a.intersection(&keys_b).copied().collect();
     assert!(
         overlap.is_empty(),
@@ -525,8 +523,7 @@ fn sweep_reclaims_stale_loose_chunk_files() {
     let symlink = parent
         .path()
         .join(format!("rustkmer_sort_{}_1717171718_1.chunk", pid));
-    std::os::unix::fs::symlink(&sentinel, &symlink)
-        .expect("plant a symlink carrying a chunk name");
+    std::os::unix::fs::symlink(&sentinel, &symlink).expect("plant a symlink carrying a chunk name");
 
     sweep_stale_merge_dirs(parent.path(), Duration::from_secs(0));
     assert!(
@@ -562,7 +559,10 @@ fn successful_prefix_merge_releases_its_shards() {
 
     let merged = RKDatabase::merge_databases(&inputs, &config)
         .expect("a successful prefix-cache merge through the public entry point");
-    assert!(merged.total_kmers() > 0, "the merge must have produced data");
+    assert!(
+        merged.total_kmers() > 0,
+        "the merge must have produced data"
+    );
 
     // The merger's Drop removes its whole process-unique subtree, and the
     // per-bucket shard release kept peak disk down during the merge; through

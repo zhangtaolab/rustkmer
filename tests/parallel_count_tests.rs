@@ -108,20 +108,21 @@ fn count_input_to_map(
     let bytes = input.as_bytes();
     if bytes.len() >= k {
         for window in bytes.windows(k) {
-            let kmer = encode_kmer_bytes_u128(window).map_err(|e| {
-                ProcessingError::new(format!("encode failure: {}", e))
-            })?;
+            let kmer = encode_kmer_bytes_u128(window)
+                .map_err(|e| ProcessingError::new(format!("encode failure: {}", e)))?;
             let final_kmer = if canonical {
-                canonical_kmer_u128(kmer, k).map_err(|e| {
-                    ProcessingError::new(format!("canonical failure: {}", e))
-                })?
+                canonical_kmer_u128(kmer, k)
+                    .map_err(|e| ProcessingError::new(format!("canonical failure: {}", e)))?
             } else {
                 kmer
             };
             counter.increment(final_kmer)?;
         }
     }
-    Ok(counter.get_all_counts().into_iter().collect::<BTreeMap<_, _>>())
+    Ok(counter
+        .get_all_counts()
+        .into_iter()
+        .collect::<BTreeMap<_, _>>())
 }
 
 /// Count `input` with N worker threads sharing one `Arc<KmerCounter>` via
@@ -165,8 +166,7 @@ fn count_input_with_workers(
         let per_worker = total_windows.div_ceil(workers);
 
         std::thread::scope(|s| -> ProcessingResult<()> {
-            let mut handles: Vec<std::thread::ScopedJoinHandle<ProcessingResult<()>>> =
-                Vec::new();
+            let mut handles: Vec<std::thread::ScopedJoinHandle<ProcessingResult<()>>> = Vec::new();
             for worker_idx in 0..workers {
                 let start = worker_idx * per_worker;
                 let end = ((worker_idx + 1) * per_worker).min(total_windows);
@@ -178,9 +178,8 @@ fn count_input_with_workers(
                 handles.push(s.spawn(move || -> ProcessingResult<()> {
                     for i in start..end {
                         let window = &bytes_ref[i..i + k];
-                        let kmer = encode_kmer_bytes_u128(window).map_err(|e| {
-                            ProcessingError::new(format!("encode failure: {}", e))
-                        })?;
+                        let kmer = encode_kmer_bytes_u128(window)
+                            .map_err(|e| ProcessingError::new(format!("encode failure: {}", e)))?;
                         let final_kmer = if canonical {
                             canonical_kmer_u128(kmer, k).map_err(|e| {
                                 ProcessingError::new(format!("canonical failure: {}", e))
@@ -206,7 +205,10 @@ fn count_input_with_workers(
         })?;
     }
 
-    Ok(counter.get_all_counts().into_iter().collect::<BTreeMap<_, _>>())
+    Ok(counter
+        .get_all_counts()
+        .into_iter()
+        .collect::<BTreeMap<_, _>>())
 }
 
 // =====================================================================
@@ -248,11 +250,7 @@ fn capture_parallel_count_baseline() -> Result<(), Box<dyn std::error::Error>> {
         let path = dir.join(&fname);
         let json = serde_json::to_string_pretty(&map)?;
         fs::write(&path, json)?;
-        eprintln!(
-            "wrote {} ({} kmers)",
-            path.display(),
-            map.len()
-        );
+        eprintln!("wrote {} ({} kmers)", path.display(), map.len());
     }
 
     Ok(())
@@ -280,21 +278,12 @@ fn differential_threads_1_vs_n() -> anyhow::Result<()> {
         .unwrap_or(2);
 
     for cell in all_cells() {
-        let map_1 = count_input_with_workers(
-            cell.k,
-            cell.canonical,
-            BASELINE_INPUT,
-            1,
-        )?;
-        let map_n = count_input_with_workers(
-            cell.k,
-            cell.canonical,
-            BASELINE_INPUT,
-            n_workers,
-        )?;
+        let map_1 = count_input_with_workers(cell.k, cell.canonical, BASELINE_INPUT, 1)?;
+        let map_n = count_input_with_workers(cell.k, cell.canonical, BASELINE_INPUT, n_workers)?;
 
         assert_eq!(
-            map_1, map_n,
+            map_1,
+            map_n,
             "divergence at k={} canonical={} (concurrency bug): \
              1-worker map has {} entries, {}-worker map has {} entries",
             cell.k,
@@ -322,9 +311,8 @@ fn baseline_matches_current() -> Result<(), Box<dyn std::error::Error>> {
     for cell in all_cells() {
         let fname = format!("k{}_{}.json", cell.k, canon_str(cell.canonical));
         let path = dir.join(&fname);
-        let json = fs::read_to_string(&path).map_err(|e| {
-            format!("failed to read baseline {}: {}", path.display(), e)
-        })?;
+        let json = fs::read_to_string(&path)
+            .map_err(|e| format!("failed to read baseline {}: {}", path.display(), e))?;
 
         // 02-04 serialized BTreeMap<u128, u32>; serde_json stringifies the
         // u128 keys. Deserialize as BTreeMap<String, u32> then parse keys
@@ -346,8 +334,7 @@ fn baseline_matches_current() -> Result<(), Box<dyn std::error::Error>> {
             actual, expected,
             "baseline drift at k={} canonical={}: current counts do not match \
              committed pre-refactor baseline (D-10 regression)",
-            cell.k,
-            cell.canonical,
+            cell.k, cell.canonical,
         );
     }
 
@@ -394,8 +381,7 @@ fn deterministic_sorted_output() -> ProcessingResult<()> {
             sorted_a, sorted_b,
             "non-deterministic sorted output at k={} canonical={} (D-09 regression): \
              default-sort must absorb sharded DashMap iteration nondeterminism",
-            cell.k,
-            cell.canonical,
+            cell.k, cell.canonical,
         );
     }
 

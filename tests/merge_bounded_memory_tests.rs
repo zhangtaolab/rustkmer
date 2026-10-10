@@ -175,7 +175,10 @@ fn current_rss_kb() -> Option<u64> {
     if !out.status.success() {
         return None;
     }
-    String::from_utf8_lossy(&out.stdout).trim().parse::<u64>().ok()
+    String::from_utf8_lossy(&out.stdout)
+        .trim()
+        .parse::<u64>()
+        .ok()
 }
 
 /// Run `f`, tracking the PEAK resident set observed while it runs.
@@ -364,8 +367,7 @@ fn streaming_merge_peak_memory_is_bounded_by_chunk_not_dataset() -> Result<()> {
     // `estimate_total_kmers` and ASSERT the derived estimate exceeds it, so
     // a shrunken fixture fails loudly instead of silently measuring the
     // in-memory path.
-    let estimated =
-        RKDatabase::estimated_bytes_for_route(MergeStrategy::InMemory, n);
+    let estimated = RKDatabase::estimated_bytes_for_route(MergeStrategy::InMemory, n);
     let budget = estimated - 1;
     assert!(
         estimated > budget,
@@ -646,7 +648,8 @@ fn to_path_and_in_ram_entry_points_agree_byte_for_byte() -> Result<()> {
         let to_path_bytes = std::fs::read(&to_path_file)?;
         let in_ram_bytes = std::fs::read(&in_ram_file)?;
         assert_eq!(
-            to_path_bytes, in_ram_bytes,
+            to_path_bytes,
+            in_ram_bytes,
             "{:?}: merge_databases_to_path and merge_databases must produce byte-identical \
              .rkdb output for the same inputs and route ({} vs {} bytes)",
             route,
@@ -712,8 +715,11 @@ fn streaming_route_probe_survives_the_to_path_entry_point() -> Result<()> {
         temp_dir: work.path().to_path_buf(),
         ..config
     };
-    let summary =
-        RKDatabase::merge_databases_to_path(&inputs, &ok_config, &dir.path().join("probe_ok.rkdb"))?;
+    let summary = RKDatabase::merge_databases_to_path(
+        &inputs,
+        &ok_config,
+        &dir.path().join("probe_ok.rkdb"),
+    )?;
     assert_eq!(
         summary.total_kmers, n,
         "the streaming merge must produce the exact union of both disjoint inputs"

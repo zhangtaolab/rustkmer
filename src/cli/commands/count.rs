@@ -160,12 +160,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             // Create k-mer counter. The 4th param is a stats/reporting slot
             // (table.rs `_num_threads`); the real pool config is the
             // build_global call above (per PATTERNS.md note on table.rs:44).
-            let counter = Arc::new(KmerCounter::new(
-                *k,
-                *canonical,
-                *size,
-                resolved_threads,
-            )?);
+            let counter = Arc::new(KmerCounter::new(*k, *canonical, *size, resolved_threads)?);
 
             let start_time = Instant::now();
 
@@ -457,15 +452,15 @@ fn process_fasta_file(
     // input.fa.gz` invocation. (`CompressedFileReader` lives in `src/io/
     // fastq.rs` but the implementation is format-agnostic; consider
     // relocating/renaming during a future hardening pass.)
-    let (reader, _compression) =
-        DefaultCompressedFileReader::open_compressed(processor.file_path().as_ref()).map_err(
-            |e| {
-                ProcessingError::with_context(
-                    format!("Failed to open FASTA file: {}", processor.file_path()),
-                    e,
-                )
-            },
-        )?;
+    let (reader, _compression) = DefaultCompressedFileReader::open_compressed(
+        processor.file_path().as_ref(),
+    )
+    .map_err(|e| {
+        ProcessingError::with_context(
+            format!("Failed to open FASTA file: {}", processor.file_path()),
+            e,
+        )
+    })?;
     let reader = bio::io::fasta::Reader::new(reader);
 
     let mut chunk: Vec<bio::io::fasta::Record> = Vec::with_capacity(CHUNK_SIZE);
@@ -473,7 +468,10 @@ fn process_fasta_file(
     for record_result in reader.records() {
         let record = record_result.map_err(|e| {
             ProcessingError::with_context(
-                format!("Error reading FASTA record from file: {}", processor.file_path()),
+                format!(
+                    "Error reading FASTA record from file: {}",
+                    processor.file_path()
+                ),
                 e,
             )
         })?;
@@ -559,15 +557,15 @@ fn process_fastq_file(
     let (reader, compression_type) =
         DefaultCompressedFileReader::open_compressed(std::path::Path::new(processor.file_path()))
             .map_err(|e| {
-                ProcessingError::with_context(
-                    format!(
-                        "Failed to open FASTQ file: {} ({})",
-                        processor.file_path(),
-                        processor.compression_type().name()
-                    ),
-                    e,
-                )
-            })?;
+            ProcessingError::with_context(
+                format!(
+                    "Failed to open FASTQ file: {} ({})",
+                    processor.file_path(),
+                    processor.compression_type().name()
+                ),
+                e,
+            )
+        })?;
     let reader = bio::io::fastq::Reader::new(reader);
 
     let mut chunk: Vec<bio::io::fastq::Record> = Vec::with_capacity(CHUNK_SIZE);
