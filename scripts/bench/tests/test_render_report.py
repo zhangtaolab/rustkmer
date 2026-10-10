@@ -32,13 +32,15 @@ def build_arm(name, tool, walls, rss, cache="unavailable",
             "cv_wall_pct": 1.0, "cv_warning": cv_warning}
 
 
-def build_results(mode="full", k=31, arms=None):
+def build_results(mode="full", k=31, arms=None, fingerprints=None):
+    if fingerprints is None:
+        fingerprints = [{"path": "input.fq.gz", "size_bytes": 12345,
+                         "sha256": "ab" * 32}]
     return {
         "schema_version": 1,
         "mode": mode,
         "resolved_inputs": ["input.fq.gz"],
-        "input_fingerprint": [{"path": "input.fq.gz", "size_bytes": 12345,
-                               "sha256": "ab" * 32}],
+        "input_fingerprint": fingerprints,
         "platform": {"system": "Darwin", "release": "25.6.0",
                      "machine": "arm64", "python": "3.12.8"},
         "created": "2026-10-10T16:36:28Z",
@@ -183,12 +185,43 @@ class TestMandatoryStatements(RenderFixtureBase):
         self.assertIn("median peak RSS (GiB)", report)
 
     def test_parity_lines_from_recorded_equality(self):
+        """Same-input run: jellyfish vs count-A EQUAL; count-B repeat EQUAL."""
         results = typical_full_results()
         report = self.render([self.write_results(results)])
-        self.assertIn("-> EQUAL", report)
+        self.assertIn("vs count-A distinct=1,000 total=2,000 -> EQUAL",
+                      report)
+        self.assertIn("vs count-A -> EQUAL (same input measured twice)",
+                      report)
         results["arms"][0]["distinct_kmers"] = 999
         report = self.render([self.write_results(results)])
         self.assertIn("-> MISMATCH", report)
+
+    def test_merge_input_run_does_not_mislabel_count_b_as_mismatch(self):
+        """r1/r2 fingerprints differ: count-B is not a parity claim at all.
+
+        The harness's gate compares jellyfish-count-A vs count-A only; a
+        renderer that printed 'MISMATCH' for the r2 arm would fabricate a
+        methodology finding the run never tripped.
+        """
+        results = build_results(mode="slice", arms=[
+            build_arm("count-A", "rustkmer", (16.0, 16.0, 16.0),
+                      (5 * (1 << 30),) * 3, distinct=100, total=1000),
+            build_arm("count-B", "rustkmer", (16.0, 16.0, 16.0),
+                      (5 * (1 << 30),) * 3, distinct=120, total=1100),
+            build_arm("jellyfish-count-A", "jellyfish", (22.0, 22.0, 22.0),
+                      (80 * (1 << 30),) * 3, distinct=100, total=1000),
+            build_arm("merge", "rustkmer", (7.5, 7.5, 7.5),
+                      (16 * (1 << 30),) * 3, distinct=150, total=2100),
+        ], fingerprints=[
+            {"path": "slice-0.fq", "size_bytes": 1, "sha256": "aa" * 32},
+            {"path": "slice-1.fq", "size_bytes": 1, "sha256": "bb" * 32},
+        ])
+        report = self.render([self.write_results(typical_full_results()),
+                              self.write_results(results, "slice.json")])
+        self.assertIn("no jellyfish arm measured it, so this is not a "
+                      "parity claim", report)
+        slice_block = report.split("mode=slice k=31:", 1)[1]
+        self.assertNotIn("MISMATCH", slice_block.split("\n", 1)[0])
 
     def test_merge_arm_rendered_with_conservation(self):
         results = build_results(mode="slice", arms=[
@@ -203,7 +236,9 @@ class TestMandatoryStatements(RenderFixtureBase):
         ])
         report = self.render([self.write_results(typical_full_results()),
                               self.write_results(results, "slice.json")])
-        self.assertIn("| merge | rustkmer | 7.50 |", report)
+        # merge has no jellyfish counterpart: delta columns are n/a
+        self.assertIn("| merge | rustkmer | 7.50 | 16.00 | n/a | n/a |",
+                      report)
         self.assertIn("EQUAL (count conservation)", report)
         self.assertIn("OK (distinct union)", report)
 

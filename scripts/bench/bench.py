@@ -1031,7 +1031,11 @@ def _rep_series(arm, key, scale=1.0, fmt="{:.2f}"):
 def _arm_row(arm, base_arm):
     """One table row: medians, deltas vs the jellyfish baseline arm, raw reps."""
     wall, rss = arm["median_wall_s"], arm["median_peak_rss_bytes"]
-    if base_arm is None or arm is base_arm:
+    if arm["name"] == "merge":
+        # No jellyfish counterpart exists for the merge operation — a delta
+        # against the jellyfish COUNT arm would be semantically void.
+        d_wall = d_rss = "n/a"
+    elif base_arm is None or arm is base_arm:
         d_wall = d_rss = "baseline"
     else:
         d_wall = f"{_delta_pct(wall, base_arm['median_wall_s']):+.1f}%"
@@ -1089,19 +1093,60 @@ def _full_table_lines(results, label):
     return lines, verdict
 
 
+def _inputs_differ(results):
+    """True when the run's two provisioned inputs are different bytes.
+
+    Full mode measures the SAME input twice (identical fingerprints); a
+    slice run with --merge-input provisions r1 and r2 slices whose
+    sha256 differ. Parity across count arms is only a claim in the first
+    arrangement — in the second, count-B measures data no jellyfish arm
+    ever saw.
+    """
+    fps = results.get("input_fingerprint", [])
+    if len(fps) < 2:
+        return False
+    return fps[1]["sha256"] != fps[0]["sha256"]
+
+
 def _parity_lines(results):
-    """Recorded distinct/total equality per rustkmer arm vs the jellyfish arm."""
+    """Recorded distinct/total equality, paired the way the protocol asserts.
+
+    The harness's parity gate compares jellyfish-count-A vs count-A (the
+    same input A). Only that pairing is rendered as a parity claim; further
+    rustkmer count arms are either same-input repeats (equality expected)
+    or — in a merge-input slice run — measure a different input no jellyfish
+    arm saw, which is stated rather than mislabeled a MISMATCH.
+    """
     jf = _jellyfish_arm(results)
+    count_arms = _rustkmer_count_arms(results)
     lines = []
-    for arm in _rustkmer_count_arms(results):
-        equal = (arm["distinct_kmers"] == jf["distinct_kmers"]
-                 and arm["total_kmers"] == jf["total_kmers"])
-        lines.append(
-            f"- {_results_label(results)}: {jf['name']} "
-            f"distinct={jf['distinct_kmers']:,} total={jf['total_kmers']:,} "
-            f"vs {arm['name']} distinct={arm['distinct_kmers']:,} "
-            f"total={arm['total_kmers']:,} -> "
-            f"{'EQUAL' if equal else 'MISMATCH'}")
+    arm_a = count_arms[0]
+    equal = (arm_a["distinct_kmers"] == jf["distinct_kmers"]
+             and arm_a["total_kmers"] == jf["total_kmers"])
+    lines.append(
+        f"- {_results_label(results)}: {jf['name']} "
+        f"distinct={jf['distinct_kmers']:,} total={jf['total_kmers']:,} "
+        f"vs {arm_a['name']} distinct={arm_a['distinct_kmers']:,} "
+        f"total={arm_a['total_kmers']:,} -> "
+        f"{'EQUAL' if equal else 'MISMATCH'}")
+    for arm in count_arms[1:]:
+        if _inputs_differ(results):
+            lines.append(
+                f"- {_results_label(results)}: {arm['name']} "
+                f"distinct={arm['distinct_kmers']:,} "
+                f"total={arm['total_kmers']:,} — its input differs from "
+                f"input A (see fingerprints; the r2 side of a merge-input "
+                f"run); no jellyfish arm measured it, so this is not a "
+                f"parity claim")
+        else:
+            eq = (arm["distinct_kmers"] == arm_a["distinct_kmers"]
+                  and arm["total_kmers"] == arm_a["total_kmers"])
+            lines.append(
+                f"- {_results_label(results)}: {arm['name']} "
+                f"distinct={arm['distinct_kmers']:,} "
+                f"total={arm['total_kmers']:,} vs {arm_a['name']} -> "
+                f"{'EQUAL' if eq else 'MISMATCH'} (same input measured "
+                f"twice)")
     return lines
 
 
