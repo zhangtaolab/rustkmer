@@ -73,7 +73,11 @@ Repository = "https://github.com/rustkmer/rustkmer.git"
 [tool.maturin]
 # Maturin build configuration
 features = ["pyo3/extension-module"]
-python-source = "."
+# python-source deliberately NOT set: this is a pure-Rust extension module
+# (module-name pyrustkmer, no Python package sources to ship). With
+# python-source = "." maturin validates the mixed layout and refuses to
+# build because pyo3/pyrustkmer/ has never existed — the pyo3 CI wheel job
+# has been red on exactly that (see deferred-items.md's maturin entry).
 module-name = "pyrustkmer"
 manifest-path = "Cargo.toml"
 
