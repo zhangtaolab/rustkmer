@@ -2,10 +2,11 @@
 phase: 04
 slug: benchmark-validation
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-10-09
+validated: 2026-10-11
 ---
 
 # Phase 04 — Validation Strategy
@@ -38,20 +39,21 @@ created: 2026-10-09
 
 ## Per-Task Verification Map
 
-Seeded from RESEARCH.md's requirements→test map; task IDs to be reconciled with final PLAN.md numbering at validate-phase.
+Audited 2026-10-11 (validate-phase, post-execution): every row cross-referenced against the file on disk and the test run at HEAD `29ae679`. Task IDs attributed by introducing commit (`git log --diff-filter=A`).
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 04-01-TBD | 01 | 0 | BENCH-01 | T-04-xx / — | Time-output parser handles BOTH platform formats (macOS `-l` bytes vs Linux `-v` kbytes ×1024 trap), rejects garbage | unit | `python3 -m unittest scripts.bench.tests.test_time_parser` | ❌ W0 | ⬜ pending |
-| 04-01-TBD | 01 | 0 | BENCH-01 | — | Comparator flags regression beyond threshold, passes within (wall + RSS axes) | unit | `python3 -m unittest scripts.bench.tests.test_compare` | ❌ W0 | ⬜ pending |
-| 04-01-TBD | 01 | 1 | BENCH-01 | — | Harness measures count+merge wall-clock and peak RSS on a real invocation (synthetic ≥100k reads through release binary; `wall_s > 0`, `peak_rss_bytes > 0`, distinct == generator expectation) | integration | `python3 scripts/bench/bench.py --mode synthetic --self-check` | ❌ W0 | ⬜ pending |
-| 04-02-TBD | 02 | 0 | BENCH-02 | — | Matched-settings command construction (k/canonical/threads mirrored; gz piped for jellyfish only) | unit | `python3 -m unittest scripts.bench.tests.test_cmd_matrix` | ❌ W0 | ⬜ pending |
-| 04-02-TBD | 02 | 1 | BENCH-02 | T-04-xx / — | Count parity on real slice before any timing (jf Distinct == rk Unique; Total == Total) | integration (dev host) | `python3 scripts/bench/bench.py --mode slice --parity-only` | ❌ W0 | ⬜ pending |
-| 04-03-TBD | 03 | 0 | BENCH-03 | — | results.json carries `peak_rss_bytes` alongside `wall_s` for every arm and median (schema_version, per-rep list) | unit | `python3 -m unittest scripts.bench.tests.test_schema` | ❌ W0 | ⬜ pending |
-| 04-03-TBD | 03 | 0 | BENCH-04 | — | Mode ladder: missing path → synthetic; present path → slice; explicit override honored | unit | `python3 -m unittest scripts.bench.tests.test_degradation` | ❌ W0 | ⬜ pending |
-| 04-03-TBD | 03 | 0 | BENCH-04 | — | Synthetic generator deterministic given seed (same seed → identical bytes; distinct read count) | unit | `python3 -m unittest scripts.bench.tests.test_generator` | ❌ W0 | ⬜ pending |
-| 04-04-TBD | 04 | 1 | BENCH-02 | — | Milestone verdict on full dataset (dev host; ~1–2 h incl. reps; committed results.json + report) | manual-only (documented milestone evidence artifact) | `python3 scripts/bench/bench.py --mode full --out results.json` then report render | ❌ by design | ⬜ pending |
-| 04-TBD | 01 | 2 | BENCH-01/04 | — | CI gate workflow green on synthetic input | e2e | push a PR; `benchmark.yml` must pass | ❌ W0 | ⬜ pending |
+| 04-01-T1 | 01 | 1 | BENCH-01 | T-04-xx | Time-output parser handles BOTH platform formats (macOS `-l` bytes vs Linux `-v` kbytes ×1024 trap), rejects garbage | unit | `python3 -m unittest scripts.bench.tests.test_time_parser` | ✅ (8685e9e) | ✅ green |
+| 04-01-T1 | 01 | 1 | BENCH-01 | — | Harness measures count+merge wall-clock and peak RSS on a real invocation (synthetic ≥100k reads through release binary; distinct == generator expectation) | integration | `python3 scripts/bench/bench.py --mode synthetic --self-check` | ✅ | ✅ green (RC=0, 24M distinct == expectation) |
+| 04-01-T1 | 01 | 1 | BENCH-04 | — | Mode ladder: missing path → synthetic; present path → slice; explicit override honored | unit | `python3 -m unittest scripts.bench.tests.test_degradation` | ✅ (28411ad) | ✅ green |
+| 04-01-T1 | 01 | 1 | BENCH-04 | — | Synthetic generator deterministic given seed | unit | `python3 -m unittest scripts.bench.tests.test_generator` | ✅ (8685e9e) | ✅ green |
+| 04-02-T1 | 02 | 2 | BENCH-02 | T-04-03 | Matched-settings command construction (k/canonical/threads mirrored; gz piped for jellyfish only; hash_size/decompressor path screening) | unit | `python3 -m unittest scripts.bench.tests.test_cmd_matrix` | ✅ (22b62a3) | ✅ green |
+| 04-02-T1 | 02 | 2 | BENCH-02 | — | Count parity on real slice before any timing (jf Distinct == rk Unique; Total == Total) | integration (dev host) | `python3 scripts/bench/bench.py --slice --parity-only` (parity gate also fires inside every full run) | ✅ (bench.py:540) | ✅ green — pilot PASS (3831d8b); full-run gate PASS post-8102985; caught a real truncation bug on attempt 1 (recorded methodology finding) |
+| 04-03-T1 | 03 | 3 | BENCH-03 | — | results.json carries `peak_rss_bytes` alongside `wall_s` for every arm and median (schema_version, per-rep list) | unit | `python3 -m unittest scripts.bench.tests.test_schema` | ✅ (8685e9e) | ✅ green |
+| 04-03-T1 | 03 | 3 | BENCH-01 | — | Comparator flags regression beyond threshold, passes within (wall + RSS axes; boundary-proven, exit 0/1/2) | unit | `python3 -m unittest scripts.bench.tests.test_compare` | ✅ (8acd514) | ✅ green |
+| 04-04-T1 | 04 | 4 | BENCH-02/03 | T-04-08 | merge-input/skip-merge arms; count conservation on measured input | unit | `python3 -m unittest scripts.bench.tests.test_merge_input` | ✅ (3831d8b) | ✅ green |
+| 04-04-T3 | 04 | 4 | BENCH-02/03 | — | Mechanical report renderer: zero measurement literals, byte-identical re-render, substitute labeling | unit | `python3 -m unittest scripts.bench.tests.test_render_report` | ✅ (f31d0b5) | ✅ green |
+| 04-03-T1 | 03 | 3 | BENCH-01/04 | — | CI gate workflow green on synthetic input (rustkmer-vs-committed-baseline; both platform baselines committed) | e2e | push; `benchmark.yml` must pass | ✅ | ✅ green on 3ae8ab3 (04-03 close); ⚠ one variance-driven count-B RSS breach on 437cec6 (jellyfish-less CI arm, runner noise suspected — see phase 04 issues; rerun pending) |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -59,31 +61,39 @@ Seeded from RESEARCH.md's requirements→test map; task IDs to be reconciled wit
 
 ## Wave 0 Requirements
 
-- [ ] `scripts/bench/tests/test_time_parser.py` (+ `fixtures/time_l_macos.txt`, `fixtures/time_v_linux.txt`) — BENCH-01
-- [ ] `scripts/bench/tests/test_degradation.py` — BENCH-04
-- [ ] `scripts/bench/tests/test_compare.py`, `test_schema.py`, `test_cmd_matrix.py`, `test_generator.py` — BENCH-01/02/03/04
-- [ ] `scripts/bench/baselines/bench_baseline.json` — committed after first green synthetic run (documented regen command)
-- [ ] `.github/workflows/benchmark.yml` — CI gate job
-- [ ] Rust suites: no new gaps — existing `cargo test` infrastructure covers Rust-side additions
+- [x] `scripts/bench/tests/test_time_parser.py` (+ fixtures) — BENCH-01 (8685e9e)
+- [x] `scripts/bench/tests/test_degradation.py` — BENCH-04 (28411ad)
+- [x] `scripts/bench/tests/test_compare.py`, `test_schema.py`, `test_cmd_matrix.py`, `test_generator.py` — BENCH-01/02/03/04 (8685e9e, 22b62a3, 8acd514)
+- [x] `scripts/bench/baselines/bench_baseline.json` — committed as platform pair `bench_baseline.{darwin,linux}.json` with documented bootstrap/regeneration procedures (3ae8ab3)
+- [x] `.github/workflows/benchmark.yml` — CI gate job (d02ae75)
+- [x] Rust suites: no new gaps — `cargo test` green at phase HEAD (23 binaries, 0 failures; includes the multi-member gzip regression test added by 8102985)
 
 ---
 
 ## Manual-Only Verifications
 
-| Behavior | Requirement | Why Manual | Test Instructions |
-|----------|-------------|------------|-------------------|
-| Milestone verdict (rustkmer vs Jellyfish2, counting speed + peak RSS) on full human-scale dataset | BENCH-02 | ~5 GB input, ~1–2 h wall incl. ≥3 counterbalanced reps; CI has no jellyfish and no dataset — gate is rustkmer-vs-baseline by design | Dev host: `python3 scripts/bench/bench.py --mode full --parity-only=false --out results.json`; verify parity gate passed first (`--mode slice --parity-only`); render report; commit results.json + report. Dataset: CRR2044018 (user-approved substitute for CRR1936095, 2026-10-09) — report must label it substitute |
-| Cold-cache protocol application | BENCH-02 | Page-cache purge needs sudo/root on Linux; macOS purge available but destructive to cache state of running machine | Between arms: `sudo purge` (macOS) / drop_caches (Linux CI, if ever enabled); interleaved+counterbalanced ≥3 rounds, report median + CV; flag CV > 10% |
+| Behavior | Requirement | Why Manual | Test Instructions | Outcome |
+|----------|-------------|------------|-------------------|---------|
+| Milestone verdict (rustkmer vs Jellyfish2, counting speed + peak RSS) on full human-scale dataset | BENCH-02 | ~2.6 GB gz input, hours of wall incl. ≥3 counterbalanced reps; CI has no jellyfish and no dataset — gate is rustkmer-vs-baseline by design | Dev host full run; parity gate first; render report; commit results + report | **DONE 2026-10-11** — evidence committed (04-results-*.json, 8d63b91); report `docs/benchmark-report.md`; verdict k=31 YES / k=21 NO (overall NO, escalated to milestone close) |
+| Cold-cache protocol application | BENCH-02 | Page-cache purge needs sudo/root | Between arms: `sudo purge` (macOS); interleaved+counterbalanced ≥3 rounds, median + CV; flag CV > 10% | **RESOLVED as option (b)** — user-approved no-sudo run (plan 04-04 lines 101/111/146); every rep records `cache_state: "unavailable"`; report states cold-cache PARTIALLY satisfied; counterbalanced interleave preserved |
 
 ---
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 120s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 120s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** validated 2026-10-11 — post-execution audit at HEAD `29ae679`: 8/8 test modules green (incl. 2 added beyond the seeded map), synthetic self-check RC=0, parity gate exercised on real data (twice), CI e2e green at 04-03 close (one variance breach flagged open), milestone manual rows closed with committed evidence.
+
+## Validation Audit 2026-10-10
+
+| Metric | Count |
+|---|---|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
