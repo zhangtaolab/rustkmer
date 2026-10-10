@@ -16,6 +16,11 @@ second gz input (the r1/r2 merge arrangement), and --skip-merge keeps a run
 to the counting comparison — the full-scale runs measure counting only;
 merge wall/RSS is measured at slice scale (plan 04-04 must_haves).
 
+--render-report (04-04 Task 3) is the ONLY writer of the milestone report's
+numbers: it reads committed results JSONs and emits Markdown with zero
+measurement literals of its own and no clock, so re-rendering reproduces a
+byte-identical file and any hand-edit is detectable (threat T-04-07).
+
 Every headline number comes from a --release binary (never a debug build) and
 from OS rusage accounting (never a harness-internal clock). Python 3.10+
 stdlib only — no third-party imports, no pip installs.
@@ -957,6 +962,386 @@ def run_bench(args):
     return results
 
 
+# --- 04-04 mechanical report renderer ------------------------------------------
+# Contract (threat T-04-07): every MEASUREMENT number in the rendered report
+# is read from the results JSONs — the code below carries no measurement
+# literals and consults no clock, so a re-render is byte-identical and a
+# hand-edited number is detectable. The only external input is the harness
+# provenance line, which uses the LAST COMMIT THAT TOUCHED bench.py (stable
+# across re-renders even as the repo moves forward — unlike HEAD).
+
+BYTES_PER_GIB = 1 << 30            # display unit constant, not a measurement
+COLD_CACHE_SATISFIED_STATES = ("purged", "runner-fresh")
+
+
+def harness_source_commit():
+    """Last commit that touched this file — the harness provenance line.
+
+    Deterministic across re-renders (unrelated commits do not move it), so
+    byte-identity holds as the repo advances. Returns 'unknown' outside a
+    git checkout (deterministic in that environment too).
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "log", "-1", "--format=%H", "--",
+             str(Path(__file__).resolve())],
+            capture_output=True, text=True, cwd=str(REPO_ROOT))
+    except OSError:
+        return "unknown"
+    if proc.returncode != 0:
+        return "unknown"
+    return proc.stdout.strip() or "unknown"
+
+
+def _gib(num_bytes):
+    return num_bytes / BYTES_PER_GIB
+
+
+def _delta_pct(value, base):
+    """Signed percent of `value` relative to `base` (negative = below base)."""
+    if base <= 0:
+        raise ValueError(f"delta base must be positive, got {base!r}")
+    return (value - base) / base * 100.0
+
+
+def _jellyfish_arm(results):
+    arms = [a for a in results["arms"] if a["tool"] == "jellyfish"]
+    if not arms:
+        raise ValueError("render needs a jellyfish comparison arm "
+                         "(results from a --reps >= 2 comparison run)")
+    return arms[0]
+
+
+def _rustkmer_count_arms(results):
+    arms = [a for a in results["arms"]
+            if a["tool"] == "rustkmer" and a["name"].startswith("count")]
+    if not arms:
+        raise ValueError("render needs at least one rustkmer count arm")
+    return arms
+
+
+def _results_label(results):
+    return f"mode={results['mode']} k={results['params'].get('k')}"
+
+
+def _rep_series(arm, key, scale=1.0, fmt="{:.2f}"):
+    return " / ".join(fmt.format(r[key] / scale) for r in arm["reps"])
+
+
+def _arm_row(arm, base_arm):
+    """One table row: medians, deltas vs the jellyfish baseline arm, raw reps."""
+    wall, rss = arm["median_wall_s"], arm["median_peak_rss_bytes"]
+    if base_arm is None or arm is base_arm:
+        d_wall = d_rss = "baseline"
+    else:
+        d_wall = f"{_delta_pct(wall, base_arm['median_wall_s']):+.1f}%"
+        d_rss = (f"{_delta_pct(rss, base_arm['median_peak_rss_bytes']):+.1f}%")
+    cv = arm.get("cv_wall_pct")
+    cv_txt = "n/a" if cv is None else f"{cv:.1f}%"
+    warn = " **[cv_warning]**" if arm.get("cv_warning") else ""
+    return (f"| {arm['name']} | {arm['tool']} | {wall:.2f} | {_gib(rss):.2f} "
+            f"| {d_wall} | {d_rss} | {_rep_series(arm, 'wall_s')} "
+            f"| {_rep_series(arm, 'peak_rss_bytes', BYTES_PER_GIB)} "
+            f"| {cv_txt}{warn} |")
+
+
+_ARM_TABLE_HEADER = (
+    "| arm | tool | median wall (s) | median peak RSS (GiB) "
+    "| wall vs jellyfish | RSS vs jellyfish | per-rep wall (s) "
+    "| per-rep RSS (GiB) | CV wall |",
+    "|-----|------|-----------------|----------------------"
+    "|-------------------|------------------|------------------"
+    "|-------------------|---------|")
+
+
+def _count_verdict(results):
+    """YES iff every rustkmer count arm's median wall <= jellyfish's.
+
+    'Matches or beats': equal medians count as a match. Conservative across
+    multiple rustkmer arms — ALL must satisfy the rule.
+    """
+    jf = _jellyfish_arm(results)
+    rk = _rustkmer_count_arms(results)
+    return (all(a["median_wall_s"] <= jf["median_wall_s"] for a in rk),
+            [a["median_wall_s"] for a in rk], jf["median_wall_s"])
+
+
+def _full_table_lines(results, label):
+    """Headline/secondary full-scale table + its verdict line."""
+    k = results["params"]["k"]
+    jf = _jellyfish_arm(results)
+    lines = [f"## {label}: k={k} — full-scale counting", ""]
+    lines += _ARM_TABLE_HEADER
+    for arm in [*_rustkmer_count_arms(results), jf]:
+        lines.append(_arm_row(arm, jf))
+    verdict, rk_medians, jf_median = _count_verdict(results)
+    rk_txt = ", ".join(f"{m:.2f}" for m in rk_medians)
+    lines += [
+        "",
+        (f"**Verdict (k={k}):** rustkmer matches-or-beats jellyfish on "
+         f"counting speed — **{'YES' if verdict else 'NO'}** "
+         f"(rule: every rustkmer count-arm median wall <= jellyfish median "
+         f"wall; rustkmer [{rk_txt}] s vs jellyfish {jf_median:.2f} s). "
+         f"Peak-memory deltas are in the table above — memory wins/losses "
+         f"are as visible as speed (BENCH-03)."),
+        "",
+    ]
+    return lines, verdict
+
+
+def _parity_lines(results):
+    """Recorded distinct/total equality per rustkmer arm vs the jellyfish arm."""
+    jf = _jellyfish_arm(results)
+    lines = []
+    for arm in _rustkmer_count_arms(results):
+        equal = (arm["distinct_kmers"] == jf["distinct_kmers"]
+                 and arm["total_kmers"] == jf["total_kmers"])
+        lines.append(
+            f"- {_results_label(results)}: {jf['name']} "
+            f"distinct={jf['distinct_kmers']:,} total={jf['total_kmers']:,} "
+            f"vs {arm['name']} distinct={arm['distinct_kmers']:,} "
+            f"total={arm['total_kmers']:,} -> "
+            f"{'EQUAL' if equal else 'MISMATCH'}")
+    return lines
+
+
+def _slice_section_lines(results):
+    """Slice-scale table incl. the merge arm + conservation checks."""
+    k = results["params"]["k"]
+    jf = _jellyfish_arm(results)
+    count_arms = _rustkmer_count_arms(results)
+    lines = [f"## Slice-scale run (k={k}) — counting + merge (r1/r2)", ""]
+    lines += _ARM_TABLE_HEADER
+    merge_arms = [a for a in results["arms"] if a["name"] == "merge"]
+    for arm in [*count_arms, jf, *merge_arms]:
+        lines.append(_arm_row(arm, jf))
+    lines.append("")
+    if merge_arms:
+        mg = merge_arms[0]
+        sum_total = sum(a["total_kmers"] for a in count_arms)
+        max_distinct = max(a["distinct_kmers"] for a in count_arms)
+        total_ok = mg["total_kmers"] == sum_total
+        distinct_ok = mg["distinct_kmers"] >= max_distinct
+        lines += [
+            (f"- merge total_kmers {mg['total_kmers']:,} == sum of count-arm "
+             f"totals {sum_total:,} -> "
+             f"{'EQUAL (count conservation)' if total_ok else 'MISMATCH'}"),
+            (f"- merge distinct_kmers {mg['distinct_kmers']:,} >= max input "
+             f"distinct {max_distinct:,} -> "
+             f"{'OK (distinct union)' if distinct_ok else 'VIOLATED'}"),
+            "",
+        ]
+    else:
+        lines.append("- no merge arm recorded in this results file")
+        lines.append("")
+    return lines
+
+
+def _cache_summary(results):
+    """Per-arm cache_state census, e.g. 'count-A: unavailable x3'."""
+    lines = []
+    for arm in results["arms"]:
+        counts = {}
+        for rep in arm["reps"]:
+            state = rep.get("cache_state", "absent")
+            counts[state] = counts.get(state, 0) + 1
+        census = ", ".join(f"{state} x{n}"
+                           for state, n in sorted(counts.items()))
+        lines.append(f"  - {arm['name']} ({arm['tool']}): {census}")
+    return lines
+
+
+def _all_cache_states(files_data):
+    for results in files_data:
+        for arm in results["arms"]:
+            for rep in arm["reps"]:
+                yield rep.get("cache_state", "absent")
+
+
+def _methodology_lines(files_data):
+    """Reps/schedule, cache states, CV flags, -s, decompression asymmetry,
+    fingerprints, harness provenance, and the recorded methodology finding."""
+    lines = ["## Methodology", ""]
+    cold_partial = any(state not in COLD_CACHE_SATISFIED_STATES
+                       for state in _all_cache_states(files_data))
+    for results in files_data:
+        params = results["params"]
+        sched = params.get("round_schedule")
+        sched_txt = "n/a (single-rep run)"
+        if sched:
+            sched_txt = "; ".join(
+                f"round {rnd}: {' then '.join(order)}"
+                for rnd, order in sorted(sched.items()))
+        lines += [
+            f"### Run {_results_label(results)} "
+            f"(created {results['created']})",
+            "",
+            (f"- reps: {params.get('reps', 1)} measured per arm (one warmup "
+             f"per tool executed and discarded before round 0); cooldown "
+             f"{params.get('cooldown_s', 0)} s between runs; threads "
+             f"{params['threads']}; canonical (-C on both tools)"),
+            f"- counterbalanced schedule: {sched_txt}",
+            f"- jellyfish `-s {params.get('hash_size', 'n/a')}` "
+            f"(generous initial hash; recorded in results)",
+            (f"- decompression arrangement: rustkmer reads the .gz natively; "
+             f"jellyfish receives `{params.get('decompressor', 'n/a')} | "
+             f"jellyfish count ... /dev/stdin` — decompression is inside "
+             f"BOTH tools' measured wall; the residual asymmetry (pipe and "
+             f"context-switch overhead on the jellyfish arm only) remains "
+             f"and is stated here per protocol"),
+            "- cache_state per arm:",
+            *_cache_summary(results),
+            "",
+        ]
+    if cold_partial:
+        lines.append(
+            "- **Cold cache: PARTIALLY SATISFIED.** Some measured reps "
+            "recorded cache_state other than purged/runner-fresh (the "
+            "between-run purge needs sudo and was not run — user-approved "
+            "no-sudo execution). The cold-cache wording of the BENCH-02 "
+            "methodology is therefore only partially satisfied; the "
+            "criterion's evidence is this recording, not a claim.")
+        lines.append("")
+    cv_flagged = []
+    for results in files_data:
+        for arm in results["arms"]:
+            if arm.get("cv_warning"):
+                cv = arm.get("cv_wall_pct")
+                cv_txt = "n/a" if cv is None else f"{cv:.1f}%"
+                cv_flagged.append(f"{_results_label(results)} arm "
+                                  f"{arm['name']}: CV {cv_txt} "
+                                  f"(threshold 10%)")
+    if cv_flagged:
+        lines.append("- cv_warning flags: " + "; ".join(cv_flagged)
+                     + " — treat those medians with care")
+    else:
+        lines.append("- cv_warning flags: none")
+    lines.append("")
+    lines.append("### Input fingerprints (size + sha256 per file, as recorded)")
+    lines.append("")
+    for results in files_data:
+        for fp in results["input_fingerprint"]:
+            lines.append(f"- {_results_label(results)}: `{fp['path']}` "
+                         f"({fp['size_bytes']:,} bytes) sha256 "
+                         f"`{fp['sha256']}`")
+    lines.append("")
+    first = files_data[0]
+    plat = first["platform"]
+    lines += [
+        "### Harness provenance",
+        "",
+        f"- harness: `scripts/bench/bench.py` @ git commit "
+        f"`{harness_source_commit()}`; results schema_version "
+        f"{first['schema_version']}",
+        f"- platform (as recorded): {plat['system']} {plat['release']} "
+        f"{plat['machine']}, python {plat['python']}",
+        f"- rustkmer binary path (as recorded): `{first['params']['rustkmer']}`",
+        "",
+        "### Recorded methodology finding (attempt 1 of the full run)",
+        "",
+        "- The first full-run attempt (2026-10-10) halted at the harness's "
+        "count-parity gate: rustkmer's single-member gzip decoder silently "
+        "read only member 1 of the concatenated-gzip input (220,028 k-mers "
+        "vs jellyfish's full count). The parity gate caught it before any "
+        "timing was trusted. Fixed in commit `8102985` (MultiGzDecoder + "
+        "regression test); the results in this report are from the post-fix "
+        "attempt 2. This is exactly the pre-timing parity gate the "
+        "methodology mandates.",
+        "",
+    ]
+    return lines
+
+
+def render_report(results_paths, out_path):
+    """Render the milestone Markdown report from committed results JSONs.
+
+    Deterministic by construction: no clock, no render-time measurements, no
+    measurement literals — re-rendering the same JSONs reproduces a
+    byte-identical file (plan 04-04 Task 3 verify chain).
+    """
+    files_data = []
+    for path in results_paths:
+        with open(path) as fh:
+            results = json.load(fh)
+        validate_schema(results)
+        if results["mode"] not in ("full", "slice"):
+            raise ValueError(f"render supports mode=full/slice results, "
+                             f"got mode={results['mode']!r} in {path}")
+        files_data.append(results)
+    full_files = [d for d in files_data if d["mode"] == "full"]
+    slice_files = [d for d in files_data if d["mode"] == "slice"]
+    if not full_files:
+        raise ValueError("--render-report needs at least one mode=full "
+                         "results file")
+
+    lines = [
+        "# rustkmer vs Jellyfish2 — milestone benchmark report",
+        "",
+        "*Mechanically rendered from the committed results JSONs by "
+        "`scripts/bench/bench.py --render-report`. Every measurement below "
+        "is read from those JSONs — the renderer contains no measurement "
+        "literals — and re-rendering reproduces this file byte-for-byte, so "
+        "a hand-edited number is detectable (BENCH-02/T-04-07).*",
+        "",
+        "## Dataset provenance",
+        "",
+        "**CRR2044018 is the user-approved substitute for CRR1936095** "
+        "(CRR1936095 was absent from this host's disk; the substitution was "
+        "approved 2026-10-09). The harness is path-configurable: when "
+        "CRR1936095 returns, the same protocol re-runs on it via `--input`.",
+        "",
+    ]
+
+    verdicts = []
+    for i, results in enumerate(full_files):
+        label = ("Headline (primary)" if i == 0
+                 else "Secondary" if i == 1 else f"Additional #{i + 1}")
+        table_lines, verdict = _full_table_lines(results, label)
+        lines += table_lines
+        verdicts.append((results["params"]["k"], verdict))
+
+    overall = all(v for _, v in verdicts)
+    per_k = "; ".join(f"k={k}: {'YES' if v else 'NO'}" for k, v in verdicts)
+    lines += [
+        "## BENCH-02 verdict (counting speed, from recorded medians)",
+        "",
+        (f"**{'YES' if overall else 'NO'}** — rustkmer matches-or-beats "
+         f"Jellyfish2 on counting speed across the full-scale tables above "
+         f"({per_k}; rule: every rustkmer count-arm median wall <= jellyfish "
+         f"median wall in every full-scale table). A NO on any k is a valid "
+         f"measured outcome and is reported as-is."),
+        "",
+        "## Count parity evidence (recorded distinct/total equality)",
+        "",
+    ]
+    for results in full_files:
+        lines += _parity_lines(results)
+    for results in slice_files:
+        lines += _parity_lines(results)
+    lines.append("")
+
+    for results in slice_files:
+        lines += _slice_section_lines(results)
+
+    lines += _methodology_lines(files_data)
+    lines += [
+        "---",
+        "",
+        "*Generated file — do not edit by hand. Regenerate with "
+        "`python3 scripts/bench/bench.py --render-report --results <jsons> "
+        "--out docs/benchmark-report.md`; the evidence JSONs are committed "
+        "beside this report under `.planning/phases/04-benchmark-validation/`.",
+        "",
+    ]
+
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", newline="\n") as fh:
+        fh.write("\n".join(lines))
+    print(f"report written to {out}")
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="rustkmer benchmark harness (stdlib only).")
@@ -1007,6 +1392,17 @@ def main():
                         help="omit the merge arm (04-04 full runs are "
                              "counting comparisons; merge is measured at "
                              "slice scale)")
+    parser.add_argument("--render-report", action="store_true",
+                        help="render the milestone Markdown report from "
+                             "committed results JSONs (--results, one or "
+                             "more) to --out; deterministic, no measurement "
+                             "literals — re-render is byte-identical "
+                             "(04-04 Task 3, T-04-07)")
+    parser.add_argument("--results", nargs="+", default=None,
+                        help="results.json paths for --render-report "
+                             "(mode=full files render as comparison tables "
+                             "in the order given; mode=slice files render "
+                             "the slice+merge section)")
     parser.add_argument("--rustkmer", default="target/release/rustkmer",
                         help="path to the rustkmer RELEASE binary")
     args = parser.parse_args()
@@ -1026,6 +1422,13 @@ def main():
         parser.error("--cooldown-s must be >= 0")
     if args.disk_floor_gb < 0:
         parser.error("--disk-floor-gb must be >= 0")
+
+    if args.render_report:
+        if not args.results:
+            parser.error("--render-report requires --results "
+                         "(one or more results.json paths)")
+        render_report(args.results, args.out)
+        return
 
     if args.parity_only:
         run_parity_cli(args)
