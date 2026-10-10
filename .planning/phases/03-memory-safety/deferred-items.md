@@ -7,7 +7,11 @@
   `src/io/fastq.rs` (lines 153, 215, 342 + one in fasta.rs), introduced by a
   toolchain bump (local rustc 1.99.0; the Phase 1 clippy sweep ran on an
   older toolchain where this lint did not fire).
-  status: open
+  status: resolved
+  **Resolved:** 2026-10-10 audit — `cargo clippy --all-targets -- -D warnings`
+  verified green on the current tree (exit 0); no `src/` changes since the
+  04-01-era verified-green run (git log 28411ad..HEAD -- src/ is empty), so the
+  fix predates Phase 04 and this entry simply lagged the code.
   **What:** Not caused by plan 03-01 — those files are untouched by this phase's
   merge work. But plan 03-01 Task 2 lists `cargo clippy --all-targets -- -D warnings
   exits 0` as a blocking acceptance criterion, so the gate cannot pass while
@@ -33,7 +37,13 @@
   `config.temp_dir.join("external_sort_merge_output.tmp")` — **outside** the
   process-unique `rustkmer-merge-<rand>/` subdir plan 03-02 introduced, and it
   is never removed.
-  status: open
+  status: resolved
+  **Resolved:** 2026-10-10 audit — `src/database/format.rs:1801-1804` now writes
+  the intermediate under `merger.merge_temp_subdir_path()` (process-unique,
+  owned by the merger's `TempDir`, RAII-cleaned); the `None` arm is the
+  documented drop-time degenerate fallback. The in-code comment explicitly
+  closes "the disk-exhaustion half of MERGE-03" and the T-03-06 fixed-name
+  collision class.
   **What:** Found during plan 03-02 while moving every *shard* under the
   subdir. Two consequences, both pre-existing and neither introduced or worsened
   by 03-02:
@@ -57,7 +67,12 @@
 - `ExternalSortMerger::merge_prefix_buckets` logs per-bucket failures and then
   returns `Ok(())` regardless of how many buckets failed
   (`prefix_cache_merge.rs`, the `error_count` block).
-  status: open
+  status: resolved
+  **Resolved:** 2026-10-10 audit — WR-04 fix at
+  `src/database/prefix_cache_merge.rs:683-691`: `error_count > 0` now returns
+  `Err` (naming counts and preserving shard files under the shard dir for
+  recovery), so `concatenate_final_output` never runs on partial bucket
+  output. The in-code comment cites this deferred entry explicitly.
   **What:** Found during plan 03-02 while replacing the success-only cleanup
   gate. If any prefix bucket's merge errors, `error_count > 0` is only logged —
   the function still reports success, so `external_sort_merge` continues into
