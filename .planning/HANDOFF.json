@@ -1,49 +1,43 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-02T07:51:35.967Z",
-  "phase": "02",
-  "phase_name": "Parallel Counting",
-  "phase_status": "complete + fully hardened (two fix passes: critical_warning + all)",
-  "phase_dir": ".planning/phases/02-parallel-counting",
-  "plan": "all (5/5) + two code-review-fix passes",
-  "task": "n/a — phase complete and fully hardened",
-  "total_tasks": 5,
-  "status": "paused at phase boundary (02 complete + hardened → 03 not started)",
+  "timestamp": "2026-10-10T11:18:06.059Z",
+  "phase": "04",
+  "phase_name": "benchmark-validation",
+  "phase_dir": ".planning/phases/04-benchmark-validation",
+  "plan": 4,
+  "task": 2,
+  "total_tasks": 3,
+  "status": "paused",
   "completed_tasks": [
-    {"id": "02-01", "name": "Thread-count plumbing (--threads + D-07 precedence + Err-tolerant build_global + merge.rs Pitfall-3 fix)", "status": "done", "commit": "92b1010"},
-    {"id": "02-04", "name": "Golden-capture-first baselines (D-10)", "status": "done", "commit": "b02df33"},
-    {"id": "02-02", "name": "DashMap swap + rayon chunked par_iter + D-09 default-sort flip", "status": "done", "commit": "2511298"},
-    {"id": "02-03", "name": "PyCounter threads kwarg + py.detach GIL release (PCOUNT-03)", "status": "done", "commit": "52ffd48"},
-    {"id": "02-05", "name": "PCOUNT-04 differential correctness gate", "status": "done", "commit": "d608939"},
-    {"id": "fix-pass-1", "name": "Code-review fix pass 1 (critical_warning scope): WR-01..WR-04 from original review", "status": "done", "commits": ["7ccfd11 (WR-03)", "bc97c80 (WR-02)", "9357b89 (WR-01)", "0c4f6c9 (WR-04)"], "report": "02-REVIEW-FIX.md @ 5a636b8 (overwritten by pass 2)"},
-    {"id": "review-refresh", "name": "Fresh re-review after pass-1 fixes (source had changed)", "status": "done", "commit": "4a81f22", "note": "Confirmed pass-1 fixes sound; surfaced 5 NEW warnings adjacent to the fix surface + 5 still-open Info findings. 0 critical."},
-    {"id": "fix-pass-2", "name": "Code-review fix pass 2 (all scope): 5 new warnings + 5 info = 10 findings", "status": "done", "commits": ["188e115 (IN-05)", "996c74e (IN-03)", "2c5d0c1 (IN-02)", "1e56098 (IN-01)", "fad18ef (WR-03 new: fasta helpers)", "b4d3c62 (WR-04 new: merge docstring)", "52bfc78 (IN-04)", "0920cb4 (WR-05 new: pyo3 bz2/xz)", "26cbf36 (WR-02 new: eprintln out of worker)", "a545a2d (WR-01 new: total_kmers denominator doc)"], "report": "02-REVIEW-FIX.md @ b230d54 (all_fixed, 10/10)", "needs_human_verification": ["WR-01 (a545a2d): total_kmers denominator shifted from 'attempts' to 'successes' — affects FilteringResult::kept_percentage on saturating inputs. Option (b) applied (document + regression test). Confirm semantics on u32::MAX-saturating inputs."]}
+    {"id": 1, "name": "04-04 tracer: bench.py --skip-merge / --merge-input + merge-input smoke tests + pilot calibration", "status": "done", "commit": "3831d8b"},
+    {"id": 2, "name": "blocking-human checkpoint: full-benchmark cold-cache run (user terminal, sudo purged states)", "status": "in_progress", "progress": "user chose option 'a: 冷缓存自跑'; benchmark NOT yet started as of 2026-10-10T11:18Z (0/3 result JSONs, no bench/rustkmer/jellyfish processes)"}
   ],
   "remaining_tasks": [
-    {"id": "phase-3", "name": "Phase 3: Memory Safety — bounded merge routing (MERGE-01..04) + dense u64 storage for k<=32 (DENSE-01..03)", "status": "not_started", "note": "No CONTEXT/SPEC/plans yet — start with /gsd-discuss-phase 3"},
-    {"id": "phase-4", "name": "Phase 4: Benchmark & Validation — reproducible harness + Jellyfish2 comparison on CRR1936095 (BENCH-01..04)", "status": "not_started"}
+    {"id": 3, "name": "render docs/benchmark-report.md (substitute labeling) + copy evidence JSONs to 04-results-*.json + 04-04-SUMMARY.md + STATE/ROADMAP", "status": "not_started"},
+    {"id": 4, "name": "wave-4 close + aggregate_results + verify_phase_goal + code review + regression gate + phase.complete 04 (STOP per --no-transition)", "status": "not_started"},
+    {"id": 5, "name": "/gsd-complete-milestone v1.0 (after phase verification passes)", "status": "not_started"}
   ],
-  "blockers": [],
+  "blockers": [
+    {"description": "Full-benchmark requires sudo (cold-cache `purged` per rep) — automation cannot enter the password", "type": "human_action", "workaround": "user runs the 3-command block in their own terminal (see .continue-here.md); agent/cron auto-continues once the 3 JSONs validate"}
+  ],
   "async_jobs": [],
   "human_actions_pending": [
-    {"action": "Verify WR-01 denominator-semantics decision (pass-2, commit a545a2d)", "context": "Pass-1's WR-03 fix moved total_kmers.fetch_add after the overflow check (semantics: 'successful counts' instead of 'all attempts'). Pass-2's fresh review flagged that this shifts FilteringResult::kept_percentage denominator on saturating inputs. Fixer chose option (b): document the new denominator + add regression test, rather than reverting. Read 02-REVIEW-FIX.md §WR-01 + commit a545a2d. If 'attempts' denominator is required for filtering stats, that's a follow-up change.", "blocking": false},
-    {"action": "Decide whether to push local dev to origin", "context": "Phase-2 (22 commits) + 17 hardening commits (2 fix passes + refreshed review) = ~39 commits local on dev; origin/dev is behind. Pushing is the user's call.", "blocking": false},
-    {"action": "Decide on auto_advance config", "context": "workflow.auto_advance=true is set but the user drove discuss->plan->execute manually at each stage. Keep for hands-off future phases, or /gsd-config to disable.", "blocking": false}
+    {"action": "Run the benchmark command block (sudo -v; caffeinate -is &; background sudo -n -v keep-alive loop; bench.py full k31 / full k21 / slice_merge; kill %1 %2) — exact block preserved in .continue-here.md", "context": "cold-cache purged states fully satisfy BENCH-02; projected ~3.7–5.3 h, peak disk ~112 GB (1,492 GiB free)", "blocking": true}
   ],
   "decisions": [
-    {"decision": "Phase 2 parallelization: intra-file per-record rayon par_iter (not per-file); gzip decompression single-threaded (D-02); global record pool across files (D-03)", "rationale": "CRR1936095 = 2 split parts; per-file caps at ~2x", "phase": "02"},
-    {"decision": "dashmap for the concurrent counter, preserving KmerCounter public API (D-04/D-05)", "rationale": "PCOUNT-02 names dashmap; 6.x reuses hashbrown 0.14.5", "phase": "02"},
-    {"decision": "Thread precedence: --threads > RUSTKMER_THREADS > RAYON_NUM_THREADS > num_cpus (D-07)", "rationale": "New RUSTKMER_THREADS wins; RAYON_NUM_THREADS fallback for existing merge-tuning users", "phase": "02"},
-    {"decision": "--sort DEFAULT-ON (D-09)", "rationale": "Reproducible output + Jellyfish2 sorted alignment for Phase 4. Cost flagged for Phase 4.", "phase": "02"},
-    {"decision": "Correctness via golden-capture-first + 1-vs-N commutativity differential + proptest (D-10)", "rationale": "Counting is integer addition; any 1-vs-N divergence is a concurrency bug", "phase": "02"},
-    {"decision": "pyo3 py.detach (NOT allow_threads) for GIL release", "rationale": "allow_threads is #[deprecated(0.26.0)] on pyo3 0.27.2 pin; detach keeps -D warnings green", "phase": "02"},
-    {"decision": "WR-02 merge-overflow: poisoned-but-consistent (not rolled back)", "rationale": "Cloning DashMap before merge loop is prohibitive at genome scale; atomics update incrementally so stats match partial table; caller discards counter after Err", "phase": "02-hardening"},
-    {"decision": "WR-01 fix touched src/io/fasta.rs validator in addition to count.rs processor", "rationale": "Validator had same plain-File::open gap; would reject gzip before processor ran", "phase": "02-hardening"},
-    {"decision": "Pass-2 WR-01: document total_kmers denominator shift (option b) rather than revert to 'attempts' (option a)", "rationale": "Reverting risked a new bug; 'successful k-mers' denominator is arguably more correct for retention reporting. Regression test added pinning new kept_percentage. Flagged for human confirm on saturating inputs.", "phase": "02-hardening"},
-    {"decision": "Pass-2 WR-04: documentation-only fix for merge thread-safety overpromise", "rationale": "Signature change out of scope; docstring now states merge MUST NOT run concurrently with increment/another merge (transient total_kmers under-report window)", "phase": "02-hardening"},
-    {"decision": "Pass-2 WR-05: added bzip2 + xz2 to pyo3/Cargo.toml", "rationale": "Both already transitive deps via rustkmer path dep, so no lockfile bloat; needed to link decoders the shared opener dispatches to for .bz2/.xz FASTA/FASTQ in pyrustkmer", "phase": "02-hardening"}
+    {"decision": "Checkpoint resolved as option 'a: 冷缓存自跑' — user self-runs the three full benchmarks with a sudo keep-alive", "rationale": "cold-cache purged states are the only way to fully satisfy BENCH-02; automation cannot enter the sudo password", "phase": "04"},
+    {"decision": "Auto-continuation via session-only cron e9311183 (13,41 * * * *) that validates the 3 scratch JSONs and spawns a FRESH continuation agent on ALL-VALID", "rationale": "unattended ~3.7–5.3 h wait; cron is session-only and DIES with the session that created it", "phase": "04"},
+    {"decision": "Sequential executor mode (no worktree isolation)", "rationale": "worktree.base-check returned shouldDegrade=true; re-check per wave", "phase": "04"},
+    {"decision": "Pre-benchmark window spent fixing the ci.yml red streak (ba7f451, cc64fbc, 97f54bf, dbb13ef) and closing all 5 main-section deferred-items (437cec6)", "rationale": "user approved '根据你建议继续'; CI must be green before milestone completion", "phase": "04"},
+    {"decision": "#2388 shared-ID gate: BENCH-02/03/04 multi-declared across plans; BENCH-02 final verdict intentionally held until 04-04 summarizes", "rationale": "shared requirement IDs must not be closed by partial evidence", "phase": "04"}
   ],
-  "uncommitted_files": [".planning/config.json (pre-existing, not phase work)", ".opencode/package-lock.json (pre-existing, untracked)"],
-  "next_action": "Start Phase 3 with /gsd-discuss-phase 3 (Memory Safety: bounded merge + dense u64 storage). Phase 3 has no CONTEXT yet. Before that, optionally: (a) human-verify pass-2 WR-01 denominator semantics (read 02-REVIEW-FIX.md §WR-01 + a545a2d), (b) push dev to origin (~39 commits local).",
-  "context_notes": "Phase 2 is complete, verified, and now FULLY HARDENED across two code-review-fix passes. Pass 1 (prior session, critical_warning scope) fixed the original 4 warnings. Pass 2 (this session, --all scope) re-reviewed the changed code, confirmed pass-1 fixes sound, surfaced 5 NEW warnings adjacent to the fix surface (denominator semantics, unfixed fasta helpers, pyo3 parity gap, etc.) + the 5 still-open Info findings, and fixed all 10. Net: every finding ever raised against phase 02 is now resolved (documented or code-fixed). 311 Rust tests + 85 Python tests pass, clippy clean on both crates. One item still wants human eyes: the total_kmers denominator semantics on saturating inputs (pass-2 WR-01). The phase 02->03 boundary is otherwise unchanged: Phase 3 (Memory Safety) is next and has no CONTEXT/SPEC/plans yet. NOTE: 02-REVIEW.md still shows status=issues_found because it is the pre-fix fresh review (by design — the fix record lives in 02-REVIEW-FIX.md, status all_fixed)."
+  "uncommitted_files": [
+    " M pyo3/.coverage",
+    "?? .opencode/package-lock.json",
+    "?? .planning/milestone.lock",
+    "?? .planning/research/.cache/",
+    "?? .planning/state.json"
+  ],
+  "next_action": "Read .continue-here.md in full, then check scripts/bench/scratch/{full_k31,full_k21,slice_merge}.json: (0/3, no processes) → re-present the benchmark block to the user and re-create the cron watcher (old one was session-only); (partial) → re-create watcher and wait; (3/3 valid) → spawn FRESH gsd-executor continuation per the protocol in .continue-here.md",
+  "context_notes": "Orchestrator was mid execute-phase 04 --auto --no-transition. Waves 1–3 done and summarized; WAVE_FAILURE_COUNT=0. 04-04 sits at its blocking-human checkpoint BY DESIGN — do not treat PLAN-without-SUMMARY as an orphan. Branch dev @ 437cec6 (in sync with origin/dev); CI green on 437cec6 NOT yet verified (read-only gh check is safe during benchmark runs). Leave the 5 uncommitted noise files untouched."
 }
