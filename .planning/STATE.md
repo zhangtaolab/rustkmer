@@ -3,12 +3,12 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 04
 current_phase_name: Benchmark & Validation
-status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-10-09T15:41:37.464Z"
+status: verifying
+stopped_at: Completed 04-04-PLAN.md (phase 04 execution complete pending verification; BENCH-02 verdict NO escalated)
+last_updated: "2026-10-10T18:11:19.690Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 04 execution started
-state_head: 3ae8ab37cc414c306ea2da2ac44305180c8774a2
+state_head: 8d63b918167303b7255c5d100a6bbc42ee5f171c
 progress:
   total_phases: 4
   completed_phases: 3
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 
 Phase: 04 (Benchmark & Validation) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-09 — Phase 04 execution started
 
 Progress: [████████░░] 75%
@@ -96,6 +96,7 @@ Progress: [████████░░] 75%
 | Phase 04 P01 | 15 min | 3 tasks | 15 files |
 | Phase 04 P02 | 16 min | 2 tasks | 2 files |
 | Phase 04 P03 | 33 min | 3 tasks | 6 files |
+| Phase 04 P04 | ~12 min (Task 3); plan incl. 3.2h benchmark run | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -234,6 +235,9 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-03: compare.py derives arm medians from reps when arm-level median fields are absent — the plan's CI step (reps=1 default) emits no median fields, so without the fallback every CI gate would exit 2; median-of-one is that rep, MEDIAN-not-mean unit-pinned
 - [Phase 04]: 04-03: baselines keep the rustkmer arms only (count-A/count-B/merge) — CI current results are produced without jellyfish (BENCH-04) and one-sided arms exit 2, so the jellyfish arm from the --reps 3 dev-host run is dropped by the documented conversion
 - [Phase 04]: 04-03: committed baselines must come from the runner class that gates them — the interim 16-thread M4 Max darwin baseline breached +230%/+1041% wall against the 3-vCPU macOS runner on the first CI run; both final baselines are converted from one run's CI artifacts (bootstrap procedure)
+- [Phase 04]: 04-04: Option (b) no-sudo benchmark execution (user-resolved checkpoint, 2026-10-10): every rep records cache_state 'unavailable' and docs/benchmark-report.md states plainly the cold-cache BENCH-02 criterion is PARTIALLY SATISFIED — the criterion's evidence is the recording, not the claim
+- [Phase 04]: 04-04: attempt-1 full run halted at the count-parity gate (single-member GzDecoder silently truncated concatenated gzip; 220,028 vs 4.45 B k-mers) — fixed in 8102985 (MultiGzDecoder + regression test, RED->GREEN); recorded as a methodology finding in the report; results are from post-fix attempt 2
+- [Phase 04]: 04-04: BENCH-02 verdict computed conservatively from recorded medians: NO overall — k=31 YES (rustkmer 494.19/485.89 s @ 55.2/55.3 GiB vs jellyfish 843.02 s @ 84.0 GiB), k=21 NO (jellyfish 97.26 s vs rustkmer ~500 s, 5x); BENCH-02 left unchecked in REQUIREMENTS.md — a NO is a valid measured outcome, escalated to the user at milestone close (also: substitute dataset CRR2044018, cold-cache partial)
 
 ### Pending Todos
 
@@ -259,6 +263,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-09T15:41:37.368Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-10-10T18:11:19.594Z
+Stopped at: Completed 04-04-PLAN.md (phase 04 execution complete pending verification; BENCH-02 verdict NO escalated)
 Resume file: None
