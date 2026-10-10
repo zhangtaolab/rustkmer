@@ -24,7 +24,14 @@
   this test binary. That registers 20 extra `common::*::tests::*` test cases in
   `cargo test --test merge_routing_tests` output (they are the shared module's
   own unit tests, not merge-routing coverage).
-  status: open
+  status: resolved
+  **Resolved:** 2026-10-10 — factories extracted to `tests/common/factories.rs`
+  (self-test-free; `mod.rs` re-exports via `pub use factories::*`, no fork);
+  `merge_routing_tests` and `merge_cleanup_tests` now `#[path]`-include the
+  factory core only (29→9 and 37→17 cases). The flake vector this entry
+  underestimated: CI run 37952454763's macOS leg failed on
+  `common::performance::tests::test_performance_timer` running inside
+  merge_cleanup_tests — also fixed (timer ceiling 150ms→2000ms).
   **What:** Pre-existing convention — `tests/golden_tests.rs` and
   `tests/round_trip_tests.rs` do the same. Harmless (they pass), but it makes
   the per-target test count noisy. Not worth a deviation; a future cleanup could
@@ -92,7 +99,11 @@
 - `cargo fmt --all --check` (a Phase 1 CI gate, `.github/workflows/ci.yml:37`)
   still fails on pre-existing rustfmt drift in `src/cli/commands/count.rs` and
   `tests/parallel_count_tests.rs`.
-  status: open
+  status: resolved
+  **Resolved:** 2026-10-10 — deliberate plain `cargo fmt` commit (ba7f451)
+  covering all four drifted files (count.rs, merge_bounded_memory_tests.rs,
+  merge_cleanup_tests.rs, parallel_count_tests.rs); `cargo fmt --all --check`
+  green locally, CI rustfmt job unblocked.
   **What:** Carried from plan 03-01, re-confirmed by plan 03-03. Neither file is
   modified by any Phase 3 plan, so per the scope boundary they were left alone.
   Plan 03-03 DID close the third instance: `src/hash/table.rs` had drift and is
