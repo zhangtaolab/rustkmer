@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "mode": "full",
+  "resolved_inputs": [
+    "/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz"
+  ],
+  "input_fingerprint": [
+    {
+      "path": "/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz",
+      "size_bytes": 2637234342,
+      "sha256": "131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9"
+    },
+    {
+      "path": "/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz",
+      "size_bytes": 2637234342,
+      "sha256": "131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9"
+    }
+  ],
+  "platform": {
+    "system": "Darwin",
+    "release": "25.6.0",
+    "machine": "arm64",
+    "python": "3.12.8"
+  },
+  "created": "2026-10-10T17:47:23.191284+00:00",
+  "params": {
+    "k": 21,
+    "canonical": true,
+    "threads": 16,
+    "rustkmer": "target/release/rustkmer",
+    "hash_size": "10G",
+    "decompressor": "gzcat",
+    "reps": 3,
+    "cooldown_s": 5,
+    "round_schedule": {
+      "0": [
+        "rustkmer",
+        "jellyfish"
+      ],
+      "1": [
+        "jellyfish",
+        "rustkmer"
+      ],
+      "2": [
+        "rustkmer",
+        "jellyfish"
+      ]
+    }
+  },
+  "arms": [
+    {
+      "name": "count-A",
+      "tool": "rustkmer",
+      "reps": [
+        {
+          "wall_s": 492.89,
+          "peak_rss_bytes": 52899594240,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 507.78,
+          "peak_rss_bytes": 52861239296,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 505.77,
+          "peak_rss_bytes": 53393588224,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 0
+        }
+      ],
+      "distinct_kmers": 663276710,
+      "total_kmers": 4826823600,
+      "median_wall_s": 505.77,
+      "median_peak_rss_bytes": 52899594240,
+      "cv_wall_pct": 1.608944157320449,
+      "cv_warning": false
+    },
+    {
+      "name": "count-B",
+      "tool": "rustkmer",
+      "reps": [
+        {
+          "wall_s": 492.42,
+          "peak_rss_bytes": 53399207936,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 494.14,
+          "peak_rss_bytes": 53254373376,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 2
+        },
+        {
+          "wall_s": 506.47,
+          "peak_rss_bytes": 53394718720,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 1
+        }
+      ],
+      "distinct_kmers": 663276710,
+      "total_kmers": 4826823600,
+      "median_wall_s": 494.14,
+      "median_peak_rss_bytes": 53394718720,
+      "cv_wall_pct": 1.5398866711646153,
+      "cv_warning": false
+    },
+    {
+      "name": "jellyfish-count-A",
+      "tool": "jellyfish",
+      "reps": [
+        {
+          "wall_s": 92.89,
+          "peak_rss_bytes": 50297864192,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 2
+        },
+        {
+          "wall_s": 97.26,
+          "peak_rss_bytes": 50297700352,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 102.52,
+          "peak_rss_bytes": 50297667584,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 2
+        }
+      ],
+      "distinct_kmers": 663276710,
+      "total_kmers": 4826823600,
+      "median_wall_s": 97.26,
+      "median_peak_rss_bytes": 50297700352,
+      "cv_wall_pct": 4.942614114164738,
+      "cv_warning": false
+    }
+  ]
+}

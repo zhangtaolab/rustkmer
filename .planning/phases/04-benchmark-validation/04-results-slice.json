@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "mode": "slice",
+  "resolved_inputs": [
+    "/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz"
+  ],
+  "input_fingerprint": [
+    {
+      "path": "scripts/bench/scratch/slice-0.fq",
+      "size_bytes": 359504511,
+      "sha256": "2dd773f99f0207144d2ed8a3c9564fd5e9ac0c4783873f1b7f88fd3696369520"
+    },
+    {
+      "path": "scripts/bench/scratch/slice-1.fq",
+      "size_bytes": 359504511,
+      "sha256": "1c0d213e1be5742152e5456d841df8295d29ac291e35f2b0b46f8ed09c3e22b4"
+    }
+  ],
+  "platform": {
+    "system": "Darwin",
+    "release": "25.6.0",
+    "machine": "arm64",
+    "python": "3.12.8"
+  },
+  "created": "2026-10-10T17:53:06.628925+00:00",
+  "params": {
+    "k": 31,
+    "canonical": true,
+    "threads": 16,
+    "rustkmer": "target/release/rustkmer",
+    "hash_size": "10G",
+    "decompressor": "gzcat",
+    "reps": 3,
+    "cooldown_s": 5,
+    "round_schedule": {
+      "0": [
+        "rustkmer",
+        "jellyfish"
+      ],
+      "1": [
+        "jellyfish",
+        "rustkmer"
+      ],
+      "2": [
+        "rustkmer",
+        "jellyfish"
+      ]
+    }
+  },
+  "arms": [
+    {
+      "name": "count-A",
+      "tool": "rustkmer",
+      "reps": [
+        {
+          "wall_s": 16.17,
+          "peak_rss_bytes": 6007472128,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 16.38,
+          "peak_rss_bytes": 5998034944,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 16.16,
+          "peak_rss_bytes": 5998329856,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 0
+        }
+      ],
+      "distinct_kmers": 52970251,
+      "total_kmers": 119972170,
+      "median_wall_s": 16.17,
+      "median_peak_rss_bytes": 5998329856,
+      "cv_wall_pct": 0.7651260584514087,
+      "cv_warning": false
+    },
+    {
+      "name": "count-B",
+      "tool": "rustkmer",
+      "reps": [
+        {
+          "wall_s": 16.75,
+          "peak_rss_bytes": 6065963008,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 16.31,
+          "peak_rss_bytes": 6076088320,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 2
+        },
+        {
+          "wall_s": 16.32,
+          "peak_rss_bytes": 6073761792,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 1
+        }
+      ],
+      "distinct_kmers": 53827714,
+      "total_kmers": 119939902,
+      "median_wall_s": 16.32,
+      "median_peak_rss_bytes": 6073761792,
+      "cv_wall_pct": 1.5261065233390627,
+      "cv_warning": false
+    },
+    {
+      "name": "jellyfish-count-A",
+      "tool": "jellyfish",
+      "reps": [
+        {
+          "wall_s": 22.9,
+          "peak_rss_bytes": 91333181440,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 3
+        },
+        {
+          "wall_s": 22.44,
+          "peak_rss_bytes": 91047559168,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 23.07,
+          "peak_rss_bytes": 91097219072,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 3
+        }
+      ],
+      "distinct_kmers": 52970251,
+      "total_kmers": 119972170,
+      "median_wall_s": 22.9,
+      "median_peak_rss_bytes": 91097219072,
+      "cv_wall_pct": 1.429328550319498,
+      "cv_warning": false
+    },
+    {
+      "name": "merge",
+      "tool": "rustkmer",
+      "reps": [
+        {
+          "wall_s": 7.55,
+          "peak_rss_bytes": 18185535488,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 2
+        },
+        {
+          "wall_s": 7.53,
+          "peak_rss_bytes": 18185584640,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 3
+        },
+        {
+          "wall_s": 7.56,
+          "peak_rss_bytes": 18185502720,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 2
+        }
+      ],
+      "distinct_kmers": 77766811,
+      "total_kmers": 239912072,
+      "median_wall_s": 7.55,
+      "median_peak_rss_bytes": 18185535488,
+      "cv_wall_pct": 0.2024105872330275,
+      "cv_warning": false
+    }
+  ]
+}
