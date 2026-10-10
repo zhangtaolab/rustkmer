@@ -49,6 +49,12 @@
 //!
 //! No `unsafe`, no pyo3, no new dependencies.
 
+// Factory-only include: this binary uses just `create_test_database` /
+// `encode_test_kmer`, so it takes the self-test-free factory core instead of
+// full `common` — pulling full `common` would compile the shared helpers'
+// own ~20 `common::*::tests::*` cases (one of them timing-flaky) into this
+// binary (deferred-items.md `mod common` entry; CI run 37952454763).
+#[path = "common/factories.rs"]
 mod common;
 
 use common::create_test_database;

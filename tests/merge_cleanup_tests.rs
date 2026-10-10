@@ -35,6 +35,13 @@
 //! No `unsafe`, no pyo3, no new dependencies (`tempfile` was promoted to
 //! `[dependencies]` in plan 03-02 Task 1 for production use).
 
+// Factory-only include: this binary uses just `create_test_database`, so it
+// takes the self-test-free factory core instead of full `common` — pulling
+// full `common` would compile the shared helpers' own ~20
+// `common::*::tests::*` cases (one of them timing-flaky) into this binary
+// (deferred-items.md `mod common` entry; CI run 37952454763, where exactly
+// that flake failed the macOS leg from inside THIS binary).
+#[path = "common/factories.rs"]
 mod common;
 
 use common::create_test_database;
