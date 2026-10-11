@@ -5,7 +5,7 @@ titles: json
 findings:
   - id: CR-01
     severity: critical
-    disposition: open
+    disposition: fixed
     title: "Renderer hard-codes a measurement literal, violating the T-04-07 \"zero measurement literals\" contract it implements"
   - id: WR-01
     severity: warning
@@ -63,7 +63,7 @@ findings:
     severity: info
     disposition: open
     title: "Leading-hyphen paths pass validate_path and reach argv positions where tools parse options"
-open: 15
+open: 14
 total: 15
 recorded: 2026-10-10T19:08:52.731Z
 ---
@@ -72,7 +72,7 @@ recorded: 2026-10-10T19:08:52.731Z
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | open | - |
+| CR-01 | critical | fixed | bb5ccb0 (user-approved during UAT: figure now derived from fingerprinted input size; re-render byte-identical) |
 | WR-01 | warning | open | - |
 | WR-02 | warning | open | - |
 | WR-03 | warning | open | - |
