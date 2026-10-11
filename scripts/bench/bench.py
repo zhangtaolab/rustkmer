@@ -1272,6 +1272,20 @@ def _methodology_lines(files_data):
     lines.append("")
     first = files_data[0]
     plat = first["platform"]
+    fp0 = first["input_fingerprint"][0]
+    # Zero measurement literals (04-04 prohibition P7): the attempt-1 count
+    # is un-sourced narrative — no committed JSON carries it — so the note
+    # derives its only figure from the fingerprinted input size instead.
+    halt_note = (
+        "- The first full-run attempt (2026-10-10) halted at the harness's "
+        "count-parity gate: rustkmer's single-member gzip decoder silently "
+        "read only member 1 of the concatenated-gzip input — a small prefix "
+        f"of the {fp0['size_bytes']:,}-byte input fingerprinted below, whose "
+        "k-mer count was a tiny fraction of jellyfish's full count. The "
+        "parity gate caught it before any timing was trusted. Fixed in "
+        "commit `8102985` (MultiGzDecoder + regression test); the results "
+        "in this report are from the post-fix attempt 2. This is exactly "
+        "the pre-timing parity gate the methodology mandates.")
     lines += [
         "### Harness provenance",
         "",
@@ -1284,14 +1298,7 @@ def _methodology_lines(files_data):
         "",
         "### Recorded methodology finding (attempt 1 of the full run)",
         "",
-        "- The first full-run attempt (2026-10-10) halted at the harness's "
-        "count-parity gate: rustkmer's single-member gzip decoder silently "
-        "read only member 1 of the concatenated-gzip input (220,028 k-mers "
-        "vs jellyfish's full count). The parity gate caught it before any "
-        "timing was trusted. Fixed in commit `8102985` (MultiGzDecoder + "
-        "regression test); the results in this report are from the post-fix "
-        "attempt 2. This is exactly the pre-timing parity gate the "
-        "methodology mandates.",
+        halt_note,
         "",
     ]
     return lines

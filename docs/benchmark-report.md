@@ -108,7 +108,7 @@
 
 ### Recorded methodology finding (attempt 1 of the full run)
 
-- The first full-run attempt (2026-10-10) halted at the harness's count-parity gate: rustkmer's single-member gzip decoder silently read only member 1 of the concatenated-gzip input (220,028 k-mers vs jellyfish's full count). The parity gate caught it before any timing was trusted. Fixed in commit `8102985` (MultiGzDecoder + regression test); the results in this report are from the post-fix attempt 2. This is exactly the pre-timing parity gate the methodology mandates.
+- The first full-run attempt (2026-10-10) halted at the harness's count-parity gate: rustkmer's single-member gzip decoder silently read only member 1 of the concatenated-gzip input — a small prefix of the 2,637,234,342-byte input fingerprinted below, whose k-mer count was a tiny fraction of jellyfish's full count. The parity gate caught it before any timing was trusted. Fixed in commit `8102985` (MultiGzDecoder + regression test); the results in this report are from the post-fix attempt 2. This is exactly the pre-timing parity gate the methodology mandates.
 
 ---
 
