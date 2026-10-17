@@ -180,6 +180,62 @@ class TestIndependentAxes(CompareHarness):
         self.assertIn("metric=median_wall_s", out)
 
 
+class TestWallAdvisory(CompareHarness):
+    """--wall-advisory (the README 'Threshold rationale' contingency,
+    exercised 2026-10-17): wall breaches stay fully visible — table line,
+    breach line, threshold — but only RSS regressions gate the exit code.
+    Without the flag the wall axis still gates (covered by
+    TestIndependentAxes.test_wall_breach_with_rss_within_exits_1)."""
+
+    def test_wall_breach_above_threshold_exits_0_and_is_flagged(self):
+        """+50% wall with the flag -> exit 0, breach named as ADVISORY."""
+        base = make_doc(arms=[make_arm(walls=(100.0,))])
+        cur = make_doc(arms=[make_arm(walls=(150.0,))])
+        code, out, _ = self.run_compare_docs(base, cur, ["--wall-advisory"])
+        self.assertEqual(code, 0)
+        self.assertIn("GATE: PASS", out)
+        self.assertNotIn("GATE: FAIL", out)
+        self.assertIn("threshold 25.00%  ADVISORY", out)
+        self.assertIn("ADVISORY wall regression", out)
+        self.assertIn("metric=median_wall_s", out)
+        self.assertIn("delta=+50.00%", out)
+
+    def test_rss_breach_still_gates_in_advisory_mode(self):
+        """RSS breach + wall breach: exit 1 names only the RSS regression;
+        the wall breach is demoted to the advisory list, not dropped."""
+        base = make_doc(arms=[make_arm(walls=(100.0,), rss=(1_000_000,))])
+        cur = make_doc(arms=[make_arm(walls=(150.0,), rss=(2_000_000,))])
+        code, out, _ = self.run_compare_docs(base, cur, ["--wall-advisory"])
+        self.assertEqual(code, 1)
+        self.assertIn("GATE: FAIL", out)
+        self.assertIn("1 regression(s)", out)
+        self.assertIn("REGRESSION arm=count-A tool=rustkmer "
+                      "metric=median_peak_rss_bytes", out)
+        self.assertNotIn("REGRESSION arm=count-A tool=rustkmer "
+                         "metric=median_wall_s", out)
+        self.assertIn("ADVISORY wall regression", out)
+
+    def test_clean_advisory_run_keeps_the_plain_pass_line(self):
+        """No breaches under the flag -> the ordinary all-axes PASS line."""
+        base = make_doc(arms=[make_arm(walls=(100.0,), rss=(1_000_000,))])
+        cur = make_doc(arms=[make_arm(walls=(124.0,), rss=(1_140_000,))])
+        code, out, _ = self.run_compare_docs(base, cur, ["--wall-advisory"])
+        self.assertEqual(code, 0)
+        self.assertIn("GATE: PASS — every arm within thresholds on both axes",
+                      out)
+        self.assertNotIn("ADVISORY", out)
+
+    def test_advisory_fail_line_names_rss_only(self):
+        """The FAIL summary in advisory mode names the RSS threshold — wall
+        is no longer claimed as a gating axis."""
+        base = make_doc(arms=[make_arm(walls=(100.0,), rss=(1_000_000,))])
+        cur = make_doc(arms=[make_arm(walls=(100.0,), rss=(1_200_000,))])
+        code, out, _ = self.run_compare_docs(base, cur, ["--wall-advisory"])
+        self.assertEqual(code, 1)
+        self.assertIn("(rss 15%)", out)
+        self.assertNotIn("(wall 25%, rss 15%)", out)
+
+
 class TestExitTwoInputs(CompareHarness):
     """Every invalid-input class exits 2 — never a traceback, never a 0/1."""
 

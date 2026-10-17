@@ -42,7 +42,8 @@ python3 scripts/bench/bench.py --mode synthetic --reads 20000 --parity-only
 python3 scripts/bench/bench.py --mode synthetic --out results.json
 python3 scripts/bench/compare.py \
   --baseline scripts/bench/baselines/bench_baseline.darwin.json \
-  --current results.json --wall-threshold 0.25 --rss-threshold 0.15
+  --current results.json --wall-threshold 0.25 --rss-threshold 0.15 \
+  --wall-advisory
 ```
 
 ## The committed-baseline CI gate
@@ -165,6 +166,19 @@ that shaves a baseline to pass a marginal change is conspicuous in review.
 Both thresholds are the locked orchestrator decision of 2026-10-09. If the
 wall axis proves flaky on real zero-change PRs, demote wall to advisory and
 keep RSS hard — do not widen RSS.
+
+**Wall advisory activated 2026-10-17.** The contingency's condition was
+met: three consecutive zero-change pushes went red (38047563014, 38098134712,
+38098497116 — docs-only commits and the baseline regen between them). On
+identical code, darwin wall readings spanned 8.45–15.43 s across four runs
+(count-A delta −42%…+51% against whichever baseline was committed), so no
+single committed baseline survives both runner classes at any sane
+threshold; peak RSS meanwhile held within 2.4% of the committed
+high-runner-class values on every run. Per the locked decision, the CI gate
+now passes `--wall-advisory`: wall deltas are still measured, printed, and
+flagged (`ADVISORY wall regression …`) on every run, but only RSS breaches
+fail the gate — the RSS threshold did not move. The same-job base-ref
+upgrade below remains the path to re-hardening the wall axis.
 
 ## Upgrade path: same-job base-ref comparison
 

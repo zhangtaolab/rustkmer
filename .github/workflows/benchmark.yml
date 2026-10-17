@@ -12,6 +12,15 @@ name: Benchmark
 # ci.yml gate rule — the deleted performance-regression.yml died of exactly
 # those diseases). A red gate stays red until a human changes code or
 # baseline.
+#
+# 2026-10-17: the wall axis is advisory (--wall-advisory), activating the
+# README "Threshold rationale" contingency. Three consecutive zero-change
+# runs went red on wall/RSS readings of identical code (38047563014,
+# 38098134712, 38098497116 — docs-only commits between them): darwin wall
+# spanned 8.45–15.43 s across four runs (count-A delta −42%…+51% against
+# whichever baseline was committed), defeating any single committed
+# baseline. Peak RSS stayed within 2.4% of the committed (high-runner-class)
+# values, so RSS remains the hard gate at its locked 15% — not widened.
 on:
   pull_request:
     branches: [dev, main]
@@ -75,4 +84,4 @@ jobs:
           python3 scripts/bench/compare.py \
             --baseline scripts/bench/baselines/bench_baseline.${{ matrix.flavor }}.json \
             --current results.json \
-            --wall-threshold 0.25 --rss-threshold 0.15
+            --wall-threshold 0.25 --rss-threshold 0.15 --wall-advisory

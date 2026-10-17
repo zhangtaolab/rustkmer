@@ -10,8 +10,13 @@ Exit codes are a contract (documented for CI and the tests alike):
   0 — within: every shared arm's current medians sit within BOTH thresholds
       on BOTH axes (a delta exactly equal to a threshold passes; only a
       strictly greater delta breaches; negative deltas are improvements).
-  1 — regression: at least one arm breached a threshold. Every breach line
-      names arm, tool, metric, baseline median, current median, delta
+      With --wall-advisory, wall deltas above threshold are still printed
+      and flagged ADVISORY, but only RSS breaches gate — the README
+      "Threshold rationale" contingency, exercised 2026-10-17 after three
+      consecutive red zero-change runs proved shared-runner wall variance
+      defeats any committed baseline.
+  1 — regression: at least one arm breached a gating threshold. Every breach
+      line names arm, tool, metric, baseline median, current median, delta
       percent, and threshold.
   2 — invalid input: missing file, unparseable JSON, schema violation,
       platform mismatch, or an arm present on only one side. A gate with
@@ -135,8 +140,13 @@ def arm_median(arm, arm_field, rep_field):
                 f"parsable reps.{rep_field} values to derive the median from")
 
 
-def compare_results(baseline, current, wall_threshold, rss_threshold):
-    """Compare every shared arm on both axes; return (breaches, table_lines).
+def compare_results(baseline, current, wall_threshold, rss_threshold,
+                    wall_advisory=False):
+    """Compare every shared arm on both axes.
+
+    Returns (breaches, lines, advisory_breaches): breaches decide the exit
+    code; advisory_breaches are wall-axis breaches under --wall-advisory,
+    reported as loudly as real regressions but never gating.
 
     Relative delta = (current - baseline) / baseline per axis. A breach is
     STRICTLY delta > threshold: equality passes (the boundary belongs to
@@ -161,6 +171,7 @@ def compare_results(baseline, current, wall_threshold, rss_threshold):
                 "measurement sets is invalid input, not a verdict)")
 
     breaches = []
+    advisory_breaches = []
     lines = []
     for key in sorted(base_arms):
         name, tool = key
@@ -174,17 +185,26 @@ def compare_results(baseline, current, wall_threshold, rss_threshold):
             delta = (cur_v - base_v) / base_v
             threshold = thresholds[arm_field]
             breached = delta > threshold
+            # --wall-advisory: the wall axis keeps its full bookkeeping
+            # (table line, breach line, threshold) but exits as PASS; only
+            # RSS regressions gate. A wall breach is demoted, never hidden.
+            advisory = (breached and wall_advisory
+                        and arm_field == "median_wall_s")
+            status = ("ADVISORY" if advisory
+                      else "BREACH" if breached else "ok")
             lines.append(
                 f"  {name} [{tool}] {arm_field}: baseline {base_v:.6g} -> "
                 f"current {cur_v:.6g}  delta {delta * 100:+.2f}%  threshold "
-                f"{threshold * 100:.2f}%  {'BREACH' if breached else 'ok'}")
+                f"{threshold * 100:.2f}%  {status}")
             if breached:
-                breaches.append(
-                    f"REGRESSION arm={name} tool={tool} metric={arm_field} "
+                verdict = (
+                    f"{'ADVISORY wall regression' if advisory else 'REGRESSION'}"
+                    f" arm={name} tool={tool} metric={arm_field} "
                     f"baseline={base_v:.6g} current={cur_v:.6g} "
                     f"delta={delta * 100:+.2f}% "
                     f"threshold={threshold * 100:.2f}%")
-    return breaches, lines
+                (advisory_breaches if advisory else breaches).append(verdict)
+    return breaches, lines, advisory_breaches
 
 
 def main(argv=None):
@@ -206,6 +226,11 @@ def main(argv=None):
                         help="relative peak-RSS breach threshold "
                              "(default 0.15 — RSS is stable; memory "
                              "regressions surface earlier)")
+    parser.add_argument("--wall-advisory", action="store_true",
+                        help="report wall breaches without gating on them "
+                             "(README 'Threshold rationale' contingency for "
+                             "shared-runner wall variance); RSS stays the "
+                             "hard axis")
     args = parser.parse_args(argv)
     if args.wall_threshold < 0 or args.rss_threshold < 0:
         parser.error("thresholds must be >= 0")
@@ -221,9 +246,9 @@ def main(argv=None):
                 f"not comparable across platforms; use this platform's "
                 f"baseline file bench_baseline.{cur_flavor}.json")
 
-    breaches, lines = compare_results(baseline, current,
-                                      args.wall_threshold,
-                                      args.rss_threshold)
+    breaches, lines, advisory_breaches = compare_results(
+        baseline, current, args.wall_threshold, args.rss_threshold,
+        wall_advisory=args.wall_advisory)
     print(f"benchmark gate: baseline {args.baseline} ({base_flavor}) vs "
           f"current {args.current} ({cur_flavor})")
     for line in lines:
@@ -231,10 +256,23 @@ def main(argv=None):
     if breaches:
         for breach in breaches:
             print(breach)
+        for breach in advisory_breaches:
+            print(breach)
+        axes = (f"rss {args.rss_threshold * 100:g}%"
+                if args.wall_advisory else
+                f"wall {args.wall_threshold * 100:g}%, "
+                f"rss {args.rss_threshold * 100:g}%")
         print(f"GATE: FAIL — {len(breaches)} regression(s) beyond thresholds "
-              f"(wall {args.wall_threshold * 100:g}%, "
-              f"rss {args.rss_threshold * 100:g}%)")
+              f"({axes})")
         sys.exit(EXIT_REGRESSION)
+    if advisory_breaches:
+        for breach in advisory_breaches:
+            print(breach)
+        print(f"GATE: PASS — within RSS thresholds "
+              f"({args.rss_threshold * 100:g}%); "
+              f"{len(advisory_breaches)} wall breach(es) advisory, "
+              f"not gating")
+        sys.exit(EXIT_WITHIN)
     print("GATE: PASS — every arm within thresholds on both axes")
     sys.exit(EXIT_WITHIN)
 
