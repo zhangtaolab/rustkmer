@@ -1,54 +1,80 @@
 ---
 phase: 04-benchmark-validation
-reviewed: 2026-10-10T19:04:26Z
+reviewed: 2026-10-17T15:36:48Z
 depth: standard
-files_reviewed: 23
+files_reviewed: 11
 files_reviewed_list:
   - .github/workflows/benchmark.yml
-  - .gitignore
+  - .github/workflows/ci.yml
   - docs/benchmark-report.md
-  - scripts/__init__.py
-  - scripts/bench/__init__.py
+  - scripts/bench/README.md
   - scripts/bench/baselines/bench_baseline.darwin.json
-  - scripts/bench/baselines/bench_baseline.linux.json
   - scripts/bench/bench.py
   - scripts/bench/compare.py
-  - scripts/bench/gen_synthetic.py
-  - scripts/bench/make_slice.sh
-  - scripts/bench/README.md
-  - scripts/bench/tests/__init__.py
-  - scripts/bench/tests/fixtures/time_l_macos.txt
-  - scripts/bench/tests/fixtures/time_v_linux.txt
-  - scripts/bench/tests/test_cmd_matrix.py
   - scripts/bench/tests/test_compare.py
-  - scripts/bench/tests/test_degradation.py
-  - scripts/bench/tests/test_generator.py
-  - scripts/bench/tests/test_render_report.py
-  - scripts/bench/tests/test_schema.py
-  - scripts/bench/tests/test_time_parser.py
-  - src/io/fastq.rs
+  - src/database/prefix_cache_merge.rs
+  - tests/merge_bounded_memory_tests.rs
+  - tests/merge_cleanup_tests.rs
 findings:
   critical: 1
-  warning: 7
-  info: 7
-  total: 15
+  warning: 1
+  info: 1
+  total: 3
 status: issues_found
 ---
 
-# Phase 04: Code Review Report
+# Phase 04: Code Review Report (incremental re-review)
 
-**Reviewed:** 2026-10-10T19:04:26Z
+**Reviewed:** 2026-10-17T15:36:48Z
 **Depth:** standard
-**Files Reviewed:** 23
+**Files Reviewed:** 11
 **Status:** issues_found
 
 ## Summary
 
-Reviewed the phase-04 benchmark harness (bench.py measurement core, compare.py CI gate, gen_synthetic.py, make_slice.sh, baselines, fixtures, 7 test suites), the CI workflow, and the phase's src/io/fastq.rs deviation (GzDecoder→MultiGzDecoder, commit 8102985).
+Incremental re-review of the 11 files changed since the 2026-10-11 review (base
+76076e6): bb5ccb0 (CR-01 renderer fix), 6cffc30 (darwin baseline regen),
+375fac5 (`--wall-advisory` CI gate change), 8f23225 (Windows test fixes),
+b514331/0c90f4d (windows-latest CI matrices). The prior review's findings are
+not carried forward here; they remain tracked in
+`04-REVIEW-DISPOSITION.md` (CR-01 fixed; WR-01..WR-07, IN-01..IN-07 open).
 
-Overall this is an unusually disciplined harness: strict-fail time parsing with pinned units, a single shared schema validator, parity gating before timing is trusted, honest cache_state recording, and an exit-code contract pinned by boundary tests. Verified independently during review: all 124 bench unit tests pass; the committed docs/benchmark-report.md re-renders byte-identically from the committed evidence JSONs; the report's deltas/CVs/medians recompute correctly from the recorded reps; the FASTA route (src/io/fasta.rs) and the count CLI (src/cli/commands/count.rs) both go through the fixed `open_compressed`, so the MultiGzDecoder swap is complete for the reading paths that matter.
+What was verified in this pass:
 
-The adversarial pass still found one contract violation at the heart of the phase's anti-repudiation deliverable (a hard-coded measurement literal inside the "zero measurement literals" renderer), plus gate-integrity, data-clobber, silent-degradation, and input-tolerance defects detailed below. Note: the phase diff also contains `scripts/bench/tests/test_merge_input.py`, which is not in the provided review scope; its subject functions (`merge_input_for`, `provision_slice`) were nonetheless cross-checked via bench.py and the passing suite.
+- The `--wall-advisory` implementation in `compare.py` is correct: wall
+  breaches under the flag keep their full bookkeeping (table line, breach
+  line, threshold) and are demoted to a non-gating `advisory_breaches` list;
+  RSS breaches still gate; the FAIL summary correctly names only the RSS axis
+  in advisory mode. All 31 comparator tests pass locally (including the 4 new
+  `TestWallAdvisory` cases). The change matches the pre-locked README
+  contingency ("demote wall to advisory and keep RSS hard — do not widen
+  RSS"); the RSS threshold did not move and the baseline was not shaved.
+- The regenerated darwin baseline (6cffc30) is schema-valid, carries the
+  rustkmer-arms-only shape the gate requires, and its provenance note
+  documents the runner-class variance honestly.
+- The CR-01 fix (bb5ccb0) removes the `220,028 k-mers` literal from the
+  renderer; the figure now derives from the fingerprinted input size, and the
+  committed `docs/benchmark-report.md` matches (2,637,234,342 bytes, equal to
+  the headline full-run fingerprint).
+- The Windows test gating (8f23225) itself works: `test (root)
+  (windows-latest)` and `pyo3 clippy + wheel (windows-latest)` passed on the
+  real runner (run 39018676504), including the share-lock failure-injection
+  variant of `failed_bucket_aborts_the_merge_with_err`.
+
+One BLOCKER stands: commit 8f23225 gated the RSS measurement test off on
+Windows but left its helper constants/functions un-gated, and commit b514331
+then added windows-latest to the clippy matrix — where `-D warnings` turns
+the resulting dead_code lint into errors. **The dev-branch CI merge gate is
+red at HEAD right now** (CI run 39018676504, job `clippy (root)
+(windows-latest)`: "could not compile `rustkmer` (test
+"merge_bounded_memory_tests") due to 7 previous errors"). This is proven,
+not hypothesized — see CR-02.
+
+Note for the fixer: the factual basis of prior open finding WR-05 was
+re-verified (both `Cargo.lock` and `pyo3/Cargo.lock` remain untracked;
+`.gitignore:6,117`), so the degenerate `hashFiles('Cargo.lock')` cache keys in
+ci.yml/benchmark.yml still stand as recorded in the disposition; it is not
+re-listed as a finding of this pass.
 
 ## Structural Findings (fallow)
 
@@ -58,188 +84,120 @@ None provided — no structural pre-pass was supplied for this review.
 
 ### Critical Issues
 
-### CR-01: Renderer hard-codes a measurement literal, violating the T-04-07 "zero measurement literals" contract it implements
+### CR-02: Windows clippy gate is red at HEAD — un-gated measurement helpers are dead code under the Windows test gating (CI merge gate failing)
 
-**File:** `scripts/bench/bench.py:1285-1296` (literal at 1290); carried into `docs/benchmark-report.md:111`
-**Issue:** `_methodology_lines` embeds a hand-written measurement figure in the rendered report:
+**File:** `tests/merge_bounded_memory_tests.rs:102-136, 161-167, 177-190, 199-219` (gated consumer at `:363-365`); enabled by `.github/workflows/ci.yml:46` (clippy matrix gained `windows-latest`)
+**Issue:** Commit 8f23225 added `#[cfg(not(target_os = "windows"))]` to
+`streaming_merge_peak_memory_is_bounded_by_chunk_not_dataset` (line 363) but
+did not gate the items only that test uses: `CHUNK_ENTRIES` (102),
+`KMER_ENTRY_BYTES` (107), `CHUNK_BYTES` (110), `RSS_BOUND_BYTES` (125),
+`MEASUREMENT_ENTRIES` (136), `current_rss_kb` (177, the non-Linux variant),
+and `run_tracking_peak_rss` (199). On Windows their sole caller is compiled
+out, so `cargo clippy --all-targets -- -D warnings` (the clippy-root job,
+which b514331/0c90f4d extended to windows-latest) fails with seven
+`dead_code` errors. Verified against the actual runner log (run 39018676504,
+job `clippy (root) (windows-latest)`):
 
-```python
-"- The first full-run attempt (2026-10-10) halted at the harness's "
-"count-parity gate: rustkmer's single-member gzip decoder silently "
-"read only member 1 of the concatenated-gzip input (220,028 k-mers "
-"vs jellyfish's full count). ...
+```text
+error: constant `CHUNK_ENTRIES` is never used
+error: constant `KMER_ENTRY_BYTES` is never used
+error: constant `CHUNK_BYTES` is never used
+error: constant `RSS_BOUND_BYTES` is never used
+error: constant `MEASUREMENT_ENTRIES` is never used
+error: function `current_rss_kb` is never used
+error: function `run_tracking_peak_rss` is never used
+error: could not compile `rustkmer` (test "merge_bounded_memory_tests") due to 7 previous errors
 ```
 
-`220,028 k-mers` is a measured count from the discarded attempt-1 run; it exists in **no committed results JSON**, so it cannot be regenerated from evidence, is invisible to the byte-identity hand-edit detector (it is constant across renders), and is exactly the "manually overridden measurement number" class the renderer exists to make impossible. This directly contradicts:
+`cargo test` on Windows passes (dead_code is only a warning there), which is
+why 8f23225's own CI run looked green — the breakage surfaced only when the
+clippy matrix gained the Windows leg. Per ci.yml's own header rule ("any gate
+job failing fails the PR"), every subsequent push/PR to dev fails CI until
+this is fixed. `cargo clippy` is a mandated command in CLAUDE.md.
+**Fix:** Gate the measurement machinery to match its consumer. Minimal,
+robust one-liner at the top of `tests/merge_bounded_memory_tests.rs`:
 
-- the renderer's own contract comment (bench.py:966-971: "every MEASUREMENT number in the rendered report is read from the results JSONs — the code below carries no measurement literals");
-- plan 04-04 Task 3 ("writes a Markdown report containing ONLY numbers mechanically read from the JSONs — the renderer contains no numeric literals of its own"; deliverable: "report renderer (no numeric literals of its own)");
-- the threat T-04-07 mitigation claim (high-rated Repudiation threat);
-- 04-04-SUMMARY.md's own verification claim ("zero measurement literals", stated three times).
-
-The commit hash `8102985` and the dates are provenance, not measurements, and are acceptable; the k-mer count is not. The unit tests for the renderer do not catch this because they only check byte-identity and JSON-sensitivity — a constant literal passes both.
-**Fix:** Either de-numeralize the hard-coded sentence (e.g. "…read only member 1 of the concatenated-gzip input — a small fraction of jellyfish's count…"), or commit the attempt-1 parity evidence as a JSON sidecar and render the number from it like every other figure:
-
-```python
-# Option A (minimal): drop the figures from the hard-coded narrative
-"- The first full-run attempt (2026-10-10) halted at the harness's "
-"count-parity gate: rustkmer's single-member gzip decoder silently "
-"read only member 1 of the concatenated-gzip input (a fraction of "
-"jellyfish's count). The parity gate caught it before any "
+```rust
+// Windows has no stdlib RSS source (see the gated test below), so the
+// measurement helpers compile dead there.
+#![cfg_attr(target_os = "windows", allow(dead_code))]
 ```
 
-Then re-render `docs/benchmark-report.md` and amend the byte-identity check to also `grep` the renderer source for digit-group literals in emitted strings if you want the contract mechanically enforced.
+or, more precisely, add `#[cfg(not(target_os = "windows"))]` to the five
+constants, the non-Linux `current_rss_kb`, and `run_tracking_peak_rss` (the
+Linux `current_rss_kb` is already Linux-gated; if the non-Linux variant is
+gated to not-Windows instead, also gate or inline the
+`std::sync::atomic`/`Arc` imports that only `run_tracking_peak_rss` uses).
+Then confirm by cross-compiling the test target before push:
+`cargo clippy --all-targets --target x86_64-pc-windows-msvc` (or push and
+watch the windows clippy leg go green).
 
 ## Warnings
 
-### WR-01: make_slice.sh swallows gunzip failure — corrupt input yields exit 0 and a partial slice
+### WR-08: CR-01's replacement figure indexes `input_fingerprint[0]` unguarded — and can silently take the number from the wrong results file
 
-**File:** `scripts/bench/make_slice.sh:35`
-**Issue:** `gunzip -c "$INPUT" | head -n $((4 * N_READS)) > "$OUTPUT"` under `set -e` without `pipefail`: the pipeline's exit status is `head`'s (0), so a corrupt or truncated gz that errors mid-stream produces a silently truncated slice and exit 0 — the exact Pitfall-1 class (plausible output from broken input) the phase guards against everywhere else. The Python twin `extract_slice` (bench.py:407-439) explicitly checks gunzip's return code; the shell tool does not. Note the fix is not plain `set -o pipefail`: `head` closing the pipe early gives gunzip SIGPIPE (exit 141) on every normal run, which would false-fail the tool.
-**Fix:**
+**File:** `scripts/bench/bench.py:1275` (new in this delta, from bb5ccb0)
+**Issue:** Two defects in the fix for the prior CR-01:
 
-```bash
-gunzip -c "$INPUT" | head -n $((4 * N_READS)) > "$OUTPUT"
-gz_rc=${PIPESTATUS[0]}
-# 141 = SIGPIPE from head's early exit — the normal truncation path
-if [ "$gz_rc" -ne 0 ] && [ "$gz_rc" -ne 141 ]; then
-    echo "error: gunzip failed rc=$gz_rc on '$INPUT' (corrupt input?)" >&2
-    rm -f "$OUTPUT"
-    exit 1
-fi
-```
+1. `fp0 = first["input_fingerprint"][0]` assumes the first results file
+   carries at least one fingerprint. `validate_schema` (bench.py:279-309)
+   never checks `input_fingerprint` — it may be `[]` or absent on a file that
+   passes schema validation and the mode=full/slice check in `render_report`
+   (bench.py:1319-1327). Such a file now crashes the renderer with a bare
+   `IndexError`/`KeyError` that the `__main__` catch-all reports as
+   `bench.py: list index out of range` — failing loudly, but violating the
+   file's own diagnostic standard (every other failure names the file and the
+   problem, e.g. "render needs at least one mode=full results file"), and
+   contradicting the module's "fails loudly, never best-effort" posture with
+   an unattributable message. (The pre-existing `first['platform']` /
+   `first['params']['rustkmer']` accesses at :1274/:1297 share the gap but
+   predate this delta; `fp0` is new.)
+2. `first = files_data[0]` is the first file *as given on the command line*,
+   which may be a mode=slice file (`--results slice.json full.json` is a
+   legal invocation — the renderer's own doc says full files render "in the
+   order given"). The halt note narrates the attempt-1 **full** run, but its
+   byte figure would then be the slice run's input size — a sourced-looking
+   number attached to the wrong run. The committed report happens to list the
+   full file first, so the committed output is correct; the ordering
+   sensitivity is latent.
 
-### WR-02: `--render-report` without `--out` clobbers the default measurement results file
-
-**File:** `scripts/bench/bench.py:1400` (`--out` default `scripts/bench/scratch/results.json`), `bench.py:1382-1386`, `bench.py:1471-1475`
-**Issue:** `--out` defaults to the *measurement* output path. `bench.py --render-report --results X.json` without `--out` writes the Markdown report over `scripts/bench/scratch/results.json` — the exact file a previous default-configuration measurement wrote. The scratch directory is gitignored (`.gitignore:241`), so the overwritten measurement data is unrecoverable. The README always shows `--out docs/benchmark-report.md`, but the footgun is one forgotten flag away and destroys the phase's core artifact.
-**Fix:** In `main()`, when `args.render_report` is set, either require an explicit `--out` or change the effective default:
-
-```python
-if args.render_report:
-    if not args.results:
-        parser.error("--render-report requires --results ...")
-    out = args.out if is_explicit_out else "docs/benchmark-report.md"
-```
-
-(Simplest: make `--out` default `None` and resolve per-mode: `DEFAULT_SCRATCH / "results.json"` for measurement, `docs/benchmark-report.md` for rendering; error if `None` reaches a writer.)
-
-### WR-03: A typo'd or missing explicit `--input` silently degrades to a synthetic run
-
-**File:** `scripts/bench/bench.py:357-383` (`resolve_mode`), with `gather_inputs` at 338-354
-**Issue:** `resolve_mode(None, "/typo/path.fq.gz", env)` → `gather_inputs` returns `[]` → `return "synthetic", []` — a user who asked for real-data measurement gets a fast 200k-read synthetic run with only `results.json`'s `mode`/`resolved_inputs` fields betraying the substitution. The degradation ladder is the right design for *absent* input (env-driven, CI), but degrading an *explicitly provided* CLI path is the classic silent-fallback failure: an operator skimming stdout ("PARITY OK", arm lines, "results written to …") can easily mistake the synthetic run for the intended one. The docstring's "never guesses silently" is not true for this case.
-**Fix:** Fail loudly when the CLI flag explicitly named an input that resolves to nothing; keep ladder degradation only for the absent/env-provided cases:
+**Fix:** Derive the figure from the first **full-mode** file and guard the
+access with a named error:
 
 ```python
-def resolve_mode(explicit_mode, input_arg, env, size_threshold_bytes=..., strict_input=False):
-    ...
-    inputs = gather_inputs(spec) if spec else []
-    if strict_input and input_arg is not None and not inputs:
-        raise ValueError(
-            f"--input {input_arg!r} resolved to no input files — refusing to "
-            f"silently degrade to synthetic mode")
+full0 = next(d for d in files_data if d["mode"] == "full")
+fps = full0.get("input_fingerprint") or []
+if not fps:
+    raise ValueError(
+        f"render needs a non-empty input_fingerprint on the mode=full results "
+        f"file (created {full0.get('created')}) to source the methodology "
+        f"note's input-size figure")
+fp0 = fps[0]
 ```
 
-and pass `strict_input=True` from `main()`/`run_bench`/`run_parity_cli` where the argument came from the CLI.
-
-### WR-04: `total_sequence_length` and `average_quality` bypass the compressed opener — `.fq.gz` parsed as raw deflate bytes
-
-**File:** `src/io/fastq.rs:424-442` and `src/io/fastq.rs:451-486`
-**Issue:** Both functions open `io::BufReader::new(std::fs::File::open(path))` directly instead of `DefaultCompressedFileReader::open_compressed`, so a `.fq.gz` path is parsed as compressed bytes — wrong values or hard parse errors. This is the identical bug class that was fixed in the FASTA twins (`src/io/fasta.rs` "WR-03 regression" test at fasta.rs:338-361 pins the fixed behavior there), and it is inconsistent with every other reader in the same file (`count_sequences`, `validate_fastq_file`, `process_file*` all route through `open_compressed`). Neither function currently has callers in the repo (verified by grep), which makes them dead public API carrying a latent gzip bug — whichever of "fix" or "delete" is chosen, leaving them half-migrated is the defect.
-**Fix:** Route through the same opener (mirroring fasta.rs):
-
-```rust
-pub fn total_sequence_length<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> {
-    let path = file_path.as_ref();
-    let (reader, _) = DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
-        ProcessingError::with_context(
-            format!("Failed to open FASTQ file: {:?} ({})", path,
-                    CompressionType::from_path(path).name()), e)
-    })?;
-    let reader = Reader::new(reader);
-    ...
-```
-
-(and likewise for `average_quality`), or remove both functions if the API is intentionally dead.
-
-### WR-05: benchmark.yml cache key hashes a file that does not exist in CI (Cargo.lock is gitignored)
-
-**File:** `.github/workflows/benchmark.yml:50-57`
-**Issue:** `key: bench-${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}` — but `Cargo.lock` is untracked (verified: `git ls-files` has no entry; `.gitignore:7`/`.gitignore:117` ignore it), so after checkout `hashFiles('Cargo.lock')` evaluates to `''`. The key degenerates to the constant `bench-<os>-cargo-`: the first run saves under that exact key and every later run exact-hits it, so the cache is frozen forever — dependencies added afterwards are downloaded every run and never saved, and the comment's stated invariant ("runner OS + Cargo.lock hash", CR-04) is inoperative. (The same pattern pre-exists in ci.yml — newly replicated here.) Second-order concern for a *measurement* gate: with no committed lockfile, dependency resolution drifts over time, letting third-party crate updates shift wall/RSS past the 25%/15% thresholds with zero code change in this repo.
-**Fix:** Commit `Cargo.lock` (best practice for a binary crate and a prerequisite for the key to function — it also pins the measurement environment), or if the lockfile must stay untracked, key on `hashFiles('**/Cargo.toml')`.
-
-### WR-06: MultiGzDecoder hard-fails on trailing bytes after the last member — stricter than GzDecoder and than gzip itself
-
-**File:** `src/io/fastq.rs:67-75` (change at 73)
-**Issue:** The fix for concatenated members is correct and complete for its target (all read paths route through `open_compressed`; regression test is sound). But flate2's multi-member loop (verified in flate2-1.1.10 `src/gz/bufread.rs`, `GzState::Finished` + `self.multi` branch) does: after each member's CRC check, if `fill_buf()` is non-empty it parses another header, and any bytes that don't start `1f 8b` return `Err("invalid gzip header")`. Consequences: (a) files with trailing zero-padding — real for block-aligned archives and some transfer tools — previously read fine under `GzDecoder` (which stops at member end and ignores the rest) and now error the whole count; (b) GNU/BSD gzip themselves tolerate this ("decompression OK, trailing garbage ignored"). The prior behavior silently truncated member 2+; the new behavior hard-errors on trailing garbage — swapping under-count for spurious failure on a class of malformed-but-previously-working inputs. At minimum this asymmetry vs. the gzcat comparator arm deserves a decision; a parity run on such a file will fail loudly at the gate (RuntimeError, not a wrong number), which is the right failure mode but still a regression for previously-working inputs.
-**Fix:** Decide and document the tolerance policy, e.g. wrap the decoder so that a bad-header error *after at least one successfully decoded member* is treated as EOF (mirroring gzip's trailing-garbage behavior), keeping the hard error for a bad *first* member. If strictness is intended, add a test pinning it and note it in the CLI error message so users with padded files get an actionable message.
-
-### WR-07: NaN/Infinity medians pass the gate as "ok" — comparator fails open on non-finite data
-
-**File:** `scripts/bench/compare.py:123-135` (`arm_median`), `compare.py:168-176` (breach decision); enabler `bench.py:279-309` (`validate_schema`)
-**Issue:** `json.load` accepts `NaN`/`Infinity` literals by default, and `validate_schema` only checks key presence. For a NaN median: `base_v <= 0` is False (skips the non-positive guard at compare.py:170-173), `delta` is NaN, and `delta > threshold` is False — so the arm prints `delta nan% ok` and the gate **passes**. This violates the comparator's own stated contract ("a verdict on malformed data would be a fabricated verdict"; "fails loudly, never best-effort") — a corrupted or hand-mangled results file with a NaN wall/RSS sails through green instead of exiting 2.
-**Fix:** Add a finiteness guard where the values enter the comparison:
-
-```python
-import math
-...
-    base_v = arm_median(base_arms[key], arm_field, rep_field)
-    cur_v = arm_median(cur_arms[key], arm_field, rep_field)
-    if not (math.isfinite(base_v) and math.isfinite(cur_v)):
-        invalid(f"arm {name!r}: {arm_field} is non-finite "
-                f"(baseline={base_v!r}, current={cur_v!r}) — not a gate verdict")
-```
-
-(and optionally reject non-finite values in `validate_schema`, protecting the renderer too).
+and use `full0` for the halt note (the provenance lines may keep
+`files_data[0]`).
 
 ## Info
 
-### IN-01: Dead validation branch in gen_synthetic.py
+### IN-08: The advisory-mode PASS summary line is not pinned by any test
 
-**File:** `scripts/bench/gen_synthetic.py:47-50`
-**Issue:** `if args.length < 1` is immediately subsumed by `if args.length < 2` (`--length` is `type=int`, so only integers arrive). The first check can never fire independently.
-**Fix:** Delete the `< 1` check (or merge into one message: `--length must be >= 2 to contain at least one k-mer`).
-
-### IN-02: bench.py exit-code contract is ambiguous at the edges
-
-**File:** `scripts/bench/bench.py:1390-1390` (argparse), `bench.py:1486-1490` (catch-all)
-**Issue:** (a) argparse usage errors exit 2, colliding with the documented `2 = jellyfish required but absent` contract (bench.py:484-486) — a wrapper distinguishing them cannot. (b) The `__main__` catch-all exits 1 for *any* runtime failure, the same code as `PARITY_MISMATCH_EXIT` — a parity mismatch and a harness crash are indistinguishable to callers. (c) `--render-report --parity-only` together silently does render-only (main's precedence at 1471-1479) with no mutual-exclusion error.
-**Fix:** Distinct exit code for unexpected failures (e.g. 4) in the catch-all; note the argparse-2 collision in the docstring; `parser.error` when both mode flags are given.
-
-### IN-03: Methodology schedule sorts round keys lexicographically
-
-**File:** `scripts/bench/bench.py:1217-1219`
-**Issue:** `sorted(sched.items())` orders the string keys "0","1","10","11","2"… — for any `--reps >= 10` the rendered counterbalance schedule lists rounds out of order (still deterministic, so byte-identity holds, but misleading to read).
-**Fix:** `sorted(sched.items(), key=lambda kv: int(kv[0]))`.
-
-### IN-04: Duplicate or tool-less arms collapse silently in compare.py's dict build
-
-**File:** `scripts/bench/compare.py:147-148`; root cause `bench.py:279-309`
-**Issue:** `validate_schema` does not require a `tool` field, and `arm_key` defaults it to `""`. Two arms with the same name (both lacking `tool`) silently overwrite each other in `{arm_key(a): a for a in baseline["arms"]}` — the gate then compares one of them instead of exiting 2, contrary to the one-sided-arm strictness elsewhere. (A tool-less arm vs a tooled arm does exit 2 loudly; only the silent-collapse path is the gap.)
-**Fix:** In `compare_results`, detect duplicate keys while building the dicts and `invalid()` on them; optionally require `tool` in `validate_schema` (schema bump needed — coordinate with committed baselines).
-
-### IN-05: test_schema.py's real-run test fails confusingly on a fresh clone
-
-**File:** `scripts/bench/tests/test_schema.py:19,29-34`
-**Issue:** `TestRealSelfCheckOutput` shells out to `target/release/rustkmer`; without a prior `cargo build --release` the test fails with a buried RuntimeError from bench.py instead of a skip, and the whole suite goes red for an environment reason.
-**Fix:** `@unittest.skipUnless(RUSTKMER.exists(), "release binary not built — run cargo build --release")`.
-
-### IN-06: No timeout on measured subprocesses
-
-**File:** `scripts/bench/bench.py:144-150` (`measure`), likewise `stats`/`jellyfish_stats`
-**Issue:** A hung rustkmer/jellyfish run hangs the harness forever; in CI the 45-minute job timeout eventually catches it, but a local full-scale run (hours by design) has no guard, and a hang mid-protocol loses all reps taken so far (nothing is written until the end).
-**Fix:** Not urgent — optionally `subprocess.run(..., timeout=...)` derived from a generous multiple of the first rep, or at least write partial results after each round.
-
-### IN-07: Leading-hyphen paths pass validate_path and reach argv positions where tools parse options
-
-**File:** `scripts/bench/bench.py:157,186-198` (`SAFE_PATH_RE`, `validate_path`), consumed at 244 (list form) and 241-243 (sh -c)
-**Issue:** The T-04-03 allowlist blocks shell metacharacters but permits a path starting with `-` (e.g. a dataset file literally named `-C.fq.gz`). In the plain-input branch it becomes a `jellyfish count` argument position; in the pipe branch a `gzcat`/`gunzip` argument position — option injection into the tool (loud failure in practice; no escalation path identified since the decompressor constant always forces `-c`/stdout). Defense-in-depth only.
-**Fix:** Reject or neutralize leading-hyphen paths in `validate_path`: `if text.startswith("-"): raise ValueError(...)` (or prefix `./` for relative paths), mirroring the `--` convention.
+**File:** `scripts/bench/tests/test_compare.py:190-236` (`TestWallAdvisory`)
+**Issue:** `compare.py:271-274` prints a distinct advisory summary —
+`GATE: PASS — within RSS thresholds (15%); N wall breach(es) advisory, not
+gating` — but `test_wall_breach_above_threshold_exits_0_and_is_flagged`
+asserts only the prefix `GATE: PASS`, which the plain all-axes PASS line
+(:276) also matches. A regression that swapped the advisory summary for the
+plain line (falsely claiming "every arm within thresholds on both axes" while
+wall breaches exist) would not be caught.
+**Fix:** Add `self.assertIn("wall breach(es) advisory, not gating", out)` to
+the exit-0 advisory test.
 
 ---
 
-_No structural findings block was provided by the orchestrator; no external reviewer evidence was supplied._
+_No structural findings block was provided by the orchestrator; no external
+reviewer evidence was supplied._
 
-_Reviewed: 2026-10-10T19:04:26Z_
+_Reviewed: 2026-10-17T15:36:48Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
