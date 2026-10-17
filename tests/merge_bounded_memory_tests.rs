@@ -290,8 +290,30 @@ fn assert_prefix_cache_route_proved(err: &rustkmer::ProcessingError, missing: &P
 /// than shared because the two binaries belong to different plans and a
 /// `tests/common` module would be a cross-wave coupling for 6 lines (and
 /// would put sibling tests inside this measurement's process).
+///
+/// Windows: `File::open` cannot open a directory at all (the callers
+/// backdate merge temp SUBDIRS), and `set_times` needs
+/// `FILE_WRITE_ATTRIBUTES` anyway — so the Windows branch opens the raw
+/// access+flag pair directly (works for files and directories alike).
+#[cfg(not(target_os = "windows"))]
 fn backdate(path: &Path, age: Duration) {
     let handle = std::fs::File::open(path).expect("open for mtime update");
+    let modified = std::time::SystemTime::now() - age;
+    handle
+        .set_times(std::fs::FileTimes::new().set_modified(modified))
+        .unwrap_or_else(|e| panic!("backdate {}: {}", path.display(), e));
+}
+
+#[cfg(target_os = "windows")]
+fn backdate(path: &Path, age: Duration) {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_WRITE_ATTRIBUTES: u32 = 0x0000_0100;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    let handle = std::fs::OpenOptions::new()
+        .access_mode(FILE_WRITE_ATTRIBUTES)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+        .expect("open for mtime update");
     let modified = std::time::SystemTime::now() - age;
     handle
         .set_times(std::fs::FileTimes::new().set_modified(modified))
@@ -332,7 +354,13 @@ fn write_fixture_pair(dir: &Path, label: &str, entries: u64) -> Result<(PathBuf,
 /// (another 32,000,000 B) — 64,000,000 B against this test's 6,400,000 B
 /// bound, 10x over. The post-fix working set is one chunk `Vec` (1,600,000
 /// B) plus buffers. Task 3's mutation check restored the accumulating body
-/// and observed the RED figure recorded in the plan SUMMARY.
+/// and observed the RED figure recorded in the plan SUMMARY. That RED
+/// discipline demands the measurement be executable wherever the tests run —
+/// but Windows has no stdlib RSS source: `/proc` does not exist and the `ps`
+/// fallback cannot see a native Windows PID, so the measurement — baseline,
+/// tracker, and bound — is gated off there, exactly as `dense_memory_tests`
+/// gates its measurement to Linux.
+#[cfg(not(target_os = "windows"))]
 #[test]
 fn streaming_merge_peak_memory_is_bounded_by_chunk_not_dataset() -> Result<()> {
     // The derivation's floor: if `KmerEntry` ever stops being 32 bytes, the

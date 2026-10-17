@@ -1999,14 +1999,21 @@ mod tests {
     /// the recovery path the D-06 failure-path deletion destroyed.
     ///
     /// Failure is forced deterministically, without permissions and without a
-    /// race: a DIRECTORY is planted at prefix 0's shard path
-    /// (`ext_sort_AAAA_file_000.tmp`). `merge_prefix_buckets` selects buckets
-    /// by `metadata().len() > 0` and a directory's `len()` is non-zero, so
-    /// bucket 0 is selected; `merge_single_prefix_hashmap` then either fails
-    /// to open it or fails on `read_to_end` with `EISDIR` — either way the
-    /// bucket returns `Err`. A directory is used rather than a `chmod 000`
+    /// race. On Unix a DIRECTORY is planted at prefix 0's shard path
+    /// (`ext_sort_AAAA_file_000.tmp`): `merge_prefix_buckets` selects buckets
+    /// by `metadata().len() > 0` and a Unix directory's `len()` is non-zero,
+    /// so bucket 0 is selected; `merge_single_prefix_hashmap` then either
+    /// fails to open it or fails on `read_to_end` with `EISDIR` — either way
+    /// the bucket returns `Err`. A directory is used rather than a `chmod 000`
     /// gate because the crate must not depend on the test running as a
     /// non-root user: a root-run `chmod` gate would pass vacuously.
+    ///
+    /// Windows cannot use the directory plant (`metadata().len()` of a
+    /// directory is 0 there, so the bucket is never selected and the merge
+    /// would succeed vacuously). The Windows analog is a share lock: the
+    /// shard is planted as a real file and held open with `share_mode(0)`
+    /// (FILE_SHARE_NONE) for the duration of the merge, so the merge's open
+    /// fails with a sharing violation — the same bucket-`Err` path.
     #[test]
     fn failed_bucket_aborts_the_merge_with_err() {
         let parent = tempfile::tempdir().unwrap();
@@ -2027,7 +2034,19 @@ mod tests {
             .to_path_buf();
 
         let shard_path = subdir.join("ext_sort_AAAA_file_000.tmp");
+        #[cfg(unix)]
         std::fs::create_dir_all(&shard_path).expect("plant the failing shard");
+        // The binding must outlive merge_prefix_buckets below.
+        #[cfg(windows)]
+        let _share_lock = {
+            use std::os::windows::fs::OpenOptionsExt;
+            std::fs::write(&shard_path, b"locked shard bytes").expect("plant the failing shard");
+            std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0)
+                .open(&shard_path)
+                .expect("hold an exclusive share lock on the failing shard")
+        };
 
         let outcome = merger.merge_prefix_buckets();
 

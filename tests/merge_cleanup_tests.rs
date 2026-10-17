@@ -154,8 +154,31 @@ fn orphan_subdir_swept_on_next_start() {
 /// `File::set_times` (stable since Rust 1.75) lets this test age a directory
 /// without a `filetime` dev-dependency and without the still-unstable
 /// `std::fs::set_modified`.
+///
+/// Windows: a read-handle cannot carry `FILE_WRITE_ATTRIBUTES` (set_times
+/// fails with Access Denied even for plain files), and directories cannot be
+/// opened at all without `FILE_FLAG_BACKUP_SEMANTICS` — so the Windows
+/// branch opens the raw access+flag pair directly (files and directories
+/// alike).
+#[cfg(not(target_os = "windows"))]
 fn backdate(path: &Path, age: Duration) {
     let handle = std::fs::File::open(path).expect("open for mtime update");
+    let modified = std::time::SystemTime::now() - age;
+    handle
+        .set_times(std::fs::FileTimes::new().set_modified(modified))
+        .unwrap_or_else(|e| panic!("backdate {}: {}", path.display(), e));
+}
+
+#[cfg(target_os = "windows")]
+fn backdate(path: &Path, age: Duration) {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_WRITE_ATTRIBUTES: u32 = 0x0000_0100;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    let handle = std::fs::OpenOptions::new()
+        .access_mode(FILE_WRITE_ATTRIBUTES)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+        .expect("open for mtime update");
     let modified = std::time::SystemTime::now() - age;
     handle
         .set_times(std::fs::FileTimes::new().set_modified(modified))
@@ -524,23 +547,30 @@ fn sweep_reclaims_stale_loose_chunk_files() {
 
     // --- T-03-07's refusal, extended to the file branch: a symlink with a
     // chunk name is left alone, and so is the file it points at. ---
-    let sentinel_dir = TempDir::new().unwrap();
-    let sentinel = sentinel_dir.path().join("sentinel.txt");
-    std::fs::write(&sentinel, b"must not be deleted through the symlink").unwrap();
-    let symlink = parent
-        .path()
-        .join(format!("rustkmer_sort_{}_1717171718_1.chunk", pid));
-    std::os::unix::fs::symlink(&sentinel, &symlink).expect("plant a symlink carrying a chunk name");
+    // Unix-only scaffold: planting the link needs std::os::unix (and Windows
+    // additionally demands symlink privileges). The sweep's file_type()
+    // refusal itself is cross-platform — see temp_lifecycle.rs.
+    #[cfg(unix)]
+    {
+        let sentinel_dir = TempDir::new().unwrap();
+        let sentinel = sentinel_dir.path().join("sentinel.txt");
+        std::fs::write(&sentinel, b"must not be deleted through the symlink").unwrap();
+        let symlink = parent
+            .path()
+            .join(format!("rustkmer_sort_{}_1717171718_1.chunk", pid));
+        std::os::unix::fs::symlink(&sentinel, &symlink)
+            .expect("plant a symlink carrying a chunk name");
 
-    sweep_stale_merge_dirs(parent.path(), Duration::from_secs(0));
-    assert!(
-        symlink.exists(),
-        "a symlink with a chunk name must be refused by the sweep (file_type(), not metadata())"
-    );
-    assert!(
-        sentinel.exists(),
-        "the symlink's target must survive the sweep untouched"
-    );
+        sweep_stale_merge_dirs(parent.path(), Duration::from_secs(0));
+        assert!(
+            symlink.exists(),
+            "a symlink with a chunk name must be refused by the sweep (file_type(), not metadata())"
+        );
+        assert!(
+            sentinel.exists(),
+            "the symlink's target must survive the sweep untouched"
+        );
+    }
 }
 
 /// The D-06 peak-disk optimization proven through the PUBLIC entry point:
