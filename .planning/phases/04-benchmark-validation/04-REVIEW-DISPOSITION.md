@@ -3,6 +3,18 @@ phase: 04
 review: 04-REVIEW.md
 titles: json
 findings:
+  - id: CR-02
+    severity: critical
+    disposition: open
+    title: "Windows clippy gate is red at HEAD — un-gated measurement helpers are dead code under the Windows test gating (CI merge gate failing)"
+  - id: WR-08
+    severity: warning
+    disposition: open
+    title: "CR-01's replacement figure indexes `input_fingerprint[0]` unguarded — and can silently take the number from the wrong results file"
+  - id: IN-08
+    severity: info
+    disposition: open
+    title: "The advisory-mode PASS summary line is not pinned by any test"
   - id: CR-01
     severity: critical
     disposition: fixed
@@ -63,30 +75,33 @@ findings:
     severity: info
     disposition: open
     title: "Leading-hyphen paths pass validate_path and reach argv positions where tools parse options"
-open: 14
-total: 15
-recorded: 2026-10-10T19:08:52.731Z
+open: 17
+total: 18
+recorded: 2026-10-17T15:39:34.693Z
 ---
 
 # Phase 04: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | fixed | bb5ccb0 (user-approved during UAT: figure now derived from fingerprinted input size; re-render byte-identical) |
-| WR-01 | warning | open | - |
-| WR-02 | warning | open | - |
-| WR-03 | warning | open | - |
-| WR-04 | warning | open | - |
-| WR-05 | warning | open | - |
-| WR-06 | warning | open | - |
-| WR-07 | warning | open | - |
-| IN-01 | info | open | - |
-| IN-02 | info | open | - |
-| IN-03 | info | open | - |
-| IN-04 | info | open | - |
-| IN-05 | info | open | - |
-| IN-06 | info | open | - |
-| IN-07 | info | open | - |
+| CR-02 | critical | open | - |
+| WR-08 | warning | open | - |
+| IN-08 | info | open | - |
+| CR-01 | critical | fixed | bb5ccb0 (user-approved during UAT: figure now derived from fingerprinted input size; re-render byte-identical) (not in the current review) |
+| WR-01 | warning | open | - (not in the current review) |
+| WR-02 | warning | open | - (not in the current review) |
+| WR-03 | warning | open | - (not in the current review) |
+| WR-04 | warning | open | - (not in the current review) |
+| WR-05 | warning | open | - (not in the current review) |
+| WR-06 | warning | open | - (not in the current review) |
+| WR-07 | warning | open | - (not in the current review) |
+| IN-01 | info | open | - (not in the current review) |
+| IN-02 | info | open | - (not in the current review) |
+| IN-03 | info | open | - (not in the current review) |
+| IN-04 | info | open | - (not in the current review) |
+| IN-05 | info | open | - (not in the current review) |
+| IN-06 | info | open | - (not in the current review) |
+| IN-07 | info | open | - (not in the current review) |
 
 Dispositions: `open` (recorded, not yet triaged), `fixed`, `skipped`, `deferred`.
 Set `deferred` by hand and put the reason in the Source cell; both are preserved. A `|` in the reason is kept as prose and escaped on the next run.
