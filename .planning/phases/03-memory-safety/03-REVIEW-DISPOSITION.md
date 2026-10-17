@@ -6,7 +6,7 @@ findings:
   - id: WR-01
     severity: warning
     disposition: open
-    title: "The failed-bucket \"shard files PRESERVED for recovery\" promise is voided by RAII Drop before the error reaches the caller (carried, still open; the abort message making the false promise is new this round)"
+    title: "The failed-bucket \"shard files PRESERVED for recovery\" promise is voided by RAII Drop before the error reaches the caller (carried, still open)"
   - id: WR-02
     severity: warning
     disposition: open
@@ -14,19 +14,31 @@ findings:
   - id: WR-11
     severity: warning
     disposition: open
-    title: "The metadata JSON sidecar is written to a path the to-path route guarantees to delete (new this round)"
+    title: "The metadata JSON sidecar is written to a path the to-path route guarantees to delete (carried, still open)"
   - id: WR-12
     severity: warning
     disposition: open
-    title: "`ExternalSortMerger::new` panics on an empty input list — public API, unguarded index (new this round; same class as carried WR-06 but a distinct, in-scope site)"
+    title: "`ExternalSortMerger::new` panics on an empty input list — public API, unguarded index (carried, still open)"
   - id: WR-13
     severity: warning
     disposition: open
-    title: "Zero-length merged buckets are deleted even under `--keep-intermediate`, contradicting the flag's documented \"keeps everything\" contract (new this round)"
+    title: "Zero-length merged buckets are deleted even under `--keep-intermediate`, contradicting the flag's documented \"keeps everything\" contract (carried, still open)"
   - id: WR-14
     severity: warning
     disposition: open
-    title: "No k-mer-size range validation — headers with `kmer_size` in 65..=127 or 0 pass every check, then shift-overflow (debug panic) or silently collapse every canonical key to 0 (new this round)"
+    title: "No k-mer-size range validation — headers with `kmer_size` in 65..=127 or 0 pass every check, then shift-overflow (debug panic) or silently collapse every canonical key to 0 (carried, still open)"
+  - id: WR-15
+    severity: warning
+    disposition: open
+    title: "`total_sequence_length` and `average_quality` ignore compression entirely, unlike every sibling FASTQ helper and the already-fixed FASTA analogues (new this round)"
+  - id: WR-16
+    severity: warning
+    disposition: open
+    title: "`count_sequences` swallows parse errors and counts them as sequences (new this round)"
+  - id: WR-17
+    severity: warning
+    disposition: open
+    title: "`filter_by_quality` / `average_quality` document Phred scores but operate on raw ASCII bytes — doc-following callers get a near-no-op filter (new this round)"
   - id: IN-02
     severity: info
     disposition: open
@@ -58,11 +70,19 @@ findings:
   - id: IN-10
     severity: info
     disposition: open
-    title: "A streaming-writer refusal aborts the whole merge with no fallback and no remediation hint (new this round)"
+    title: "A streaming-writer refusal aborts the whole merge with no fallback and no remediation hint (carried, still open)"
   - id: IN-11
     severity: info
     disposition: open
-    title: "Two vacuous tests in the module's test module (new this round)"
+    title: "Two vacuous tests in the module's test module (carried, still open)"
+  - id: IN-12
+    severity: info
+    disposition: open
+    title: "The MultiGzDecoder switch hard-errors on trailing garbage after the final member; the \"byte-identical on single-member files\" comment overclaims (new this round)"
+  - id: IN-13
+    severity: info
+    disposition: open
+    title: "Two \"GUARD\" asserts in the bounded-memory tests are tautologies, and the `estimated - 1` budgets latent underflow (new this round)"
   - id: CR-01
     severity: critical
     disposition: open
@@ -115,9 +135,10 @@ findings:
     severity: warning
     disposition: open
     title: "`frequency_distribution` zero-fills `min_count..=max_count` — unbounded allocation up to ~4.3 billion entries"
-open: 28
-total: 28
-recorded: 2026-10-09T12:21:37.511Z
+open: 33
+total: 33
+unparsed: 1
+recorded: 2026-10-17T09:13:20.637Z
 ---
 
 # Phase 03: Code Review Disposition
@@ -130,6 +151,9 @@ recorded: 2026-10-09T12:21:37.511Z
 | WR-12 | warning | open | - |
 | WR-13 | warning | open | - |
 | WR-14 | warning | open | - |
+| WR-15 | warning | open | - |
+| WR-16 | warning | open | - |
+| WR-17 | warning | open | - |
 | IN-02 | info | open | - |
 | IN-03 | info | open | - |
 | IN-04 | info | open | - |
@@ -139,6 +163,8 @@ recorded: 2026-10-09T12:21:37.511Z
 | IN-09 | info | open | - |
 | IN-10 | info | open | - |
 | IN-11 | info | open | - |
+| IN-12 | info | open | - |
+| IN-13 | info | open | - |
 | CR-01 | critical | open | - (not in the current review) |
 | WR-04 | warning | open | - (not in the current review) |
 | WR-05 | warning | open | - (not in the current review) |
