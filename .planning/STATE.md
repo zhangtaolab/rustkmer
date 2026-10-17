@@ -25,12 +25,12 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-09)
 
 **Core value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools, from both the CLI and Python.
-**Current focus:** Phase 03 — Memory Safety
+**Current focus:** Phase 04 — Benchmark & Validation
 
 ## Current Position
 
 Phase: 04 — Benchmark & Validation
-Plan: 4
+Plan: 4 of 4
 Status: Phase complete — ready for verification
 Last activity: 2026-10-17 — Phase 03 complete, transitioned to Phase 04
 
@@ -250,9 +250,10 @@ None yet.
 
 [Issues that affect future work]
 
-- No pyo3 test in phase 3 can be EXECUTED: pyo3/pyproject.toml sets python-source="." with module-name="pyrustkmer" while pyo3/pyrustkmer/ has never existed, so maturin build/develop both refuse (and CI's pyo3-build job runs maturin build, so that job cannot be green as configured); addopts also hard-codes --cov-fail-under=80 against a compiled extension, so every pytest run exits 1 even when green; and .github/workflows/ci.yml has no pyo3 pytest job at all. Consequence: 03-09's admission-model change and 03-10's PyDatabase::merge semantics change both ship with ZERO Python-level verification. One-line fix that would unblock all of it: delete the python-source key from [tool.maturin] (a pure-Rust extension has no Python sources to package). Carried in deferred-items.md + WINDOWS.md with open status.
+- [LARGELY RESOLVED 2026-10-17] pyo3 test executability: the maturin `python-source` key was dropped in dbb13ef, so `maturin develop` now works — the 2026-10-17 phase-03 re-verification rebuilt pyrustkmer from source and ran the full pyo3 suite green (125/0, incl. test_database_merge.py 12/12 for the first time), closing the carried MERGE-04 human-verification item. STILL OPEN: (a) addopts hard-codes `--cov-fail-under=80` against a compiled extension, so local runs need `--no-cov`; (b) `.github/workflows/ci.yml` still has no pyo3 pytest job. The historical consequence for phase 03 (03-09/03-10 shipped without Python-level verification at the time) is now back-filled by the 2026-10-17 evidence.
 - deferred-items.md's IN-02 clippy entry is STALE and should be marked closed: the 4 `useless_borrows_in_formatting` sites it names no longer exist (src/io/fastq.rs:216 writes `self.file_path`, :343 writes `path`, src/io/fasta.rs:56 writes `self.file_path`, and fasta.rs:153 is not a `format!` at all), and `cargo clippy --all-targets -- -D warnings` — the entry's own reproduction command — exits 0. Verified by plan 03-09; the file itself was outside that plan's scope.
-- [Phase 03 UAT 2026-10-09] Partially superseded by the UAT session: the pyo3 extension WAS built and the merge suite EXECUTED 12/12 green (manual PYO3_PYTHON build + RUSTFLAGS dynamic_lookup + manual .so install — see 03-UAT test 22); the maturin/CI structural issues (python-source key, --cov-fail-under, missing CI pytest job) remain open. pyo3 0.27 additionally needs the extension crate's build.rs to call pyo3_build_config::add_extension_module_link_args() — deferred to ROADMAP backlog 999.1.
+- [Phase 03 UAT 2026-10-09] Partially superseded by the UAT session: the pyo3 extension WAS built and the merge suite EXECUTED 12/12 green (manual PYO3_PYTHON build + RUSTFLAGS dynamic_lookup + manual .so install — see 03-UAT test 22); the python-source key is now RESOLVED (dbb13ef, see above); --cov-fail-under and the missing CI pytest job remain open. pyo3 0.27 additionally needs the extension crate's build.rs to call pyo3_build_config::add_extension_module_link_args() — deferred to ROADMAP backlog 999.1.
+- [2026-10-17 re-verification advisories] WINDOWS.md rows #16 and #18 are discharged in substance (pyo3 suite now runnable; rustfmt drift fixed by ba7f451) but the ledger rows still read "open" — flip them at triage time. Round-4 code review (03-REVIEW.md 2026-10-17) added WR-15/16/17 + IN-12/13 (fastq helpers / test-assert nuances) to the open advisory set; no must-have depends on them.
 
 ### Quick Tasks Completed
 
@@ -270,6 +271,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-10T18:11:19.594Z
-Stopped at: Phase 03 complete, ready to verify Phase 04
+Last session: 2026-10-17T09:35:00.000Z
+Stopped at: Phase 03 complete (re-verified 2026-10-17), ready to verify Phase 04
 Resume file: None
