@@ -166,19 +166,19 @@ db.fuzzy_query()    # → 推荐使用 db.query_fuzzy()
 - **INSTALL.md**: 安装说明
 
 #### 2. 技术文档
-- **FINAL_UNIFIED_INTERFACE_REPORT.md**: 统一接口最终实现报告
-- **UNIFIED_INTERFACE_IMPLEMENTATION_REPORT.md**: 实现细节报告
-- **PYO3_UNIFIED_INTERFACE_PLAN.md**: PyO3 绑定计划
-- **analysis_current_naming.md**: 命名分析文档
+- **docs/guides/FINAL_UNIFIED_INTERFACE_REPORT.md**: 统一接口最终实现报告
+- **docs/guides/UNIFIED_INTERFACE_IMPLEMENTATION_REPORT.md**: 实现细节报告
+- **docs/guides/PYO3_UNIFIED_INTERFACE_PLAN.md**: PyO3 绑定计划
+- **analysis_current_naming.md**: 命名分析文档（历史工作笔记，未提交至仓库，文件已不存在）
 
 #### 3. 开发文档
 - **AGENTS.md**: 开发指南和 Agent 规范
 - **CLAUDE.md**: Claude AI 集成指南
-- **DOCUMENTATION_UPDATE_REPORT.md**: 文档更新报告
+- **docs/guides/DOCUMENTATION_UPDATE_REPORT.md**: 文档更新报告
 
 #### 4. 测试文档
-- **pyo3_examples_test_report.md**: PyO3 示例测试报告
-- **unified_naming_proposal.md**: 统一命名方案
+- **pyo3_examples_test_report.md**: PyO3 示例测试报告（历史工作笔记，未提交至仓库，文件已不存在）
+- **unified_naming_proposal.md**: 统一命名方案（历史工作笔记，未提交至仓库，文件已不存在）
 
 ### 文档统计
 
@@ -322,18 +322,18 @@ print(f"Unique k-mers: {stats.unique_kmers}")
 ## 🔗 相关资源
 
 ### 核心文档链接
-- [README.md](../README.md) - 项目主文档
+- [README.md](README.md) - 项目主文档
 - [USER_GUIDE.md](./USER_GUIDE.md) - 详细用户指南
-- [PyO3 绑定指南](../docs/guides/pyo3-binding-guide.md) - Python API 详细指南
+- [PyO3 绑定指南](docs/guides/pyo3-binding-guide.md) - Python API 详细指南
 
 ### API 文档
-- [API 参考](../docs/api-reference/) - 完整 API 文档
-- [数据库 API](../docs/api-reference/database.md) - 数据库操作
-- [查询 API](../docs/api-reference/query.md) - 查询方法
+- [API 参考](docs/api-reference/) - 完整 API 文档
+- [数据库 API](docs/api-reference/database.md) - 数据库操作
+- [查询 API](docs/api-reference/query.md) - 查询方法
 
 ### 示例代码
-- [Python 示例](../examples/python/) - 完整示例集合
-- [统一查询示例](../examples/python/unified_query_example.py) - 统一接口示例
+- [Python 示例](examples/python/) - 完整示例集合
+- [统一查询示例](examples/python/unified_query_example.py) - 统一接口示例
 
 ---
 

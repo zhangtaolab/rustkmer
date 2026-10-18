@@ -22,7 +22,7 @@
 cargo build --release
 
 # 计数k-mers（推荐使用排序数据库）
-cargo run --release -- count -k 21 -t 8 --sort -o genome.rkdb genome.fa
+cargo run --release -- count -k 21 --threads 8 --sort -o genome.rkdb -i genome.fa
 
 # 查询单个k-mer
 cargo run --release -- query genome.rkdb ATGCGATGCTAGCGCTAGCTA
@@ -59,16 +59,6 @@ cargo build --release
 cargo install --path .
 ```
 
-### Docker安装（可选）
-
-```bash
-# 构建Docker镜像
-docker build -t rustkmer .
-
-# 运行容器
-docker run -v $(pwd):/data rustkmer count -k 21 -o /data/output.rkdb /data/input.fa
-```
-
 ## 核心功能
 
 ### 1. K-mer计数 (count)
@@ -77,16 +67,16 @@ docker run -v $(pwd):/data rustkmer count -k 21 -o /data/output.rkdb /data/input
 
 ```bash
 # 基本计数
-rustkmer count -k 21 -o output.rkdb input.fa
+rustkmer count -k 21 -o output.rkdb -i input.fa
 
 # 多线程计数
-rustkmer count -k 21 -t 8 -o output.rkdb input.fa
+rustkmer count -k 21 --threads 8 -o output.rkdb -i input.fa
 
 # 创建排序数据库（推荐）
-rustkmer count -k 21 --sort -o sorted.rkdb input.fa
+rustkmer count -k 21 --sort -o sorted.rkdb -i input.fa
 
 # 规范化k-mer计数（考虑反向互补）
-rustkmer count -k 21 -C -o canonical.rkdb input.fa
+rustkmer count -k 21 -C -o canonical.rkdb -i input.fa
 ```
 
 ### 2. K-mer查询 (query)
@@ -111,13 +101,10 @@ rustkmer query database.rkdb -i
 
 ```bash
 # 查看数据库信息
-rustkmer info database.rkdb
+rustkmer stats database.rkdb
 
 # 转储数据库内容
 rustkmer dump database.rkdb -o kmer_counts.txt
-
-# 验证数据库完整性
-rustkmer validate database.rkdb
 ```
 
 ## 命令行参考
@@ -130,36 +117,35 @@ rustkmer [GLOBAL_OPTIONS] <COMMAND> [COMMAND_OPTIONS]
 Global Options:
   -h, --help     显示帮助信息
   -V, --version  显示版本信息
-  -q, --quiet    静默模式
-  -v, --verbose  详细输出
 ```
 
 ### Count命令
 
 ```bash
-rustkmer count [OPTIONS] -k <KMER_SIZE> -o <OUTPUT> <INPUT>
+rustkmer count [OPTIONS] -k <K> -i <INPUT>... -o <OUTPUT>
 
 Options:
-  -k, --kmer-size <KMER_SIZE>     k-mer大小 (必须) [default: 21]
-  -t, --threads <THREADS>         线程数量 [default: 系统CPU核心数]
-  -s, --hash-size <SIZE>          哈希表大小 (例如: 1G, 500M) [default: 2G]
+  -k, --k <K>                     k-mer大小 (必须，1-64)
+  -i, --input <INPUT>...          输入序列文件 (至少一个；或使用 -d <DIR>)
+  -d, --directory <DIR>           处理目录中的所有文件
+      --threads <THREADS>         线程数量 [default: 使用全部CPU核心]
+      --size <SIZE>               哈希表大小 [default: 1000000]
   -o, --output <FILE>             输出数据库文件 (必须)
   -C, --canonical                 规范化k-mer计数
       --sort                      创建排序数据库 (推荐)
       --no-sort                   创建非排序数据库
-      --memory-limit <SIZE>       内存使用限制
   -q, --quiet                     静默模式
   -v, --verbose                   详细输出
 
 Examples:
   # 基本计数
-  rustkmer count -k 21 -o genome.rkdb genome.fa
+  rustkmer count -k 21 -o genome.rkdb -i genome.fa
 
   # 多线程排序计数
-  rustkmer count -k 21 -t 8 --sort -o genome_sorted.rkdb genome.fa
+  rustkmer count -k 21 --threads 8 --sort -o genome_sorted.rkdb -i genome.fa
 
   # 规范化计数
-  rustkmer count -k 31 -C -s 4G --sort -o genome_k31.rkdb genome.fa
+  rustkmer count -k 31 -C --size 4000000000 --sort -o genome_k31.rkdb -i genome.fa
 ```
 
 ### Query命令
@@ -194,10 +180,10 @@ Examples:
 
 ```bash
 # ✅ 推荐：创建排序数据库
-rustkmer count -k 21 --sort -o sorted.rkdb input.fa
+rustkmer count -k 21 --sort -o sorted.rkdb -i input.fa
 
 # ❌ 不推荐：非排序数据库
-rustkmer count -k 21 --no-sort -o unsorted.rkdb input.fa
+rustkmer count -k 21 --no-sort -o unsorted.rkdb -i input.fa
 ```
 
 **性能差异**：排序数据库比非排序数据库快**384-1526倍**。
@@ -206,23 +192,23 @@ rustkmer count -k 21 --no-sort -o unsorted.rkdb input.fa
 
 ```bash
 # 小基因组（<1GB）
-rustkmer count -k 21 -s 1G --sort -o small.rkdb small.fa
+rustkmer count -k 21 --size 1000000000 --sort -o small.rkdb -i small.fa
 
 # 大基因组（>1GB）
-rustkmer count -k 21 -s 4G --sort -o large.rkdb large.fa
+rustkmer count -k 21 --size 4000000000 --sort -o large.rkdb -i large.fa
 
 # 超大基因组（>10GB）
-rustkmer count -k 21 -s 16G --sort -o huge.rkdb huge.fa
+rustkmer count -k 21 --size 16000000000 --sort -o huge.rkdb -i huge.fa
 ```
 
 **3. 线程数设置**
 
 ```bash
 # CPU核心数 <= 8
-rustkmer count -k 21 -t $(nproc) --sort -o optimal.rkdb input.fa
+rustkmer count -k 21 --threads $(nproc) --sort -o optimal.rkdb -i input.fa
 
 # CPU核心数 > 8（通常8-12线程最优）
-rustkmer count -k 21 -t 12 --sort -o optimal.rkdb input.fa
+rustkmer count -k 21 --threads 12 --sort -o optimal.rkdb -i input.fa
 ```
 
 ### 查询性能优化
@@ -286,11 +272,11 @@ rustkmer query database.rkdb --sequence queries.fa
 
 # 1. 创建k=21的排序数据库
 echo "Creating k=21 database..."
-rustkmer count -k 21 -t 12 --sort -o genome_k21.rkdb genome.fa
+rustkmer count -k 21 --threads 12 --sort -o genome_k21.rkdb -i genome.fa
 
 # 2. 获取数据库统计信息
 echo "Database information:"
-rustkmer info genome_k21.rkdb
+rustkmer stats genome_k21.rkdb
 
 # 3. 查询特定k-mer
 echo "Querying specific k-mers..."
@@ -320,11 +306,11 @@ for k in "${K_SIZES[@]}"; do
     echo "Processing k=$k..."
 
     # 创建数据库
-    rustkmer count -k "$k" -t 8 --sort -o "genome_k${k}.rkdb" "$GENOME"
+    rustkmer count -k "$k" --threads 8 --sort -o "genome_k${k}.rkdb" -i "$GENOME"
 
     # 获取统计信息
     echo "=== k=$k Statistics ==="
-    rustkmer info "genome_k${k}.rkdb"
+    rustkmer stats "genome_k${k}.rkdb"
 
     # 测试查询性能
     echo "Testing query performance..."
@@ -350,11 +336,11 @@ echo "Starting high-throughput k-mer analysis pipeline..."
 
 # 1. 数据库创建（最耗时步骤）
 echo "Step 1: Creating sorted k=21 database..."
-time rustkmer count -k 21 -t "$THREADS" --sort -o "$OUTPUT_DIR/genome_k21.rkdb" "$INPUT_FASTA"
+time rustkmer count -k 21 --threads "$THREADS" --sort -o "$OUTPUT_DIR/genome_k21.rkdb" -i "$INPUT_FASTA"
 
 # 2. 数据库验证
 echo "Step 2: Validating database..."
-rustkmer info "$OUTPUT_DIR/genome_k21.rkdb" > "$OUTPUT_DIR/database_info.txt"
+rustkmer stats "$OUTPUT_DIR/genome_k21.rkdb" > "$OUTPUT_DIR/database_info.txt"
 
 # 3. 高通量查询
 echo "Step 3: Processing queries..."
@@ -385,17 +371,18 @@ from typing import List, Dict
 
 # 1. 创建k-mer计数器
 print("Creating k-mer counter...")
-counter = PyCounter(k=21, canonical=True, threads=4)
+counter = PyCounter(21, canonical=True, threads=4)
 
 # 2. 从文件计数k-mers
 print("Counting k-mers from file...")
-counter.count_file("genome.fa")
-print(f"Unique k-mers: {counter.get_unique_count()}")
-print(f"Total k-mers: {counter.get_total_count()}")
+counter.add_from_fasta("genome.fa")
+stats = counter.get_stats()
+print(f"Unique k-mers: {stats.unique_kmers}")
+print(f"Total k-mers: {stats.total_kmers}")
 
 # 3. 保存到数据库
 print("Saving to database...")
-counter.save_to_database("genome.rkdb", sorted=True)
+counter.save_database("genome.rkdb")
 
 # 4. 加载数据库
 print("Loading database...")
@@ -416,12 +403,12 @@ queries = [
     "TAGCTAGCTAGCTAGCTAGCA"
 ]
 results = db.query_batch(queries)
-for result in results:
-    print(f"{result.kmer}: {result.count} (found: {result.found})")
+for kmer, result in results.items():
+    print(f"{kmer}: {result.count} (found: {result.found})")
 
 # 7. 获取数据库统计信息
 print("\nDatabase statistics:")
-stats = db.get_statistics()
+stats = db.get_stats()
 print(f"K-mer size: {stats.kmer_size}")
 print(f"Total k-mers: {stats.total_kmers}")
 print(f"Unique k-mers: {stats.unique_kmers}")
@@ -429,6 +416,10 @@ print(f"Sorted: {stats.is_sorted}")
 ```
 
 ### 高级Python集成
+
+> 注意：以下示例使用 `pandas`、`numpy` 和 `matplotlib` 进行数据分析与可视化。这些是可选的第三方库，
+> 不是 `pyrustkmer` 的依赖（`pyrustkmer` 仅声明 `numpy` 为运行时依赖），运行示例前需自行安装
+> （例如 `pip install pandas matplotlib`）。
 
 ```python
 #!/usr/bin/env python3
@@ -458,8 +449,8 @@ class AdvancedRustKmerAnalyzer:
 
         # 转换为DataFrame
         data = [
-            {'kmer': r.kmer, 'count': r.count, 'found': r.found}
-            for r in results
+            {'kmer': kmer, 'count': r.count, 'found': r.found}
+            for kmer, r in results.items()
         ]
         df = pd.DataFrame(data)
 
@@ -477,11 +468,13 @@ class AdvancedRustKmerAnalyzer:
     def find_most_abundant_kmers(self, queries: List[str], top_n: int = 10) -> pd.DataFrame:
         """找到最丰富的k-mers"""
         results = self.db.query_batch(queries)
-        sorted_results = sorted(results, key=lambda r: r.count, reverse=True)
+        sorted_results = sorted(
+            results.items(), key=lambda item: item[1].count, reverse=True
+        )
 
         top_data = [
-            {'rank': i+1, 'kmer': r.kmer, 'count': r.count}
-            for i, r in enumerate(sorted_results[:top_n])
+            {'rank': i+1, 'kmer': kmer, 'count': r.count}
+            for i, (kmer, r) in enumerate(sorted_results[:top_n])
         ]
         return pd.DataFrame(top_data)
 
@@ -609,8 +602,8 @@ class BatchProcessor:
 
             # 转换为列表
             batch_data = [
-                {'kmer': r.kmer, 'count': r.count, 'found': r.found}
-                for r in results
+                {'kmer': kmer, 'count': r.count, 'found': r.found}
+                for kmer, r in results.items()
             ]
             all_results.extend(batch_data)
 
@@ -691,10 +684,10 @@ if __name__ == "__main__":
 **A**: 性能差异巨大，排序数据库快384-1526倍：
 ```bash
 # 排序数据库（推荐）
-rustkmer count -k 21 --sort -o sorted.rkdb input.fa
+rustkmer count -k 21 --sort -o sorted.rkdb -i input.fa
 
 # 非排序数据库（不推荐）
-rustkmer count -k 21 --no-sort -o unsorted.rkdb input.fa
+rustkmer count -k 21 --no-sort -o unsorted.rkdb -i input.fa
 ```
 
 **原因**：排序数据库使用二分查找(O(log n))，非排序数据库使用线性查找(O(n))。
@@ -711,13 +704,13 @@ rustkmer count -k 21 --no-sort -o unsorted.rkdb input.fa
 **A**: 根据数据大小调整：
 ```bash
 # 小基因组(<1GB)
-rustkmer count -k 21 -s 1G --sort -o output.rkdb input.fa
+rustkmer count -k 21 --size 1000000000 --sort -o output.rkdb -i input.fa
 
 # 大基因组(1-10GB)
-rustkmer count -k 21 -s 4G --sort -o output.rkdb input.fa
+rustkmer count -k 21 --size 4000000000 --sort -o output.rkdb -i input.fa
 
 # 超大基因组(>10GB)
-rustkmer count -k 21 -s 16G --sort -o output.rkdb input.fa
+rustkmer count -k 21 --size 16000000000 --sort -o output.rkdb -i input.fa
 ```
 
 ### Q4: 如何处理超大文件？
@@ -729,11 +722,11 @@ split -l 1000000 huge_input.fa chunk_
 
 # 分别处理每个块
 for chunk in chunk_*; do
-    rustkmer count -k 21 --sort -o "${chunk}.rkdb" "$chunk"
+    rustkmer count -k 21 --sort -o "${chunk}.rkdb" -i "$chunk"
 done
 
 # 合并数据库（如果支持）
-rustkmer merge -o merged.rkdb chunk_*.rkdb
+rustkmer merge -o merged.rkdb -i chunk_*.rkdb
 ```
 
 ### Q5: 如何验证结果准确性？
@@ -741,7 +734,7 @@ rustkmer merge -o merged.rkdb chunk_*.rkdb
 **A**: 交叉验证方法：
 ```bash
 # 使用rustkmer创建数据库
-rustkmer count -k 21 --sort -o output.rkdb input.fa
+rustkmer count -k 21 --sort -o output.rkdb -i input.fa
 
 # 查询验证
 rustkmer query output.rkdb ATGCGATGCTAGCGCTAGCTA
@@ -757,6 +750,5 @@ rustkmer query output.rkdb ATGCGATGCTAGCGCTAGCTA
 ---
 
 更多技术细节和性能基准测试，请参考：
-- [性能分析报告](specs/003-parallel-query/LARGE_SCALE_PERFORMANCE_ANALYSIS.md)
-- [21-mer多线程性能分析](specs/003-parallel-query/21MER_PERFORMANCE_ANALYSIS.md)
-- [性能优化建议](specs/003-parallel-query/PERFORMANCE_RECOMMENDATIONS.md)
+- [性能基准测试报告](docs/benchmark-report.md)
+- [性能优化建议](docs/user-guide/performance-tips.md)

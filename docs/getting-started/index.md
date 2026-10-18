@@ -29,7 +29,7 @@ In this section, you'll:
 
 ## Before You Begin
 
-- **System Requirements**: Python 3.8+ or Rust 1.80+
+- **System Requirements**: Python 3.11+ or Rust 1.80+
 - **Data Format**: FASTA/FASTQ files (compressed supported)
 - **Memory**: 4GB+ RAM recommended for large genomes
 - **Storage**: Additional space for database files
@@ -55,3 +55,48 @@ python -c "from pyrustkmer import PyCounter; print('RustKmer ready! 🚀')"
 ```
 
 Let's get started with [Installation](installation.md)!
+
+## Python Quickstart (pyrustkmer)
+
+The `pyrustkmer` module is the Python entry point to the same Rust core the CLI uses — both read and write the same `.rkdb` database files. The quick test snippet above assumes the module is already installed; here is the shortest path from a fresh clone to a working module.
+
+**Requirements:** Python 3.11 or newer and a Rust 1.80+ toolchain (`pyo3/pyproject.toml` sets `requires-python = ">=3.11"`; the extension is compiled from source with maturin).
+
+```bash
+# 1. Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+pip install maturin
+
+# 2. Build and install the extension into the active environment
+cd pyo3
+maturin develop --release
+
+# 3. Verify the module imports
+python -c "from pyrustkmer import PyCounter; print('pyrustkmer ready')"
+```
+
+On macOS, the helper script `pyo3/build_with_python.sh` applies the required Python linker flags for you.
+
+Counting k-mers in Python:
+
+```python
+from pyrustkmer import PyCounter
+
+counter = PyCounter(21, canonical=True)   # k-mer size, 1-64
+counter.add_from_fasta("sample.fa")       # also: add_from_fastq, add_sequence
+stats = counter.get_stats()
+print(stats.total_kmers, stats.unique_kmers)
+counter.save_database("sample_k21.rkdb")  # same .rkdb file the CLI reads
+```
+
+For more, see [Installation](installation.md) for all install methods (including virtual environment and uv workflows), [First Steps](first-steps.md) for querying databases from Python, and the [PyO3 binding guide](../guides/pyo3-binding-guide.md) for the full binding API.
+
+## Next Steps
+
+- **[First Steps](first-steps.md)** — counting, querying, and searching k-mer databases, from both the CLI and Python
+- **[User Guide](../user-guide/)** — advanced usage patterns and performance tips
+- **[Architecture Overview](../architecture/overview.md)** — how the `rustkmer` CLI and `pyrustkmer` module share one Rust core and one `.rkdb` format
+- **[Configuration Guide](../guides/configuration.md)** — `.rustkmerrc`, `RUSTKMER_` environment variables, and CLI flag precedence
+- **[Benchmarking Guide](../guides/benchmarking.md)** — running the benchmark harness, the parity gate, and the CI regression thresholds
+- **[Troubleshooting](troubleshooting.md)** — fixes for common installation and import problems

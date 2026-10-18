@@ -1,3 +1,4 @@
+<!-- generated-by: gsd-doc-writer -->
 # RustKmer
 
 [![Crates.io](https://img.shields.io/crates/v/rustkmer)](https://crates.io/crates/rustkmer)
@@ -269,7 +270,7 @@ cargo build --release
 
 ```bash
 # 创建排序数据库（推荐，获得最佳性能）
-rustkmer count -k 21 -t 8 --sort -o genome.rkdb genome.fa
+rustkmer count -k 21 --threads 8 --sort -o genome.rkdb genome.fa
 
 # 单个查询
 rustkmer query genome.rkdb ATGCGATGCTAGCGCTAGCTA
@@ -278,11 +279,11 @@ rustkmer query genome.rkdb ATGCGATGCTAGCGCTAGCTA
 rustkmer query genome.rkdb --sequence queries.fa -o results.txt
 
 # 🔥 模糊查询 - 通配符和突变容忍
-rustkmer fuzzy-query -d genome.rkdb -q "ATNNGTA"                    # 通配符查询 (N=任意碱基)
-rustkmer fuzzy-query -d genome.rkdb -q "ATCGATCGATCGATCGATCGA" -m 2  # 突变容忍搜索
+rustkmer fuzzy-query genome.rkdb "ATNNGTA"                            # 通配符查询 (N=任意碱基)
+rustkmer fuzzy-query genome.rkdb "ATCGATCGATCGATCGATCGA" -m 2          # 突变容忍搜索
 
 # 数据库信息
-rustkmer info genome.rkdb
+rustkmer stats genome.rkdb
 
 # 合并数据库
 rustkmer merge -i genome1.rkdb genome2.rkdb -o merged.rkdb
@@ -314,7 +315,7 @@ counter.save_database('k48_database.rkdb')
 
 #### 大k-mer特性：
 - **支持范围**: k = 1 到 64
-- **存储格式**: 使用16字节条目（k≤32为12字节），数据库大小增加约33%
+- **存储格式**: 每条记录固定20字节（16字节u128 k-mer + 4字节计数），与k值无关
 - **性能影响**: 编码性能损失<10%，查询性能损失<5%
 - **内存使用**: 用户可配置，无系统限制
 
@@ -416,20 +417,20 @@ for match in top_matches:
 **命令行模糊查询:**
 ```bash
 # 通配符搜索
-rustkmer fuzzy-query -d genome.rkdb -q "ATNNGTA"
+rustkmer fuzzy-query genome.rkdb "ATNNGTA"
 
 # 突变容忍搜索
-rustkmer fuzzy-query -d genome.rkdb -q "ATCGATCGATCGATCGATCGA" -m 2
+rustkmer fuzzy-query genome.rkdb "ATCGATCGATCGATCGATCGA" -m 2
 
 # 批量查询并导出
-rustkmer fuzzy-query -d genome.rkdb -f patterns.txt -o results.csv --format csv
+rustkmer fuzzy-query-batch genome.rkdb -s patterns.txt -o results.csv -f csv
 ```
 
 ### 标准使用示例
 
 ```bash
 # 计数参数
-rustkmer count -k 31 -m 4G -t 16 -s 100M -L 5 -U 1000 -C -o counts.rkdb reads.fastq
+rustkmer count -k 31 --threads 16 --size 100000000 -L 5 -U 1000 -C -o counts.rkdb reads.fastq
 
 # 查询多个k-mers
 rustkmer query counts.rkdb ATGCGATGCTAGCGCTAGCTA CGATCGATCGATCGATCGATCG
@@ -444,9 +445,9 @@ rustkmer query --interactive counts.rkdb
 
 - 📖 **[用户指南](USER_GUIDE.md)** - 完整的使用指南和最佳实践
 - 🚀 **[快速示例](examples/)** - 命令行和Python集成示例
-- 📊 **[性能分析](specs/003-parallel-query/)** - 详细的性能测试报告
-- 🔥 **[前缀查询实现报告](PREFIX_QUERY_IMPLEMENTATION_REPORT.md)** - 前缀和混合搜索实现详情
-- ⚡ **[混合搜索指南](HYBRID_SEARCH_USAGE.md)** - 前缀和混合搜索使用说明
+- 📊 **[性能分析](docs/benchmark-report.md)** - 详细的性能测试报告
+- 🔥 **[前缀查询实现报告](docs/implementation/prefix-query-report.md)** - 前缀和混合搜索实现详情
+- ⚡ **[混合搜索指南](docs/guides/hybrid-search-guide.md)** - 前缀和混合搜索使用说明
 
 ### 命令参考
 
@@ -458,11 +459,11 @@ rustkmer count -k <KMER_SIZE> -o <OUTPUT> [OPTIONS] <INPUT>
 
 **核心参数**:
 - `-k, --kmer-size <SIZE>`: k-mer大小 (推荐: 21)
-- `-t, --threads <THREADS>`: 线程数 (默认: CPU核心数)
-- `-o, --output <FILE>`: 输出数据库文件 (必须)
+- `--threads <THREADS>`: 线程数 (默认: CPU核心数)
+- `-o, --output <FILE>`: 输出数据库文件 (可选；省略时不写出文件，仅输出计数统计)
 - `--sort`: 创建排序数据库 (强烈推荐)
 - `-C, --canonical`: 规范化k-mer计数
-- `-s, --hash-size <SIZE>`: 哈希表大小 (例如: 2G, 500M)
+- `--size <SIZE>`: 哈希表大小 (默认: 1000000)
 
 **使用示例**:
 ```bash
@@ -470,7 +471,7 @@ rustkmer count -k <KMER_SIZE> -o <OUTPUT> [OPTIONS] <INPUT>
 rustkmer count -k 21 -o genome.rkdb genome.fa
 
 # 高性能排序数据库（推荐）
-rustkmer count -k 21 -t 8 --sort -o genome_sorted.rkdb genome.fa
+rustkmer count -k 21 --threads 8 --sort -o genome_sorted.rkdb -i genome.fa
 
 # 规范化计数
 rustkmer count -k 21 -C --sort -o genome_canonical.rkdb genome.fa
@@ -501,10 +502,10 @@ rustkmer query genome.rkdb --sequence queries.fa -o results.txt
 rustkmer query genome.rkdb -i
 ```
 
-#### `info` - 数据库信息
+#### `stats` - 数据库信息
 
 ```bash
-rustkmer info <DATABASE>
+rustkmer stats <DATABASE>
 ```
 
 #### `dump` - 数据库导出
@@ -522,7 +523,7 @@ rustkmer merge -i <DB1> <DB2> [...] -o <OUTPUT> [OPTIONS]
 **核心参数**:
 - `-i, --input <FILES>`: 输入数据库文件 (至少2个)
 - `-o, --output <FILE>`: 输出合并数据库文件 (必须)
-- `-t, --threads <THREADS>`: 合并线程数 (默认: 自动检测)
+- `--num-threads <THREADS>`: 合并线程数 (默认: 0，即使用全部核心)
 - `--check-compatibility`: 仅检查兼容性，不执行合并
 - `--temp-dir <DIR>`: 临时文件目录 (默认: 系统临时目录)
 
@@ -581,13 +582,13 @@ RustKmer使用自定义的RKDB (RustKmer Database) 二进制格式：
 
 **文件结构**:
 ```
-+------------------+
-| Header (42 bytes)|
-+------------------+
-| K-mer Entry 1    |
-| - 8 bytes: k-mer |
-| - 4 bytes: count |
-+------------------+
++-------------------+
+| Header (42 bytes) |
++-------------------+
+| K-mer Entry 1     |
+| - 16 bytes: k-mer |
+| - 4 bytes: count  |
++-------------------+
 | K-mer Entry 2    |
 | ...              |
 +------------------+
@@ -635,22 +636,22 @@ RustKmer使用自定义的RKDB (RustKmer Database) 二进制格式：
 
 ```bash
 # 运行基本示例
-chmod +x examples/basic_usage.sh
-./examples/basic_usage.sh
+chmod +x examples/bash/01_counting.sh
+./examples/bash/01_counting.sh
 
 # 性能基准测试
-chmod +x examples/performance_benchmark.sh
-./examples/performance_benchmark.sh
+chmod +x examples/bash/05_benchmarking.sh
+./examples/bash/05_benchmarking.sh
 
 # Python集成示例
-python3 examples/python_integration.py
+python3 examples/python/demo_pyo3_binding.py
 ```
 
 ### 生产环境示例
 
 ```bash
 # 1. 创建高性能排序数据库
-rustkmer count -k 21 -t 8 --sort -o genome_k21.rkdb genome.fa
+rustkmer count -k 21 --threads 8 --sort -o genome_k21.rkdb -i genome.fa
 
 # 2. 批量查询分析
 rustkmer query genome_k21.rkdb --sequence research_queries.fa -o results.txt
@@ -670,11 +671,16 @@ rustkmer merge -i genome_k21_part1.rkdb genome_k21_part2.rkdb -o genome_k21_merg
 ```bash
 # 编译和运行示例
 cargo build --release
-./examples/basic_usage.sh
+./examples/bash/01_counting.sh
 
-# Python依赖安装
-pip install -r examples/requirements.txt
-python3 examples/python_integration.py
+# Python绑定安装（在 pyo3/ 目录构建 pyrustkmer 扩展）
+cd pyo3
+pip install maturin
+maturin develop --release
+cd ..
+
+# 运行Python集成示例
+python3 examples/python/demo_pyo3_binding.py
 ```
 
 ### 性能验证
@@ -686,7 +692,7 @@ python3 examples/python_integration.py
 3. **准确性验证**: 经过大规模测试验证
 4. **批量查询优化**: 批量查询比单个查询效率高数千倍
 
-详细测试报告见: [性能分析文档](specs/003-parallel-query/LARGE_SCALE_PERFORMANCE_ANALYSIS.md)
+详细测试报告见: [性能分析文档](docs/benchmark-report.md)
 
 ## 🐍 Python集成示例
 
@@ -722,31 +728,35 @@ print(f"Query result: {result.count}, found: {result.found}")
 ### 高级分析示例
 
 ```python
-from examples.python_integration import RustKmerAnalyzer
+from pyrustkmer import PyDatabase, LoadMode
 
-# 初始化分析器
-analyzer = RustKmerAnalyzer('genome_k21.rkdb')
+# 初始化数据库（预加载模式）
+db = PyDatabase('genome_k21.rkdb', LoadMode.Preload)
 
-# 分布分析
-df = analyzer.analyze_kmer_distribution(test_queries)
+# 数据库统计
+stats = db.get_stats()
+print(f"k-mer大小: {stats.kmer_size}, 唯一k-mers: {stats.unique_kmers}")
+print(f"k-mer总数: {stats.total_kmers}, 已排序: {stats.is_sorted}")
 
-# 最丰富k-mers
-top_kmers = analyzer.find_most_abundant_kmers(test_queries, top_n=10)
+# 批量查询
+results = db.query_batch(['ATGCGATGCTAGCGCTAGCTA', 'CGATCGATCGATCGATCGATCG'])
+for kmer, result in results.items():
+    print(f"  {kmer}: count={result.count}, found={result.found}")
 
-# 序列属性分析
-properties = analyzer.analyze_sequence_properties(test_queries)
-
-# 性能基准测试
-performance = analyzer.benchmark_query_performance([100, 500, 1000])
+# 前缀查询
+prefix_result = db.query_prefix('ATG')
+print(f"前缀 'ATG' 匹配: {prefix_result.total_matches} 个k-mers")
 ```
 
 ### 安装Python依赖
 
-```bash
-pip install -r examples/requirements.txt
-```
+示例脚本仅依赖 `pyrustkmer` 扩展（无其他第三方依赖），在 `pyo3/` 目录构建安装：
 
-Python依赖包括: pandas, numpy, matplotlib (可选), seaborn (可选)
+```bash
+cd pyo3
+pip install maturin
+maturin develop --release
+```
 
 ## 🔬 技术细节
 
@@ -812,13 +822,13 @@ cargo flamegraph --bin rustkmer -- count -k 21 input.fa
 ```
 rustkmer/
 ├── src/                    # Rust源代码
+├── pyo3/                   # PyO3 Python绑定（pyrustkmer扩展）
 ├── examples/               # 示例和教程
-│   ├── basic_usage.sh      # 基本使用示例
-│   ├── performance_benchmark.sh  # 性能基准测试
-│   ├── python_integration.py    # Python API示例
-│   └── requirements.txt    # Python依赖
-├── specs/                  # 技术规范和性能分析
-│   └── 003-parallel-query/ # 21-mer性能测试报告
+│   ├── bash/               # 命令行示例脚本（计数、查询、基准测试等）
+│   ├── python/             # Python API示例脚本
+│   ├── application/        # 应用场景示例
+│   └── data/               # 示例数据
+├── docs/                   # 文档（性能报告、实现报告、用户指南等）
 ├── USER_GUIDE.md          # 完整用户指南
 └── README.md              # 项目说明
 ```
@@ -875,7 +885,7 @@ echo 'export PATH="/path/to/rustkmer/target/release:$PATH"' >> ~/.zshrc
 source ~/.zshrc  # 重新加载 shell 配置
 
 # 4. 安装 Python 包（可编辑模式）
-cd python  # 进入 Python 子目录
+cd pyo3  # 进入 Python 绑定目录
 pip install -e .
 
 # 5. 验证安装
@@ -1532,7 +1542,7 @@ git checkout -b feature/your-modification
 
 # 4. 构建和测试
 cargo build --release
-cd python && pip install -e .
+cd pyo3 && pip install -e .
 python -m pytest tests/
 
 # 5. 验证功能
@@ -1566,6 +1576,80 @@ git push origin feature/your-modification
 - **纯Python Stubs**: 广泛兼容，零编译
 - **可编辑安装**: 开发调试，代码修改
 - **PyO3扩展**: 最高性能，功能最全
+
+## 🤖 持续集成 (CI)
+
+本项目通过 GitHub Actions（`.github/workflows/ci.yml`）在三个操作系统上守护每次提交。触发条件：针对 `dev`/`main` 分支的 pull request 和 push。
+
+| Job | 运行平台 | 内容 |
+|-----|---------|------|
+| rustfmt | ubuntu-latest | `cargo fmt --all --check` |
+| clippy (root) | ubuntu / macos / windows | `cargo clippy --all-targets -- -D warnings` |
+| test (root) | ubuntu / macos / windows | `cargo test` |
+| pyo3 clippy + wheel | ubuntu / macos / windows | pyo3 crate 的 `cargo clippy --all-targets -- -D warnings` + `maturin build`（sdist + wheel，Python 3.11） |
+
+所有门禁 job 均未设置 `continue-on-error`——任何一个 job 失败都会导致对应的 PR 失败。此外，`docs.yml` 负责文档站构建，`benchmark.yml` 负责性能回归门禁（见下节）。
+
+## 📊 性能基准测试与回归门禁
+
+`scripts/bench/` 是仅依赖 Python 3 标准库的基准测试工具（无需任何 pip 安装）：
+
+- `bench.py` 测量 release 版 `rustkmer` 二进制（先 `cargo build --release`）的整条流水线调用，通过 `/usr/bin/time`（macOS `-l` / Linux `-v`）从 OS rusage 记账采集每次运行的 **wall-clock 时间**和**峰值 RSS**；
+- 测试臂（arms）：`count-A`、`count-B`（两组不相交的种子合成输入）以及两个计数数据库的 `merge`；每次运行都会断言 `distinct_kmers > 0`（静默的零计数"成功"视为失败）；
+- `compare.py` 是门禁比较器：退出码 **0** = 通过、**1** = 回归（输出具体违反门禁的 arm/工具/指标/两侧中位数/偏差百分比）、**2** = 输入无效（文件缺失、schema 违规、平台不匹配、单侧 arm）；wall 与 RSS 独立判定。
+
+本地快速运行：
+
+```bash
+# 正确性自检（合成输入上的精确 k-mer 计数，约 1 分钟）
+python3 scripts/bench/bench.py --mode synthetic --self-check
+
+# 与已提交基线比较（即 CI 门禁步骤）
+python3 scripts/bench/bench.py --mode synthetic --out results.json
+python3 scripts/bench/compare.py \
+  --baseline scripts/bench/baselines/bench_baseline.darwin.json \
+  --current results.json --wall-threshold 0.25 --rss-threshold 0.15 --wall-advisory
+```
+
+CI 回归门禁（`.github/workflows/benchmark.yml`）在 `ubuntu-latest` + `macos-latest` 矩阵上运行：`cargo build --release` → 合成输入测量 → 将 runner 的 `results.json` 作为 artifact 上传 → 与该平台的已提交基线（`scripts/bench/baselines/bench_baseline.<darwin|linux>.json`）比较。当前阈值：**wall +25% 为 advisory**（仍会测量、打印并标记 `ADVISORY wall regression`，但不使门禁失败），**峰值 RSS +15% 为硬门禁**（超出即失败）。基线按平台分开提交，比较器对跨平台基线不匹配直接退出码 2，不会拿 Linux 运行对比 macOS 数字。维护者引导新平台基线与基线再生成的流程见 `scripts/bench/README.md`。
+
+## 💾 内存受限合并 (`--max-memory`)
+
+`rustkmer merge` 支持显式的内存预算与合并策略控制：
+
+```bash
+# 将合并内存预算限制为 32GB（也支持 "1TB" 等格式）
+rustkmer merge -i a.rkdb b.rkdb -o merged.rkdb --max-memory 32GB
+
+# 合并策略：auto（默认）| memory | streaming
+rustkmer merge -i a.rkdb b.rkdb -o merged.rkdb --merge-mode streaming
+```
+
+语义（实现在 `src/cli/commands/merge.rs` 与 `src/database/`）：
+
+- **默认预算**：未指定 `--max-memory` 时取系统总内存的 50%（Linux 上读取 `/proc/meminfo` 的 `MemTotal`；不可用时回退为 32GB）。
+- **准入估算只读头部**：合并路由前仅读取每个输入 `.rkdb` 的 42 字节头部（`total_kmers` 字段）即可估算所需内存，不扫描整个文件；头部不可读或 `total_kmers == 0` 时回退为按文件大小估算（每条记录 20 字节），并输出警告。
+- **路由规则**（`--merge-mode`）：
+  - `auto`（默认）：估算超出预算时**无条件**路由到流式合并（外部排序），不存在"警告后继续跑内存合并"的回退路径；预算内的中小输入仍走内存快速路径；
+  - `memory`：强制内存合并，但估算超出预算时直接**报错拒绝**（给出估算值与预算值），而不是放任其 OOM；
+  - `streaming`：始终流式合并，忽略估算。
+- **临时文件生命周期**：流式合并按每块 5000 万 k-mer 分块做外部排序，临时文件由 RAII 的 `TempFileManager` 管理——即使合并中途出错，`Drop` 析构也会清理全部临时文件。
+- **前缀缓存合并**：另有 `--use-prefix-cache`（配合 `--batch-size`、`--num-threads`）提供带错误隔离的内存高效合并路径。
+
+## 🧠 计数器内存：Dense/Wide 双宽度存储
+
+`KmerCounter`（`src/hash/table.rs`）按 k 值自动选择哈希表存储宽度：
+
+| k 范围 | 内部存储 | 每 (K, V) slot 大小 |
+|--------|---------|---------------------|
+| k ≤ 32 | `DashMap<u64, u32>`（dense 宽度） | 16 字节 |
+| 33 ≤ k ≤ 64 | `DashMap<u128, u32>`（wide 宽度） | 32 字节 |
+
+宽度在 `KmerCounter::new` 中根据 k 值决定，对上层 API 完全透明：`get_all_counts` 等接口依然返回 `Vec<(u128, u32)>`，k ≤ 32 时在边界处窄化。相比统一使用 u128 key，常见场景（k ≤ 32）的每 slot 内存占用约减半，计数阶段的峰值内存相应下降。
+
+## ℹ️ Python 版本要求
+
+从本仓库源码构建 `pyrustkmer`（PyO3 扩展）需要 **Python >= 3.11**（由 `pyo3/pyproject.toml` 的 `requires-python = ">=3.11"` 声明）。CI 使用 Python 3.11 执行 pyo3 crate 的 clippy 检查，并通过 maturin 构建 sdist + wheel。若从源码构建时遇到版本问题，请使用 Python 3.11+ 环境（上文的 conda 示例即基于 `python=3.11`）。
 
 ---
 

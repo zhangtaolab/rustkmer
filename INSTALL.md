@@ -1,3 +1,4 @@
+<!-- generated-by: gsd-doc-writer -->
 # RustKmer 安装指南
 
 本文档详细描述了RustKmer的安装过程和快速开始步骤。
@@ -55,9 +56,6 @@ cd rustkmer
 
 # 编译发布版本
 cargo build --release
-
-# 或者使用优化的编译配置
-cargo build --release --features optimized
 ```
 
 #### 第三步: 安装到系统路径
@@ -192,7 +190,7 @@ EOF
 
 ```bash
 # 基本计数
-rustkmer count -k 21 -o test.rkdb test.fasta
+rustkmer count -k 21 -i test.fasta -o test.rkdb
 
 # 查看结果
 echo "Generated database:"
@@ -239,18 +237,15 @@ head test.txt
 cd rustkmer
 cargo test
 
-# 运行集成测试
-cargo test --release --test integration
+# 以release模式运行全部测试（更快）
+cargo test --release
 ```
 
 ### 性能基准测试
 
 ```bash
-# 运行基准测试（需要安装criterion）
-cargo bench
-
-# 或者使用预构建的性能测试
-rustkmer --run-benchmarks
+# 当前未启用基准测试目标（Cargo.toml 中的 [[bench]] 已注释，无 benches/ 目录）
+# criterion 已作为开发依赖安装，添加基准目标后即可使用 cargo bench
 ```
 
 ### 系统集成测试
@@ -261,12 +256,12 @@ which rustkmer
 rustkmer --version
 
 # 测试权限
-rustkmer count -k 21 -o /tmp/test.rkdb /etc/hosts  # 应该成功
-rustkmer count -k 21 -o /root/test.rkdb /etc/hosts  # 应该失败（权限）
+rustkmer count -k 21 -i /etc/hosts -o /tmp/test.rkdb  # 应该成功
+rustkmer count -k 21 -i /etc/hosts -o /root/test.rkdb  # 应该失败（权限）
 
 # 测试大文件处理
 wget https://example.com/large_genome.fasta.gz
-rustkmer count -k 21 -o large_output.rkdb large_genome.fasta.gz
+rustkmer count -k 21 -i large_genome.fasta.gz -o large_output.rkdb
 ```
 
 ## 故障排除
@@ -296,8 +291,11 @@ xcode-select --install
 
 **解决方案**:
 ```bash
-# 减少内存使用
-rustkmer count -k 21 -m 512MB -o small.rkdb small.fasta
+# count 命令没有内存限制参数；合并数据库时可使用 --max-memory 限制内存
+rustkmer count -k 21 -i small.fasta -o small.rkdb
+
+# 合并多个数据库时限制内存使用（例如 512MB）
+rustkmer merge -i small.rkdb other.rkdb -o merged.rkdb --max-memory 512MB
 
 # 使用交换空间
 sudo fallocate -l 4G /swapfile
@@ -363,7 +361,7 @@ EOF
 
 ```bash
 # 检查线程配置
-rustkmer count -k 21 -t 4 -o test.rkdb test.fasta  # 明确指定线程数
+rustkmer count -k 21 --threads 4 -i test.fasta -o test.rkdb  # 明确指定线程数
 
 # 检查系统负载
 htop
@@ -374,7 +372,7 @@ iostat -x 1
 
 ```bash
 # 监控内存使用
-/usr/bin/time -v rustkmer count -k 21 test.fasta -o test.rkdb
+/usr/bin/time -v rustkmer count -k 21 -i test.fasta -o test.rkdb
 
 # 限制内存使用
 ulimit -v 4294967296  # 4GB虚拟内存限制
@@ -386,11 +384,11 @@ ulimit -v 4294967296  # 4GB虚拟内存限制
 
 ```bash
 # 设置日志级别
-RUST_LOG=debug rustkmer count -k 21 test.fasta -o test.rkdb
+RUST_LOG=debug rustkmer count -k 21 -i test.fasta -o test.rkdb
 
 # 或使用环境变量
 export RUST_LOG=info
-rustkmer count -k 21 test.fasta -o test.rkdb
+rustkmer count -k 21 -i test.fasta -o test.rkdb
 ```
 
 #### 使用调试模式
@@ -401,7 +399,7 @@ cargo build
 
 # 使用gdb调试
 gdb target/debug/rustkmer
-(gdb) set args count -k 21 test.fasta -o test.rkdb
+(gdb) set args count -k 21 -i test.fasta -o test.rkdb
 (gdb) run
 ```
 
@@ -439,7 +437,7 @@ rustkmer --version
 rustkmer query old_database.rkdb ATGCGATGCTAGCGCTAGCTAG
 
 # 如果需要，重新创建数据库
-rustkmer count -k 21 -o new_database.rkdb input.fasta
+rustkmer count -k 21 -i input.fasta -o new_database.rkdb
 ```
 
 ## 高级配置
@@ -447,38 +445,36 @@ rustkmer count -k 21 -o new_database.rkdb input.fasta
 ### 环境变量
 
 ```bash
-# 设置默认内存限制
-export RUSTKMER_DEFAULT_MEMORY=4G
+# 设置内存限制（字节，由配置模块读取）
+export RUSTKMER_MEMORY_LIMIT=4294967296  # 4GB
 
-# 设置默认线程数
-export RUSTKMER_DEFAULT_THREADS=$(nproc)
+# 设置默认线程数（优先级：--threads > RUSTKMER_THREADS > RAYON_NUM_THREADS）
+export RUSTKMER_THREADS=$(nproc)
 
-# 设置缓冲区大小
-export RUSTKMER_BUFFER_SIZE=16777216  # 16MB
-
-# 启用性能监控
-export RUSTKMER_PROFILE=1
+# 启用详细输出（也可用 RUSTKMER_QUIET=true 静默）
+export RUSTKMER_VERBOSE=true
 ```
 
 ### 配置文件
 
 ```bash
-# 创建配置文件
-mkdir -p ~/.config/rustkmer
-cat > ~/.config/rustkmer/config.toml << 'EOF'
-[default]
-kmer_size = 21
-memory = "2G"
-threads = 4
+# 创建配置文件（TOML 格式，文件名为 .rustkmerrc；
+# 查找顺序：./.rustkmerrc、~/.rustkmerrc、$XDG_CONFIG_HOME/rustkmer/.rustkmerrc）
+cat > ~/.rustkmerrc << 'EOF'
+[memory]
+memory_limit = 2147483648  # 2GB（字节）
+mmap_threshold = 104857600
+
+[kmer_counting]
+default_k = 21
 canonical = true
+threads = 4
+
+[output]
 format = "binary"
 
-[performance]
-buffer_size = 16777216
-compression_level = 6
 [logging]
 level = "info"
-file = "~/.local/share/rustkmer/rustkmer.log"
 EOF
 ```
 
@@ -498,13 +494,12 @@ module load rust
 
 rustkmer count \
   -k 21 \
-  -t $SLURM_CPUS_PER_TASK \
-  -m 30G \
+  --threads $SLURM_CPUS_PER_TASK \
   --format binary \
   --canonical \
   --sort \
   -o output.rkdb \
-  input.fasta
+  -i input.fasta
 EOF
 
 sbatch rustkmer_job.sh

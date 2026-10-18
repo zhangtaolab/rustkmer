@@ -1,8 +1,8 @@
 # RustKmer
 
 [![Rust](https://img.shields.io/badge/rust-1.80+-orange.svg)](https://www.rust-lang.org)
-[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](../LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://rustkmer.github.io)
 
 **World-class performance for k-mer counting and genomic analysis**
@@ -36,9 +36,15 @@ pip install rustkmer
 ```rust
 use rustkmer::KmerCounter;
 
-let mut counter = KmerCounter::new(21, true);
-counter.add_from_fasta("genome.fa.gz")?;
-println!("Total k-mers: {}", counter.get_stats().total_kmers));
+// new(kmer_length, canonical_mode, initial_capacity, num_threads)
+let counter = KmerCounter::new(21, true, 1_000_000, 4)?;
+
+// Encode k-mers and increment the counter; iterate FASTA records with
+// rustkmer::io::fasta::FastaProcessor (add_from_fasta is Python-only)
+let encoded = rustkmer::kmer::encode_kmer_u128("ACGTACGTACGTACGTACGTA")?;
+counter.increment(encoded)?;
+
+println!("Total k-mers: {}", counter.get_stats().total_kmers);
 ```
 
 #### Python
@@ -56,10 +62,10 @@ print(f"Total k-mers: {counter.get_stats().total_kmers)}")
 rustkmer count -k 21 -i genome.fa.gz -o genome_k21.rkdb
 
 # Query k-mers from a database
-rustkmer query -d genome_k21.rkdb -q queries.txt
+rustkmer query genome_k21.rkdb -b queries.txt
 
 # Fuzzy search with wildcards
-rustkmer fuzzy-query -d genome_k21.rkdb -q "AATN" -m 1
+rustkmer fuzzy-query genome_k21.rkdb "AATN" -m 1
 ```
 
 ## 📖 Documentation
@@ -107,7 +113,7 @@ rustkmer fuzzy-query -d genome_k21.rkdb -q "AATN" -m 1
 
 ### 📊 Performance
 - **[Memory Optimization](performance/memory-optimization.md)** - Memory efficiency techniques
-- **[Performance Analysis](PERFORMANCE.md)** - Benchmark results
+- **[Performance Analysis](benchmark-report.md)** - Benchmark results
 
 ### 📖 Examples
 - **[Basic Usage](examples/basic-usage.md)** - Simple examples
@@ -164,7 +170,7 @@ db = PyDatabase("genome.rkdb", LoadMode.Preload)
 
 # Fuzzy search using PyFuzzyQuery class
 fuzzy = PyFuzzyQuery(db)
-results = fuzzy.query_fuzzy("ATNNGTANN", max_distance=2)
+results = fuzzy.query_fuzzy("ATNNGTANN", max_mutations=2)
 
 # The fuzzy search finds k-mers matching the pattern within the specified distance
 for result in results:
@@ -177,8 +183,9 @@ for result in results:
 counter = PyCounter(21, canonical=True)
 counter.add_from_fasta("large_genome.fa.gz")  # Streaming processing
 
-# Get top k-mers
-top_kmers = counter.get_top_kmers(1000)
+# Get counting statistics
+stats = counter.get_stats()
+print(f"Total: {stats.total_kmers}, Unique: {stats.unique_kmers}")
 ```
 
 ### Memory Optimization
@@ -191,7 +198,7 @@ db = PyDatabase("huge_db.rkdb", LoadMode.MemoryMapped)  # Uses memory mapping
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](contributing.md) for details.
+We welcome contributions! Please see our [Contributing Guide](../CONTRIBUTING.md) for details.
 
 ### Development Setup
 ```bash
@@ -203,7 +210,7 @@ cargo test
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 

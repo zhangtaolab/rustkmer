@@ -1,3 +1,4 @@
+<!-- generated-by: gsd-doc-writer -->
 # RustKmer Documentation
 
 欢迎来到RustKmer文档中心！本文档提供了完整的项目信息、使用指南和技术细节。
@@ -147,7 +148,7 @@ if result:
 
 - **GitHub Issues** - 报告问题和功能请求
 - **文档问题** - 通过GitHub改善文档
-- **性能问题** - 查看 [性能分析](PERFORMANCE.md)
+- **性能问题** - 查看 [性能分析](user-guide/performance-tips.md)
 
 ## 🏷️ 文档标签
 

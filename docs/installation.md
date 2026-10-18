@@ -1,10 +1,11 @@
+<!-- generated-by: gsd-doc-writer -->
 # Installation
 
 This guide will help you install RustKmer for Python on your system.
 
 ## Requirements
 
-- Python 3.10 or higher
+- Python 3.11 or higher
 - Operating system: Linux, macOS, or Windows
 - Rust compiler (optional, for building from source)
 
@@ -13,7 +14,7 @@ This guide will help you install RustKmer for Python on your system.
 The easiest way to install RustKmer is using pip:
 
 ```bash
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 This will install the pre-compiled binary wheels for your platform.
@@ -41,32 +42,32 @@ For most Linux distributions, the pip installation should work out of the box:
 # Ubuntu/Debian
 sudo apt update
 sudo apt install python3-pip python3-venv
-pip install rustkmer
+pip install pyrustkmer
 
 # CentOS/RHEL/Fedora
 sudo dnf install python3-pip
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 ### macOS
 
 ```bash
 # Using Homebrew (recommended)
-brew install python@3.10
-pip3 install rustkmer
+brew install python@3.11
+pip3 install pyrustkmer
 
 # Or using system Python
-python3 -m pip install rustkmer
+python3 -m pip install pyrustkmer
 ```
 
 ### Windows
 
 ```powershell
 # Using PowerShell (recommended)
-python -m pip install rustkmer
+python -m pip install pyrustkmer
 
 # Or using pip in command prompt
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 ## Build from Source
@@ -96,17 +97,17 @@ xcode-select --install
 ### Clone and Build
 
 ```bash
-git clone https://github.com/rustkmer/rustkmer.git
-cd rustkmer
+git clone https://github.com/zhangtaolab/rustkmer.git
+cd rustkmer/pyo3
 
-# Install in development mode
+# Install in development mode (pyproject.toml lives in pyo3/, not the repo root)
 pip install -e .
 ```
 
 ### Build from PyPI Source
 
 ```bash
-pip install --no-binary rustkmer rustkmer
+pip install --no-binary pyrustkmer pyrustkmer
 ```
 
 ## Virtual Environment Setup
@@ -124,7 +125,7 @@ source rustkmer-env/bin/activate
 rustkmer-env\Scripts\activate
 
 # Install
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 ## Docker Installation
@@ -132,7 +133,7 @@ pip install rustkmer
 For containerized deployments:
 
 ```dockerfile
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -143,9 +144,9 @@ RUN apt-get update && apt-get install -y \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Copy and install RustKmer
+# Copy and install RustKmer (pyproject.toml lives in the pyo3/ subdirectory)
 COPY . /app
-WORKDIR /app
+WORKDIR /app/pyo3
 RUN pip install -e .
 
 # Example usage
@@ -192,16 +193,16 @@ xcode-select --install
 Use a virtual environment or install with user flag:
 
 ```bash
-pip install --user rustkmer
+pip install --user pyrustkmer
 ```
 
 #### 4. Version conflicts
 
-Ensure you have Python 3.10+:
+Ensure you have Python 3.11+:
 
 ```bash
 python --version
-# Should show Python 3.10.x or higher
+# Should show Python 3.11.x or higher
 ```
 
 ### Getting Help
@@ -221,7 +222,7 @@ If you encounter issues:
 
 After successful installation:
 
-1. Read the [Quick Start guide](user-guide/quickstart.md) to learn basic usage
+1. Read the [Quick Start guide](getting-started/first-steps.md) to learn basic usage
 2. Check out the [Examples](examples/) for practical use cases
 3. Refer to the [API Reference](api-reference/) for detailed documentation
 
@@ -229,12 +230,12 @@ After successful installation:
 
 | RustKmer Version | Python Version | Status |
 |------------------|----------------|--------|
-| 0.1.x | 3.10+ | ✅ Stable |
+| 0.5.x | 3.11+ | ✅ Stable |
 | 0.0.x | 3.8+ | ⚠️ Legacy |
 
 ## Release Notes
 
-### Version 0.1.0 (Latest)
+### Version 0.5.0 (Latest)
 - Complete Python API with all CLI features
 - Performance optimizations for large datasets
 - Fuzzy query with wildcard support
@@ -246,7 +247,7 @@ After successful installation:
 To uninstall RustKmer:
 
 ```bash
-pip uninstall rustkmer
+pip uninstall pyrustkmer
 ```
 
 If you installed Rust specifically for RustKmer and no longer need it:

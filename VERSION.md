@@ -52,7 +52,7 @@ When updating version, update these files:
 
 1. Update version in all files
 2. Run `./scripts/sync_versions.sh` to verify
-3. Update CHANGELOG.md
+3. Update CHANGELOG.md if one is maintained (optional; no CHANGELOG.md currently exists in the repository)
 4. Create release commit
 5. Build and test both components
 6. Publish to respective package managers

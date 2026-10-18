@@ -107,15 +107,18 @@ nav:
       - Data Export: examples/data-export.md
       - Advanced Features: examples/advanced.md
   - Developer Guide:
-      - Contributing: dev-guide/contributing.md
-      - Architecture: dev-guide/architecture.md
+      - Development: guides/development.md
+      - Testing: guides/testing.md
+      - Benchmarking: guides/benchmarking.md
+      - Configuration: guides/configuration.md
+  - Architecture: architecture/overview.md
 
 # Customization
 extra:
   # Social links
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/rustkmer
+      link: https://github.com/zhangtaolab/rustkmer
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/rustkmer
 
