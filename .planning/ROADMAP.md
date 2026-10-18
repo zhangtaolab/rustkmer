@@ -142,7 +142,7 @@ Plans:
   3. The benchmark reports peak memory alongside wall-clock — memory wins (not just speed) are visible and validated
   4. The harness degrades gracefully to a slice or synthetic input on machines without the full CRR1936095 dataset — CI can run without the full 5.2 GB data
 
-**Plans**: 4/4 plans executed
+**Plans**: 4/5 plans executed (gap-closure round opened 2026-10-17 by `04-VERIFICATION.md` — status `gaps_found`, 8/10 truths: 04-05)
 
 Plans:
 **Wave 1**
@@ -157,6 +157,10 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 - [x] 04-04-PLAN.md — Milestone validation on CRR2044018 (user-approved substitute for missing CRR1936095): slice parity pilot, full k=31/k=21 runs, mechanically rendered report (Wave 4; depends 04-01..04-03; BENCH-02, BENCH-03)
 
+**Gap Closure** *(opened 2026-10-17 by `04-VERIFICATION.md` — status `gaps_found`, 8/10 truths; both gaps from post-verification follow-on commits)*
+
+- [ ] 04-05-PLAN.md — **CR-02 + report byte-identity**: gate the seven Windows-dead measurement helpers in `tests/merge_bounded_memory_tests.rs` to match their gated consumer (windows-latest clippy leg green again), re-render `docs/benchmark-report.md` from the committed JSONs with the provenance commit separated from the bench.py commit, plus WR-08 (guarded full-mode fingerprint sourcing) and IN-08 (advisory PASS line pinned) hardening riders; push dev and confirm the windows clippy leg (Wave 1; BENCH-01, BENCH-02, BENCH-03)
+
 ## Progress
 
 **Execution Order:**
@@ -167,7 +171,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation & Quality | 4/4 | Complete    | 2026-07-01 |
 | 2. Parallel Counting | 5/5 | Complete    | 2026-07-01 |
 | 3. Memory Safety | 17/17 | Complete    | 2026-10-09 |
-| 4. Benchmark & Validation | 4/4 | In Progress | - |
+| 4. Benchmark & Validation | 4/5 | In Progress | - |
 
 ## Backlog
 
