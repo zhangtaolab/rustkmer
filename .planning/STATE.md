@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 current_phase: 04
 status: completed
 stopped_at: Phase 04 complete — all phases complete
-last_updated: "2026-10-18T14:29:04.870Z"
+last_updated: "2026-10-18T15:51:46.409Z"
 last_activity: 2026-10-18
 last_activity_desc: Phase 04 complete
-state_head: 4e8e39258442ca77e048d2f72e1a26aff81ad983
+state_head: 55e8a5cbf12e865e711f0e5f7ddc1fed2110818f
 progress:
   total_phases: 4
   completed_phases: 4
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 Phase: 04
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-10-18 — Completed quick task 261018-uq6: Fix #15 (verified already complete via 261017-n2p/b514331 — no-op, kept pyo3-build windows leg)
+Last activity: 2026-10-18 — Completed quick task 261018-wrx: removed fabricated milestone v1.0 identity from frontmatter (counters restored, warning gone)
 
 Progress: [██████████] 100%
 
@@ -265,6 +265,7 @@ None yet.
 | 261018-ret | Fix examples/python legacy-API scripts: syntax error, personal DB paths -> repo fixtures, k-derived patterns, dead build-kmer-db subcommand | 2026-10-18 | 2e0efcb | [261018-ret-fix-examples-python-legacy-api-scripts](./quick/261018-ret-fix-examples-python-legacy-api-scripts/) |
 | 261018-swu | Fix .claude/CLAUDE.md outdated architecture descriptions (gitignored file: local-only, no commit) | 2026-10-18 | 219c48a | [261018-swu-fix-claude-md-outdated-architecture-desc](./quick/261018-swu-fix-claude-md-outdated-architecture-desc/) |
 | 261018-uq6 | Verify #15 windows-latest CI coverage — already complete via 261017-n2p (b514331); kept pyo3-build windows leg (user decision), no code changes (no-op) | 2026-10-18 | 4e8e392 | [261018-uq6-fix-15-add-windows-latest-to-ci-matrices](./quick/261018-uq6-fix-15-add-windows-latest-to-ci-matrices/) |
+| 261018-wrx | Remove fabricated milestone v1.0 identity (old tool default) from STATE.md frontmatter — milestone warning gone, progress counters restored (4/4 phases, 31/31 plans) | 2026-10-18 | 55e8a5c | [261018-wrx-fix-state-md-roadmap-milestone-mismatch-](./quick/261018-wrx-fix-state-md-roadmap-milestone-mismatch-/) |
 
 ## Deferred Items
 
