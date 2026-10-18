@@ -4,20 +4,34 @@ PyO3 Fuzzy Query Demo
 Demonstrates N-wildcard pattern matching with real genomic data
 """
 
-import pyrustkmer
+import os
+import sys
 import time
+from pathlib import Path
+
+import pyrustkmer
 
 print("🧬 PyO3 Fuzzy Query Demo")
 print("=" * 40)
 
-# Real genomic database path
-db_path = "/Users/forrest/Data/data/kmer/K19/R1_001.rkdb"
+# 数据库路径: 命令行参数 > 环境变量 > 仓库内置测试数据库
+db_path = (
+    sys.argv[1]
+    if len(sys.argv) > 1
+    else os.environ.get("RUSTKMER_EXAMPLE_DB")
+    or str(
+        Path(__file__).resolve().parents[2]
+        / "test_data"
+        / "databases"
+        / "small_test.rkdb"
+    )
+)
 
 print(f"📁 Database: {db_path}")
 
 try:
     # Load the genomic database
-    print("🔄 Loading 17.3GB genomic database...")
+    print("🔄 Loading database...")
     start_time = time.time()
     db = pyrustkmer.PyDatabase(db_path, pyrustkmer.LoadMode.Preload)
     load_time = time.time() - start_time
@@ -31,12 +45,13 @@ try:
     print("\n🎯 Creating fuzzy query engine...")
     fuzzy = pyrustkmer.PyFuzzyQuery(db)
 
-    # Test patterns - using 19-mers to match the database
+    # Test patterns - derived from the database's k-mer size
+    k = db.kmer_size
     patterns = [
-        "AAAAAAAAAAAAAAAAAAA",  # All A sequence
-        "TTTTTTTTTTTTTTTTTTT",  # All T sequence
-        "GCCCGNNNNNNNNNNNGCC",  # N-wildcard pattern (corrected to 19 chars)
-        "AAAAAANNNAAAAAAAAAA",
+        "A" * k,  # All A sequence
+        "T" * k,  # All T sequence
+        "A" * (k - 3) + "NNN",  # N-wildcard tail
+        "A" * (k // 2) + "NNN" + "A" * (k - k // 2 - 3),  # N-wildcard in middle
     ]
 
     print(f"\n🧬 Testing fuzzy queries:")

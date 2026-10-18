@@ -4,20 +4,34 @@ Fixed PyO3 Position-Mutations Demo
 Uses correct parameter names based on actual signature
 """
 
-import pyrustkmer
+import os
+import sys
 import time
+from pathlib import Path
+
+import pyrustkmer
 
 print("🧬 PyO3 Position-Mutations Demo (Fixed)")
 print("=" * 50)
 
-# Real genomic database path
-db_path = "/Users/forrest/Data/data/kmer/K19/R1_001.rkdb"
+# 数据库路径: 命令行参数 > 环境变量 > 仓库内置测试数据库
+db_path = (
+    sys.argv[1]
+    if len(sys.argv) > 1
+    else os.environ.get("RUSTKMER_EXAMPLE_DB")
+    or str(
+        Path(__file__).resolve().parents[2]
+        / "test_data"
+        / "databases"
+        / "small_test.rkdb"
+    )
+)
 
 print(f"📁 Database: {db_path}")
 
 try:
     # Load the genomic database
-    print("🔄 Loading 17.3GB genomic database...")
+    print("🔄 Loading database...")
     start_time = time.time()
     db = pyrustkmer.PyDatabase(db_path, pyrustkmer.LoadMode.Preload)
     load_time = time.time() - start_time
@@ -31,46 +45,55 @@ try:
     print("\n🎯 Creating fuzzy query engine...")
     fuzzy = pyrustkmer.PyFuzzyQuery(db)
 
-    # Position-mutations test cases
+    # Position-mutations test cases.
+    # Patterns derive from the database's k-mer size; positions are 0-based
+    # and must stay within [0, k).
+    k = db.kmer_size
     test_cases = [
         {
             "name": "Single Position Mutation",
-            "pattern": "AAAAAAAAAAAAAAAAAAA",
+            "pattern": "A" * k,
             "max_mutations": 1,
             "position_mutations": "3:1",
             "description": "Allow exactly 1 mutation at position 3 only",
         },
         {
             "name": "Multiple Positions Single Group",
-            "pattern": "AAAAAAAAAAAAAAAAAAA",
+            "pattern": "A" * k,
             "max_mutations": 2,
             "position_mutations": "3,4,5:2",
             "description": "Allow up to 2 mutations among positions 3,4,5",
         },
         {
             "name": "Range Notation",
-            "pattern": "TTTTTTTTTTTTTTTTTTT",
+            "pattern": "T" * k,
             "max_mutations": 2,
-            "position_mutations": "5-8:1",
-            "description": "Allow 1 mutation in positions 5,6,7,8",
+            "position_mutations": f"{k - 3}-{k - 1}:1",
+            "description": f"Allow 1 mutation in the last 4 positions ({k - 3}..{k - 1})",
         },
         {
             "name": "Multiple Independent Groups",
-            "pattern": "CCCCCCCCCCCCCCCCCCC",
+            "pattern": "C" * k,
             "max_mutations": 3,
-            "position_mutations": "1,2:1;15,16:2",
-            "description": "Independent limits: 1 mutation in positions 1,2 AND up to 2 mutations in positions 15,16",
+            "position_mutations": f"1,2:1;{k - 2},{k - 1}:2",
+            "description": (
+                "Independent limits: 1 mutation in positions 1,2 AND up to "
+                f"2 mutations in positions {k - 2},{k - 1}"
+            ),
         },
         {
             "name": "Complex Configuration",
-            "pattern": "GGGGGGGGGGGGGGGGGGG",
+            "pattern": "G" * k,
             "max_mutations": 4,
-            "position_mutations": "1,3-5:2;6:1;8-10:3",
-            "description": "Complex: 2 mutations max in positions 1,3,4,5; 1 mutation in position 6; 3 mutations max in positions 8,9,10",
+            "position_mutations": f"0,2-{k - 4}:2;{k - 3}:1;{k - 2}-{k - 1}:2",
+            "description": (
+                f"Complex: 2 mutations max in positions 0,2..{k - 4}; 1 mutation "
+                f"in position {k - 3}; 2 mutations max in positions {k - 2}..{k - 1}"
+            ),
         },
         {
             "name": "No Position Constraints",
-            "pattern": "AAAAAAAAAAAAAAAAAAA",
+            "pattern": "A" * k,
             "max_mutations": 2,
             "position_mutations": None,
             "description": "Standard fuzzy query without position constraints (for comparison)",
@@ -98,30 +121,17 @@ try:
         print(f"   Pattern length: {len(pattern)}")
 
         try:
-            # Execute fuzzy query with position mutations using keyword arguments
-            # Based on the signature we observed: (pattern, _max_mutations, _max_results)
-            # We'll try different approaches
-
+            # Execute fuzzy query using the unified API:
+            # query_fuzzy(pattern, max_mutations) or
+            # query_fuzzy_position(pattern, max_mutations, position_mutations)
             start_time = time.time()
 
-            # Try 1: Using positional arguments
             if position_mutations is None:
-                # This should work with current signature
-                result = fuzzy.fuzzy_query(pattern, max_mutations, None)
+                result = fuzzy.query_fuzzy(pattern, max_mutations)
             else:
-                # Try with keyword arguments using the observed names
-                try:
-                    result = fuzzy.fuzzy_query(
-                        pattern=pattern,
-                        _max_mutations=max_mutations,
-                        position_mutations=position_mutations,
-                        _max_results=None,
-                    )
-                except TypeError:
-                    # Try with positional arguments
-                    result = fuzzy.fuzzy_query(
-                        pattern, max_mutations, position_mutations, None
-                    )
+                result = fuzzy.query_fuzzy_position(
+                    pattern, max_mutations, position_mutations
+                )
 
             query_time = time.time() - start_time
             total_query_time += query_time
@@ -182,7 +192,7 @@ try:
     print(f"✅ Total processing time: {load_time + total_query_time:.1f}s")
 
     print(f"\n🎉 Position-Mutations Demo Completed!")
-    print(f"✅ PyO3 position-mutations: Working with 17.3GB genomic data")
+    print(f"✅ PyO3 position-mutations: Working with {stats.total_kmers:,} k-mers (k={stats.kmer_size})")
     print(f"✅ Position constraints: Successfully applied")
     print(f"✅ Range notation: Supported (e.g., '5-8:1')")
     print(f"✅ Multiple groups: Independent position groups working")

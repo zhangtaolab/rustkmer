@@ -4,14 +4,28 @@ PyO3 Performance Demo
 Demonstrates PyO3 query performance with real genomic data
 """
 
-import pyrustkmer
+import os
+import sys
 import time
+from pathlib import Path
+
+import pyrustkmer
 
 print("⚡ PyO3 Performance Demo")
 print("=" * 40)
 
-# Real genomic database path
-db_path = "/Users/forrest/Data/data/kmer/K19/R1_001.rkdb"
+# 数据库路径: 命令行参数 > 环境变量 > 仓库内置测试数据库
+db_path = (
+    sys.argv[1]
+    if len(sys.argv) > 1
+    else os.environ.get("RUSTKMER_EXAMPLE_DB")
+    or str(
+        Path(__file__).resolve().parents[2]
+        / "test_data"
+        / "databases"
+        / "small_test.rkdb"
+    )
+)
 
 print(f"📁 Database: {db_path}")
 
@@ -39,12 +53,14 @@ try:
 
     fuzzy = pyrustkmer.PyFuzzyQuery(db)
 
+    # Test patterns derived from the database's k-mer size
+    k = db.kmer_size
     test_patterns = [
-        ("AAAAAAAAAAAAAAAAAAA", "All A"),
-        ("TTTTTTTTTTTTTTTTTTT", "All T"),
-        ("CCCCCCCCCCCCCCCCCCC", "All C"),
-        ("GGGGGGGGGGGGGGGGGGG", "All G"),
-        ("ATCGATCGATCGATCGATC", "Repeating ATCG"),
+        ("A" * k, "All A"),
+        ("T" * k, "All T"),
+        ("C" * k, "All C"),
+        ("G" * k, "All G"),
+        (("ATCG" * k)[:k], "Repeating ATCG"),
     ]
 
     query_times = []
@@ -56,7 +72,7 @@ try:
         # Test with different mutation levels
         for mutations in [0, 1, 2]:
             start_time = time.time()
-            result = fuzzy.fuzzy_query(pattern, max_mutations=mutations)
+            result = fuzzy.query_fuzzy(pattern, max_mutations=mutations)
             query_time = time.time() - start_time
             query_times.append(query_time)
             total_matches += result.total_matches
@@ -68,15 +84,19 @@ try:
     # Test 3: Batch Performance
     print(f"\n📦 Testing Batch Performance...")
 
-    # Create a batch of similar patterns
-    batch_patterns = [f"A{'T' * i}A{'G' * j}C" for i in range(3) for j in range(3)][:5]
+    # Create a batch of similar patterns, each exactly k long
+    batch_patterns = [
+        ("A" * (k - 4) + "T" * i + "G" * j).ljust(k, "C")
+        for i in range(3)
+        for j in range(3)
+    ][:5]
     print(f"Testing batch of {len(batch_patterns)} patterns")
 
     batch_start_time = time.time()
     batch_results = []
     for pattern in batch_patterns:
-        if len(pattern) == 19:  # Ensure correct length
-            result = fuzzy.fuzzy_query(pattern, max_mutations=0)
+        if len(pattern) == k:  # Ensure correct length
+            result = fuzzy.query_fuzzy(pattern, max_mutations=0)
             batch_results.append(result)
 
     batch_time = time.time() - batch_start_time
@@ -85,7 +105,8 @@ try:
     print(
         f"✅ Batch processing: {batch_total_matches:,} total matches in {batch_time:.2f}s"
     )
-    print(f"   Average per pattern: {batch_time / len(batch_results):.2f}s")
+    if batch_results:
+        print(f"   Average per pattern: {batch_time / len(batch_results):.2f}s")
 
     # Performance Summary
     print(f"\n📊 Performance Summary:")
@@ -95,9 +116,9 @@ try:
     print(f"✅ Batch processing: {batch_time:.2f}s for {len(batch_results)} patterns")
     print(f"✅ Total matches found: {total_matches + batch_total_matches:,}")
 
-    # Calculate throughput
-    database_size_gb = 17.3
-    throughput_mbps = database_size_gb / avg_load_time
+    # Calculate throughput from the actual database file size
+    database_size_gb = Path(db_path).stat().st_size / (1024**3)
+    throughput_mbps = database_size_gb / avg_load_time if avg_load_time > 0 else 0
     print(f"✅ Database throughput: {throughput_mbps:.1f} GB/s")
 
     queries_per_second = len(query_times) / sum(query_times)
@@ -105,7 +126,7 @@ try:
 
     print(f"\n🎉 Performance Demo Completed!")
     print(f"✅ PyO3 implementation: High performance confirmed")
-    print(f"✅ Real genomic data: 17.3GB processed efficiently")
+    print(f"✅ Real genomic data: {database_size_gb:.1f}GB processed efficiently")
     print(f"✅ Scalability: Suitable for production workloads")
     print(f"✅ Bioinformatics ready: Optimized for large-scale analysis")
 
