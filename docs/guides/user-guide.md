@@ -22,7 +22,7 @@
 cargo build --release
 
 # 计数k-mers（推荐使用排序数据库）
-./target/release/rustkmer count -k 21 -t 8 --sort -o genome.rkdb genome.fa
+./target/release/rustkmer count -k 21 --threads 8 --sort -i genome.fa -o genome.rkdb
 
 # 查询单个k-mer
 ./target/release/rustkmer query genome.rkdb ATGCGATGCTAGCGCTAGCTA
@@ -31,7 +31,7 @@ cargo build --release
 ./target/release/rustkmer query genome.rkdb --sequence queries.fa -o results.txt
 
 # 使用测试数据验证功能
-./target/release/rustkmer query python/tests/test_data/small_test.rkdb GCCGCGG
+./target/release/rustkmer query test_data/databases/small_test.rkdb GCCGCGG
 ```
 
 ## 安装
@@ -75,8 +75,8 @@ rustkmer count -k 21 -i genome.fa -o genome.rkdb
 # 排序数据库（推荐，用于高效查询）
 rustkmer count -k 21 --sort -i genome.fa -o genome_sorted.rkdb
 
-# 统计k-mer频率
-rustkmer count -k 21 --stats -i genome.fa -o genome.rkdb
+# 查看k-mer频率统计
+rustkmer stats genome.rkdb
 ```
 
 ### 2. K-mer查询
@@ -93,7 +93,7 @@ rustkmer query database.rkdb ATGCGATGCTAGCGCTAGCTA
 rustkmer query database.rkdb --sequence queries.fa --output results.txt
 
 # 模糊查询（N通配符）
-rustkmer fuzzy-query database.rkdb "ATCGNNNGTAC" --max-mismatches 1
+rustkmer fuzzy-query database.rkdb "ATCGNNNGTAC" -m 1
 ```
 
 ### 3. 前缀查询
@@ -104,13 +104,13 @@ rustkmer fuzzy-query database.rkdb "ATCGNNNGTAC" --max-mismatches 1
 
 ```bash
 # 纯前缀查询
-rustkmer prefix-query database.rkdb "ATCGATCG"
+rustkmer prefix-query database.rkdb -p "ATCGATCG"
 
 # 混合搜索模式
-rustkmer prefix-query database.rkdb "ATCG{N5}GTAC"
+rustkmer prefix-query database.rkdb -p "ATCG{N5}GTAC"
 
 # 性能分析
-rustkmer prefix-query database.rkdb "ATCG{N5}GTAC" --profile
+rustkmer prefix-query database.rkdb -p "ATCG{N5}GTAC" --profile
 ```
 
 ### 4. 数据库操作
@@ -121,7 +121,7 @@ rustkmer prefix-query database.rkdb "ATCG{N5}GTAC" --profile
 
 ```bash
 # 合并数据库
-rustkmer merge database1.rkdb database2.rkdb --output merged.rkdb
+rustkmer merge -i database1.rkdb database2.rkdb --output merged.rkdb
 
 # 导出数据
 rustkmer dump database.rkdb --output kmers.txt
@@ -138,13 +138,12 @@ rustkmer stats database.rkdb
 rustkmer count [选项] -i <输入文件> -o <输出文件>
 
 主要选项:
-  -k, --kmer-size <K>           K-mer长度 (默认: 21)
-  -t, --threads <N>             并行线程数 (默认: CPU核心数)
+  -k, --k <K>                   K-mer长度 (1-64, 必填)
+      --threads <N>             并行线程数 (默认: CPU核心数)
   --canonical                  使用规范k-mer (默认: false)
   --min-count <N>              最小k-mer计数过滤 (默认: 1)
   --max-count <N>              最大k-mer计数过滤
   --sort                       排序输出数据库 (推荐)
-  --stats                      生成统计信息
   -i, --input <文件>            输入序列文件 (FASTA/FASTQ)
   -o, --output <文件>           输出RKDB文件
 ```
@@ -157,9 +156,8 @@ rustkmer query [选项] <数据库> [k-mer...]
 主要选项:
   -s, --sequence <文件>         查询序列文件
   -o, --output <文件>           输出结果文件
-  -f, --format <格式>           输出格式 (table/json/csv/tsv) (默认: table)
-  --quiet                      静默模式 (默认: false)
-  --verbose                    详细输出 (默认: false)
+  -b, --batch <文件>            批量查询文件 (每行一个k-mer)
+  -i, --interactive            交互模式 (从stdin读取查询)
 ```
 
 ### fuzzy-query - 模糊查询
@@ -168,7 +166,7 @@ rustkmer query [选项] <数据库> [k-mer...]
 rustkmer fuzzy-query [选项] <数据库> <模式>
 
 主要选项:
-  -m, --max-mismatches <N>      最大错配数 (默认: 0)
+  -m, --mutations <N>           最大错配数 (汉明距离) (默认: 0)
   --max-variants <N>           最大变体数 (默认: 10000)
   --profile                    性能分析 (默认: false)
 ```
@@ -176,9 +174,12 @@ rustkmer fuzzy-query [选项] <数据库> <模式>
 ### prefix-query - 前缀查询
 
 ```bash
-rustkmer prefix-query [选项] <数据库> <前缀>
+rustkmer prefix-query [选项] <数据库> -p <模式>
 
 主要选项:
+  -p, --pattern <模式>         查询模式（前缀或混合格式如 ATAC{N5}ACAC）
+  -x, --prefix <前缀>          显式前缀序列（与 --pattern 互斥）
+  --hybrid                     启用混合搜索模式（需 --pattern）
   --format <格式>              输出格式 (table/json/csv/tsv) (默认: table)
   --output <文件>              输出文件
   --min-count <N>              最小计数过滤
@@ -191,11 +192,11 @@ rustkmer prefix-query [选项] <数据库> <前缀>
 ### merge - 数据库合并
 
 ```bash
-rustkmer merge [选项] <数据库1> <数据库2>...
+rustkmer merge [选项] -i <数据库1> <数据库2>... -o <输出文件>
 
 主要选项:
+  -i, --input <文件>...         输入数据库文件 (至少2个)
   -o, --output <文件>           合并后输出文件
-  --stats                      显示统计信息
 ```
 
 ### dump - 数据库导出
@@ -205,9 +206,6 @@ rustkmer dump [选项] <数据库>
 
 主要选项:
   -o, --output <文件>           输出文件 (默认: stdout)
-  -f, --format <格式>           输出格式 (default/fasta/sequence) (默认: default)
-  --min-count <N>              最小计数过滤
-  --max-count <N>              最大计数过滤
 ```
 
 ### stats - 数据库统计
@@ -216,8 +214,8 @@ rustkmer dump [选项] <数据库>
 rustkmer stats [选项] <数据库>
 
 主要选项:
-  --json                       JSON格式输出 (默认: false)
-  --verbose                    详细统计 (默认: false)
+  -f, --format <格式>           输出格式 (text/json/csv/tsv) (默认: text)
+      --detailed               包含详细频率分布
 ```
 
 ## 性能优化指南
@@ -231,7 +229,7 @@ rustkmer stats [选项] <数据库>
 rustkmer count -k 21 --sort -i genome.fa -o genome_sorted.rkdb
 
 # 前缀查询在排序数据库上快10-100倍
-rustkmer prefix-query genome_sorted.rkdb "ATCGATCG"
+rustkmer prefix-query genome_sorted.rkdb -p "ATCGATCG"
 ```
 
 ### 2. 线程优化
@@ -240,10 +238,10 @@ rustkmer prefix-query genome_sorted.rkdb "ATCGATCG"
 
 ```bash
 # 自动检测CPU核心
-rustkmer count -k 21 -t $(nproc) -i genome.fa -o genome.rkdb
+rustkmer count -k 21 --threads $(nproc) -i genome.fa -o genome.rkdb
 
 # 内存限制时的线程设置
-rustkmer count -k 31 -t 4 -i genome.fa -o genome.rkdb  # 内存友好
+rustkmer count -k 31 --threads 4 -i genome.fa -o genome.rkdb  # 内存友好
 ```
 
 ### 3. 内存使用优化
@@ -257,7 +255,7 @@ split -l 1000000 large_genome.fa batch_
 for file in batch_*; do
     rustkmer count -k 21 -i "$file" -o "batch_$(basename "$file").rkdb"
 done
-rustkmer merge batch_*.rkdb --output final.rkdb
+rustkmer merge -i batch_*.rkdb --output final.rkdb
 ```
 
 ## 使用示例
@@ -266,16 +264,16 @@ rustkmer merge batch_*.rkdb --output final.rkdb
 
 ```bash
 # 1. 创建排序的21-mer数据库
-rustkmer count -k 21 --sort -t 16 -i human_genome.fa -o human_k21.rkdb
+rustkmer count -k 21 --sort --threads 16 -i human_genome.fa -o human_k21.rkdb
 
 # 2. 查询特定基因序列
 rustkmer query human_k21.rkdb ATGCGATGCTAGCGCTAGCTA
 
 # 3. 查找启动子区域
-rustkmer prefix-query human_k21.rkdb "TATAAA"
+rustkmer prefix-query human_k21.rkdb -p "TATAAA"
 
 # 4. 生成统计报告
-rustkmer stats human_k21.rkdb --verbose
+rustkmer stats human_k21.rkdb --detailed
 ```
 
 ### 示例2: 宏基因组学分析
@@ -287,10 +285,10 @@ for sample in sample1.fa sample2.fa sample3.fa; do
 done
 
 # 2. 合并所有样本
-rustkmer merge *.rkdb --output combined.rkdb
+rustkmer merge -i *.rkdb --output combined.rkdb
 
 # 3. 查找共有k-mer
-rustkmer prefix-query combined.rkdb "ATCGATCG" --min-count 3
+rustkmer prefix-query combined.rkdb -p "ATCGATCG" --min-count 3
 ```
 
 ### 示例3: 病毒基因组变异分析
@@ -303,7 +301,7 @@ rustkmer count -k 19 --sort -i sars_cov2_ref.fa -o sars_k19.rkdb
 rustkmer fuzzy-query sars_k19.rkdb "ATCG{N5}GTAC" --profile
 
 # 3. 前缀查询分析
-rustkmer prefix-query sars_k19.rkdb "ATCG{N3}GTAC" --output variants.txt
+rustkmer prefix-query sars_k19.rkdb -p "ATCG{N3}GTAC" --output variants.txt
 ```
 
 ## Python集成
@@ -325,8 +323,8 @@ from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 db = PyDatabase("genome.rkdb", LoadMode.Preload)
 
 # 精确查询
-result = db.query_kmer("ATGCGATGCTAGCGCTAGCTA")
-if result:
+result = db.query("ATGCGATGCTAGCGCTAGCTA")
+if result.found:
     print(f"Found: {result.count}")
 
 # 前缀查询
@@ -355,10 +353,10 @@ db = PyDatabase("genome.rkdb", LoadMode.Preload)
     
     # 批量查询
     for query in queries:
-        result = db.query_kmer(query)
+        result = db.query(query)
         output_file = output_dir / f"{query}.txt"
         with open(output_file, 'w') as out:
-            if result:
+            if result.found:
                 out.write(f"{query}\t{result.count}\n")
 ```
 
@@ -370,11 +368,11 @@ db = PyDatabase("genome.rkdb", LoadMode.Preload)
 1. 减少k-mer长度: `-k 19` instead of `-k 31`
 2. 增加最小计数过滤: `--min-count 2`
 3. 分批处理大文件
-4. 减少线程数: `-t 4`
+4. 减少线程数: `--threads 4`
 
 ```bash
 # 内存友好的计数
-rustkmer count -k 19 --min-count 2 -t 4 -i large_genome.fa -o genome.rkdb
+rustkmer count -k 19 --min-count 2 --threads 4 -i large_genome.fa -o genome.rkdb
 ```
 
 ### Q: 查询速度太慢怎么办？
@@ -405,10 +403,10 @@ rustkmer count -k 25 --min-count 5 --sort -i genome.fa -o compact.rkdb
 
 ```bash
 # 详细统计
-rustkmer stats database.rkdb --verbose
+rustkmer stats database.rkdb --detailed
 
 # 导出部分数据进行手动验证
-rustkmer dump database.rkdb --min-count 100 | head -100
+rustkmer dump database.rkdb | head -100
 ```
 
 ### Q: 模糊查询生成了太多变体？

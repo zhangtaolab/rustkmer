@@ -73,7 +73,7 @@ docs/
 ## 🔧 技术栈
 
 - **Rust 1.80+** - 核心高性能引擎
-- **Python 3.10+** - PyO3绑定
+- **Python 3.11+** - PyO3绑定
 - **自定义RKDB格式** - 高效数据库存储
 - **内存映射** - 大数据集优化
 
@@ -106,7 +106,7 @@ docs/
 cargo install rustkmer
 
 # Python安装
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 ### 基本使用

@@ -47,15 +47,15 @@ RustKmer delivers world-class performance:
 ```rust
 use rustkmer::KmerCounter;
 
-// Create a new counter
-let mut counter = KmerCounter::new(21, true);
+// Create a new counter (k, canonical, initial capacity, threads)
+let counter = KmerCounter::new(21, true, 1000000, 4)?;
 
 // Count k-mers from a file
-counter.add_from_fasta("genome.fa.gz")?;
+counter.count_file("genome.fa")?;
 
 // Get statistics
-let total = counter.get_stats().total_kmers);
-let unique = counter.get_unique_count();
+let total = counter.total_kmers();
+let unique = counter.unique_kmers();
 
 println!("Total k-mers: {}, Unique k-mers: {}", total, unique);
 ```

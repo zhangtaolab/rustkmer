@@ -1,42 +1,59 @@
+<!-- generated-by: gsd-doc-writer -->
 # Getting Started
 
-This guide will help you get started with the RustKmer Python API, from installation to your first k-mer analysis.
+This guide will help you get started with the rustkmer Python API (`pyrustkmer`), from installation to your first k-mer analysis.
 
 ## Installation
 
 ### Requirements
 
-- Python 3.8 or higher
-- Rust compiler (for building from source)
+- Python >= 3.11
+- `numpy >= 1.21` (installed automatically as a dependency)
+- For building from source: a Rust 1.80+ stable toolchain and `maturin`
 
 ### Install from PyPI
 
-The easiest way to install RustKmer is from PyPI:
+The easiest way to install the bindings is from PyPI:
 
 ```bash
-pip install rustkmer
+pip install pyrustkmer
 ```
 
-### Install from Source
+### Build from Source
 
-For development or the latest features:
+The Python extension lives in the `pyo3/` directory of the repository and is built with `maturin`:
 
 ```bash
-git clone https://github.com/your-org/rustkmer.git
-cd rustkmer
-pip install .
+git clone https://github.com/rustkmer/rustkmer.git
+cd rustkmer/pyo3
+
+python -m venv .venv
+source .venv/bin/activate
+
+pip install maturin
+maturin develop --release
 ```
+
+`pip install .` run from the `pyo3/` directory also works — `maturin` is the declared PEP 517 build backend.
 
 ### Verify Installation
 
+The module does not export a `__version__` attribute; verify the installation by running a tiny counting round-trip:
+
 ```python
-import rustkmer
-print(f"RustKmer version: {rustkmer.__version__}")
+from pyrustkmer import PyCounter
+
+counter = PyCounter(3, canonical=True)
+counter.add_sequence("ATGCGATGCATGCGATGCAT")
+
+stats = counter.get_stats()
+print(stats)
+# PyCounterStats(total_kmers=18, unique_kmers=..., kmer_length=3, canonical_mode=True, memory_usage=...)
 ```
 
 ## Your First K-mer Analysis
 
-Let's create a simple k-mer database and perform queries:
+Let's create a simple k-mer database and perform queries.
 
 ### 1. Create Sample Data
 
@@ -51,92 +68,72 @@ GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAG
 TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
 ```
 
-### 2. Create a K-mer Database
+### 2. Count K-mers and Build a Database
 
 ```python
-from pyrustkmer import KmerCounter, PyFuzzyQuery
+from pyrustkmer import PyCounter
 
 # Create a k-mer counter with k=31
 counter = PyCounter(31, canonical=True)
 
-# Count k-mers from FASTA file
 print("Counting k-mers...")
 counter.add_from_fasta("sample.fasta")
 
-# Save to database
+stats = counter.get_stats()
+print(f"Total k-mers processed: {stats.total_kmers:,}")
+print(f"Unique k-mers: {stats.unique_kmers:,}")
+
 print("Creating database...")
 counter.save_database("sample.rkdb")
-
 print("Database created successfully!")
 ```
 
 ### 3. Query the Database
 
-#### Important Note on Fuzzy Queries with N's
-
-When using fuzzy queries with k-mers containing 'N' characters, be aware of the different default behavior between CLI and Python API:
-
-- **CLI**: Default `mutations=0` (exact match only)
-- **Python API**: Default `mutations=1` (allows 1 mutation by default)
-
-This means that the same query will return different results depending on which interface you use. See [Fuzzy Query with N's: Behavior and Best Practices](../../../fuzzy_query_n_behavior.md) for detailed information.
-
-For example, when querying "GCCGCGNNNNNNNGCCACC":
-
 ```python
-# Python API default behavior (mutations=1)
-result = fuzzy.query_fuzzy("GCCGCGNNNNNNNGCCACC")
-# May return matches where left/right sequences differ
+from pyrustkmer import PyDatabase, LoadMode
 
-# To maintain fixed sequences, use mutations=0
-result = fuzzy.query_fuzzy("GCCGCGNNNNNNNGCCACC", mutations=0)
-# Only returns matches where N's are replaced, fixed sequences maintained
-```
-
-```python
-from pyrustkmer import Database, PyFuzzyQuery
-
-# Open database (context manager recommended)
+# Open the database in preload mode (fastest queries)
 db = PyDatabase("sample.rkdb", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-    # Query a k-mer
-    kmer = "ATCGATCGATCGATCGATCGATCGATCGATCGATCG"
-    result = db.query_exact(kmer)
 
-    print(f"Query k-mer: {kmer}")
-    print(f"Found: {result.found}")
-    print(f"Count: {result.count}")
-    print(f"Canonical: {result.canonical}")
+# Query a k-mer — the string length must equal the database k-mer size
+kmer = "ATCGATCGATCGATCGATCGATCGATCGATC"
+result = db.query_exact(kmer)
 
-    # Get database statistics
-    stats = db.get_stats()
-    print(f"\nDatabase Statistics:")
-    print(f"  K-mer size: {stats.kmer_size}")
-    print(f"  Unique k-mers: {stats.unique_kmers:,}")
-    print(f"  Total counts: {stats.total_counts:,}")
-    print(f"  File size: {stats.file_size:,} bytes")
+print(f"Query k-mer: {kmer}")
+print(f"Found: {result.found}")
+print(f"Count: {result.count}")
+
+# Get database statistics
+stats = db.get_stats()
+print(f"\nDatabase Statistics:")
+print(f"  K-mer size: {stats.kmer_size}")
+print(f"  Unique k-mers: {stats.unique_kmers:,}")
+print(f"  Total k-mers: {stats.total_kmers:,}")
+print(f"  File size: {stats.file_size:,} bytes")
+print(f"  Canonical: {stats.canonical}")
 ```
 
 ## Core Concepts
 
 ### K-mer Size
 
-The k-mer size affects specificity and database size:
+The k-mer size must be between 1 and 64 (k-mers are encoded in a single `u128`). It affects specificity and database size:
 
 - **Small k (15-21)**: More matches, less specific, good for short reads
 - **Medium k (25-31)**: Good balance for most applications
-- **Large k (51+)**: Highly specific, less memory efficient
+- **Large k (51-64)**: Highly specific, useful for long sequences
 
 ```python
 # Different k-mer sizes for different use cases
-counter_small = PyCounter(15)  # For metagenomics
+counter_small = PyCounter(15)   # For metagenomics
 counter_medium = PyCounter(31)  # General purpose
-counter_large = PyCounter(51)  # For long sequences
+counter_large = PyCounter(51)   # For long sequences
 ```
 
 ### Canonical K-mers
 
-Canonical k-mers store each k-mer and its reverse complement only once, reducing database size by ~50%:
+Canonical k-mers store each k-mer and its reverse complement only once, roughly halving the number of unique k-mers:
 
 ```python
 # With canonical k-mers (recommended)
@@ -146,134 +143,144 @@ counter_canonical = PyCounter(31, canonical=True)
 counter_stranded = PyCounter(31, canonical=False)
 ```
 
-### Context Managers
+### Database Load Modes
 
-Always use context managers for database operations:
+`PyDatabase` requires an explicit load mode as its second argument:
+
+| Mode | Behavior | Best for |
+|------|----------|----------|
+| `LoadMode.Preload` | All k-mers cached in memory | Fastest repeated queries |
+| `LoadMode.MemoryMapped` | Direct file I/O, entry access by index | Large databases, bounded memory |
+| `LoadMode.Lazy` | Sorted index with binary-search lookups | Large databases, slower queries |
 
 ```python
-# Good: Context manager automatically handles cleanup
-db = PyDatabase("my_database.rkdb", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-    result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+from pyrustkmer import PyDatabase, LoadMode
 
-# Manual handling (not recommended)
-db = PyDatabase("my_database.rkdb", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-db.open()
-try:
-    result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
-finally:
+db = PyDatabase("sample.rkdb", LoadMode.Preload)
 ```
+
+`PyDatabase` does not implement a context manager. Databases hold no locks or background resources — simply drop the reference (or let it go out of scope) when you are done with it.
 
 ## Common Operations
 
-### Batch Processing
+### Multiple Input Files
 
-For multiple FASTA files:
+Call `add_from_fasta` / `add_from_fastq` once per file on the same counter. Both accept plain, `.gz`, `.bz2`, and `.xz` compressed inputs:
 
 ```python
-from pyrustkmer import KmerCounter, PyFuzzyQuery
+from pyrustkmer import PyCounter
 
-# Create counter
 counter = PyCounter(31, canonical=True)
 
-# Process multiple files
-file_list = ["file1.fasta", "file2.fasta", "file3.fasta"]
-counter.count_file_list(file_list)
+# Process multiple files into one counter
+for path in ["file1.fasta", "file2.fasta", "reads.fastq.gz"]:
+    counter.add_from_fasta(path) if path.endswith((".fasta", ".fa")) else counter.add_from_fastq(path)
 
-# Save combined database
+# Save the combined database
 counter.save_database("combined.rkdb")
 ```
 
-### Multiple Queries
+### Batch Queries
 
-Query multiple k-mers efficiently:
+Query many k-mers at once with `query_exact_batch`, which returns a dictionary keyed by the queried k-mer:
 
 ```python
 kmer_list = [
-    "ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
-    "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAG",
-    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
-    "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+    "ATCGATCGATCGATCGATCGATCGATCGATC",
+    "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCT",
+    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
 ]
 
-db = PyDatabase("sample.rkdb", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-    for kmer in kmer_list:
-        result = db.query_exact(kmer)
-        status = "✓" if result.found else "✗"
-        print(f"{kmer[:10]:10}... {status} Count: {result.count}")
+results = db.query_exact_batch(kmer_list)
+
+for kmer, result in results.items():
+    status = "found" if result.found else "missing"
+    print(f"{kmer}: {status} (count: {result.count})")
 ```
 
 ### Database Export
 
-Export database content to other formats:
+Use the built-in exporters instead of manual iteration for large databases:
 
 ```python
-import csv
+# Export to a tab-separated text file (kmer<TAB>count per line)
+n = db.export_to_file("kmer_counts.tsv", limit=1000)
+print(f"Exported {n} k-mers")
 
-db = PyDatabase("sample.rkdb", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-    # Export to CSV
-    with open("kmer_counts.csv", "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["kmer", "count", "canonical"])
+# Export to CSV (with header row) or JSON
+db.export_to_csv("kmer_counts.csv")
+db.export_to_json("kmer_counts.json")
 
-        for result in db.dump(limit=1000):
-            writer.writerow([result.kmer, result.count, result.canonical])
-
-    print("Exported to kmer_counts.csv")
+# Paginate in memory with decoded k-mer sequences
+first_100 = db.export_all_kmers(limit=100, offset=0)
+for r in first_100:
+    print(f"{r.kmer}: {r.count}")
 ```
+
+Note: `db.dump()` returns k-mers as hexadecimal strings of their encoded `u128` values. Use `export_all_kmers()` when you need the decoded nucleotide sequences.
 
 ## Fuzzy Queries
 
-Find similar k-mers with mutations:
+Find similar k-mers with `PyFuzzyQuery`. The `max_mutations` argument is required — there is no default:
 
 ```python
+from pyrustkmer import PyDatabase, PyFuzzyQuery, LoadMode
+
 db = PyDatabase("sample.rkdb", LoadMode.Preload)
 fuzzy = PyFuzzyQuery(db)
-    # Exact query
-    exact_kmer = "ATCGATCGATCGATCGATCGATCGATCGATCGATCG"
-    exact_result = db.query_exact(exact_kmer)
-    print(f"Exact matches: {exact_result.count}")
 
-    # Fuzzy query (allow 1 mutation)
-    fuzzy_result = fuzzy.query_fuzzy(exact_kmer, mutations=1)
-    print(f"Fuzzy matches: {fuzzy_result.total_matches}")
+query_kmer = "ATCGATCGATCGATCGATCGATCGATCGATC"
 
-    # Show fuzzy matches
-    for match in fuzzy_result.get_fuzzy_matches():
-        print(f"  {match.kmer}: {match.count} (distance={match.distance})")
+# Exact query
+exact_result = db.query_exact(query_kmer)
+print(f"Exact count: {exact_result.count}")
+
+# Fuzzy query: allow up to 1 mutation
+fuzzy_result = fuzzy.query_fuzzy(query_kmer, max_mutations=1)
+print(f"Total matches: {fuzzy_result.total_matches}")
+
+# Inspect the matches
+for match in fuzzy_result.matches:
+    print(f"  {match.kmer}: {match.count} (distance={match.distance}, type={match.match_type})")
+
+# Most frequent matches first
+for match in fuzzy_result.get_top_matches(5):
+    print(f"  {match.kmer}: {match.count}")
 ```
+
+Fuzzy patterns may contain `N` wildcard characters (in addition to `A`, `T`, `C`, `G`) and must be exactly the database k-mer size long. For position-specific mutation constraints, see `query_fuzzy_position(pattern, max_mutations, position_mutations)` on the [Fuzzy Queries](../fuzzyquery.md) page.
 
 ## Error Handling
 
-Handle common errors properly:
+The bindings raise standard Python built-in exceptions. The most common ones:
+
+| Exception | Raised when |
+|-----------|-------------|
+| `FileNotFoundError` | The database file passed to `PyDatabase` does not exist |
+| `ValueError` | Invalid arguments: k-mer size outside 1-64, query length mismatch, invalid characters, unwritable output |
+| `RuntimeError` | A query or merge operation failed internally |
+| `PermissionError` | An export output file cannot be created or written |
 
 ```python
-from pyrustkmer import DatabaseNotFoundError, InvalidKmerError, QueryError, PyFuzzyQuery
+from pyrustkmer import PyDatabase, LoadMode
 
 try:
     db = PyDatabase("nonexistent.rkdb", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-        result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+except FileNotFoundError as e:
+    print(f"Database file not found: {e}")
 
-except DatabaseNotFoundError:
-    print("Database file not found!")
-
-except InvalidKmerError as e:
-    print(f"Invalid k-mer: {e.kmer} - {e.reason}")
-
-except QueryError as e:
-    print(f"Query error: {e}")
-
-except Exception as e:
-    print(f"Unexpected error: {e}")
+try:
+    db = PyDatabase("sample.rkdb", LoadMode.Preload)
+    result = db.query_exact("ATG")  # wrong length for k=31
+except ValueError as e:
+    print(f"Invalid query: {e}")
 ```
+
+The module also exports a single library error class, `pyrustkmer.RustKmerError`, with `message` and `error_type` attributes.
 
 ## Performance Tips
 
-### 1. Use Appropriate K-mer Size
+### 1. Use an Appropriate K-mer Size
 
 ```python
 # For short reads (<100 bp)
@@ -289,27 +296,32 @@ k = 51
 ### 2. Enable Canonical Mode
 
 ```python
-# Reduces database size by ~50%
+# Roughly halves the number of unique k-mers stored
 counter = PyCounter(31, canonical=True)
 ```
 
 ### 3. Use Batch Operations
 
 ```python
-# Better than individual queries
-batch_result = db.fuzzy_query_batch(kmer_list, mutations=2)
+# One call instead of a Python loop over query_exact
+results = db.query_exact_batch(kmer_list)
 ```
 
 ### 4. Process Large Datasets Efficiently
 
 ```python
-# For large database dumps, use generators
-db = PyDatabase("large_database.rkdb", LoadMode.Preload)
-    count = 0
-    for result in db.dump():  # Process all k-mers
-        count += 1
-        if count % 100000 == 0:
-            print(f"Processed {count:,} k-mers...")
+# Stream exports to disk instead of materializing everything in Python
+def progress(current, total):
+    print(f"Progress: {current}/{total}")
+
+n = db.export_to_file("all_kmers.tsv", progress_callback=progress)
+print(f"Wrote {n:,} k-mers")
+```
+
+File-based counting (`add_from_fasta` / `add_from_fastq`) releases the GIL and counts in parallel across a Rayon thread pool. Control the thread count at construction time:
+
+```python
+counter = PyCounter(31, canonical=True, threads=8)
 ```
 
 ## Integration with Other Libraries
@@ -319,25 +331,22 @@ db = PyDatabase("large_database.rkdb", LoadMode.Preload)
 ```python
 import pandas as pd
 
-# Load database into pandas DataFrame
-db = PyDatabase("sample.rkdb", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-    data = []
-    for result in db.dump(limit=10000):
-        data.append({
-            'kmer': result.kmer,
-            'count': result.count,
-            'canonical': result.canonical
-        })
+rows = [
+    {"kmer": r.kmer, "count": r.count}
+    for r in db.export_all_kmers(limit=10000)
+]
+df = pd.DataFrame(rows)
 
-    df = pd.DataFrame(data)
+print(f"Total k-mers loaded: {len(df)}")
+print(f"Mean count: {df['count'].mean():.1f}")
+print(f"Max count: {df['count'].max()}")
+```
 
-# Analyze with pandas
-print(f"Database summary:")
-print(f"  Total k-mers: {len(df)}")
-print(f"  Mean count: {df['count'].mean():.1f}")
-print(f"  Max count: {df['count'].max()}")
-print(f"  Unique canonical: {df['canonical'].nunique()}")
+Alternatively, export to CSV and read it back:
+
+```python
+db.export_to_csv("kmer_counts.csv")
+df = pd.read_csv("kmer_counts.csv")
 ```
 
 ### NumPy Integration
@@ -345,26 +354,21 @@ print(f"  Unique canonical: {df['canonical'].nunique()}")
 ```python
 import numpy as np
 
-# Extract counts for statistical analysis
-db = PyDatabase("sample.rkdb", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-    counts = [result.count for result in db.dump(limit=10000)]
+counts = np.array([r.count for r in db.export_all_kmers(limit=10000)])
 
-# NumPy statistics
-counts_array = np.array(counts)
-print(f"Count statistics:")
-print(f"  Mean: {np.mean(counts_array):.1f}")
-print(f"  Median: {np.median(counts_array):.1f}")
-print(f"  Std dev: {np.std(counts_array):.1f}")
-print(f"  95th percentile: {np.percentile(counts_array, 95):.1f}")
+print(f"Mean: {np.mean(counts):.1f}")
+print(f"Median: {np.median(counts):.1f}")
+print(f"Std dev: {np.std(counts):.1f}")
+print(f"95th percentile: {np.percentile(counts, 95):.1f}")
 ```
 
 ## Next Steps
 
-Now that you have the basics, explore these resources:
-
-- [Database Operations](database.md) - Advanced database management
-- [Fuzzy Queries](fuzzyquery.md) - Advanced fuzzy searching techniques
+- [Database Operations](../database.md) - `PyDatabase` reference
+- [K-mer Counter](../kmercounter.md) - `PyCounter` reference
+- [Fuzzy Queries](../fuzzyquery.md) - Advanced fuzzy searching
+- [Query Results](../query.md) - `PyQueryResult` reference
+- [Database Stats](../stats.md) - `PyDatabaseStats` reference
 - [Examples](examples.md) - Comprehensive use case examples
 - [Tutorials](../../tutorials/) - Step-by-step tutorials for specific workflows
 
@@ -374,99 +378,90 @@ Here's a complete example that ties everything together:
 
 ```python
 #!/usr/bin/env python3
-"""
-Complete RustKmer example: Create, analyze, and query a k-mer database.
-"""
+"""Complete rustkmer example: create, analyze, and query a k-mer database."""
 
-from pyrustkmer import KmerCounter, Database, PyFuzzyQuery
-import pandas as pd
-import matplotlib.pyplot as plt
-import tempfile
 import os
+import tempfile
+
+from pyrustkmer import PyCounter, PyDatabase, PyFuzzyQuery, LoadMode
+
 
 def main():
-    # Create sample data
     sequences = [
         "ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
         "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAG",
-        "ATCGATCGATCGATCGATCGATCGATCGATCGATGG",  # 1 mutation
+        "ATCGATCGATCGATCGATCGATCGATCGATCGATGG",  # 1 mutation vs seq1
         "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
-        "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+        "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
     ]
 
-    # Create temporary FASTA file
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.fasta', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta", delete=False) as f:
         for i, seq in enumerate(sequences):
-            f.write(f">seq_{i+1}\n{seq}\n")
+            f.write(f">seq_{i + 1}\n{seq}\n")
         fasta_file = f.name
 
+    db_path = "example.rkdb"
+
     try:
-        # 1. Create k-mer database
+        # 1. Create the k-mer database
         print("Creating k-mer database...")
         counter = PyCounter(31, canonical=True)
         counter.add_from_fasta(fasta_file)
-        db_path = "example.rkdb"
         counter.save_database(db_path)
 
-        # 2. Analyze database
+        cstats = counter.get_stats()
+        print(f"  Total k-mers counted: {cstats.total_kmers:,}")
+        print(f"  Unique k-mers: {cstats.unique_kmers:,}")
+
+        # 2. Analyze the database
         print("Analyzing database...")
         db = PyDatabase(db_path, LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-            stats = db.get_stats()
-            print(f"  Unique k-mers: {stats.unique_kmers:,}")
-            print(f"  Total counts: {stats.total_counts:,}")
+        stats = db.get_stats()
+        print(f"  K-mer size: {stats.kmer_size}")
+        print(f"  Unique k-mers: {stats.unique_kmers:,}")
+        print(f"  File size: {stats.file_size:,} bytes")
 
-            # 3. Query database
-            print("\nQuerying database...")
-            query_kmer = sequences[0][:31]  # First k-mer from first sequence
-            result = db.query_exact(query_kmer)
-            print(f"  Query: {query_kmer}")
-            print(f"  Found: {result.found} (count: {result.count})")
+        # 3. Query the database
+        print("\nQuerying database...")
+        query_kmer = sequences[0][:31]
+        result = db.query_exact(query_kmer)
+        print(f"  Query: {query_kmer}")
+        print(f"  Found: {result.found} (count: {result.count})")
 
-            # 4. Fuzzy query
-            print("\nFuzzy query...")
-            fuzzy_result = fuzzy.query_fuzzy(query_kmer, mutations=2)
-            print(f"  Total matches: {fuzzy_result.total_matches}")
+        # 4. Fuzzy query
+        print("\nFuzzy query...")
+        fuzzy = PyFuzzyQuery(db)
+        fuzzy_result = fuzzy.query_fuzzy(query_kmer, max_mutations=2)
+        print(f"  Total matches: {fuzzy_result.total_matches}")
+        for match in fuzzy_result.get_top_matches(5):
+            print(f"  {match.kmer}: {match.count} (distance={match.distance})")
 
-            # 5. Export and visualize
-            print("\nExporting data...")
-            data = []
-            for result in db.dump(limit=1000):
-                data.append({'kmer': result.kmer, 'count': result.count})
-
-            df = pd.DataFrame(data)
-
-            # Create simple visualization
-            plt.figure(figsize=(10, 6))
-            plt.hist(df['count'], bins=50, alpha=0.7)
-            plt.xlabel('K-mer Count')
-            plt.ylabel('Frequency')
-            plt.title('K-mer Count Distribution')
-            plt.savefig('kmer_distribution.png', dpi=150, bbox_inches='tight')
-            print("  Visualization saved to: kmer_distribution.png")
+        # 5. Export
+        print("\nExporting data...")
+        n = db.export_to_file("kmer_counts.tsv", limit=1000)
+        print(f"  Exported {n} k-mers to kmer_counts.tsv")
 
         print("\nExample completed successfully!")
 
     finally:
-        # Clean up
         os.unlink(fasta_file)
         if os.path.exists(db_path):
             os.unlink(db_path)
+
 
 if __name__ == "__main__":
     main()
 ```
 
-This example demonstrates creating a database, querying it, performing fuzzy searches, and visualizing the results.
-
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Import Error**: Make sure rustkmer is properly installed
-2. **Database Not Found**: Check file paths and permissions
-3. **Memory Issues**: Use smaller k-mer sizes or process in chunks
-4. **Slow Performance**: Use batch queries and appropriate k-mer sizes
+1. **`ImportError: No module named pyrustkmer`** — the extension was not built into the active environment. Run `maturin develop --release` from the `pyo3/` directory of the repository, and confirm your interpreter is Python >= 3.11.
+2. **`FileNotFoundError`** — check the database path passed to `PyDatabase`.
+3. **`ValueError: K-mer length ... does not match database k-mer size ...`** — query strings must be exactly `db.kmer_size` characters long.
+4. **`ValueError: Invalid k-mer size`** — `PyCounter` accepts k-mer lengths from 1 to 64 only.
+5. **Memory pressure on large databases** — open with `LoadMode.Lazy` or `LoadMode.MemoryMapped`, and prefer `export_to_file` over materializing results in Python.
 
 ### Getting Help
 

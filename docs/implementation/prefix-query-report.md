@@ -34,7 +34,9 @@ This report documents the successful implementation of the `prefix-query` comman
 ```rust
 Commands::PrefixQuery {
     database: String,
-    prefix: String,
+    pattern: String,          // -p/--pattern (prefix or hybrid pattern)
+    prefix: Option<String>,   // -x/--prefix (alternative to pattern)
+    hybrid: bool,             // --hybrid (requires --pattern)
     format: String,
     output: Option<String>,
     verbose: bool,
@@ -67,34 +69,34 @@ The optimization works by:
 
 ```bash
 # Find all k-mers starting with "ATCG"
-rustkmer prefix-query database.rkdb "ATCG"
+rustkmer prefix-query database.rkdb -p "ATCG"
 
 # Find k-mers with minimum count
-rustkmer prefix-query database.rkdb "ATCG" --min-count 10
+rustkmer prefix-query database.rkdb -p "ATCG" --min-count 10
 
 # Save results to file
-rustkmer prefix-query database.rkdb "ATCG" --output results.txt
+rustkmer prefix-query database.rkdb -p "ATCG" --output results.txt
 
 # Different output formats
-rustkmer prefix-query database.rkdb "ATCG" --format json
-rustkmer prefix-query database.rkdb "ATCG" --format csv
-rustkmer prefix-query database.rkdb "ATCG" --format tsv
+rustkmer prefix-query database.rkdb -p "ATCG" --format json
+rustkmer prefix-query database.rkdb -p "ATCG" --format csv
+rustkmer prefix-query database.rkdb -p "ATCG" --format tsv
 
 # Performance profiling
-rustkmer prefix-query database.rkdb "ATCG" --profile
+rustkmer prefix-query database.rkdb -p "ATCG" --profile
 ```
 
 ### Advanced Usage
 
 ```bash
 # Verbose output with memory block information
-rustkmer prefix-query database.rkdb "ATCG" --verbose
+rustkmer prefix-query database.rkdb -p "ATCG" --verbose
 
 # Suppress non-error output
-rustkmer prefix-query database.rkdb "ATCG" --quiet
+rustkmer prefix-query database.rkdb -p "ATCG" --quiet
 
 # Combined filtering
-rustkmer prefix-query database.rkdb "ATCG" --min-count 5 --max-count 100
+rustkmer prefix-query database.rkdb -p "ATCG" --min-count 5 --max-count 100
 ```
 
 ## Performance Analysis
@@ -137,10 +139,10 @@ rustkmer prefix-query database.rkdb "ATCG" --min-count 5 --max-count 100
 src/
 ├── cli/
 │   ├── args.rs                    # CLI argument definitions
-│   ├── commands/
-│   │   ├── mod.rs                 # Command module exports
-│   │   └── prefix.rs              # Prefix query implementation
-│   └── commands.rs                # Command routing
+│   ├── mod.rs                     # CLI module exports
+│   └── commands/
+│       ├── mod.rs                 # Command module exports
+│       └── prefix.rs              # Prefix query implementation
 ├── database/
 │   ├── mod.rs                     # Database module exports
 │   ├── prefix_query.rs            # Basic prefix query
@@ -149,21 +151,20 @@ src/
 └── main.rs                        # Main program entry
 
 examples/python/
-├── prefix_extraction_complete.py  # Python API example
-└── memory_block_optimization_demo.py # Memory optimization demo
-
-benchmarks/
-└── prefix_query_performance.py    # Comprehensive performance testing
+├── simple_prefix_query.py         # Prefix/hybrid query example (unified interface)
+└── unified_query_example.py       # Full unified-interface demo
 
 scripts/
+├── bench/                         # Benchmark harness (bench.py, compare.py)
 └── benchmark_prefix_vs_fuzzy.sh   # Automated performance comparison
 ```
 
 ### Test and Validation Files
 
 ```
-test_prefix_functionality.sh       # Functional testing
-simple_performance_test.sh         # Basic performance comparison
+cargo test prefix                  # Unit tests (src/database/prefix_query_optimized.rs,
+                                   # src/cli/commands/prefix.rs)
+scripts/benchmark_prefix_vs_fuzzy.sh  # Automated performance comparison
 ```
 
 ## Algorithm Details
@@ -255,7 +256,7 @@ Performance gain: ~10-100x vs fuzzy-query for prefix patterns
 
 1. **Analyze Pattern Structure**:
    - Pure prefix: Use `prefix-query`
-   - Pure suffix: Use `suffix-query`
+   - Pure suffix: no `suffix-query` CLI subcommand exists — suffix extraction is library-only (`src/database/suffix_query.rs`, `extract_kmers_by_suffix`)
    - Hybrid: Use `prefix-query` with truncated pattern
    - Complex: Use `fuzzy-query`
 

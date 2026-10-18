@@ -117,4 +117,4 @@ Get normalization information for a query
 
 ---
 
-*Source: [`normalization.rs`](../../../fuzzy/normalization.rs)*
+*Source: [`normalization.rs`](../../../src/fuzzy/normalization.rs)*

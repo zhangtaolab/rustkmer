@@ -52,4 +52,4 @@ Load and validate checksums from checksums.txt file
 
 ---
 
-*Source: [`persistence.rs`](../../../core/database/persistence.rs)*
+*Source: [`persistence.rs`](../../../src/core/database/persistence.rs)*

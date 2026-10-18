@@ -126,4 +126,4 @@ Vector of records meeting quality threshold
 
 ---
 
-*Source: [`fastq.rs`](../../../io/fastq.rs)*
+*Source: [`fastq.rs`](../../../src/io/fastq.rs)*

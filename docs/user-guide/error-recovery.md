@@ -4,57 +4,29 @@ This guide demonstrates how to handle errors gracefully and recover from common 
 
 ## Overview
 
-RustKmer provides comprehensive error handling with structured exception types and recovery mechanisms. This document shows practical examples of error handling patterns.
+RustKmer raises standard Python built-in exceptions from its Rust core (`ValueError`, `FileNotFoundError`, `RuntimeError`, `PermissionError`) and exports a single custom error class, `RustKmerError`. This document shows practical examples of error handling patterns.
 
-## Exception Hierarchy
+## Error Types
 
 ```python
-# Base exception
-class RustKmerError(Exception):
-    """Base exception for all RustKmer errors."""
-    pass
+from pyrustkmer import RustKmerError
 
-# Specific exception types
-class SequenceError(RustKmerError):
-    """Raised for invalid DNA sequences."""
-    pass
+# The custom error class exported by pyrustkmer.
+# It is a plain class with `message` and `error_type` attributes:
+err = RustKmerError("something failed", "database")
 
-class DatabaseError(RustKmerError):
-    """Raised for database-related errors."""
-    pass
+print(err.message)     # "something failed"
+print(err.error_type)  # "database"
+print(str(err))        # "database: something failed"
 
-class QueryError(RustKmerError):
-    """Raised for query operation errors."""
-    pass
-
-class ValidationError(RustKmerError):
-    """Raised for parameter validation errors."""
-    pass
-
-class MergeError(RustKmerError):
-    """Raised for database merge errors."""
-    pass
-
-class ExportError(RustKmerError):
-    """Raised for export operation errors."""
-    pass
-
-class FuzzyQueryError(RustKmerError):
-    """Raised for fuzzy query errors."""
-    pass
-
-class StatsError(RustKmerError):
-    """Raised for statistics calculation errors."""
-    pass
-
-class KmerCountingError(RustKmerError):
-    """Raised for k-mer counting errors."""
-    pass
-
-class EncodingError(RustKmerError):
-    """Raised for encoding/decoding errors."""
-    pass
+# Exceptions raised by the pyrustkmer bindings:
+# - ValueError:          invalid arguments (k-mer size out of range, bad pattern, ...)
+# - FileNotFoundError:   database or input file missing
+# - RuntimeError:        query / merge execution failures
+# - PermissionError:     output file cannot be written
 ```
+
+There is no per-domain exception hierarchy — catch the built-in exception types above for the errors the bindings actually raise.
 
 ## Common Error Scenarios and Recovery Strategies
 
@@ -66,17 +38,17 @@ import pyrustkmer
 def safe_create_counter(k):
     """Safely create a k-mer counter with validation."""
     try:
-        counter = rustkmer.PyCounter(k)
+        counter = pyrustkmer.PyCounter(k)
         return counter
-    except (ValueError, OverflowError) as e:
+    except ValueError as e:
         print(f"Invalid k-mer size {k}: {e}")
         # Fall back to default size
         print("Using default k=31")
-        return rustkmer.PyCounter(31)
+        return pyrustkmer.PyCounter(31)
 
 # Example usage
-counter = safe_create_counter(100)  # Invalid size
-print(f"Created counter with k={counter.get_k()}")
+counter = safe_create_counter(100)  # Invalid size (must be 1-64)
+print(f"Created counter with k={counter.kmer_length}")
 ```
 
 ### 2. Sequence Validation
@@ -103,14 +75,14 @@ def safe_count_sequence(counter, sequence):
         # Clean the sequence first
         clean_seq = validate_dna_sequence(sequence)
 
-        if len(clean_seq) < counter.get_k():
-            print(f"Warning: Sequence too short for k={counter.get_k()}")
+        if len(clean_seq) < counter.kmer_length:
+            print(f"Warning: Sequence too short for k={counter.kmer_length}")
             return None
 
         counter.add_sequence(clean_seq)
-        return counter.get_stats().total_kmers)
+        return counter.get_stats().total_kmers
 
-    except SequenceError as e:
+    except ValueError as e:
         print(f"Sequence error: {e}")
         return None
     except Exception as e:
@@ -122,16 +94,10 @@ def safe_count_sequence(counter, sequence):
 
 ```python
 import os
-from rustkmer.error_handling import retry_on_io_error, error_context
+from pyrustkmer import PyDatabase, LoadMode
 
-def safe_load_database(file_path, max_retries=3):
-    """Load database with retry and fallback strategies."""
-
-    @error_context("database_load", strategies=[retry_on_io_error(max_retries)])
-    def load_with_retry(path):
-        db = PyDatabase("database.rkdb", LoadMode.Preload)
-        db.load(path)
-        return db
+def safe_load_database(file_path):
+    """Load a database with existence and permission checks."""
 
     # Check if file exists
     if not os.path.exists(file_path):
@@ -140,17 +106,16 @@ def safe_load_database(file_path, max_retries=3):
     # Check file size
     file_size = os.path.getsize(file_path)
     if file_size == 0:
-        raise DatabaseError(f"Database file is empty: {file_path}")
+        raise ValueError(f"Database file is empty: {file_path}")
 
     try:
-        return load_with_retry(file_path)
-    except Exception as e:
-        print(f"Failed to load database after {max_retries} attempts: {e}")
-
-        # Try to recover with file system check
-        if not os.access(file_path, os.R_OK):
-            raise DatabaseError(f"No read permission for file: {file_path}")
-
+        # PyDatabase loads the file in its constructor and raises
+        # FileNotFoundError / ValueError on failure
+        return PyDatabase(file_path, LoadMode.Preload)
+    except PermissionError:
+        raise PermissionError(f"No read permission for file: {file_path}")
+    except ValueError as e:
+        print(f"Failed to load database: {e}")
         raise
 ```
 
@@ -158,7 +123,7 @@ def safe_load_database(file_path, max_retries=3):
 
 ```python
 import psutil
-from rustkmer.performance import DatabaseCache
+import pyrustkmer
 
 def process_large_sequence(sequence, k=31, memory_limit_gb=4):
     """Process large sequence with memory management."""
@@ -168,31 +133,26 @@ def process_large_sequence(sequence, k=31, memory_limit_gb=4):
     if available_memory < memory_limit_gb:
         print(f"Warning: Low memory ({available_memory:.1f}GB available)")
 
-    # Use caching for efficiency
-    cache = DatabaseCache(max_memory_mb=memory_limit_gb * 1024 // 2)
-
     try:
         # Process in chunks if sequence is very large
-        chunk_size = 1000000  # 1MB chunks
+        chunk_size = 1000000  # 1M bases per chunk
         if len(sequence) > chunk_size:
             print(f"Processing {len(sequence)} bp in chunks...")
 
-            counter = rustkmer.PyCounter(k)
+            counter = pyrustkmer.PyCounter(k)
             for i in range(0, len(sequence), chunk_size):
-                chunk = sequence[i:i+chunk_size]
-                counter.add_sequence(chunk)
+                counter.add_sequence(sequence[i:i+chunk_size])
 
                 # Check memory usage periodically
                 if i % (chunk_size * 10) == 0:
                     memory_usage = psutil.Process().memory_info().rss / (1024**2)
                     if memory_usage > memory_limit_gb * 1024 * 0.8:
                         print(f"Memory usage high ({memory_usage:.1f}MB), optimizing...")
-                        cache.optimize()
 
             return counter
         else:
             # For smaller sequences, process normally
-            counter = rustkmer.PyCounter(k)
+            counter = pyrustkmer.PyCounter(k)
             counter.add_sequence(sequence)
             return counter
 
@@ -210,6 +170,7 @@ def process_large_sequence(sequence, k=31, memory_limit_gb=4):
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pyrustkmer import PyDatabase, LoadMode
 
 def safe_concurrent_query(database_path, queries, max_workers=4):
     """Perform concurrent queries with error isolation."""
@@ -217,8 +178,7 @@ def safe_concurrent_query(database_path, queries, max_workers=4):
     def query_worker(query):
         """Worker function for querying."""
         try:
-            db = PyDatabase("database.rkdb", LoadMode.Preload)
-            db.load(database_path)
+            db = PyDatabase(database_path, LoadMode.Preload)
             result = db.query_exact(query)
             return query, result, None
         except Exception as e:
@@ -258,12 +218,11 @@ if errors:
 ### 6. Batch Processing with Error Recovery
 
 ```python
-from rustkmer.performance import BatchProcessor
+import os
+from pyrustkmer import PyCounter
 
 def process_file_batch(file_paths, output_dir, batch_size=10):
     """Process multiple files in batches with error recovery."""
-
-    processor = BatchProcessor(batch_size=batch_size)
 
     for batch_start in range(0, len(file_paths), batch_size):
         batch_end = min(batch_start + batch_size, len(file_paths))
@@ -277,7 +236,7 @@ def process_file_batch(file_paths, output_dir, batch_size=10):
         for file_path in batch_files:
             try:
                 # Process individual file
-                counter = rustkmer.PyCounter(31)
+                counter = PyCounter(31)
                 counter.add_from_fasta(file_path)
 
                 # Save result
@@ -311,44 +270,44 @@ def process_file_batch(file_paths, output_dir, batch_size=10):
 ### 7. Fuzzy Query with Graceful Degradation
 
 ```python
-def adaptive_fuzzy_query(database, query, max_distance=5):
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
+
+def adaptive_fuzzy_query(database, query, max_mutations=5):
     """Perform fuzzy query with adaptive parameters."""
 
     try:
-        db = PyDatabase("database.rkdb", LoadMode.Preload)
-        db.load(database)
-        fuzzy = rustkmer.FuzzyQuery(db)
+        db = PyDatabase(database, LoadMode.Preload)
+        fuzzy = PyFuzzyQuery(db)
 
         # Start with strict distance
-        results = fuzzy.query_exact(query, max_distance=1)
+        results = fuzzy.query_fuzzy(query, max_mutations=1)
 
         # If no results, gradually increase distance
-        if not results and max_distance > 1:
+        if results.total_matches == 0 and max_mutations > 1:
             print("No matches with distance=1, trying looser parameters...")
 
-            for distance in range(2, max_distance + 1):
-                results = fuzzy.query_exact(query, max_distance=distance)
-                if results:
-                    print(f"Found {len(results)} matches with distance={distance}")
+            for distance in range(2, max_mutations + 1):
+                results = fuzzy.query_fuzzy(query, max_mutations=distance)
+                if results.total_matches > 0:
+                    print(f"Found {results.total_matches} matches with distance={distance}")
                     break
 
         return results
 
-    except FuzzyQueryError as e:
+    except RuntimeError as e:
         print(f"Fuzzy query error: {e}")
 
         # Fallback to exact query
         try:
-            db = PyDatabase("database.rkdb", LoadMode.Preload)
-            db.load(database)
+            db = PyDatabase(database, LoadMode.Preload)
             exact_result = db.query_exact(query)
-            if exact_result > 0:
-                print(f"Fuzzy query failed, but exact match found: {exact_result}")
-                return [(query, exact_result)]
+            if exact_result.found:
+                print(f"Fuzzy query failed, but exact match found: {exact_result.count}")
+                return exact_result
         except Exception:
             pass
 
-        return []
+        return None
 ```
 
 ### 8. Statistics Calculation with Validation
@@ -358,27 +317,24 @@ def get_validated_stats(counter_or_db):
     """Get statistics with validation and error handling."""
 
     try:
+        # get_stats() returns an object (PyCounterStats or PyDatabaseStats),
+        # not a dict — access values as attributes
         stats = counter_or_db.get_stats()
 
-        # Validate stats structure
-        required_keys = ['k', 'total_kmers', 'unique_kmers']
-        for key in required_keys:
-            if key not in stats:
-                raise StatsError(f"Missing required statistic: {key}")
+        kmer_size = getattr(stats, "kmer_length", None) or getattr(stats, "kmer_size")
+        total_kmers = stats.total_kmers
+        unique_kmers = stats.unique_kmers
 
         # Validate values are reasonable
-        if stats['k'] <= 0 or stats['k'] > 31:
-            raise StatsError(f"Invalid k-mer size: {stats['k']}")
+        if not 1 <= kmer_size <= 64:
+            raise ValueError(f"Invalid k-mer size: {kmer_size}")
 
-        if stats['total_kmers'] < 0 or stats['unique_kmers'] < 0:
-            raise StatsError("Negative k-mer counts detected")
-
-        if stats['unique_kmers'] > stats['total_kmers']:
-            raise StatsError("More unique than total k-mers")
+        if unique_kmers > total_kmers:
+            raise ValueError("More unique than total k-mers")
 
         return stats
 
-    except StatsError as e:
+    except ValueError as e:
         print(f"Statistics validation failed: {e}")
         return None
     except Exception as e:
@@ -402,7 +358,6 @@ def get_validated_stats(counter_or_db):
 ```python
 import pyrustkmer
 import os
-from rustkmer.error_handling import error_context, safe_execute
 
 def robust_kmer_analysis(sequence_file, output_dir, k=31):
     """Complete example of robust k-mer analysis."""
@@ -421,31 +376,22 @@ def robust_kmer_analysis(sequence_file, output_dir, k=31):
 
         print(f"Processing {sequence_file} ({file_size} bytes)...")
 
-        # Step 2: Create counter with error handling
-        with error_context("create_counter"):
-            counter = rustkmer.PyCounter(k)
+        # Step 2: Create counter (raises ValueError for an invalid k)
+        counter = pyrustkmer.PyCounter(k)
 
-        # Step 3: Process file with monitoring
-        with error_context("count_kmers"):
-            counter.add_from_fasta(sequence_file)
+        # Step 3: Process file (raises ValueError on read/parse failure)
+        counter.add_from_fasta(sequence_file)
 
-        # Step 4: Get statistics with validation
-        stats = safe_execute(
-            counter.get_stats,
-            default_value=None,
-            log_errors=True
-        )
-
+        # Step 4: Get statistics
+        stats = counter.get_stats()
         if stats is None:
             raise RuntimeError("Failed to get statistics")
 
-        print(f"Counted {stats['total_kmers']} k-mers")
+        print(f"Counted {stats.total_kmers} k-mers")
 
-        # Step 5: Save database with error handling
+        # Step 5: Save database (raises ValueError on write failure)
         output_path = os.path.join(output_dir, f"output_k{k}.rkdb")
-
-        with error_context("save_database"):
-            counter.save_database(output_path)
+        counter.save_database(output_path)
 
         print(f"Results saved to: {output_path}")
 

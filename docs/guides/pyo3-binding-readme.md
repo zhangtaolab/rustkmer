@@ -4,7 +4,7 @@
 
 你的bash命令：
 ```bash
-./target/release/rustkmer prefix-query ~/Data/data/kmer/K19/R1_001.rkdb AAAAAAAA{N5}AAAAAA
+./target/release/rustkmer prefix-query ~/Data/data/kmer/K19/R1_001.rkdb -p "AAAAAAAA{N5}AAAAAA"
 ```
 
 现在可以用Python实现完全相同的功能！
@@ -13,18 +13,18 @@
 
 ### 方法1: 简单脚本
 ```bash
-# 直接使用提供的简单脚本
+# 直接使用提供的简单脚本（脚本内置数据库路径与模式，不接受命令行参数）
 cd rustkmer/pyo3/target/debug
 export PYTHONPATH="/Users/forrest/Github/rustkmer/pyo3/target/debug:$PYTHONPATH"
-/usr/bin/python3 /Users/forrest/Github/rustkmer/examples/python/simple_prefix_query.py ~/Data/data/kmer/K19/R1_001.rkdb "AAAAAAAA{N5}AAAAAA"
+/usr/bin/python3 /Users/forrest/Github/rustkmer/examples/python/simple_prefix_query.py
 ```
 
 ### 方法2: 完整功能脚本
 ```bash
-# 使用功能完整的脚本
+# 使用统一接口完整演示脚本（自动查找测试数据库，不接受命令行参数）
 cd rustkmer/pyo3/target/debug
 export PYTHONPATH="/Users/forrest/Github/rustkmer/pyo3/target/debug:$PYTHONPATH"
-/usr/bin/python3 /Users/forrest/Github/rustkmer/examples/python/prefix_query_pyo3_binding.py ~/Data/data/kmer/K19/R1_001.rkdb "AAAAAAAA{N5}AAAAAA" --with-metrics
+/usr/bin/python3 /Users/forrest/Github/rustkmer/examples/python/unified_query_example.py
 ```
 
 ### 方法3: 在Python代码中使用统一接口
@@ -33,7 +33,7 @@ from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 
 # 创建统一数据库接口
 engine = PyDatabase(
-    "python/tests/test_data/small_test.rkdb", 
+    "test_data/databases/small_test.rkdb", 
     LoadMode.Preload
 )
 
@@ -71,17 +71,17 @@ print(f"数据库统计: kmer_size={stats.kmer_size}, unique_kmers={stats.unique
 - `pyo3/src/database.rs` - 统一接口核心实现 ✅
 - `pyo3/src/lib.rs` - PyO3模块导出
 - `pyo3/build_with_python.sh` - 统一构建脚本 ✅
-- `pyo3/target/debug/librustkmer_pyo3*.so` - 编译好的扩展库
+- `pyo3/target/debug/libpyrustkmer.dylib` - 编译好的扩展库（macOS；Linux 下为 `libpyrustkmer.so`）
 
 ### Python示例脚本
 - `examples/python/simple_prefix_query.py` - 简单版本，已更新为统一接口 ✅
 - `examples/python/unified_query_example.py` - 统一接口完整演示 ✅
-- `examples/python/prefix_query_pyo3_binding.py` - 完整版本，功能丰富
+- `examples/python/demo_pyo3_binding.py` - 前缀查询演示（自建临时测试数据库，不接受命令行参数）
 - `examples/python/test_pyo3_api.py` - API测试脚本
 
 ### 测试数据
-- `python/tests/test_data/small_test.rkdb` - 测试数据库
-- `python/tests/test_data/tiny_test.rkdb` - 小型测试数据库
+- `test_data/databases/small_test.rkdb` - 测试数据库
+- `test_data/databases/tiny_test.rkdb` - 小型测试数据库
 
 ### 文档和报告
 - `docs/guides/pyo3-binding-guide.md` - 详细使用指南 ✅ 已更新
@@ -132,12 +132,12 @@ print(f"数据库统计: kmer_size={stats.kmer_size}, unique_kmers={stats.unique
 - `LoadMode.Lazy` - 懒加载模式 (最低内存占用)
 
 ### 传统接口 (兼容)
-- `PyDatabase` - 基础前缀查询引擎 (逐步弃用)
+- `PyPrefixQuery` - 基础前缀查询引擎 (逐步弃用)
 - `PyFuzzyQuery` - 模糊查询引擎 (逐步弃用)
-- `PyKmerCounter` - K-mer计数工具
+- `PyCounter` - K-mer计数工具
 - `PyDatabaseStats` - 数据库统计类
 - `PyQueryResult` - 查询结果类
-- `PyDatabaseResult` - 前缀查询结果类
+- `PyPrefixQueryResult` - 前缀查询结果类
 - `PyFuzzyResult` - 模糊查询结果类
 
 ## 🔧 环境要求
@@ -158,7 +158,7 @@ export PYTHONPATH="/Users/forrest/Github/rustkmer/pyo3/target/debug:$PYTHONPATH"
 ### 3. 测试导入
 ```python
 from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
-print("Available classes:", [x for x in dir(rustkmer_pyo3) if not x.startswith('_')])
+print("Available classes:", [x for x in dir(pyrustkmer) if not x.startswith('_')])
 ```
 
 ## 📊 功能特性
@@ -221,7 +221,7 @@ from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 
 # 创建统一数据库接口
 engine = PyDatabase(
-    "python/tests/test_data/small_test.rkdb", 
+    "test_data/databases/small_test.rkdb", 
     LoadMode.Preload
 )
 

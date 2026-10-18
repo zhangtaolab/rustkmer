@@ -1,288 +1,184 @@
-# RustKmer Python API Examples
+<!-- generated-by: gsd-doc-writer -->
+# Python API Examples
 
-This directory contains comprehensive examples demonstrating the RustKmer Python API for various bioinformatics applications and use cases.
+Python examples for the `pyrustkmer` extension module (built with PyO3 from `pyo3/src/`). Everything in the "Common Usage Patterns" section below was executed against the live module.
 
-## Overview
-
-The examples cover:
-- Basic k-mer database operations
-- Fuzzy querying and mutation analysis
-- Database management and statistics
-- Integration with popular bioinformatics libraries
-- Real-world bioinformatics workflows
-
-## Example Files
-
-### 1. **basic_usage.py** - Fundamental Operations
-Demonstrates core RustKmer functionality:
-- Database creation and loading
-- Basic k-mer queries
-- Error handling best practices
-- Context manager usage
+## Setup
 
 ```bash
-python basic_usage.py
+# Build and install the extension into your virtualenv (Python >= 3.11)
+cd pyo3
+pip install maturin
+maturin develop --release
+
+# Verify the import surface
+python -c "import pyrustkmer; print([n for n in dir(pyrustkmer) if not n.startswith('_')])"
 ```
 
-**Key Features:**
-- Simple database querying
-- Multiple k-mer queries
-- Error handling patterns
-- Database statistics retrieval
+Expected exports: `LoadMode`, `PyCounter`, `PyCounterStats`, `PyDatabase`, `PyDatabaseStats`, `PyExtendedPrefixQuery`, `PyFormatter`, `PyFuzzyMatch`, `PyFuzzyQuery`, `PyFuzzyResult`, `PyPrefixQuery`, `PyPrefixQueryMetrics`, `PyPrefixQueryResult`, `PyQueryResult`, `RustKmerError`.
 
-### 2. **fuzzy_search.py** - Advanced Fuzzy Queries
-Comprehensive fuzzy querying examples:
-- Basic fuzzy queries with mutation tolerance
-- Position-specific mutations
-- Batch fuzzy queries
-- Performance optimization
-- Mutation pattern analysis
+## Files in This Directory
 
-```bash
-python fuzzy_search.py
+| File | Topic |
+|------|-------|
+| `basic_usage.py` | Database creation, loading, and queries |
+| `fuzzy_search.py` | Fuzzy queries and mutation analysis |
+| `database_operations.py` | Statistics, dumping, and exports |
+| `integration_pandas.py` | pandas/matplotlib analysis of k-mer tables |
+| `integration_biopython.py` | BioPython workflows over FASTA/FASTQ |
+
+These companion scripts were drafted against an earlier binding surface and do not currently run unmodified: they import `KmerCounter` (the module now exports `PyCounter`), and some code blocks are mis-indented. Treat them as topical outlines and pair them with the verified patterns below when writing new code.
+
+For scripts that run against the current API today, see the repository's [`examples/python/`](../../../examples/python/) directory: `demo_pyo3_binding.py`, `unified_query_example.py`, `simple_prefix_query.py`, `demo_fuzzy.py`, `demo_fuzzy_enhanced.py`, `demo_performance.py`, `demo_position_mutations_fixed.py`, `validate_position_mutations.py`, and `test_pyo3_api.py`.
+
+## Common Usage Patterns (verified)
+
+### Counting and building a database
+
+```python
+from pyrustkmer import PyCounter
+
+counter = PyCounter(31, canonical=True, threads=4)  # k, canonical, capacity, threads
+counter.add_from_fasta("sequences.fasta")           # .gz/.bz2/.xz transparent
+counter.add_from_fastq("reads.fastq.gz")
+
+stats = counter.get_stats()
+print(stats.total_kmers, stats.unique_kmers, stats.memory_usage)
+
+counter.save_database("output.rkdb")                # sorted .rkdb, binary v2
 ```
 
-**Key Features:**
-- Mutation tolerance levels
-- Position-specific mutation control
-- Batch processing for multiple queries
-- Performance benchmarking
-- Mutation hot-spot analysis
+### Opening a database and querying
 
-### 3. **database_operations.py** - Database Management
-Complete database operations guide:
-- Database statistics and metadata
-- Database dumping and exporting
-- Database backup and validation
-- Database comparison and analysis
-- Large database handling
+```python
+from pyrustkmer import PyDatabase, LoadMode
 
-```bash
-python database_operations.py
+db = PyDatabase("output.rkdb", LoadMode.Preload)    # exactly two arguments
+
+result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATC")
+print(result.count, result.found)                   # PyQueryResult(kmer, count, found)
+
+batch = db.query_exact_batch(["ATCGATCGATCGATCGATCGATCGATCGATC",
+                              "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCT"])
+for kmer, r in batch.items():                       # dict: input string -> PyQueryResult
+    print(kmer, r.count)
 ```
 
-**Key Features:**
-- Comprehensive statistics analysis
-- Export to various formats (TSV, CSV)
-- Backup with integrity validation
-- Database comparison and overlap analysis
-- Memory-efficient processing
+### Database statistics
 
-### 4. **integration_pandas.py** - Data Analysis Integration
-Integration with pandas for data analysis:
-- Database content analysis with pandas
-- K-mer abundance analysis
-- Similarity and clustering
-- Performance benchmarking
-- Visualization examples
-
-```bash
-python integration_pandas.py
+```python
+stats = db.get_stats()  # PyDatabaseStats
+print(f"k={stats.kmer_size} unique={stats.unique_kmers}")
+print(f"sorted={stats.is_sorted} canonical={stats.canonical} size={stats.file_size}")
 ```
 
-**Key Features:**
-- Pandas DataFrame integration
-- Statistical analysis of k-mer data
-- Clustering and similarity analysis
-- Visualization with matplotlib/seaborn
-- Performance optimization
+### Fuzzy queries
 
-### 5. **integration_biopython.py** - BioPython Workflows
-Integration with BioPython for bioinformatics:
-- Working with Bio.Seq objects
-- FASTA/FASTQ file processing
-- Sequence similarity analysis
-- Transcriptome analysis
-- Metagenomics profiling
-- Protein domain analysis
+```python
+from pyrustkmer import PyFuzzyQuery
 
-```bash
-python integration_biopython.py
+fq = PyFuzzyQuery(db)                        # wraps the PyDatabase instance
+result = fq.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATN", 1)  # pattern, max_mutations
+
+print(result.total_matches, result.mutation_tolerance, result.query_time_ms)
+for m in result.get_top_matches(10):         # sorted by count
+    print(m.kmer, m.count, m.distance)       # distance can be None (wildcard hits)
+
+# Position-scoped mutations: "0,1:1" = up to 1 mutation among positions 0 and 1
+result = fq.query_fuzzy_position("ATCGATCGATCGATCGATCGATCGATCGATC",
+                                 1, "0,1:1")
 ```
 
-**Key Features:**
-- BioPython SeqRecord integration
-- Feature annotation handling
-- Transcript expression analysis
-- Metagenome composition analysis
-- Protein domain detection
+### Dumping and exporting
+
+```python
+# Paginate over decoded sequences (recommended)
+for entry in db.export_all_kmers(limit=1000, offset=0):
+    print(entry.kmer, entry.count)
+
+# Note: db.dump(limit) returns k-mers as hex strings; prefer export_all_kmers.
+
+# File exports (all return the number of k-mers written)
+db.export_to_file("kmers.tsv")                       # "kmer<TAB>count" lines
+db.export_to_csv("kmers.csv")                        # header + kmer,count
+db.export_to_json("kmers.json")                      # [{"kmer": ..., "count": ...}]
+db.export_to_file("kmers.tsv", limit=1000, offset=0,
+                  progress_callback=lambda cur, tot: print(f"{cur}/{tot}"))
+```
+
+### Merging databases
+
+```python
+PyDatabase.merge(["db1.rkdb", "db2.rkdb"], "merged.rkdb",
+                 max_memory="4GB", merge_mode="streaming")
+# merge_mode: "auto" (default) | "memory" | "streaming"; max_memory e.g. "4GB", "512MB"
+```
+
+### Error handling
+
+The binding raises built-in exceptions — no custom exception classes to import:
+
+```python
+try:
+    db = PyDatabase("missing.rkdb", LoadMode.Preload)
+except FileNotFoundError as e:
+    print(e)                  # Database file not found: missing.rkdb
+
+try:
+    db.query_exact("ATCG")    # wrong length for this database
+except ValueError as e:
+    print(e)                  # K-mer length 4 does not match database k-mer size 31
+```
+
+(`RustKmerError` is exported for catching errors raised by the Rust core with `message` and `error_type` attributes.)
+
+## Integration Snippets
+
+### pandas
+
+```python
+import pandas as pd
+from pyrustkmer import PyDatabase, LoadMode
+
+db = PyDatabase("output.rkdb", LoadMode.Preload)
+df = pd.DataFrame(
+    [{"kmer": e.kmer, "count": e.count} for e in db.export_all_kmers(limit=100000)]
+)
+print(df["count"].describe())
+df.to_csv("kmers.csv", index=False)
+```
+
+### BioPython
+
+```python
+from Bio import SeqIO
+from pyrustkmer import PyCounter
+
+counter = PyCounter(31, canonical=True)
+for record in SeqIO.parse("sequences.fasta", "fasta"):
+    counter.add_sequence(str(record.seq))
+counter.save_database("biopython_built.rkdb")
+```
 
 ## Requirements
 
-Install the required packages:
-
 ```bash
-# Core requirements
-pip install rustkmer
+# Core (from the repository)
+cd pyo3 && maturin develop --release
 
-# For integration examples
+# For the integration examples
 pip install pandas matplotlib seaborn biopython
-```
-
-## Common Usage Patterns
-
-### Context Manager (Recommended)
-```python
-from pyrustkmer import Database
-
-# Automatically handles opening/closing
-db = PyDatabase("your_database.rkdb", LoadMode.Preload, LoadMode.Preload)
-    result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
-    print(f"Count: {result.count}")
-```
-
-### Fuzzy Queries with Position Mutations
-```python
-db = PyDatabase("database.rkdb", LoadMode.Preload, LoadMode.Preload)
-    # Allow mutations at specific positions
-    result = fuzzy.query_fuzzy(
-        "ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
-        mutations=2,
-        position_mutations="10,15:1;20,25:2"  # Format: position:budget
-    )
-```
-
-### Batch Processing
-```python
-kmer_list = ["ATCGATCG...", "GCTAGCTA...", "TTTTTTTT..."]
-batch_result = db.fuzzy_query_batch(
-    kmer_list,
-    mutations=1,
-    max_workers=4
-)
-```
-
-### Database Statistics
-```python
-stats = db.get_stats()
-print(f"Unique k-mers: {stats.unique_kmers:,}")
-print(f"Total counts: {stats.total_counts:,}")
-print(f"File size: {stats.file_size:,} bytes")
 ```
 
 ## Performance Tips
 
-1. **Use Context Managers**: Automatically handles resource cleanup
-2. **Batch Queries**: More efficient than individual queries
-3. **Canonical K-mers**: Reduces database size and improves query speed
-4. **Appropriate K-mer Size**: Balance between specificity and database size
-5. **Memory-Efficient Processing**: Use generators for large datasets
+1. **Batch queries** (`query_exact_batch`) amortize lookups; avoid tight one-at-a-time loops.
+2. **Load modes**: `Preload` for fastest queries, `Lazy` for lower memory, `MemoryMapped` for direct file access (`get_entry_by_index`).
+3. **Canonical counting** (`canonical=True`) halves the k-mer universe for strand-agnostic workloads.
+4. **Threads**: `PyCounter(..., threads=N)` sizes the Rayon pool; the first construction wins (later values are ignored, logged under `RUST_LOG=warn`).
+5. **Paginate big exports** with `export_all_kmers(limit, offset)` or the `progress_callback` of `export_to_*`.
 
-## Example Workflows
+## Next Steps
 
-### Simple K-mer Counting
-```python
-from pyrustkmer import KmerCounter
-
-# Create counter
-counter = KmerCounter(k=31, canonical=True)
-
-# Count from FASTA file
-counter.add_from_fasta("sequences.fasta")
-
-# Save to database
-counter.save_database("output.rkdb")
-```
-
-### Fuzzy Search Pipeline
-```python
-db = PyDatabase("database.rkdb", LoadMode.Preload, LoadMode.Preload)
-    # Query with mutations
-    result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATCGATCG", mutations=2)
-
-    # Get top matches
-    top_matches = result.get_top_matches(10)
-
-    for match in top_matches:
-        print(f"{match.kmer}: {match.count} (distance={match.distance})")
-```
-
-### Integration with Pandas
-```python
-import pandas as pd
-from pyrustkmer import Database
-
-# Extract database content to DataFrame
-db = PyDatabase("database.rkdb", LoadMode.Preload, LoadMode.Preload)
-    data = []
-    for result in db.dump(limit=10000):
-        data.append({
-            'kmer': result.kmer,
-            'count': result.count,
-            'canonical': result.canonical
-        })
-
-    df = pd.DataFrame(data)
-
-    # Analyze
-    print(f"Database contains {len(df)} k-mers")
-    print(f"Mean count: {df['count'].mean():.1f}")
-    print(f"Max count: {df['count'].max()}")
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Database Not Found**: Ensure database file exists and is readable
-2. **Invalid K-mers**: Check that k-mers contain only A,T,C,G characters
-3. **Memory Issues**: Use smaller k-mer sizes or process in chunks
-4. **Performance**: Use batch queries and appropriate k-mer sizes
-
-### Error Handling
-```python
-from pyrustkmer import Database, DatabaseNotFoundError, InvalidKmerError
-
-try:
-    db = PyDatabase("database.rkdb", LoadMode.Preload, LoadMode.Preload)
-        result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
-except DatabaseNotFoundError:
-    print("Database file not found")
-except InvalidKmerError as e:
-    print(f"Invalid k-mer: {e}")
-```
-
-## Advanced Examples
-
-### Custom Analysis Pipeline
-```python
-def analyze_transcriptome(transcripts_fasta, output_dir):
-    """Analyze transcriptome with RustKmer."""
-
-    # Create database
-    counter = KmerCounter(k=25, canonical=True)
-    counter.add_from_fasta(transcripts_fasta)
-    db_path = os.path.join(output_dir, "transcriptome.rkdb")
-    counter.save_database(db_path)
-
-    # Analyze with pandas
-    with Database(db_path) as db:
-        stats = db.get_stats()
-
-        # Export top k-mers
-        data = []
-        for result in db.dump(limit=1000, canonical_only=True):
-            data.append({'kmer': result.kmer, 'count': result.count})
-
-        df = pd.DataFrame(data)
-        df.to_csv(os.path.join(output_dir, "top_kmers.csv"), index=False)
-
-    return stats
-```
-
-## Contributing
-
-To add new examples:
-
-1. Create a new Python file in this directory
-2. Follow the existing code style and documentation
-3. Include comprehensive error handling
-4. Add the example to this README
-5. Test with sample data
-
-## Support
-
-For questions or issues:
-- Check the [main documentation](../../../docs/)
-- Review the API reference
-- Open an issue on the GitHub repository
+- [Basic Usage](../basic-usage.md), [Fuzzy Search](../fuzzy-search.md), [Data Export](../data-export.md)
+- Repository examples: [`examples/python/`](../../../examples/python/), [`examples/README.md`](../../../examples/README.md)

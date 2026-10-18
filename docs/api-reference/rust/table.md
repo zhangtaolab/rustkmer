@@ -32,7 +32,7 @@ New KmerCounter instance
 #### increment
 
 ```rust
-pub fn increment(&self, kmer_encoded: u64) -> ProcessingResult<()> {
+pub fn increment(&self, kmer_encoded: u128) -> ProcessingResult<()> {
 ```
 
 Increment the count for a k-mer
@@ -46,7 +46,7 @@ Result indicating success or error
 #### get_count
 
 ```rust
-pub fn get_count(&self, kmer_encoded: u64) -> Option<u32> {
+pub fn get_count(&self, kmer_encoded: u128) -> Option<u32> {
 ```
 
 Get the count for a specific k-mer
@@ -60,7 +60,7 @@ Number of occurrences, or None if not found
 #### get_all_counts
 
 ```rust
-pub fn get_all_counts(&self) -> Vec<(u64, u32)> {
+pub fn get_all_counts(&self) -> Vec<(u128, u32)> {
 ```
 
 Get all k-mer counts as a vector
@@ -71,7 +71,7 @@ Vector of (kmer_encoded, count) pairs
 #### get_top_n
 
 ```rust
-pub fn get_top_n(&self, n: usize) -> Vec<(u64, u32)> {
+pub fn get_top_n(&self, n: usize) -> Vec<(u128, u32)> {
 ```
 
 Get the top N most frequent k-mers
@@ -85,7 +85,7 @@ Vector of (kmer_encoded, count) pairs sorted by count descending
 #### filter_by_count
 
 ```rust
-pub fn filter_by_count(&self, min_count: u32, max_count: u32) -> Vec<(u64, u32)> {
+pub fn filter_by_count(&self, min_count: u32, max_count: u32) -> Vec<(u128, u32)> {
 ```
 
 Filter k-mers by count range
@@ -100,7 +100,7 @@ Vector of (kmer_encoded, count) pairs within the specified range
 #### get_filtered_kmers
 
 ```rust
-pub fn get_filtered_kmers(&self, filter: &Option<CountFilter>) -> Vec<(u64, u32)> {
+pub fn get_filtered_kmers(&self, filter: &Option<CountFilter>) -> Vec<(u128, u32)> {
 ```
 
 Get k-mers with filtering applied using CountFilter
@@ -190,7 +190,7 @@ Statistics struct with current counts
 #### get_all_kmers
 
 ```rust
-pub fn get_all_kmers(&self) -> Vec<(u64, u32)> {
+pub fn get_all_kmers(&self) -> Vec<(u128, u32)> {
 ```
 
 Get all k-mers as a vector (alias for get_all_counts)
@@ -274,4 +274,4 @@ Build the KmerCounter
 
 ---
 
-*Source: [`table.rs`](../../../hash/table.rs)*
+*Source: [`table.rs`](../../../src/hash/table.rs)*

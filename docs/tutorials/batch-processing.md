@@ -1,3 +1,4 @@
+<!-- generated-by: gsd-doc-writer -->
 # Batch Processing with Python API
 
 This tutorial demonstrates efficient batch processing techniques for handling multiple k-mer queries, large datasets, and automated workflows using the RustKmer Python API.
@@ -12,7 +13,7 @@ You'll learn to:
 - Build automated k-mer analysis pipelines
 
 ### Prerequisites
-- Python 3.8+ with RustKmer installed
+- Python 3.11+ with RustKmer installed (`pip install pyrustkmer`)
 - Understanding of basic k-mer operations
 - Multiple FASTA files for batch processing
 - 20-30 minutes to complete
@@ -45,20 +46,18 @@ project/
 
 ### Process Multiple FASTA Files
 
+Note that `PyCounter` parallelizes counting internally via Rayon (see its `threads` argument), so a simple loop over files already uses all cores per file. A separate Python thread pool on top usually adds little and can oversubscribe the machine.
+
 ```python
 #!/usr/bin/env python3
 """
 Batch processing of multiple FASTA files for k-mer analysis.
 """
 
-import os
-import glob
 import time
 import pandas as pd
 from pathlib import Path
-from pyrustkmer import KmerCounter, Database
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import multiprocessing
+from pyrustkmer import PyCounter
 
 class BatchKmerProcessor:
     """Efficient batch processor for multiple FASTA files."""
@@ -67,7 +66,9 @@ class BatchKmerProcessor:
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
         self.k = k
-        self.workers = workers or min(multiprocessing.cpu_count(), 4)
+        # `workers` is accepted for interface compatibility; counting itself
+        # is already parallelized inside PyCounter via Rayon.
+        self.workers = workers
 
         # Create output directory
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -79,43 +80,33 @@ class BatchKmerProcessor:
                           list(self.input_dir.glob("*.fasta.gz"))
 
         print(f"Found {len(self.fasta_files)} FASTA files")
-        print(f"Using {self.workers} workers")
 
     def process_all_files(self):
-        """Process all FASTA files in parallel."""
+        """Process all FASTA files."""
 
-        print(f"\n🔄 Processing {len(self.fasta_files)} files...")
+        print(f"\nProcessing {len(self.fasta_files)} files...")
         start_time = time.time()
 
-        # Process files in parallel
-        with ThreadPoolExecutor(max_workers=self.workers) as executor:
-            # Submit all tasks
-            future_to_file = {
-                executor.submit(self._process_single_file, fasta_file): fasta_file
-                for fasta_file in self.fasta_files
-            }
-
-            # Collect results
-            results = {}
-            for future in as_completed(future_to_file):
-                fasta_file = future_to_file[future]
-                try:
-                    result = future.result()
-                    results[fasta_file] = result
-                    print(f"✅ Processed: {fasta_file.name}")
-                except Exception as e:
-                    print(f"❌ Failed to process {fasta_file.name}: {e}")
-                    results[fasta_file] = None
+        results = {}
+        for fasta_file in self.fasta_files:
+            try:
+                result = self._process_single_file(fasta_file)
+                results[fasta_file] = result
+                print(f"Processed: {fasta_file.name}")
+            except Exception as e:
+                print(f"Failed to process {fasta_file.name}: {e}")
+                results[fasta_file] = None
 
         processing_time = time.time() - start_time
         successful = sum(1 for r in results.values() if r is not None)
 
-        print(f"\n📊 Processing Summary:")
+        print(f"\nProcessing Summary:")
         print(f"   Total files: {len(self.fasta_files)}")
         print(f"   Successful: {successful}")
         print(f"   Failed: {len(self.fasta_files) - successful}")
         print(f"   Processing time: {processing_time:.1f} seconds")
-        print(f"   Average time per file: {processing_time/len(self.fasta_files):.1f} seconds")
+        if self.fasta_files:
+            print(f"   Average time per file: {processing_time/len(self.fasta_files):.1f} seconds")
 
         return results
 
@@ -127,7 +118,7 @@ class BatchKmerProcessor:
 
         # Skip if already processed
         if db_file.exists():
-            print(f"⏭️  Skipping {fasta_file.name} (already processed)")
+            print(f"Skipping {fasta_file.name} (already processed)")
             return {
                 'input_file': fasta_file,
                 'output_file': db_file,
@@ -136,40 +127,28 @@ class BatchKmerProcessor:
                 'unique_kmers': 0
             }
 
-        try:
-            print(f"🧬 Processing {fasta_file.name}...")
+        print(f"Processing {fasta_file.name}...")
 
-            # Create k-mer counter
-            counter = PyCounter(self.k, canonical=True)
+        # Create k-mer counter (counting is parallelized internally by Rayon)
+        counter = PyCounter(self.k, canonical=True)
 
-            # Count k-mers from file
-            counter.add_from_fasta(str(fasta_file))
+        # Count k-mers from file (.gz/.bz2/.xz compression is handled
+        # transparently by add_from_fasta)
+        counter.add_from_fasta(str(fasta_file))
 
-            # Get statistics
-            total_kmers = counter.get_stats().total_kmers)
-            unique_kmers = counter.get_unique_count()
+        # Get statistics
+        stats = counter.get_stats()
 
-            # Save database
-            counter.save_database(str(db_file))
+        # Save database
+        counter.save_database(str(db_file))
 
-            return {
-                'input_file': fasta_file,
-                'output_file': db_file,
-                'status': 'success',
-                'total_kmers': total_kmers,
-                'unique_kmers': unique_kmers
-            }
-
-        except Exception as e:
-            print(f"❌ Error processing {fasta_file.name}: {e}")
-            return {
-                'input_file': fasta_file,
-                'output_file': db_file,
-                'status': 'error',
-                'error': str(e),
-                'total_kmers': 0,
-                'unique_kmers': 0
-            }
+        return {
+            'input_file': fasta_file,
+            'output_file': db_file,
+            'status': 'success',
+            'total_kmers': stats.total_kmers,
+            'unique_kmers': stats.unique_kmers
+        }
 
     def generate_summary_report(self, results):
         """Generate summary report of batch processing."""
@@ -192,11 +171,11 @@ class BatchKmerProcessor:
         # Save summary
         summary_file = self.output_dir / "batch_processing_summary.csv"
         df.to_csv(summary_file, index=False)
-        print(f"\n📋 Summary report saved to: {summary_file}")
+        print(f"\nSummary report saved to: {summary_file}")
 
         # Print statistics
         if len(df) > 0:
-            print(f"\n📊 Batch Processing Statistics:")
+            print(f"\nBatch Processing Statistics:")
             print(f"   Total samples processed: {len(df)}")
             print(f"   Total k-mers across all samples: {df['Total_kmers'].sum():,}")
             print(f"   Average unique k-mers per sample: {df['Unique_kmers'].mean():,.0f}")
@@ -211,20 +190,19 @@ if __name__ == "__main__":
     processor = BatchKmerProcessor(
         input_dir="samples/",
         output_dir="results/databases/",
-        k=31,
-        workers=4
+        k=31
     )
 
     results = processor.process_all_files()
     summary_df = processor.generate_summary_report(results)
 ```
 
-### Parallel Batch Querying
+### Batch Querying Across Samples
 
 ```python
-from pyrustkmer import Database
-from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 import pandas as pd
+from pyrustkmer import PyDatabase, LoadMode
 
 class BatchKmerQuery:
     """Efficient batch k-mer querying across multiple samples."""
@@ -234,28 +212,19 @@ class BatchKmerQuery:
         self.queries = queries
         self.results = {}
 
-    def query_all_databases(self, max_workers=4):
+    def query_all_databases(self):
         """Query all databases for all k-mers."""
 
         print(f"Querying {len(self.queries)} k-mers across {len(self.database_files)} databases")
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit queries for each database
-            future_to_db = {
-                executor.submit(self._query_single_database, db_file): db_file
-                for db_file in self.database_files
-            }
-
-            # Collect results
-            for future in as_completed(future_to_db):
-                db_file = future_to_db[future]
-                try:
-                    db_results = future.result()
-                    self.results[db_file] = db_results
-                    print(f"✅ Queried: {db_file.name}")
-                except Exception as e:
-                    print(f"❌ Failed to query {db_file.name}: {e}")
-                    self.results[db_file] = None
+        for db_file in self.database_files:
+            try:
+                db_results = self._query_single_database(db_file)
+                self.results[db_file] = db_results
+                print(f"Queried: {db_file.name}")
+            except Exception as e:
+                print(f"Failed to query {db_file.name}: {e}")
+                self.results[db_file] = None
 
         return self.results
 
@@ -264,23 +233,19 @@ class BatchKmerQuery:
 
         results = {}
 
-        try:
-            db = PyDatabase(str(db_file), LoadMode.Preload)
-                for query in self.queries:
-                    try:
-                        result = db.query_exact(query)
-                        results[query] = {
-                            'count': result.count,
-                            'present': result.found,
-                            'canonical': result.canonical
-                        }
-                    except Exception as e:
-                        print(f"Query failed for {query[:10]}...: {e}")
-                        results[query] = {'count': 0, 'present': False, 'canonical': None}
+        # LoadMode is a required second constructor argument
+        db = PyDatabase(str(db_file), LoadMode.Preload)
 
-        except Exception as e:
-            print(f"Database access failed for {db_file}: {e}")
-            return None
+        for query in self.queries:
+            try:
+                result = db.query_exact(query)
+                results[query] = {
+                    'count': result.count,
+                    'present': result.found
+                }
+            except Exception as e:
+                print(f"Query failed for {query[:10]}...: {e}")
+                results[query] = {'count': 0, 'present': False}
 
         return results
 
@@ -333,6 +298,7 @@ class BatchKmerQuery:
 
         # Analyze each k-mer across samples
         analysis = []
+        valid_results = [r for r in self.results.values() if r]
 
         for query in self.queries:
             presence_count = 0
@@ -348,9 +314,9 @@ class BatchKmerQuery:
             analysis.append({
                 'kmer': query,
                 'samples_present': presence_count,
-                'samples_total': len([r for r in self.results.values() if r]),
-                'presence_frequency': presence_count / len([r for r in self.results.values() if r]),
-                'total_counts': total_count,
+                'samples_total': len(valid_results),
+                'presence_frequency': presence_count / len(valid_results) if valid_results else 0,
+                'total_kmer_counts': total_count,
                 'mean_count': total_count / presence_count if presence_count > 0 else 0,
                 'samples_with_kmer': samples_with_kmer
             })
@@ -380,11 +346,15 @@ if __name__ == "__main__":
     analysis_df.to_csv("results/kmer_analysis.csv", index=False)
 ```
 
+For pure exact-match workloads, `PyDatabase.query_exact_batch(queries)` performs the batch lookup in one call and returns a dict of `{kmer: PyQueryResult}`.
+
 ---
 
 ## Strategy 2: Database Merging
 
 ### Merge Multiple K-mer Databases
+
+`PyDatabase.merge()` is a static method that merges multiple `.rkdb` files into one output file. It goes through the same bounded core as the CLI's `merge` command: the total k-mer count is read from the input headers, compared against the memory budget, and the merge is routed to an in-memory or streaming path accordingly. The output file is written directly by the merge — the merged database is never held in RAM.
 
 ```python
 #!/usr/bin/env python3
@@ -392,12 +362,8 @@ if __name__ == "__main__":
 Merge multiple k-mer databases into a single comprehensive database.
 """
 
-import os
-import glob
-import time
 from pathlib import Path
-from pyrustkmer import Database, KmerCounter
-import pandas as pd
+from pyrustkmer import PyDatabase, LoadMode
 
 class DatabaseMerger:
     """Merge multiple k-mer databases efficiently."""
@@ -410,114 +376,38 @@ class DatabaseMerger:
         self.db_files = list(self.input_dir.glob("*.rkdb"))
         print(f"Found {len(self.db_files)} database files to merge")
 
-    def merge_databases_strategy1(self, strategy='union'):
-        """Merge databases using re-counting strategy (most reliable)."""
+    def merge_databases(self, max_memory=None, merge_mode="auto"):
+        """Merge databases using PyDatabase.merge().
 
-        print(f"\n🔄 Merging databases using re-counting strategy...")
-        start_time = time.time()
+        Args:
+            max_memory: Optional memory budget string (e.g. "4GB", "512MB").
+                Defaults to 50% of system memory when omitted.
+            merge_mode: "auto" (default), "memory", or "streaming" — same
+                semantics as the CLI's --merge-mode flag.
+        """
 
-        # Extract original FASTA files if available
-        fasta_files = []
-        for db_file in self.db_files:
-            # Look for corresponding FASTA file
-            base_name = db_file.stem.replace('_k31', '').replace('_k21', '')
-            possible_fasta = self.input_dir / f"{base_name}.fasta"
-            if possible_fasta.exists():
-                fasta_files.append(possible_fasta)
+        print(f"\nMerging databases...")
+        input_paths = [str(f) for f in self.db_files]
 
-        if fasta_files:
-            print(f"Found {len(fasta_files)} original FASTA files")
-            return self._merge_from_fasta(fasta_files)
-        else:
-            print("No original FASTA files found, using database dump strategy")
-            return self._merge_from_databases()
+        # Static call: writes the merged output file directly
+        PyDatabase.merge(
+            input_paths,
+            str(self.output_file),
+            max_memory=max_memory,
+            merge_mode=merge_mode,
+        )
 
-    def _merge_from_fasta(self, fasta_files):
-        """Merge by re-counting from original FASTA files."""
+        # Read back statistics from the merged database
+        merged = PyDatabase(str(self.output_file), LoadMode.Preload)
+        stats = merged.get_stats()
 
-        # Get k-mer size from first database
-        db = PyDatabase(str(self.db_files[0])) as db:
-            stats = db.get_stats()
-            k = stats.kmer_size
-
-        print(f"Using k-mer size: {k}")
-
-        # Create merged counter
-        merged_counter = PyCounter(k, canonical=True)
-
-        # Count k-mers from all FASTA files
-        for fasta_file in fasta_files:
-            print(f"Processing: {fasta_file.name}")
-            merged_counter.add_from_fasta(str(fasta_file))
-
-        # Save merged database
-        merged_counter.save_database(str(self.output_file))
-
-        # Get statistics
-        total_kmers = merged_counter.get_stats().total_kmers)
-        unique_kmers = merged_counter.get_unique_count()
-
-        print(f"\n✅ Merge completed:")
-        print(f"   Total k-mers: {total_kmers:,}")
-        print(f"   Unique k-mers: {unique_kmers:,}")
+        print(f"\nMerge completed:")
+        print(f"   Unique k-mers: {stats.unique_kmers:,}")
         print(f"   Output file: {self.output_file}")
 
         return {
-            'total_kmers': total_kmers,
-            'unique_kmers': unique_kmers,
-            'output_file': self.output_file,
-            'input_files': len(fasta_files)
-        }
-
-    def _merge_from_databases(self):
-        """Merge by extracting and re-counting from databases."""
-
-        print("Extracting k-mers from databases...")
-
-        # Get k-mer size from first database
-        db = PyDatabase(str(self.db_files[0])) as db:
-            stats = db.get_stats()
-            k = stats.kmer_size
-
-        # Create temporary FASTA for all k-mers
-        temp_fasta = self.input_dir / "temp_all_kmers.fasta"
-
-        with open(temp_fasta, 'w') as out_f:
-            kmer_count = 0
-
-            for db_file in self.db_files:
-                print(f"Extracting from: {db_file.name}")
-
-                db = PyDatabase(str(db_file), LoadMode.Preload)
-                    # Dump all k-mers (consider using a limit for very large databases)
-                    for result in db.dump(limit=1000000):  # Limit to 1M per database for demo
-                        # Write k-mer with count as sequence name
-                        out_f.write(f">kmer_{kmer_count}_count_{result.count}\n")
-                        out_f.write(f"{result.canonical}\n")
-                        kmer_count += 1
-
-        print(f"Extracted {kmer_count:,} k-mers")
-
-        # Re-count from extracted k-mers
-        merged_counter = PyCounter(k, canonical=True)
-        merged_counter.add_from_fasta(str(temp_fasta))
-        merged_counter.save_database(str(self.output_file))
-
-        # Clean up temporary file
-        temp_fasta.unlink()
-
-        # Get statistics
-        total_kmers = merged_counter.get_stats().total_kmers)
-        unique_kmers = merged_counter.get_unique_count()
-
-        print(f"\n✅ Merge completed:")
-        print(f"   Total k-mers: {total_kmers:,}")
-        print(f"   Unique k-mers: {unique_kmers:,}")
-        print(f"   Output file: {self.output_file}")
-
-        return {
-            'total_kmers': total_kmers,
-            'unique_kmers': unique_kmers,
+            'unique_kmers': stats.unique_kmers,
+            'total_kmers': stats.total_kmers,
             'output_file': self.output_file,
             'input_files': len(self.db_files)
         }
@@ -530,14 +420,14 @@ class DatabaseMerger:
 
         for db_file in self.db_files:
             try:
-                db = PyDatabase(str(db_file), LoadMode.Preload)
-                    stats = db.get_stats()
-                    input_stats.append({
-                        'Database': db_file.name,
-                        'Unique_kmers': stats.unique_kmers,
-                        'Total_counts': stats.total_counts,
-                        'File_size_mb': db_file.stat().st_size / (1024*1024)
-                    })
+                db = PyDatabase(str(db_file), LoadMode.Lazy)
+                stats = db.get_stats()
+                input_stats.append({
+                    'Database': db_file.name,
+                    'Unique_kmers': stats.unique_kmers,
+                    'Total_kmers': stats.total_kmers,
+                    'File_size_mb': db_file.stat().st_size / (1024*1024)
+                })
             except Exception as e:
                 print(f"Could not read {db_file.name}: {e}")
 
@@ -551,7 +441,7 @@ class DatabaseMerger:
 ## Summary
 - **Input databases**: {len(self.db_files)}
 - **Output database**: {self.output_file}
-- **Merge strategy**: Re-counting from sources
+- **Merge strategy**: PyDatabase.merge (memory-bounded, streaming when over budget)
 - **Total input unique k-mers**: {total_input_kmers:,}
 - **Merged unique k-mers**: {merged_kmers:,}
 - **Overlap ratio**: {overlap_ratio:.2%}
@@ -564,7 +454,7 @@ class DatabaseMerger:
             report += f"""
 - **{stat['Database']}**
   - Unique k-mers: {stat['Unique_kmers']:,}
-  - Total counts: {stat['Total_counts']:,}
+  - Total k-mers: {stat['Total_kmers']:,}
   - File size: {stat['File_size_mb']:.1f} MB
 """
 
@@ -573,7 +463,7 @@ class DatabaseMerger:
         with open(report_file, 'w') as f:
             f.write(report)
 
-        print(f"\n📋 Merge report saved to: {report_file}")
+        print(f"\nMerge report saved to: {report_file}")
         return report_file
 
 # Usage
@@ -584,9 +474,11 @@ if __name__ == "__main__":
         output_file="results/merged_database.rkdb"
     )
 
-    merge_result = merger.merge_databases_strategy1()
+    merge_result = merger.merge_databases(max_memory="4GB")
     merger.create_merge_report(merge_result)
 ```
+
+`merge_mode="memory"` refuses to run over budget instead of risking an OOM (raising a `RuntimeError`), while `"streaming"` always streams. Invalid `merge_mode` or `max_memory` values raise `ValueError` at the Python boundary.
 
 ---
 
@@ -600,14 +492,11 @@ if __name__ == "__main__":
 Complete automated pipeline for batch k-mer analysis of multiple samples.
 """
 
-import os
-import sys
 import time
 import argparse
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
-from concurrent.futures import ThreadPoolExecutor
 import multiprocessing
 
 # Import our custom classes
@@ -626,7 +515,7 @@ class KmerAnalysisPipeline:
     def run_complete_pipeline(self):
         """Run the complete analysis pipeline."""
 
-        print("🧬 K-mer Analysis Pipeline")
+        print("K-mer Analysis Pipeline")
         print("=" * 50)
 
         pipeline_start = time.time()
@@ -655,7 +544,7 @@ class KmerAnalysisPipeline:
         print(f"\n{'='*20} STEP 5: Generate Report {'='*20}")
         self._generate_final_report(pipeline_start)
 
-        print(f"\n🎉 Pipeline completed successfully!")
+        print(f"\nPipeline completed successfully!")
         print(f"Results saved to: {self.results_dir}")
 
     def _run_batch_processing(self):
@@ -665,7 +554,6 @@ class KmerAnalysisPipeline:
             input_dir=self.config['input_dir'],
             output_dir=self.results_dir / "databases",
             k=self.config['kmer_size'],
-            workers=self.config.get('workers', multiprocessing.cpu_count())
         )
 
         self.batch_results = processor.process_all_files()
@@ -708,7 +596,7 @@ class KmerAnalysisPipeline:
             output_file=self.results_dir / "merged_database.rkdb"
         )
 
-        self.merge_result = merger.merge_databases_strategy1()
+        self.merge_result = merger.merge_databases(max_memory=self.config.get('max_memory'))
         self.merge_report = merger.create_merge_report(self.merge_result)
 
     def _run_final_analysis(self):
@@ -867,13 +755,13 @@ class KmerAnalysisPipeline:
 """
 
         if self.config['run_batch_processing']:
-            report += f"✅ Batch Processing - {self.statistics.get('total_samples', 0)} samples\n"
+            report += f"Completed Batch Processing - {self.statistics.get('total_samples', 0)} samples\n"
         if self.config['run_query_analysis']:
-            report += f"✅ Query Analysis - {self.statistics.get('queries_tested', 0)} k-mers\n"
+            report += f"Completed Query Analysis - {self.statistics.get('queries_tested', 0)} k-mers\n"
         if self.config['run_database_merging']:
-            report += f"✅ Database Merging - Single merged database created\n"
+            report += f"Completed Database Merging - Single merged database created\n"
         if self.config['run_final_analysis']:
-            report += f"✅ Final Analysis - Comprehensive analysis completed\n"
+            report += f"Completed Final Analysis - Comprehensive analysis completed\n"
 
         report += f"""
 
@@ -917,7 +805,7 @@ def main():
     parser.add_argument('--results-dir', required=True, help='Output directory for results')
     parser.add_argument('--kmer-size', type=int, default=31, help='K-mer size (default: 31)')
     parser.add_argument('--query-file', help='File with query k-mers')
-    parser.add_argument('--workers', type=int, help='Number of worker threads')
+    parser.add_argument('--max-memory', help='Memory budget for the merge (e.g. 4GB)')
     parser.add_argument('--skip-batch', action='store_true', help='Skip batch processing')
     parser.add_argument('--skip-query', action='store_true', help='Skip query analysis')
     parser.add_argument('--skip-merge', action='store_true', help='Skip database merging')
@@ -931,7 +819,7 @@ def main():
         'results_dir': args.results_dir,
         'kmer_size': args.kmer_size,
         'query_file': args.query_file,
-        'workers': args.workers,
+        'max_memory': args.max_memory,
         'run_batch_processing': not args.skip_batch,
         'run_query_analysis': not args.skip_query,
         'run_database_merging': not args.skip_merge,
@@ -955,24 +843,28 @@ if __name__ == "__main__":
 # Process files in smaller batches
 batch_size = 50  # Adjust based on available memory
 
-# Use context managers
-db = PyDatabase(db_file) as db:
-    # Automatic cleanup
-    pass
+# Free databases you no longer need (PyDatabase is NOT a context manager —
+# drop the reference and let garbage collection reclaim it)
+del db
+import gc
+gc.collect()
+
+# For large databases, load with LoadMode.Lazy instead of Preload:
+# Preload caches every k-mer in memory, Lazy keeps a sorted index for
+# binary-search lookups
+db = PyDatabase("big.rkdb", LoadMode.Lazy)
 
 # Clear intermediate results
 del large_data_structure
-import gc
 gc.collect()
 ```
 
 ### 2. Parallel Processing
 ```python
-# Optimal worker count
-import multiprocessing
-optimal_workers = min(multiprocessing.cpu_count(), 8)  # Don't exceed 8 for I/O bound tasks
+# Counting is already parallel inside PyCounter via its `threads` argument:
+counter = PyCounter(31, canonical=True, threads=8)
 
-# Use process pools for CPU-intensive tasks
+# Use process pools for CPU-intensive Python-side post-processing
 from concurrent.futures import ProcessPoolExecutor
 ```
 
@@ -997,23 +889,27 @@ shutil.rmtree(temp_dir)
 
 1. **Memory Overflow**:
    ```python
-   # Reduce chunk size
-   chunk_size = 50000  # Instead of 500000
+   # Process fewer files at once and free databases between stages
+   del db
+   gc.collect()
 
-   # Process fewer files in parallel
-   workers = 2  # Instead of 8
+   # Bound the merge with an explicit budget so it streams instead of
+   # loading everything into RAM
+   PyDatabase.merge(inputs, "merged.rkdb", max_memory="4GB", merge_mode="streaming")
    ```
 
 2. **Database Corruption**:
    ```python
    # Validate databases before merging
+   from pyrustkmer import PyDatabase, LoadMode
+
    for db_file in database_files:
        try:
-           db = PyDatabase(db_file) as db:
-               stats = db.get_stats()
-               print(f"✅ {db_file.name}: {stats.unique_kmers:,} k-mers")
+           db = PyDatabase(str(db_file), LoadMode.Lazy)
+           stats = db.get_stats()
+           print(f"OK {db_file.name}: {stats.unique_kmers:,} k-mers")
        except Exception as e:
-           print(f"❌ {db_file.name}: {e}")
+           print(f"FAILED {db_file.name}: {e}")
    ```
 
 3. **Slow Performance**:

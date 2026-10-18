@@ -24,6 +24,10 @@
 ### 2. SortedChunkWriter
 读取一块 k-mers，排序后写入临时文件
 
+> **实现状态注记**：`SortedChunkWriter` 作为独立组件最终未被实现。实际落地代码
+> （`src/database/streaming_merge.rs`）将这一职责并入 `ExternalMerger::sort_database`——
+> 由它把数据库分块排序后写入临时块文件，再经 `merge_sorted_chunks` 合并。
+
 ### 3. ExternalMerge
 使用最小堆合并多个有序文件流
 

@@ -31,11 +31,11 @@ A **k-mer database** is an optimized binary storage format that contains k-mer s
 
 ### Database Features
 
-- **Fast Access**: ~4 million queries per second
-- **Memory Efficient**: Memory-mapped files with minimal overhead
+- **Fast Access**: High-throughput exact lookups
+- **Memory Efficient**: Optional preload, direct file access, or lazy loading
 - **Portable**: Cross-platform compatible binary format
-- **Compressed**: Efficient storage of large k-mer sets
-- **Indexed**: Optimized for rapid lookups
+- **Compact**: Fixed-layout binary records (20 bytes per k-mer)
+- **Sorted**: Entries sorted for binary-search lookups
 
 ---
 
@@ -44,14 +44,14 @@ A **k-mer database** is an optimized binary storage format that contains k-mer s
 ### Creating Databases
 
 ```python
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 
 # Method 1: Direct creation from counting
 counter = PyCounter(21, canonical=True)
 counter.add_from_fasta("genome.fa.gz")
 counter.save_database("genome_k21.rkdb")
 
-print(f"Database created with {counter.get_unique_count():,} unique k-mers")
+print(f"Database created with {counter.get_stats().unique_kmers:,} unique k-mers")
 ```
 
 ```bash
@@ -73,7 +73,7 @@ print(f"Database Statistics:")
 print(f"  K-mer size: {stats.kmer_size}")
 print(f"  Total k-mers: {stats.total_kmers:,}")
 print(f"  Unique k-mers: {stats.unique_kmers:,}")
-print(f"  Database file: {stats.filename}")
+print(f"  Database file size: {stats.file_size:,} bytes")
 ```
 
 ```python
@@ -89,8 +89,7 @@ def validate_database(db_path):
     """Validate database integrity and contents."""
 
     try:
-        db = PyDatabase("database.rkdb", LoadMode.Preload)
-        db.load(db_path)
+        db = PyDatabase(db_path, LoadMode.Preload)
 
         # Get statistics
         stats = db.get_stats()
@@ -127,19 +126,18 @@ if validate_database("genome_k21.rkdb"):
 ### Single K-mer Queries
 
 ```python
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
-# PyDatabase doesn't use context manager
-    db.load("genome_k21.rkdb")
+# Open the database (the constructor loads it; no load() call needed)
+db = PyDatabase("genome_k21.rkdb", LoadMode.Preload)
 
-    # Query a specific k-mer
-    result = db.query_exact("ATCGATCGATCGATCGATCG")
+# Query a specific k-mer
+result = db.query_exact("ATCGATCGATCGATCGATCG")
 
-    if result.exists:
-        print(f"✅ Found {result.kmer}: {result.count:,} occurrences")
-        print(f"   Database count: {result.database_count}")
-    else:
-        print(f"❌ {result.kmer}: not found in database")
+if result.found:
+    print(f"✅ Found {result.kmer}: {result.count:,} occurrences")
+else:
+    print(f"❌ {result.kmer}: not found in database")
 ```
 
 ### Query Result Object
@@ -148,13 +146,12 @@ from pyrustkmer import Database
 result = db.query_exact("ATCGATCGATCGATCGATCG")
 
 # Available attributes
-print(f"K-mer: {result.kmer}")          # The queried k-mer string
-print(f"Found: {result.exists}")         # Boolean: exists in database
-print(f"Count: {result.count}")          # Occurrence count (0 if not found)
-print(f"Database: {result.database_count}") # Total k-mers in database
+print(f"K-mer: {result.kmer}")    # The queried k-mer string
+print(f"Found: {result.found}")   # Boolean: found in database
+print(f"Count: {result.count}")   # Occurrence count (0 if not found)
 
 # Convenient boolean check
-if result.exists:
+if result.found:
     print(f"Found with count {result.count}")
 else:
     print("Not found")
@@ -166,24 +163,23 @@ else:
 def query_multiple_kmers(db_path, kmer_list):
     """Query multiple individual k-mers."""
 
-    # PyDatabase doesn't use context manager
-        db.load(db_path)
+    db = PyDatabase(db_path, LoadMode.Preload)
 
-        results = {}
+    results = {}
 
-        for kmer in kmer_list:
-            result = db.query_exact(kmer)
-            results[kmer] = {
-                'exists': result.exists,
-                'count': result.count
-            }
+    for kmer in kmer_list:
+        result = db.query_exact(kmer)
+        results[kmer] = {
+            'found': result.found,
+            'count': result.count
+        }
 
-            if result.exists:
-                print(f"✅ {kmer}: {result.count:,}")
-            else:
-                print(f"❌ {kmer}: not found")
+        if result.found:
+            print(f"✅ {kmer}: {result.count:,}")
+        else:
+            print(f"❌ {kmer}: not found")
 
-        return results
+    return results
 
 # Usage
 test_kmers = [
@@ -211,16 +207,15 @@ def safe_query(db_path, kmer):
             raise ValueError(f"Invalid characters in k-mer: {kmer}")
 
         # Load database and query
-        # PyDatabase doesn't use context manager
-            db.load(db_path)
-            result = db.query_exact(kmer)
+        db = PyDatabase(db_path, LoadMode.Preload)
+        result = db.query_exact(kmer)
 
-            return {
-                'success': True,
-                'exists': result.exists,
-                'count': result.count,
-                'kmer': result.kmer
-            }
+        return {
+            'success': True,
+            'found': result.found,
+            'count': result.count,
+            'kmer': result.kmer
+        }
 
     except ValueError as e:
         return {'success': False, 'error': str(e)}
@@ -232,7 +227,7 @@ def safe_query(db_path, kmer):
 # Usage
 result = safe_query("genome_k21.rkdb", "ATCGATCGATCGATCGATCG")
 if result['success']:
-    if result['exists']:
+    if result['found']:
         print(f"Found: {result['count']:,} occurrences")
     else:
         print("Not found")
@@ -250,11 +245,10 @@ else:
 def batch_query_from_file(db_path, query_file, output_file=None):
     """Query multiple k-mers from a file."""
 
-    # PyDatabase doesn't use context manager
-        db.load(db_path)
+    db = PyDatabase(db_path, LoadMode.Preload)
 
-        results = []
-        found_count = 0
+    results = []
+    found_count = 0
 
         # Read queries from file (one k-mer per line)
         with open(query_file, 'r') as f:
@@ -269,11 +263,11 @@ def batch_query_from_file(db_path, query_file, output_file=None):
 
                     results.append({
                         'kmer': kmer,
-                        'exists': result.exists,
+                        'found': result.found,
                         'count': result.count
                     })
 
-                    if result.exists:
+                    if result.found:
                         found_count += 1
 
                 except Exception as e:
@@ -344,39 +338,38 @@ EOF
 
 ```python
 import time
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
 def benchmark_batch_queries(db_path, queries):
     """Benchmark batch query performance."""
 
     print(f"🚀 Benchmarking {len(queries)} queries...")
 
-    # PyDatabase doesn't use context manager
-        db.load(db_path, preload=True)  # Preload for maximum speed
+    db = PyDatabase(db_path, LoadMode.Preload)  # Preload for maximum speed
 
-        start_time = time.time()
+    start_time = time.time()
 
-        found_count = 0
-        total_count = 0
+    found_count = 0
+    total_count = 0
 
-        for kmer in queries:
-            result = db.query_exact(kmer)
-            if result.exists:
-                found_count += 1
-                total_count += result.count
+    for kmer in queries:
+        result = db.query_exact(kmer)
+        if result.found:
+            found_count += 1
+            total_count += result.count
 
-        duration = time.time() - start_time
-        queries_per_second = len(queries) / duration
+    duration = time.time() - start_time
+    queries_per_second = len(queries) / duration
 
-        print(f"📊 Performance Results:")
-        print(f"   Total queries: {len(queries):,}")
-        print(f"   Queries found: {found_count:,}")
-        print(f"   Duration: {duration:.3f} seconds")
-        print(f"   Queries per second: {queries_per_second:,.0f}")
-        print(f"   Average query time: {duration/len(queries)*1000:.3f} ms")
-        print(f"   Total matches found: {total_count:,}")
+    print(f"📊 Performance Results:")
+    print(f"   Total queries: {len(queries):,}")
+    print(f"   Queries found: {found_count:,}")
+    print(f"   Duration: {duration:.3f} seconds")
+    print(f"   Queries per second: {queries_per_second:,.0f}")
+    print(f"   Average query time: {duration/len(queries)*1000:.3f} ms")
+    print(f"   Total matches found: {total_count:,}")
 
-        return queries_per_second
+    return queries_per_second
 
 # Usage with test data
 test_queries = ["ATCGATCGATCGATCGATCG", "GCTAGCTAGCTAGCTAGCTA"] * 1000
@@ -390,22 +383,20 @@ performance = benchmark_batch_queries("genome_k21.rkdb", test_queries)
 ### Database Loading Strategies
 
 ```python
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
-# Strategy 1: Memory-mapped (default, good for large databases)
-# PyDatabase doesn't use context manager
-    db.load("large_database.rkdb")  # Memory-mapped
-    # Database loaded on-demand as needed
+# Strategy 1: Memory-mapped (direct file access, good for large databases)
+db = PyDatabase("large_database.rkdb", LoadMode.MemoryMapped)
+# Lower memory footprint, direct file access
 
 # Strategy 2: Preloaded (good for many queries)
-# PyDatabase doesn't use context manager
-    db.load("database.rkdb", preload=True)  # Load entire database into memory
-    # Maximum query speed, higher memory usage
+db = PyDatabase("database.rkdb", LoadMode.Preload)
+# Load entire database into memory
+# Maximum query speed, higher memory usage
 
-# Strategy 3: Context manager (recommended)
-# PyDatabase doesn't use context manager
-    db.load("database.rkdb")
-    # Automatic resource cleanup
+# Strategy 3: Lazy (sorted index, binary-search lookups)
+db = PyDatabase("database.rkdb", LoadMode.Lazy)
+# Sorted index with on-demand binary-search lookups
 ```
 
 ### Query Optimization Tips
@@ -419,14 +410,12 @@ def optimize_query_performance(db_path, query_count):
     if query_count > 100000:
         # For many queries, preload the database
         print("   Strategy: Preload database into memory")
-        db = PyDatabase("database.rkdb", LoadMode.Preload)
-        db.load(db_path, preload=True)
+        db = PyDatabase(db_path, LoadMode.Preload)
         loading_strategy = "preload"
     else:
-        # For fewer queries, use memory-mapping
+        # For fewer queries, use direct file access
         print("   Strategy: Use memory-mapped access")
-        db = PyDatabase("database.rkdb", LoadMode.Preload)
-        db.load(db_path)  # Memory-mapped by default
+        db = PyDatabase(db_path, LoadMode.MemoryMapped)
         loading_strategy = "memory_mapped"
 
     return db, loading_strategy
@@ -463,30 +452,29 @@ def get_database_info(db_path):
 
     import os
 
-    # PyDatabase doesn't use context manager
-        db.load(db_path)
-        stats = db.get_stats()
+    db = PyDatabase(db_path, LoadMode.Preload)
+    stats = db.get_stats()
 
-        # File size
-        file_size = os.path.getsize(db_path)
-        file_size_mb = file_size / 1024 / 1024
+    # File size
+    file_size = os.path.getsize(db_path)
+    file_size_mb = file_size / 1024 / 1024
 
-        # Calculate statistics
-        avg_count = stats.total_kmers / stats.unique_kmers
-        bytes_per_kmer = file_size / stats.unique_kmers
+    # Calculate statistics
+    avg_count = stats.total_kmers / stats.unique_kmers
+    bytes_per_kmer = file_size / stats.unique_kmers
 
-        info = {
-            'file_path': db_path,
-            'file_size_mb': file_size_mb,
-            'kmer_size': stats.kmer_size,
-            'unique_kmers': stats.unique_kmers,
-            'total_kmers': stats.total_kmers,
-            'average_count': avg_count,
-            'bytes_per_kmer': bytes_per_kmer,
-            'compression_ratio': bytes_per_kmer / (stats.kmer_size * 2)  # Rough estimate
-        }
+    info = {
+        'file_path': db_path,
+        'file_size_mb': file_size_mb,
+        'kmer_size': stats.kmer_size,
+        'unique_kmers': stats.unique_kmers,
+        'total_kmers': stats.total_kmers,
+        'average_count': avg_count,
+        'bytes_per_kmer': bytes_per_kmer,
+        'compression_ratio': bytes_per_kmer / (stats.kmer_size * 2)  # Rough estimate
+    }
 
-        return info
+    return info
 
 def print_database_info(db_path):
     """Print database information in a readable format."""
@@ -509,34 +497,23 @@ print_database_info("genome_k21.rkdb")
 ### Database Merging
 
 ```python
-def merge_databases(db_files, output_file):
-    """Merge multiple k-mer databases (conceptual example)."""
+from pyrustkmer import PyDatabase, LoadMode
 
-    # Note: This would require implementing a merge function
-    # For now, showing the conceptual approach
+def merge_databases(db_files, output_file):
+    """Merge multiple k-mer databases into a single output file."""
 
     print(f"Merging {len(db_files)} databases...")
 
-    # Load all databases
-    databases = []
-    for db_file in db_files:
-        db = PyDatabase("database.rkdb", LoadMode.Preload)
-        db.load(db_file)
-        databases.append(db)
+    # Static method: writes the merged database directly to output_file
+    PyDatabase.merge(db_files, output_file)
 
-    # Count total unique k-mers
-    total_unique = sum(db.get_stats().unique_kmers for db in databases)
-    print(f"Total unique k-mers across all databases: {total_unique:,}")
-
-    # Merge logic would go here
-    # This is a placeholder for the actual implementation
-    print("🔄 Database merging feature coming soon!")
-
-    # Clean up
-    for db in databases:
+    # Inspect the merged result
+    merged_db = PyDatabase(output_file, LoadMode.Preload)
+    stats = merged_db.get_stats()
+    print(f"Merged database contains {stats.unique_kmers:,} unique k-mers")
 
 # Usage
-# merge_databases(["chr1_k21.rkdb", "chr2_k21.rkdb"], "merged_k21.rkdb")
+merge_databases(["chr1_k21.rkdb", "chr2_k21.rkdb"], "merged_k21.rkdb")
 ```
 
 ### Database Validation and Repair
@@ -561,35 +538,34 @@ def validate_database_integrity(db_path):
             return issues
 
         # Try to load database
-        # PyDatabase doesn't use context manager
-            try:
-                db.load(db_path)
-                stats = db.get_stats()
+        try:
+            db = PyDatabase(db_path, LoadMode.Preload)
+            stats = db.get_stats()
 
-                # Validate statistics
-                if stats.kmer_size <= 0:
-                    issues.append(f"Invalid k-mer size: {stats.kmer_size}")
+            # Validate statistics
+            if stats.kmer_size <= 0:
+                issues.append(f"Invalid k-mer size: {stats.kmer_size}")
 
-                if stats.unique_kmers <= 0:
-                    issues.append(f"Invalid unique k-mer count: {stats.unique_kmers}")
+            if stats.unique_kmers <= 0:
+                issues.append(f"Invalid unique k-mer count: {stats.unique_kmers}")
 
-                if stats.total_kmers <= 0:
-                    issues.append(f"Invalid total k-mer count: {stats.total_kmers}")
+            if stats.total_kmers <= 0:
+                issues.append(f"Invalid total k-mer count: {stats.total_kmers}")
 
-                if stats.total_kmers < stats.unique_kmers:
-                    issues.append("Total k-mers less than unique k-mers")
+            if stats.total_kmers < stats.unique_kmers:
+                issues.append("Total k-mers less than unique k-mers")
 
-                # Test a few queries
-                test_queries = ["A" * stats.kmer_size, "T" * stats.kmer_size]
-                for query in test_queries:
-                    try:
-                        result = db.query_exact(query)
-                        # Should not crash
-                    except Exception as e:
-                        issues.append(f"Query failed for '{query}': {e}")
+            # Test a few queries
+            test_queries = ["A" * stats.kmer_size, "T" * stats.kmer_size]
+            for query in test_queries:
+                try:
+                    result = db.query_exact(query)
+                    # Should not crash
+                except Exception as e:
+                    issues.append(f"Query failed for '{query}': {e}")
 
-            except Exception as e:
-                issues.append(f"Failed to load database: {e}")
+        except Exception as e:
+            issues.append(f"Failed to load database: {e}")
 
     except Exception as e:
         issues.append(f"Validation error: {e}")
@@ -624,29 +600,28 @@ check_database_health("genome_k21.rkdb")
 def conditional_queries(db_path, conditions):
     """Perform queries with conditions."""
 
-    # PyDatabase doesn't use context manager
-        db.load(db_path)
+    db = PyDatabase(db_path, LoadMode.Preload)
 
-        results = []
+    results = []
 
-        for condition in conditions:
-            kmer = condition['kmer']
-            min_count = condition.get('min_count', 1)
-            max_count = condition.get('max_count', float('inf'))
+    for condition in conditions:
+        kmer = condition['kmer']
+        min_count = condition.get('min_count', 1)
+        max_count = condition.get('max_count', float('inf'))
 
-            result = db.query_exact(kmer)
+        result = db.query_exact(kmer)
 
-            # Apply conditions
-            matches = result.exists and min_count <= result.count <= max_count
+        # Apply conditions
+        matches = result.found and min_count <= result.count <= max_count
 
-            results.append({
-                'kmer': kmer,
-                'count': result.count if result.exists else 0,
-                'matches': matches,
-                'condition': f"{min_count} <= count <= {max_count}"
-            })
+        results.append({
+            'kmer': kmer,
+            'count': result.count if result.found else 0,
+            'matches': matches,
+            'condition': f"{min_count} <= count <= {max_count}"
+        })
 
-        return results
+    return results
 
 # Usage
 conditions = [
@@ -673,31 +648,30 @@ def query_sequence_regions(db_path, sequence, k=21):
         print(f"Sequence too short for k={k}")
         return []
 
-    # PyDatabase doesn't use context manager
-        db.load(db_path)
+    db = PyDatabase(db_path, LoadMode.Preload)
 
-        results = []
-        found_count = 0
+    results = []
+    found_count = 0
 
-        # Extract all k-mers from sequence
-        for i in range(len(sequence) - k + 1):
-            kmer = sequence[i:i+k]
-            result = db.query_exact(kmer)
+    # Extract all k-mers from sequence
+    for i in range(len(sequence) - k + 1):
+        kmer = sequence[i:i+k]
+        result = db.query_exact(kmer)
 
-            results.append({
-                'position': i,
-                'kmer': kmer,
-                'count': result.count,
-                'exists': result.exists
-            })
+        results.append({
+            'position': i,
+            'kmer': kmer,
+            'count': result.count,
+            'found': result.found
+        })
 
-            if result.exists:
-                found_count += 1
+        if result.found:
+            found_count += 1
 
-        print(f"Queried {len(results)} k-mers from sequence")
-        print(f"Found {found_count} matches ({found_count/len(results)*100:.1f}%)")
+    print(f"Queried {len(results)} k-mers from sequence")
+    print(f"Found {found_count} matches ({found_count/len(results)*100:.1f}%)")
 
-        return results
+    return results
 
 # Usage
 sequence = "ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG"
@@ -717,23 +691,23 @@ def compare_databases(db1_path, db2_path, test_kmers):
 
     db1 = PyDatabase(db1_path, LoadMode.Preload)
     db2 = PyDatabase(db2_path, LoadMode.Preload)
-        
-        comparison = []
 
-        for kmer in test_kmers:
-            result1 = db1.query_exact(kmer)
-            result2 = db2.query_exact(kmer)
+    comparison = []
 
-            comparison.append({
-                'kmer': kmer,
-                'db1_count': result1.count if result1.exists else 0,
-                'db2_count': result2.count if result2.exists else 0,
-                'db1_exists': result1.exists,
-                'db2_exists': result2.exists,
-                'ratio': result2.count / result1.count if result1.exists and result1.count > 0 else float('inf')
-            })
+    for kmer in test_kmers:
+        result1 = db1.query_exact(kmer)
+        result2 = db2.query_exact(kmer)
 
-        return comparison
+        comparison.append({
+            'kmer': kmer,
+            'db1_count': result1.count if result1.found else 0,
+            'db2_count': result2.count if result2.found else 0,
+            'db1_found': result1.found,
+            'db2_found': result2.found,
+            'ratio': result2.count / result1.count if result1.found and result1.count > 0 else float('inf')
+        })
+
+    return comparison
 
 def print_comparison(comparison, db1_name, db2_name):
     """Print database comparison results."""
@@ -782,23 +756,22 @@ def memory_efficient_querying(db_path, queries, batch_size=1000):
 
     results = []
 
-    # PyDatabase doesn't use context manager
-        db.load(db_path)  # Memory-mapped, efficient
+    db = PyDatabase(db_path, LoadMode.MemoryMapped)  # Direct file access, efficient
 
-        for i in range(0, len(queries), batch_size):
-            batch = queries[i:i+batch_size]
-            batch_results = []
+    for i in range(0, len(queries), batch_size):
+        batch = queries[i:i+batch_size]
+        batch_results = []
 
-            for kmer in batch:
-                result = db.query_exact(kmer)
-                batch_results.append({
-                    'kmer': kmer,
-                    'count': result.count,
-                    'exists': result.exists
-                })
+        for kmer in batch:
+            result = db.query_exact(kmer)
+            batch_results.append({
+                'kmer': kmer,
+                'count': result.count,
+                'found': result.found
+            })
 
-            results.extend(batch_results)
-            print(f"Processed batch {i//batch_size + 1}/{(len(queries)-1)//batch_size + 1}")
+        results.extend(batch_results)
+        print(f"Processed batch {i//batch_size + 1}/{(len(queries)-1)//batch_size + 1}")
 
     return results
 ```
@@ -815,13 +788,13 @@ class QueryManager:
         self.stats = None
 
     def __enter__(self):
-        self.db = PyDatabase("database.rkdb", LoadMode.Preload)
-        self.db.load(self.db_path)
+        self.db = PyDatabase(self.db_path, LoadMode.Preload)
         self.stats = self.db.get_stats()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.db:
+        self.db = None
+        self.stats = None
 
     def validate_kmer(self, kmer):
         """Validate k-mer format."""
@@ -841,7 +814,7 @@ class QueryManager:
             return {
                 'success': True,
                 'kmer': validated_kmer,
-                'exists': result.exists,
+                'found': result.found,
                 'count': result.count
             }
         except Exception as e:
@@ -855,7 +828,7 @@ class QueryManager:
 with QueryManager("genome_k21.rkdb") as qm:
     result = qm.safe_query("ATCGATCGATCGATCGATCG")
     if result['success']:
-        print(f"Found: {result['count']}" if result['exists'] else "Not found")
+        print(f"Found: {result['count']}" if result['found'] else "Not found")
     else:
         print(f"Error: {result['error']}")
 ```
@@ -866,32 +839,31 @@ with QueryManager("genome_k21.rkdb") as qm:
 
 ### Python API
 ```python
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
 # Load database
-# PyDatabase doesn't use context manager
-    db.load("database.rkdb")
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 
-    # Single query
-    result = db.query_exact("ATCGATCGATCGATCGATCG")
+# Single query
+result = db.query_exact("ATCGATCGATCGATCGATCG")
 
-    # Get statistics
-    stats = db.get_stats()
+# Get statistics
+stats = db.get_stats()
 
-    # Batch queries
-    # (see examples above)
+# Batch queries
+# (see examples above)
 ```
 
 ### Command Line
 ```bash
-# Single query
-echo "ATCGATCGATCGATCGATCG" | rustkmer query -d database.rkdb --file -
+# Single query (database and k-mers are positional arguments)
+rustkmer query database.rkdb ATCGATCGATCGATCGATCG
 
-# Batch query from file
-rustkmer query -d database.rkdb -f queries.txt -o results.csv
+# Batch query from file (one k-mer per line)
+rustkmer query database.rkdb --batch queries.txt -o results.txt
 
 # Database information
-rustkmer info -d database.rkdb
+rustkmer stats database.rkdb
 ```
 
 ---
@@ -901,4 +873,4 @@ rustkmer info -d database.rkdb
 - **Documentation**: [Fuzzy Search](fuzzy-search.md) for pattern matching
 - **API Reference**: [Python API](../api-reference/python/) for complete reference
 - **Performance Tips**: [Performance Guide](performance-tips.md) for optimization
-- **Troubleshooting**: [FAQ](../appendix/faq.md) for common issues
+- **Troubleshooting**: [Troubleshooting guide](../getting-started/troubleshooting.md) for common issues

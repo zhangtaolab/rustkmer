@@ -6,10 +6,10 @@ Common issues and solutions for RustKmer installation and usage.
 
 ### Python Package Installation Problems
 
-#### Problem: `pip install rustkmer` fails
+#### Problem: `pip install pyrustkmer` fails
 **Error Messages:**
 ```
-ERROR: Could not build wheels for rustkmer, which is required to install pyproject.toml-based projects
+ERROR: Could not build wheels for pyrustkmer, which is required to install pyproject.toml-based projects
 ```
 
 **Solutions:**
@@ -18,44 +18,45 @@ ERROR: Could not build wheels for rustkmer, which is required to install pyproje
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 2. **Update pip and setuptools:**
 ```bash
 pip install --upgrade pip setuptools wheel
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 3. **Install from source:**
 ```bash
 git clone https://github.com/rustkmer/rustkmer.git
-cd rustkmer
-pip install -e .
+cd rustkmer/pyo3
+pip install maturin
+maturin develop --release
 ```
 
 #### Problem: ImportError on import
 **Error Message:**
 ```
-ImportError: cannot import name 'KmerCounter' from 'rustkmer'
+ImportError: cannot import name 'KmerCounter' from 'pyrustkmer'
 ```
 
 **Solutions:**
 
-1. **Check installation:**
+1. **Use the exported class names:**
 ```bash
-python -c "import rustkmer; print('✅ Installation OK')"
+python -c "from pyrustkmer import PyCounter, PyDatabase; print('✅ Installation OK')"
 ```
 
 2. **Reinstall with verbose output:**
 ```bash
-pip uninstall rustkmer -y
-pip install rustkmer --verbose
+pip uninstall pyrustkmer -y
+pip install pyrustkmer --verbose
 ```
 
 3. **Check Python version compatibility:**
 ```bash
-python --version  # Should be 3.8+
+python --version  # Should be 3.11+
 ```
 
 ### CLI Installation Problems
@@ -68,9 +69,9 @@ bash: rustkmer: command not found
 
 **Solutions:**
 
-1. **Check if Python package is installed:**
+1. **Check if the cargo binary exists:**
 ```bash
-python -m rustkmer --help
+ls ~/.cargo/bin/rustkmer
 ```
 
 2. **Install via cargo (alternative method):**
@@ -103,15 +104,15 @@ Killed: 9 (out of memory)
 counter = PyCounter(13, canonical=True)
 ```
 
-2. **Process files in chunks:**
+2. **Count files one at a time into the same counter:**
 ```python
-counter.add_from_fasta("large_file.fa", chunk_size=1000000)
+counter.add_from_fasta("large_file_1.fa")
+counter.add_from_fasta("large_file_2.fa")
 ```
 
-3. **Use streaming mode:**
+3. **Save intermediate results to disk:**
 ```python
-with open("large_file.fa", "r") as f:
-    counter.count_stream(f)
+counter.save_database("checkpoint.rkdb")
 ```
 
 4. **Monitor memory usage:**
@@ -167,10 +168,10 @@ SequenceError: Invalid nucleotide sequence
 
 1. **Validate file format:**
 ```python
-from pyrustkmer import KmerCounter, LoadMode
+from pyrustkmer import PyCounter
 
 try:
-    counter = PyCounter()
+    counter = PyCounter(21)
     counter.add_from_fasta("suspicious_file.fa")
     print("✅ File format is valid")
 except Exception as e:
@@ -216,7 +217,7 @@ else:
 
 2. **Verify database was created correctly:**
 ```python
-from pyrustkmer import KmerCounter, LoadMode
+from pyrustkmer import PyCounter
 
 # Recreate database if needed
 counter = PyCounter(21, canonical=True)
@@ -226,11 +227,10 @@ counter.save_database("database.rkdb")
 
 3. **Check database integrity:**
 ```python
-from pyrustkmer import Database, LoadMode
+from pyrustkmer import PyDatabase, LoadMode
 
 try:
     db = PyDatabase("database.rkdb", LoadMode.Preload)
-    db.load("database.rkdb", False)
     stats = db.get_stats()
     print(f"✅ Database loaded: {stats.kmer_size}-mer, {stats.total_kmers} k-mers")
 except Exception as e:
@@ -245,11 +245,10 @@ except Exception as e:
 1. **Check if k-mer size matches database:**
 ```python
 db = PyDatabase("database.rkdb", LoadMode.Preload)
-db.load("database.rkdb", False)
-print(f"Database k-mer size: {db.get_kmer_size()}")
+print(f"Database k-mer size: {db.get_stats().kmer_size}")
 
 # Use correct k-mer size
-kmer_size = db.get_kmer_size()
+kmer_size = db.get_stats().kmer_size
 test_kmer = "ATCG" * (kmer_size // 4) + "ATCG"[:kmer_size % 4]
 result = db.query_exact(test_kmer)
 ```
@@ -311,30 +310,41 @@ counter = PyCounter(21, canonical=True)
 ```bash
 # Faster but uses more disk space
 gunzip input.fa.gz
-rustkmer count -i input.fa -o output.rkdb
+rustkmer count -k 21 -i input.fa -o output.rkdb
 ```
 
 ### Fuzzy Search Issues
 
 #### Problem: Fuzzy query not working
-**Error Messages:**
-```
-AttributeError: 'Database' object has no attribute 'fuzzy_query'
-```
+**Symptom:** Wildcard or mutation-tolerant queries fail, or fuzzy search appears unavailable.
 
 **Solution:**
 ```python
-# Fuzzy search is planned but not yet implemented
-# Use exact queries for now:
+# Fuzzy search is available via PyFuzzyQuery (or PyDatabase.query_fuzzy)
+from pyrustkmer import PyDatabase, PyFuzzyQuery, LoadMode
 
 db = PyDatabase("database.rkdb", LoadMode.Preload)
-db.load("database.rkdb", False)
+fuzzy = PyFuzzyQuery(db)
 
-# Instead of fuzzy_query, try multiple exact queries:
+# Wildcards ('N' matches any base) and Hamming-distance tolerance
+# both go through query_fuzzy:
+result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGAT", max_mutations=1)
+print(f"Found {result.total_matches} matches")
+
+# Equivalent one-shot form directly on the database:
+result = db.query_fuzzy("ATCGATCGATCGATCGATCGAT", max_mutations=1)
+
+# CLI equivalent:
+# rustkmer fuzzy-query database.rkdb "ATCGATCGATCGATCGATCGAT" -m 1
+```
+
+If you only need a handful of specific variants, multiple exact queries also work:
+
+```python
 possible_variants = [
-    "ATCGATCGATCGATCGATCG",
-    "ATCGATCGATCGATCGATCC",  # 1 substitution
-    "ATCGATCGATCGATCGATCT",  # 1 substitution
+    "ATCGATCGATCGATCGATCGA",
+    "ATCGATCGATCGATCGATCGC",  # 1 substitution
+    "ATCGATCGATCGATCGATCGT",  # 1 substitution
 ]
 
 results = []
@@ -358,7 +368,7 @@ xattr -d com.apple.quarantine $(which python3)
 
 # Or run from allowed directory
 cd ~/Documents
-rustkmer count -i input.fa -o output.rkdb
+rustkmer count -k 21 -i input.fa -o output.rkdb
 ```
 
 #### Problem: M1/M2 Mac compatibility
@@ -392,7 +402,7 @@ sudo yum install python3-devel
 counter = PyCounter(13, canonical=True)  # Use smaller k
 
 # Process in very small chunks
-counter.add_from_fasta("large_file.fa", chunk_size=100000)
+counter.add_from_fasta("large_file.fa")
 
 # Use disk-based processing when possible
 ```
@@ -439,19 +449,19 @@ counter.add_from_fasta("input.fa")  # Will show debug info
 
 **CLI:**
 ```bash
-rustkmer count -i input.fa -o output.rkdb --verbose
+rustkmer count -k 21 -i input.fa -o output.rkdb --verbose
 ```
 
 ### Check Versions
 
 ```python
-import rustkmer
+import pyrustkmer
 import sys
 import platform
 
 print(f"Python version: {sys.version}")
 print(f"Platform: {platform.platform()}")
-print(f"RustKmer version: {rustkmer.__version__ if hasattr(rustkmer, '__version__') else 'unknown'}")
+print(f"RustKmer version: {pyrustkmer.__version__ if hasattr(pyrustkmer, '__version__') else 'unknown'}")
 ```
 
 ### Test with Small Examples
@@ -467,7 +477,7 @@ with open("test.fa", "w") as f:
 # Test basic functionality
 counter = PyCounter(21)
 counter.add_from_fasta("test.fa")
-print(f"✅ Basic test: {counter.get_stats().total_kmers)} k-mers")
+print(f"✅ Basic test: {counter.get_stats().total_kmers} k-mers")
 ```
 
 ## Getting Help
@@ -499,8 +509,8 @@ When reporting bugs, include:
 ```markdown
 ## System Information
 - OS: Ubuntu 22.04
-- Python: 3.9.7
-- RustKmer: 0.1.0
+- Python: 3.11.9
+- RustKmer: 0.5.0
 
 ## Issue Description
 Counting large FASTA files fails with memory error
@@ -512,7 +522,7 @@ MemoryError: Unable to allocate array
 
 ## Minimal Example
 ```python
-from pyrustkmer import KmerCounter, LoadMode
+from pyrustkmer import PyCounter
 counter = PyCounter(31)
 counter.add_from_fasta("large_file.fa")  # 10GB file
 ```

@@ -1,46 +1,52 @@
+<!-- generated-by: gsd-doc-writer -->
 # Basic Usage
 
-This guide provides basic usage examples for both the Rust CLI and Python API. Learn the fundamental operations of RustKmer through practical examples.
+This guide walks through the fundamental RustKmer operations with both the Rust CLI and the Python API. Every command and snippet below was verified against `rustkmer` 0.5.0 and the `pyrustkmer` module built from `pyo3/src/`.
 
 ## Prerequisites
 
-### For Rust CLI
-- Rust 1.80+ installed
-- Cargo package manager
+### Rust CLI
 
-### For Python API
-- Python 3.8+ installed
-- RustKmer Python package: `pip install rustkmer`
+- Rust 1.80+ stable toolchain
+- Build the binary: `cargo build --release` (produces `target/release/rustkmer`)
+
+### Python API
+
+- Python 3.11+ (the extension targets `>=3.11` per `pyo3/pyproject.toml`)
+- Install the module from the repository: `cd pyo3 && maturin develop --release`
+- Verify: `python -c "import pyrustkmer; print(pyrustkmer.PyCounter)"`
 
 ## Quick Start
 
-### Option 1: Using the Python API (Recommended for beginners)
+### Option 1: Python API
 
 ```python
-from pyrustkmer import PyCounter, LoadMode, PyDatabase, PyFuzzyQuery
+from pyrustkmer import PyCounter, PyDatabase, LoadMode
 
-# Create k-mer database from FASTA file
-counter = PyCounter(31, canonical=True)
-counter.add_from_fasta("sequences.fasta")
-counter.save_database("output.rkdb")
+# 1. Count k-mers from a FASTA file and save a .rkdb database
+counter = PyCounter(11, canonical=False)   # k must be 1-64
+counter.add_from_fasta("demo.fa")          # .gz / .bz2 / .xz also accepted
+counter.save_database("demo.rkdb")
 
-# Query database
-db = PyDatabase("output.rkdb", LoadMode.Preload)
-result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
-print(f"Count: {result.count}")
+# 2. Open the database and query a k-mer
+db = PyDatabase("demo.rkdb", LoadMode.Preload)
+result = db.query_exact("ATCGATCGATC")
+print(result.count)   # 16
+print(result.found)   # True
 ```
 
-### Option 2: Using the Rust CLI
+### Option 2: Rust CLI
 
 ```bash
-# Count k-mers from FASTA file
-rustkmer count -k 31 -o output.rkdb sequences.fasta
+# Count k-mers (input files come after -i; output with -o)
+rustkmer count -k 11 -i demo.fa -o demo.rkdb --threads 4
 
-# Query k-mers
-rustkmer query output.rkdb ATCGATCGATCGATCGATCGATCGATCGATCGATCG
+# Query two k-mers (database path is positional, k-mers follow it)
+rustkmer query demo.rkdb ATCGATCGATC GCTAGCTAGCT
+# ATCGATCGATC	16
 
-# Get database statistics
-rustkmer stats output.rkdb
+# Show database statistics
+rustkmer stats demo.rkdb
 ```
 
 ## 1. Creating a K-mer Database
@@ -48,516 +54,235 @@ rustkmer stats output.rkdb
 ### Python API
 
 ```python
-from pyrustkmer import PyCounter, LoadMode, PyFuzzyQuery
+from pyrustkmer import PyCounter
 
-# Method 1: From single file
+# From one or more files: call add_from_* once per file
 counter = PyCounter(31, canonical=True)
-counter.add_from_fasta("input.fasta")
-counter.save_database("database.rkdb")
-
-# Method 2: From multiple files
-file_list = ["file1.fasta", "file2.fasta", "file3.fasta"]
-counter = PyCounter(25)
-counter.count_file_list(file_list)
+counter.add_from_fasta("file1.fasta")
+counter.add_from_fasta("file2.fasta")   # counts accumulate
+counter.add_from_fastq("reads.fastq.gz")  # gz/bz2/xz handled transparently
 counter.save_database("combined.rkdb")
 
-# Method 3: From sequence strings
-sequences = [
-    "ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG",
-    "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAG"
-]
+# From in-memory sequences
 counter = PyCounter(21)
-for seq in sequences:
-    counter.add_sequence(seq)
+counter.add_sequence("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+counter.add_kmer("ATCGATCGATCGATCGATCGAT")   # must be exactly k long
 counter.save_database("from_strings.rkdb")
+
+stats = counter.get_stats()
+print(stats.total_kmers, stats.unique_kmers, stats.memory_usage)
 ```
+
+Notes:
+
+- `PyCounter(kmer_length, canonical=False, initial_capacity=1000, threads=None)` — `threads=None` uses all cores; values below 1 raise `ValueError`.
+- `save_database` writes a sorted `.rkdb` file and raises `ValueError` if the counter is empty.
+- Non-ACGT characters (e.g. `N`) are skipped; k-mers spanning them are not counted.
 
 ### Rust CLI
 
 ```bash
 # Basic counting
-rustkmer count -k 31 input.fasta -o database.rkdb
+rustkmer count -k 31 -i input.fasta -o database.rkdb
 
-# Multiple files
-rustkmer count -k 25 file1.fasta file2.fasta file3.fasta -o combined.rkdb
+# Multiple input files in one command
+rustkmer count -k 25 -i file1.fasta file2.fasta file3.fasta -o combined.rkdb
 
-# With progress reporting
-rustkmer count -k 31 input.fasta -o database.rkdb --progress
+# Canonical mode (merge forward/reverse-complement), 8 threads, quiet
+rustkmer count -k 31 -i input.fasta -o database.rkdb --canonical --threads 8 --quiet
 
-# Non-canonical (store both strands)
-rustkmer count -k 31 input.fasta -o database_stranded.rkdb --no-canonical
+# Count every file in a directory (recursive by default)
+rustkmer count -k 31 -d reads_dir/ -o all.rkdb
+
+# Count threshold filters
+rustkmer count -k 31 -i input.fasta -o filtered.rkdb --min-count 2 --max-count 1000
 ```
+
+Useful `count` flags: `-C/--canonical`, `--threads N`, `-L/--min-count`, `-U/--max-count`, `--format text` (instead of binary), `--no-sort` (faster counting, unsorted database), `--quiet`, `--verbose`.
 
 ## 2. Querying K-mers
 
 ### Python API
 
 ```python
-from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
+from pyrustkmer import PyDatabase, LoadMode
 
-# Single query
 db = PyDatabase("database.rkdb", LoadMode.Preload)
-result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
-print(f"Found: {result.found}")
-print(f"Count: {result.count}")
-print(f"Canonical: {result.canonical}")
 
-# Multiple queries
-kmer_list = ["ATCGATCG...", "GCTAGCTA...", "TTTTTTTT..."]
+# Single lookup -> PyQueryResult(kmer, count, found)
+result = db.query_exact("ATCGATCGATC")
+print(result.found, result.count)
+
+# Batch lookup -> dict of input string -> PyQueryResult
+results = db.query_exact_batch(["ATCGATCGATC", "TTTTTTTTTTT"])
+for kmer, r in results.items():
+    print(kmer, r.count)
+
+# Existence check
+print(db.exists("ATCGATCGATC"))
+```
+
+The query string must match the database k-mer size exactly and contain only A/T/C/G, otherwise a `ValueError` is raised. In canonical databases the lookup canonicalizes the query for you.
+
+### Rust CLI
+
+```bash
+# One or more k-mers on the command line
+rustkmer query database.rkdb ATCGATCGATC GCTAGCTAGCT
+
+# From a text file, one k-mer per line
+printf 'ATCGATCGATC\nGCTAGCTAGCT\n' > queries.txt
+rustkmer query database.rkdb -b queries.txt
+
+# Extract and query every k-mer of a FASTA/FASTQ file
+rustkmer query database.rkdb -s reads.fastq
+
+# Save results to a file instead of stdout
+rustkmer query database.rkdb -b queries.txt -o results.txt
+```
+
+## 3. Database Statistics
+
+### Python API
+
+```python
 db = PyDatabase("database.rkdb", LoadMode.Preload)
-    for kmer in kmer_list:
-        result = db.query_exact(kmer)
-        status = "✓" if result.found else "✗"
-        print(f"{kmer[:10]}... {status} {result.count}")
+stats = db.get_stats()
+# PyDatabaseStats fields:
+#   kmer_size, total_kmers, unique_kmers, file_size, is_sorted, canonical
+print(f"k={stats.kmer_size} unique={stats.unique_kmers} sorted={stats.is_sorted}")
+
+# Additional metadata as a plain dict
+print(db.database_info())       # path, kmer_size, load_mode, totals
+print(db.get_memory_usage())    # per-mode memory information
 ```
 
 ### Rust CLI
 
 ```bash
-# Single query
-rustkmer query database.rkdb ATCGATCGATCGATCGATCGATCGATCGATCGATCG
-
-# Multiple queries from file
-echo -e "ATCGATCGATCGATCGATCGATCGATCGATCGATCG\nGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAG" > queries.txt
-rustkmer query database.rkdb --file queries.txt
-
-# Query with specific k-mer size
-rustkmer query database.rkdb ATCGATCGATCGATCGATCGATCGATCGATCGATCG -k 31
+rustkmer stats database.rkdb              # human-readable text
+rustkmer stats database.rkdb -f json      # machine-readable
+rustkmer stats database.rkdb -f csv
+rustkmer stats database.rkdb --detailed   # add frequency distribution
 ```
 
-## 3. Fuzzy Searching
+## 4. Dumping and Exporting Content
 
 ### Python API
 
 ```python
-from pyrustkmer import Database, PyFuzzyQuery
-
 db = PyDatabase("database.rkdb", LoadMode.Preload)
-    # Basic fuzzy query
-    reference_kmer = "ATCGATCGATCGATCGATCGATCGATCGATCGATCG"
-    result = fuzzy.query_fuzzy(reference_kmer, mutations=2)
 
-    print(f"Total matches: {result.total_matches}")
-    print(f"Exact matches: {result.exact_matches}")
-    print(f"Fuzzy matches: {result.fuzzy_matches}")
+# Paginate over decoded k-mer sequences (recommended)
+for entry in db.export_all_kmers(limit=1000, offset=0):
+    print(entry.kmer, entry.count)
 
-    # Show fuzzy matches
-    for match in result.get_fuzzy_matches():
-        print(f"  {match.kmer}: {match.count} (distance={match.distance})")
+# Note: db.dump(limit, offset) also exists but returns k-mers as
+# hexadecimal encodings; prefer export_all_kmers for sequence output.
 
-    # Position-specific mutations
-    result = fuzzy.query_fuzzy(
-        reference_kmer,
-        mutations=2,
-        position_mutations="10,15:1;20,25:2"
-    )
+# Streaming exports with progress callback
+n = db.export_to_file("kmers.tsv")                       # "kmer\tcount" lines
+n = db.export_to_csv("kmers.csv")                        # with header row
+n = db.export_to_json("kmers.json")                      # [{"kmer": ..., "count": ...}]
+n = db.export_to_file("kmers.tsv", limit=1000, offset=0,
+                      progress_callback=lambda cur, tot: print(cur, "/", tot))
 ```
+
+See [Data Export](data-export.md) for the full walkthrough.
 
 ### Rust CLI
 
 ```bash
-# Basic fuzzy query
-rustkmer fuzzy-query database.rkdb ATCGATCGATCGATCGATCGATCGATCGATCGATCG -m 2
+# Dump to stdout (a '#' comment header, then "kmer<TAB>count" lines)
+rustkmer dump database.rkdb | head
 
-# Position mutations
-rustkmer fuzzy-query database.rkdb ATCGATCGATCGATCGATCGATCGATCGATCGATCG \
-    -m 3 \
-    --position-mutations "10,15:1;20,25:2"
-
-# Multiple fuzzy queries
-echo -e "ATCGATCGATCGATCGATCGATCGATCGATCGATCG\nGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAG" > fuzzy_queries.txt
-rustkmer fuzzy-query database.rkdb --file fuzzy_queries.txt -m 2
+# Dump to a file (the -o flag is the only option dump takes)
+rustkmer dump database.rkdb -o kmers.txt
 ```
 
-## 4. Database Statistics
-
-### Python API
-
-```python
-from pyrustkmer import Database, PyFuzzyQuery
-
-db = PyDatabase("database.rkdb", LoadMode.Preload)
-    stats = db.get_stats()
-
-    print("Database Statistics:")
-    print(f"  K-mer size: {stats.kmer_size}")
-    print(f"  Unique k-mers: {stats.unique_kmers:,}")
-    print(f"  Total counts: {stats.total_counts:,}")
-    print(f"  File size: {stats.file_size:,} bytes")
-    print(f"  Format version: {stats.format_version}")
-
-    # Calculate derived statistics
-    if stats.unique_kmers > 0:
-        avg_count = stats.total_counts / stats.unique_kmers
-        compression_ratio = stats.file_size / (stats.unique_kmers * 8)
-        print(f"  Average count: {avg_count:.2f}")
-        print(f"  Compression ratio: {compression_ratio:.3f}")
-```
-
-### Rust CLI
+## 5. Fuzzy Search (Preview)
 
 ```bash
-# Basic statistics
-rustkmer stats database.rkdb
+# Wildcards (N) and mutation tolerance in one command
+rustkmer fuzzy-query database.rkdb ATCGATCGATN -m 1
 
-# Detailed statistics
-rustkmer stats database.rkdb --verbose
-
-# CSV format output
-rustkmer stats database.rkdb --format csv > stats.csv
-
-# JSON format output
-rustkmer stats database.rkdb --format json > stats.json
+# JSON output
+rustkmer fuzzy-query database.rkdb ATCGATCGATN -m 1 -f json
 ```
 
-## 5. Exporting Database Content
+```python
+from pyrustkmer import PyFuzzyQuery
+
+fq = PyFuzzyQuery(db)                      # wraps the PyDatabase instance
+result = fq.query_fuzzy("ATCGATCGATN", 1)  # pattern, max_mutations
+print(result.total_matches)
+for m in result.get_top_matches(5):
+    print(m.kmer, m.count, m.match_type)
+```
+
+See [Fuzzy Search](fuzzy-search.md) for wildcards, mutation tolerance, and position-specific mutations.
+
+## 6. Error Handling
 
 ### Python API
 
-```python
-import csv
-from pyrustkmer import Database, PyFuzzyQuery
-
-# Export to CSV
-db = PyDatabase("database.rkdb", LoadMode.Preload)
-    with open("kmer_export.csv", "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["kmer", "count", "canonical"])
-
-        for result in db.dump(limit=10000):
-            writer.writerow([result.kmer, result.count, result.canonical])
-
-# Export canonical k-mers only
-db = PyDatabase("database.rkdb", LoadMode.Preload)
-    canonical_kmers = []
-    for result in db.dump(limit=5000, canonical_only=True):
-        canonical_kmers.append((result.kmer, result.count))
-
-print(f"Exported {len(canonical_kmers)} canonical k-mers")
-```
-
-### Rust CLI
-
-```bash
-# Export to stdout
-rustkmer dump database.rkdb
-
-# Export with limit
-rustkmer dump database.rkdb --limit 10000
-
-# Export canonical only
-rustkmer dump database.rkdb --canonical-only
-
-# Export to file
-rustkmer dump database.rkdb > kmer_export.txt
-
-# TSV format
-rustkmer dump database.rkdb --format tsv > kmer_export.tsv
-```
-
-## 6. Batch Operations
-
-### Python API
+The module raises built-in Python exceptions (no custom exception imports are needed):
 
 ```python
-from pyrustkmer import Database, PyFuzzyQuery
-
-# Batch exact queries
-kmer_list = ["ATCGATCG...", "GCTAGCTA...", "TTTTTTTT..."]
-
-db = PyDatabase("database.rkdb", LoadMode.Preload)
-    results = {}
-    for kmer in kmer_list:
-        result = db.query_exact(kmer)
-        results[kmer] = result.count
-
-# Batch fuzzy queries
-db = PyDatabase("database.rkdb", LoadMode.Preload)
-    batch_result = db.fuzzy_query_batch(
-        kmer_list,
-        mutations=2,
-        max_workers=4
-    )
-
-    for kmer, result in batch_result.successes.items():
-        print(f"{kmer}: {result.total_matches} matches")
-```
-
-### Rust CLI
-
-```bash
-# Create query file
-cat > queries.txt << EOF
-ATCGATCGATCGATCGATCGATCGATCGATCGATCG
-GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAG
-TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
-EOF
-
-# Batch query
-rustkmer query database.rkdb --file queries.txt
-
-# Batch fuzzy query
-rustkmer fuzzy-query database.rkdb --file queries.txt -m 2
-```
-
-## 7. Error Handling
-
-### Python API
-
-```python
-from pyrustkmer import Database, DatabaseNotFoundError, InvalidKmerError, QueryError, PyFuzzyQuery
-
-# Proper error handling
-try:
-    db = PyDatabase("nonexistent.rkdb", LoadMode.Preload)
-        result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
-except DatabaseNotFoundError:
-    print("Database file not found!")
-except InvalidKmerError as e:
-    print(f"Invalid k-mer: {e.kmer} - {e.reason}")
-except QueryError as e:
-    print(f"Query error: {e}")
-except Exception as e:
-    print(f"Unexpected error: {e}")
-
-# Validate k-mers before querying
-def validate_kmer(kmer):
-    """Validate k-mer format."""
-    if not kmer:
-        raise InvalidKmerError(kmer, "Empty k-mer")
-    if not all(base in 'ATCG' for base in kmer.upper()):
-        raise InvalidKmerError(kmer, "Invalid nucleotides")
-    if len(kmer) < 10:
-        raise InvalidKmerError(kmer, "K-mer too short")
-    return kmer.upper()
+from pyrustkmer import PyDatabase, PyCounter, LoadMode
 
 try:
-    kmer = validate_kmer("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
-    db = PyDatabase("database.rkdb", LoadMode.Preload)
-        result = db.query_exact(kmer)
-except InvalidKmerError as e:
-    print(f"Validation failed: {e}")
+    db = PyDatabase("missing.rkdb", LoadMode.Preload)
+except FileNotFoundError as e:
+    print("Database file not found:", e)
+
+db = PyDatabase("database.rkdb", LoadMode.Preload)
+try:
+    db.query_exact("ATCG")   # wrong length for k=11
+except ValueError as e:
+    print("Invalid query:", e)
+# Invalid query: K-mer length 4 does not match database k-mer size 11
+
+try:
+    PyCounter(99)            # k must be 1-64
+except ValueError as e:
+    print("Invalid k:", e)
 ```
 
 ### Rust CLI
 
-```bash
-# Check if file exists before querying
-if [ -f "database.rkdb" ]; then
-    rustkmer query database.rkdb ATCGATCGATCGATCGATCGATCGATCGATCGATCG
-else
-    echo "Database file not found!"
-fi
-
-# Validate k-mer format
-kmer="ATCGATCGATCGATCGATCGATCGATCGATCGATCG"
-if [[ $kmer =~ ^[ATCGatcg]+$ ]]; then
-    rustkmer query database.rkdb "$kmer"
-else
-    echo "Invalid k-mer format!"
-fi
-```
-
-## 8. Performance Tips
-
-### Python API
-
-```python
-from pyrustkmer import KmerCounter, Database, PyFuzzyQuery
-import time
-
-# Use appropriate k-mer size
-def choose_kmer_size(read_length):
-    """Choose optimal k-mer size based on read length."""
-    if read_length < 100:
-        return 21
-    elif read_length < 500:
-        return 31
-    else:
-        return 51
-
-# Use batch operations for better performance
-def batch_query(database_path, kmer_list, mutations=2):
-    """Perform batch queries for better performance."""
-    db = PyDatabase(database_path, LoadMode.Preload)
-        return db.fuzzy_query_batch(kmer_list, mutations=mutations, max_workers=4)
-
-# Memory-efficient processing of large databases
-def process_large_database(database_path, output_file):
-    """Process large database without loading everything into memory."""
-    db = PyDatabase(database_path, LoadMode.Preload)
-        with open(output_file, 'w') as f:
-            for result in db.dump():
-                if result.count > 10:  # Filter high-count k-mers
-                    f.write(f"{result.kmer}\t{result.count}\n")
-```
-
-### Rust CLI
+The CLI validates input before running and exits with a non-zero status on error, printing all validation problems it found:
 
 ```bash
-# Use progress reporting for long operations
-rustkmer count -k 31 large_file.fasta -o database.rkdb --progress
-
-# Use compression for large outputs
-rustkmer dump database.rkdb | gzip > kmer_export.txt.gz
-
-# Process in parallel (when available)
-rustkmer count -k 31 *.fasta -o combined.rkdb --threads 8
-
-# Use streaming mode for very large files
-rustkmer query database.rkdb --file huge_query_list.txt --streaming
+rustkmer count -i demo.fa -o out.rkdb -k 0    # error: K-mer size must be between 1 and 127
+rustkmer count -k 11 -i nope.fasta -o out.rkdb # error: file not found
 ```
 
-## 9. Real-world Example: K-mer Analysis Pipeline
+## 7. Performance Tips
 
-### Python API
+- **Threads**: pass `--threads N` to `count` (CLI) or `threads=N` to `PyCounter` (Python). Precedence: flag beats `RUSTKMER_THREADS` beats `RAYON_NUM_THREADS` beats all cores.
+- **Load modes**: `LoadMode.Preload` gives the fastest exact queries at the highest memory cost; `LoadMode.Lazy` binary-searches sorted entries; `LoadMode.MemoryMapped` keeps only a file handle.
+- **Batch queries**: `query_exact_batch` (Python) or `-b queries.txt` (CLI) amortizes database loading over many lookups.
+- **Canonical mode** roughly halves the database for strand-agnostic analyses.
+- **Unsorted output**: `count --no-sort` skips the sort step when you only need counts, not fast lookups.
 
-```python
-#!/usr/bin/env python3
-"""
-Complete k-mer analysis pipeline.
-"""
+## 8. Choosing Between the CLI and Python
 
-from pyrustkmer import KmerCounter, Database, PyFuzzyQuery
-import pandas as pd
-import matplotlib.pyplot as plt
-import argparse
-import os
+Use the **CLI** for one-off counting, shell pipelines, and batch jobs. Use the **Python API** when you need programmatic control, pandas/matplotlib integration, or notebook-driven analysis. Both surfaces read and write the same `.rkdb` format, so you can count with the CLI and analyze with Python (or vice versa).
 
-def analyze_fasta(input_fasta, k=31, output_prefix="analysis"):
-    """Complete k-mer analysis pipeline."""
+## Runnable Example Scripts
 
-    print(f"Analyzing {input_fasta} with k={k}")
+The repository ships working scripts you can run directly:
 
-    # 1. Count k-mers
-    print("1. Counting k-mers...")
-    counter = PyCounter(k, canonical=True)
-    counter.add_from_fasta(input_fasta)
-
-    # 2. Save database
-    db_path = f"{output_prefix}.rkdb"
-    counter.save_database(db_path)
-
-    # 3. Get statistics
-    print("2. Getting statistics...")
-    db = PyDatabase(db_path, LoadMode.Preload)
-        stats = db.get_stats()
-        print(f"   Unique k-mers: {stats.unique_kmers:,}")
-        print(f"   Total counts: {stats.total_counts:,}")
-
-    # 4. Extract top k-mers
-    print("3. Extracting top k-mers...")
-    db = PyDatabase(db_path, LoadMode.Preload)
-        data = []
-        for result in db.dump(limit=10000, canonical_only=True):
-            data.append({
-                'kmer': result.kmer,
-                'count': result.count
-            })
-
-    df = pd.DataFrame(data)
-
-    # 5. Save results
-    print("4. Saving results...")
-    df.to_csv(f"{output_prefix}_kmer_counts.csv", index=False)
-
-    # 6. Create visualization
-    plt.figure(figsize=(10, 6))
-    plt.hist(df['count'], bins=50, alpha=0.7)
-    plt.xlabel('K-mer Count')
-    plt.ylabel('Frequency')
-    plt.title('K-mer Count Distribution')
-    plt.savefig(f"{output_prefix}_distribution.png", dpi=150, bbox_inches='tight')
-
-    print(f"Analysis complete! Results saved to {output_prefix}_*")
-
-    # 7. Summary statistics
-    print("\nSummary Statistics:")
-    print(f"   Mean count: {df['count'].mean():.1f}")
-    print(f"   Median count: {df['count'].median():.1f}")
-    print(f"   Max count: {df['count'].max()}")
-    print(f"   Top 1% threshold: {df['count'].quantile(0.99):.1f}")
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="K-mer analysis pipeline")
-    parser.add_argument("input", help="Input FASTA file")
-    parser.add_argument("-k", type=int, default=31, help="K-mer size")
-    parser.add_argument("-o", "--output", default="analysis", help="Output prefix")
-
-    args = parser.parse_args()
-    analyze_fasta(args.input, args.k, args.output)
-```
-
-### Rust CLI Equivalent
-
-```bash
-#!/bin/bash
-# kmer_analysis.sh - K-mer analysis pipeline
-
-set -euo pipefail
-
-input_file=$1
-k=${2:-31}
-output_prefix=${3:-analysis}
-
-echo "Analyzing $input_file with k=$k"
-
-# 1. Count k-mers
-echo "1. Counting k-mers..."
-rustkmer count -k $k "$input_file" -o "${output_prefix}.rkdb" --progress
-
-# 2. Get statistics
-echo "2. Getting statistics..."
-stats=$(rustkmer stats "${output_prefix}.rkdb" --format json)
-echo "   Statistics: $stats"
-
-# 3. Extract top k-mers
-echo "3. Extracting top k-mers..."
-rustkmer dump "${output_prefix}.rkdb" --limit 10000 --canonical-only > "${output_prefix}_kmer_counts.txt"
-
-# 4. Convert to CSV format
-echo "4. Converting to CSV..."
-awk 'NR>1 {print $1","$2}' "${output_prefix}_kmer_counts.txt" > "${output_prefix}_kmer_counts.csv"
-
-echo "Analysis complete! Results saved to ${output_prefix}_*"
-```
-
-## 10. Choosing Between Python API and CLI
-
-### Use Python API when:
-- You need programmatic control
-- Integration with other Python libraries (pandas, matplotlib, etc.)
-- Complex data processing pipelines
-- Custom error handling
-- Interactive analysis (Jupyter notebooks)
-
-### Use CLI when:
-- Simple, one-off operations
-- Shell scripting workflows
-- High-performance batch processing
-- Integration with other command-line tools
-- Minimal setup required
-
-### Example Decision Flow:
-
-```python
-# Use Python API for analysis
-if need_custom_processing or integrate_with_python_libs:
-    use_python_api()
-
-# Use CLI for simple operations
-elif simple_oneoff_task or shell_scripting:
-    use_cli()
-
-# Use both for complex pipelines
-else:
-    use_cli_for_heavy_lifting()
-    use_python_api_for_analysis()
-```
+- `examples/bash/01_counting.sh` — counting walkthroughs (note: it predates the current CLI; prefer the flags shown in this page, e.g. `--threads` instead of `-t`)
+- `examples/bash/03_querying.sh` — query-based workflows
+- `examples/python/demo_pyo3_binding.py`, `examples/python/unified_query_example.py` — PyDatabase interface demos
+- `examples/data/demo_rice_genome.fa.gz` — bundled demo FASTA (gzipped)
+- `examples/README.md` — index of all examples
 
 ## Next Steps
 
-- Explore [advanced examples](../python/) for specific use cases
-- Read the [Python API documentation](../../api-reference/python/)
-- Check the [tutorials](../../tutorials/) for detailed workflows
-- Review the [full API reference](../../api-reference/) for all available features
+- [Database Operations](database-ops.md) — load modes and database management
+- [Fuzzy Search](fuzzy-search.md) — wildcards and mutation tolerance
+- [Batch Processing](batch-processing.md), [Merging](merging.md), [Statistics](statistics.md), [Data Export](data-export.md), [Advanced Features](advanced.md)
+- [Python examples](python/README.md)

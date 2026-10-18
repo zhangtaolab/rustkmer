@@ -23,7 +23,7 @@ Magic number for rustkmer database files
 #### DATABASE_VERSION
 
 ```rust
-pub const DATABASE_VERSION: u16 = 1;
+pub const DATABASE_VERSION: u16 = 2;
 ```
 
 Database version
@@ -49,7 +49,7 @@ Validate header consistency
 #### new
 
 ```rust
-pub fn new(kmer: u64, count: u32) -> Self {
+pub fn new(kmer: u128, count: u32) -> Self {
 ```
 
 Create a new k-mer entry
@@ -129,7 +129,7 @@ Query a k-mer from the database
 #### binary_search_kmer
 
 ```rust
-fn binary_search_kmer(&self, query_encoded: u64) -> Option<u64> {
+fn binary_search_kmer(&self, query_encoded: u128) -> Option<u64> {
 ```
 
 Binary search for a k-mer in a sorted database
@@ -137,11 +137,11 @@ Binary search for a k-mer in a sorted database
 #### linear_search_kmer
 
 ```rust
-fn linear_search_kmer(&self, query_encoded: u64) -> Option<u64> {
+fn linear_search_kmer(&self, query_encoded: u128) -> Option<u64> {
 ```
 
 Linear search for a k-mer in an unsorted database
 
 ---
 
-*Source: [`format.rs`](../../../database/format.rs)*
+*Source: [`format.rs`](../../../src/database/format.rs)*

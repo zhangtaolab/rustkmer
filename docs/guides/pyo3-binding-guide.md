@@ -51,7 +51,7 @@ from pyrustkmer import PyDatabase, LoadMode
 
 # 创建数据库连接
 db = PyDatabase(
-    "python/tests/test_data/small_test.rkdb",
+    "test_data/databases/small_test.rkdb",
     LoadMode.Preload
 )
 
@@ -71,15 +71,15 @@ for kmer, result in batch_results.items():
 #### 1. 简单版本 (`simple_prefix_query.py`)
 
 ```bash
-# 直接对应你的命令
-python3 simple_prefix_query.py ~/Data/data/kmer/K19/R1_001.rkdb "AAAAAAAA{N5}AAAAAA"
+# 脚本内置数据库路径与混合模式查询，不接受命令行参数
+python3 examples/python/simple_prefix_query.py
 ```
 
-#### 2. 完整版本 (`prefix_query_pyo3_binding.py`)
+#### 2. 完整版本 (`unified_query_example.py`)
 
 ```bash
-# 带详细选项的版本
-python3 prefix_query_pyo3_binding.py ~/Data/data/kmer/K19/R1_001.rkdb "AAAAAAAA{N5}AAAAAA" --with-metrics
+# 统一接口完整演示（自动查找测试数据库，不接受命令行参数）
+python3 examples/python/unified_query_example.py
 ```
 
 ## 🔧 API 详细说明
@@ -424,7 +424,7 @@ for pattern in patterns:
 
 #### 1. 导入错误
 ```python
-# 错误: ModuleNotFoundError: No module named 'rustkmer_pyo3'
+# 错误: ModuleNotFoundError: No module named 'pyrustkmer'
 # 解决: 确保 PYTHONPATH 设置正确
 import os
 os.environ['PYTHONPATH'] = '/path/to/rustkmer/pyo3/target/debug:' + os.environ.get('PYTHONPATH', '')
@@ -467,7 +467,7 @@ except Exception as e:
 
 ### Rust 命令
 ```bash
-./target/release/rustkmer prefix-query ~/Data/data/kmer/K19/R1_001.rkdb AAAAAAAA{N5}AAAAAA
+./target/release/rustkmer prefix-query ~/Data/data/kmer/K19/R1_001.rkdb -p "AAAAAAAA{N5}AAAAAA"
 ```
 
 ### Python 统一接口等效代码 ✅

@@ -1,16 +1,19 @@
 # 📋 当前前缀、后缀和混合匹配的命令状况
 
-## 🚨 **现状：暂无专门命令**
+## ✅ **现状：prefix-query 命令已实现**
 
-目前CLI**没有专门的前缀、后缀和混合匹配命令**。现有的相关命令是：
+目前CLI**已提供 `prefix-query` 命令**（定义于 `src/cli/args.rs` 的 `PrefixQuery` 变体，`src/main.rs` 已接入分发），支持高效前缀匹配和 `--hybrid` 混合模式；独立的后缀查询（suffix-query）与智能查询（smart-query）命令暂未提供。现有的相关命令是：
 
 | 命令 | 功能 | 是否支持高效前缀/后缀匹配 |
 |------|------|--------------------------|
+| `prefix-query` | 高效前缀/混合模式查询 | ✅ 排序数据库范围定位，支持 `-p/--pattern`、`-x/--prefix`、`--hybrid` |
 | `query` | 精确k-mer查询 | ❌ 仅支持精确匹配 |
 | `fuzzy-query` | 模糊查询 (N通配符) | ❌ 生成所有变体，效率低 |
 | `dump` | 数据库导出 | ❌ 导出全部数据 |
 
 ## 📝 **当前可用的 workaround**
+
+前缀模式请直接使用已实现的 `rustkmer prefix-query <DATABASE> -p <PREFIX>`；以下workaround主要针对尚无专门命令的场景：
 
 ### 1. **使用 fuzzy-query (效率低)**
 ```bash
@@ -52,16 +55,22 @@ def prefix_query(database_path, prefix):
 
 ## 🚀 **建议的新命令设计**
 
-基于我们的高效算法实现，建议添加以下新命令：
+基于我们的高效算法实现，`prefix-query` 已落地，其余命令为建议设计：
 
-### 命令1: prefix-query
+### 命令1: prefix-query (✅ 已实现)
 ```bash
-# 基本语法
-rustkmer prefix-query <DATABASE> <PREFIX>
+# 基本语法 (-p/--pattern 指定前缀模式)
+rustkmer prefix-query <DATABASE> -p <PREFIX>
 
 # 示例
-rustkmer prefix-query database.rkdb "AAATT"
-rustkmer prefix-query database.rkdb "AAAA" --format json --output results.txt
+rustkmer prefix-query database.rkdb -p "AAATT"
+rustkmer prefix-query database.rkdb -p "AAATT" -f json -o results.txt
+
+# 显式前缀 (-x/--prefix，与 -p 互斥)
+rustkmer prefix-query database.rkdb -x "AAATT"
+
+# 混合模式 (--hybrid 需配合 -p，支持 ATAC{N5}ACAC 这类内部通配符模式)
+rustkmer prefix-query database.rkdb -p "ATAC{N5}ACAC" --hybrid
 ```
 
 ### 命令2: suffix-query  
@@ -108,39 +117,39 @@ rustkmer smart-query database.rkdb "AAANNNAAA" --profile
 ## 🛠️ **实现状态总结**
 
 ### ✅ **已完成**
-- Rust核心算法实现 (prefix_query.rs, suffix_query.rs)
+- Rust核心算法实现 (prefix_query.rs, prefix_query_optimized.rs, suffix_query.rs)
 - 智能策略选择算法
 - 性能分析和效率对比
+- 前缀查询CLI命令 `prefix-query` (含 `--hybrid` 混合模式)
 
 ### 🔄 **进行中**
 - Python API集成 (部分完成)
-- CLI命令集成 (未开始)
 
 ### ❌ **待实现**
-- 前缀查询CLI命令
-- 后缀查询CLI命令  
-- 混合查询CLI命令
+- 后缀查询CLI命令
+- 独立混合查询CLI命令 (混合查询功能已可通过 `prefix-query --hybrid` 使用)
 - 智能查询CLI命令
 
 ## 💡 **临时解决方案**
 
-在完整的CLI命令实现之前，可以通过以下方式体验高效算法：
+在后缀、智能查询等其余CLI命令实现之前，可以通过以下方式体验高效算法：
 
-1. **使用Python脚本** (等待API完善)
-2. **使用Rust测试代码** (临时验证)
-3. **性能基准测试** (证明效率优势)
+1. **使用 prefix-query CLI 命令** (前缀与 `--hybrid` 混合模式已实现)
+2. **使用Python API** (`extract_by_prefix`、`extract_by_pattern` 已可用)
+3. **使用Rust测试代码** (临时验证)
+4. **性能基准测试** (证明效率优势)
 
 ## 🎯 **结论**
 
-**当前没有专门的前缀、后缀和混合匹配CLI命令**，但核心算法已经实现并验证高效。需要额外的CLI集成工作来为用户提供便捷的命令行接口。
+**`prefix-query` CLI命令已经实现**（含 `--hybrid` 混合模式），后缀查询（suffix-query）和智能查询（smart-query）命令尚未提供，但对应核心算法已经在Rust层实现并验证高效。
 
 **建议优先实现 `smart-query` 命令**，因为它能自动选择最优策略，对用户最友好。
 
 ## 📞 **下一步行动**
 
 如需快速体验高效算法，可以：
-1. 等待CLI命令实现完成
-2. 使用Python API (正在完善中)
-3. 参与CLI命令的开发实现
+1. 直接使用 `rustkmer prefix-query <DATABASE> -p <PREFIX>` (已实现)
+2. 使用Python API (`extract_by_prefix`、`extract_by_pattern` 已可用)
+3. 参与suffix-query、smart-query命令的开发实现
 
 

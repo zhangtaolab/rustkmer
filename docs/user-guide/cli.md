@@ -21,11 +21,11 @@ cargo build --release
 ## Basic Usage
 
 ```bash
-# Count k-mers from a file
-rustkmer count -i input.fa -o output.rkdb
+# Count k-mers from a file (-k is required — there is no default k)
+rustkmer count -i input.fa -k 21 -o output.rkdb
 
-# Query a database
-rustkmer query -d database.rkdb -q "ATCGATCGATCGATCGATCG"
+# Query a database (database path is positional)
+rustkmer query database.rkdb "ATCGATCGATCGATCGATCG"
 
 # Get help
 rustkmer --help
@@ -40,25 +40,25 @@ Count k-mers from genomic sequence files and create databases.
 
 #### Basic Counting
 ```bash
-# Count k-mers with default settings (k=21)
-rustkmer count -i genome.fa -o genome_k21.rkdb
+# Count k-mers (k is required — there is no default k)
+rustkmer count -i genome.fa -k 21 -o genome_k21.rkdb
 
-# Specify k-mer size
-rustkmer count -i genome.fa -k 31 -o genome_k31.rkdb
+# Omit -o to print counting statistics without writing a database
+rustkmer count -i genome.fa -k 31
 
 # Use canonical k-mers (recommended for genomes)
-rustkmer count -i genome.fa --canonical -o genome_canonical.rkdb
+rustkmer count -i genome.fa -k 21 --canonical -o genome_canonical.rkdb
 ```
 
 #### Input Formats
 ```bash
 # FASTA files
-rustkmer count -i genome.fa -o genome.rkdb
-rustkmer count -i genome.fa.gz -o genome.rkdb
+rustkmer count -i genome.fa -k 21 -o genome.rkdb
+rustkmer count -i genome.fa.gz -k 21 -o genome.rkdb
 
 # FASTQ files
-rustkmer count -i reads.fq -o reads.rkdb
-rustkmer count -i reads.fq.gz -o reads.rkdb
+rustkmer count -i reads.fq -k 21 -o reads.rkdb
+rustkmer count -i reads.fq.gz -k 21 -o reads.rkdb
 
 # Multiple files
 rustkmer count -i chr1.fa -i chr2.fa -i chr3.fa -o genome.rkdb
@@ -66,20 +66,23 @@ rustkmer count -i chr1.fa -i chr2.fa -i chr3.fa -o genome.rkdb
 
 #### Advanced Counting Options
 ```bash
-# Specify thread count
-rustkmer count -i genome.fa -o genome.rkdb --threads 8
+# Specify thread count (--threads is long-only; default is all cores)
+rustkmer count -i genome.fa -k 21 -o genome.rkdb --threads 8
 
 # Enable verbose output
-rustkmer count -i genome.fa -o genome.rkdb --verbose
+rustkmer count -i genome.fa -k 21 -o genome.rkdb --verbose
 
-# Create sorted database for faster querying
-rustkmer count -i genome.fa -o genome.rkdb --sorted
+# Hash table size (--size takes a usize; default 1000000)
+rustkmer count -i genome.fa -k 21 -o genome.rkdb --size 4000000
 
-# Create indexed database for very fast querying
-rustkmer count -i genome.fa -o genome.rkdb --indexed
+# Write human-readable text instead of the binary database
+rustkmer count -i genome.fa -k 21 -o output.txt --format text
 
-# Compress database to save disk space
-rustkmer count -i genome.fa -o genome.rkdb --compress
+# Skip sorting for faster counting (sorted output is the default)
+rustkmer count -i genome.fa -k 21 -o genome.rkdb --no-sort
+
+# Filter by count thresholds (-L min, -U max)
+rustkmer count -i genome.fa -k 21 -o genome.rkdb -L 2 -U 1000
 ```
 
 #### Counting Examples
@@ -87,6 +90,7 @@ rustkmer count -i genome.fa -o genome.rkdb --compress
 # Example 1: Basic genome analysis
 rustkmer count \
   -i human_genome.fa \
+  -k 21 \
   -o human_genome_k21.rkdb \
   --canonical \
   --threads 16 \
@@ -98,8 +102,6 @@ rustkmer count \
   -o large_dataset.rkdb \
   -k 31 \
   --canonical \
-  --sorted \
-  --compress \
   --threads 32
 
 # Example 3: Fast counting for testing
@@ -116,17 +118,20 @@ Query k-mer databases for exact matches and retrieve counts.
 
 #### Basic Querying
 ```bash
-# Single k-mer query
-rustkmer query -d database.rkdb -q "ATCGATCGATCGATCGATCG"
+# Single k-mer query (database path and k-mers are positional)
+rustkmer query database.rkdb "ATCGATCGATCGATCGATCG"
 
-# Query from file
-rustkmer query -d database.rkdb -f queries.txt
+# Multiple queries (space-separated positional k-mers)
+rustkmer query database.rkdb "ATCGATCGATCGATCGATCG" "GCTAGCTAGCTAGCTAGCTAG"
+
+# Query every k-mer of a sequence file
+rustkmer query database.rkdb -s reads.fa
 
 # Batch query from text file (one k-mer per line)
-rustkmer query database.rkdb --batch kmer_list.txt
+rustkmer query database.rkdb -b kmer_list.txt
 
-# Multiple queries
-rustkmer query -d database.rkdb -q "ATCGATCGATCGATCGATCG" -q "GCTAGCTAGCTAGCTAGCTAG"
+# Interactive mode (reads k-mers from stdin)
+rustkmer query database.rkdb -i
 ```
 
 #### Query Formats
@@ -139,7 +144,7 @@ TTTTTTTTTTTTTTTTTTTTT
 CCCCCCCCCCCCCCCCCCCCCC
 EOF
 
-rustkmer query -d database.rkdb -f queries.txt
+rustkmer query database.rkdb -b queries.txt
 
 # Batch query format (one k-mer per line, supports comments)
 cat > kmer_list.txt << EOF
@@ -152,44 +157,43 @@ TTTTTTTTTTTTTTTTTTTTT
 CCCCCCCCCCCCCCCCCCCCCC
 EOF
 
-rustkmer query database.rkdb --batch kmer_list.txt
+rustkmer query database.rkdb -b kmer_list.txt
 ```
 
 #### Output Formats
 ```bash
-# Simple output (default)
-rustkmer query -d database.rkdb -q "ATCGATCGATCGATCGATCG"
+# Simple output (results print to stdout by default)
+rustkmer query database.rkdb "ATCGATCGATCGATCGATCG"
 # Output: ATCGATCGATCGATCGATCG: 42
 
-# Tab-separated output
-rustkmer query -d database.rkdb -f queries.txt --output-format tsv
+# Write results to a file instead of stdout
+rustkmer query database.rkdb -b queries.txt -o results.txt
 
-# JSON output
-rustkmer query -d database.rkdb -f queries.txt --output-format json
+# Force pre-loading of the database into memory (faster repeated lookups)
+rustkmer query database.rkdb -b queries.txt -l
 
-# CSV output with headers
-rustkmer query -d database.rkdb -f queries.txt --output-format csv --header
+# Disable pre-loading (read entries from disk instead)
+rustkmer query database.rkdb -b queries.txt -L
 ```
 
 #### Query Examples
 ```bash
 # Example 1: Basic gene analysis
 rustkmer query \
-  -d genome_database.rkdb \
-  -q "ATCGATCGATCGATCGATCG" \
-  --output-format json
+  genome_database.rkdb \
+  "ATCGATCGATCGATCGATCG"
 
 # Example 2: High-throughput querying
 rustkmer query \
-  -d genome_database.rkdb \
-  -f gene_kmers.txt \
-  --output-format tsv \
-  --threads 8
+  genome_database.rkdb \
+  -b gene_kmers.txt \
+  -l \
+  -o results.txt
 
 # Example 3: Batch query with multiple databases
 for db in chr*.rkdb; do
   echo "Querying $db..."
-  rustkmer query -d "$db" -f queries.txt -o "${db%.rkdb}_results.tsv"
+  rustkmer query "$db" -b queries.txt -o "${db%.rkdb}_results.tsv"
 done
 ```
 
@@ -199,167 +203,157 @@ Perform fuzzy k-mer searches with wildcards and distance constraints.
 
 #### Basic Fuzzy Search
 ```bash
-# Search with wildcards (N = any base)
-rustkmer fuzzy-query \
-  -d database.rkdb \
-  -p "ATCGATCGNATCGATCG" \
-  --max-matches 100
+# Search with wildcards (N = any base) — database and query are positional
+rustkmer fuzzy-query database.rkdb "ATCGATCGNATCGATCG"
 
-# Search with distance constraint
-rustkmer fuzzy-query \
-  -d database.rkdb \
-  -p "ATCGATCGATCGATCGATCG" \
-  --max-distance 2 \
-  --max-matches 50
+# Search with mutation tolerance (maximum Hamming distance, -m/--mutations)
+rustkmer fuzzy-query database.rkdb "ATCGATCGATCGATCGATCG" -m 2
+
+# Cap the number of generated variants (-M/--max-variants)
+rustkmer fuzzy-query database.rkdb "ATCGATCGATCGATCGATCG" -m 2 -M 1000
 ```
 
 #### Fuzzy Search Options
 ```bash
 # Search with pattern containing multiple wildcards
-rustkmer fuzzy-query \
-  -d database.rkdb \
-  -p "ATNNGNCGATCG" \
-  --max-matches 1000
+rustkmer fuzzy-query database.rkdb "ATNNGNCGATCG" -M 1000
 
-# Exhaustive search (slower but complete)
-rustkmer fuzzy-query \
-  -d database.rkdb \
-  -p "ATCGATCGATCGATCGATCG" \
-  --max-distance 3 \
-  --max-matches 1000 \
-  --exhaustive
+# Tune the variant batch size (default 1000)
+rustkmer fuzzy-query database.rkdb "ATCGATCGATCGATCGATCG" -m 3 -b 5000
 
-# Output in different formats
-rustkmer fuzzy-query \
-  -d database.rkdb \
-  -p "ATCGATCGATCGATCGATCG" \
-  --output-format json \
-  --include-distance
+# Position-specific mutations (e.g. "3,4,5:2" or "3,4,5:2;6,7:1")
+rustkmer fuzzy-query database.rkdb "ATCGATCGATCGATCGATCG" --position-mutations "3,4,5:2"
+
+# Output in different formats (table, json, tsv, csv)
+rustkmer fuzzy-query database.rkdb "ATCGATCGATCGATCGATCG" -m 1 -f json
 ```
 
 #### Fuzzy Examples
 ```bash
 # Example 1: Pattern matching with ambiguity
-rustkmer fuzzy-query \
-  -d genome.rkdb \
-  -p "ATCGATCGATCGATCGATCG" \
-  --max-distance 1 \
-  --max-matches 20 \
-  --verbose
+rustkmer fuzzy-query genome.rkdb "ATCGATCGATCGATCGATCG" -m 1 -M 20 --verbose
 
 # Example 2: Search for similar sequences
-rustkmer fuzzy-query \
-  -d proteins.rkdb \
-  -p "ATCGATCGATCGATCGATCG" \
-  --max-distance 2 \
-  --exhaustive \
-  --output-format json
+rustkmer fuzzy-query proteins.rkdb "ATCGATCGATCGATCGATCG" -m 2 -f json
 
 # Example 3: High-throughput fuzzy search
-rustkmer fuzzy-query \
-  -d metagenome.rkdb \
-  -p "ATNNGATCGATCG" \
-  --max-matches 5000 \
-  --threads 16 \
-  -o fuzzy_results.json
+rustkmer fuzzy-query metagenome.rkdb "ATNNGATCGATCG" -M 5000 -f json -o fuzzy_results.json
 ```
 
-### `info` - Database Information
+### `fuzzy-query-batch` - Batch Fuzzy Search
 
-Display information about k-mer databases.
+Run fuzzy queries for every line of a query file.
 
-#### Basic Info
+#### Basic Batch Search
 ```bash
-# Show database information
-rustkmer info -d database.rkdb
+# Query every line of queries.txt against the database
+rustkmer fuzzy-query-batch database.rkdb -s queries.txt
 
-# Detailed information
-rustkmer info -d database.rkdb --detailed
+# Defaults applied to every query in the file
+rustkmer fuzzy-query-batch database.rkdb -s queries.txt --default-mutations 1
 
-# Information for multiple databases
-rustkmer info -d db1.rkdb -d db2.rkdb -d db3.rkdb
+# JSON output written to a file
+rustkmer fuzzy-query-batch database.rkdb -s queries.txt -f json -o results.json
 ```
 
-#### Info Examples
+The database path is positional; `-s/--sequence FILE` (one query per line) is required. Additional options: `--default-mutations`, `--default-max-variants`, `-b/--batch-size`, `-f/--format` (table, json, tsv, csv), `-o/--output`, `--fail-fast`, and `--include-headers`.
+
+#### Batch Examples
+```bash
+# Example: large query set with per-query defaults
+rustkmer fuzzy-query-batch metagenome.rkdb \
+  -s all_queries.txt \
+  --default-mutations 2 \
+  --default-max-variants 5000 \
+  -b 200 \
+  -f tsv \
+  -o batch_results.tsv
+```
+
+### `dump` - Dump Database to Text
+
+Dump the contents of a k-mer database to text format.
+
+#### Basic Dump
+```bash
+# Dump database to stdout
+rustkmer dump database.rkdb
+
+# Dump database to a file
+rustkmer dump database.rkdb -o database.txt
+```
+
+`dump` takes the database path as a positional argument; `-o/--output` is its only option.
+
+#### Dump Examples
+```bash
+# Example 1: Quick database inspection
+rustkmer dump genome_k21.rkdb | head
+
+# Example 2: Batch conversion to text
+for db in *.rkdb; do
+  echo "=== $db ==="
+  rustkmer dump "$db" -o "${db%.rkdb}.txt"
+done
+```
+
+### `stats` - Database Statistics
+
+Calculate statistics for a k-mer database.
+
+#### Basic Stats
+```bash
+# Show database statistics (database path is positional)
+rustkmer stats database.rkdb
+
+# Detailed statistics including the frequency distribution
+rustkmer stats database.rkdb --detailed
+
+# Machine-readable output formats
+rustkmer stats database.rkdb -f json
+rustkmer stats database.rkdb -f csv
+```
+
+`stats` takes the database path as a positional argument. Additional options: `-f/--format` (text, json, csv, tsv), `-o/--output`, `--detailed`, `--max-bins`, `--approximate`, `-p/--progress`, and `--split-output` with `--freq-output`.
+
+#### Stats Examples
 ```bash
 # Example 1: Quick database check
-rustkmer info -d genome_k21.rkdb
+rustkmer stats genome_k21.rkdb
 
 # Example 2: Detailed analysis
-rustkmer info -d genome_k31.rkdb --detailed
+rustkmer stats genome_k31.rkdb --detailed
 
 # Example 3: Batch database analysis
 for db in *.rkdb; do
   echo "=== $db ==="
-  rustkmer info -d "$db"
+  rustkmer stats "$db"
   echo
 done
 ```
 
-### `compare` - Compare Databases
+### `prefix-query` - Prefix Queries
 
-Compare two k-mer databases and find similarities/differences.
+Efficient prefix-based k-mer query for sorted databases.
 
-#### Basic Comparison
+#### Basic Prefix Query
 ```bash
-# Compare two databases
-rustkmer compare -d1 database1.rkdb -d2 database2.rkdb
+# Match k-mers by sequence prefix (database path is positional)
+rustkmer prefix-query database.rkdb -x ATCGAT
 
-# Comparison with statistics
-rustkmer compare \
-  -d1 genome1.rkdb \
-  -d2 genome2.rkdb \
-  --statistics \
-  --output comparison_results.txt
+# Match a hybrid pattern with internal wildcards (e.g. ATAC{N5}ACAC)
+rustkmer prefix-query database.rkdb -p "ATAC{N5}ACAC" --hybrid
 ```
 
-#### Advanced Comparison
+`-p/--pattern` and `-x/--prefix` are mutually exclusive; `--hybrid` requires `-p`. Additional options: `-f/--format` (table, json, csv, tsv), `-o/--output`, `-L/--min-count`, `-U/--max-count`, `--profile`, `-v/--verbose`, and `-q/--quiet`.
+
+#### Prefix Query Examples
 ```bash
-# Detailed comparison with threshold
-rustkmer compare \
-  -d1 sample1.rkdb \
-  -d2 sample2.rkdb \
-  --min-count 10 \
-  --similarity-threshold 0.8 \
-  --output detailed_comparison.txt
+# Example 1: Extract all k-mers sharing a prefix
+rustkmer prefix-query genome.rkdb -x ATCGAT -f tsv
 
-# Export common k-mers
-rustkmer compare \
-  -d1 control.rkdb \
-  -d2 treatment.rkdb \
-  --export-common common_kmers.txt
-
-# Export unique k-mers
-rustkmer compare \
-  -d1 sample1.rkdb \
-  -d2 sample2.rkdb \
-  --export-unique1 unique_to_sample1.txt \
-  --export-unique2 unique_to_sample2.txt
-```
-
-#### Compare Examples
-```bash
-# Example 1: Basic genome comparison
-rustkmer compare \
-  -d1 human_genome.rkdb \
-  -d2 mouse_genome.rkdb \
-  --statistics
-
-# Example 2: Differential analysis
-rustkmer compare \
-  -d1 control_group.rkdb \
-  -d2 treatment_group.rkdb \
-  --min-count 50 \
-  --export-common shared_kmers.txt \
-  --export-unique2 treatment_specific.txt
-
-# Example 3: Multiple sample comparison
-rustkmer compare \
-  -d1 sampleA.rkdb \
-  -d2 sampleB.rkdb \
-  --similarity-threshold 0.9 \
-  --output similarity_report.txt \
-  --detailed
+# Example 2: Hybrid pattern with count thresholds
+rustkmer prefix-query metagenome.rkdb -p "ATAC{N5}ACAC" --hybrid -L 2 -f csv -o prefix_matches.csv
 ```
 
 ### `merge` - Merge Databases
@@ -368,134 +362,95 @@ Merge multiple k-mer databases into a single database.
 
 #### Basic Merging
 ```bash
-# Merge two databases
-rustkmer merge -d1 db1.rkdb -d2 db2.rkdb -o merged.rkdb
+# Merge two databases (-i/--input takes at least two files)
+rustkmer merge -i db1.rkdb db2.rkdb -o merged.rkdb
 
 # Merge multiple databases
 rustkmer merge \
-  -d1 chr1.rkdb \
-  -d2 chr2.rkdb \
-  -d3 chr3.rkdb \
+  -i chr1.rkdb chr2.rkdb chr3.rkdb \
   -o complete_genome.rkdb
 ```
 
 #### Merge Options
 ```bash
-# Merge with specific k-mer size (must match)
+# Cap the memory budget for the merge (defaults to 50% of system memory)
 rustkmer merge \
-  -d1 sample1.rkdb \
-  -d2 sample2.rkdb \
+  -i sample1.rkdb sample2.rkdb \
   -o merged.rkdb \
-  -k 21
+  --max-memory 32GB
 
-# Merge and sort result
+# Choose the merge strategy (auto, memory, or streaming)
 rustkmer merge \
-  -d1 part1.rkdb \
-  -d2 part2.rkdb \
+  -i part1.rkdb part2.rkdb \
   -o complete.rkdb \
-  --sort
+  --merge-mode streaming
 
-# Merge with compression
+# Parallel merge threads (--num-threads; 0 = all cores)
 rustkmer merge \
-  -d1 batch1.rkdb \
-  -d2 batch2.rkdb \
+  -i batch1.rkdb batch2.rkdb \
   -o final.rkdb \
-  --compress
+  --num-threads 8
 ```
 
 #### Merge Examples
 ```bash
 # Example 1: Combine chromosome databases
 rustkmer merge \
-  -d1 chr1.rkdb -d2 chr2.rkdb -d3 chr3.rkdb \
-  -d4 chr4.rkdb -d5 chr5.rkdb \
-  -o genome_complete.rkdb \
-  --sort
+  -i chr1.rkdb chr2.rkdb chr3.rkdb chr4.rkdb chr5.rkdb \
+  -o genome_complete.rkdb
 
-# Example 2: Merge batch processing results
+# Example 2: Memory-bounded merge of batch processing results
 rustkmer merge \
-  -d1 batch1.rkdb \
-  -d2 batch2.rkdb \
-  -d3 batch3.rkdb \
+  -i batch1.rkdb batch2.rkdb batch3.rkdb \
   -o all_batches.rkdb \
-  --compress \
+  --max-memory 16GB \
+  --merge-mode streaming \
   --verbose
 
-# Example 3: Create consensus database
+# Example 3: Check compatibility before merging
 rustkmer merge \
-  -d1 sample1.rkdb \
-  -d2 sample2.rkdb \
-  -d3 sample3.rkdb \
+  -i sample1.rkdb sample2.rkdb sample3.rkdb \
   -o consensus.rkdb \
-  --sort \
-  --threads 8
+  --check-compatibility
 ```
 
-## Global Options
+## Command Options
 
-These options are available for all commands:
+There are no global options — each subcommand defines its own flags. The options most commonly needed across workflows are:
 
 ### Verbosity and Output
 ```bash
-# Verbose output
-rustkmer count -i input.fa -o output.rkdb --verbose
+# Verbose output (available on count, merge, fuzzy-query, fuzzy-query-batch, prefix-query)
+rustkmer count -i input.fa -k 21 -o output.rkdb --verbose
 
 # Quiet mode (minimal output)
-rustkmer count -i input.fa -o output.rkdb --quiet
-
-# Progress bar
-rustkmer count -i input.fa -o output.rkdb --progress
+rustkmer count -i input.fa -k 21 -o output.rkdb --quiet
 ```
 
 ### Threading
 ```bash
-# Auto-detect threads (default)
-rustkmer count -i input.fa -o output.rkdb
+# count: --threads (long-only flag; default is all cores)
+rustkmer count -i input.fa -k 21 -o output.rkdb --threads 8
 
-# Specify thread count
-rustkmer count -i input.fa -o output.rkdb --threads 8
+# Single-threaded counting
+rustkmer count -i input.fa -k 21 -o output.rkdb --threads 1
 
-# Single-threaded
-rustkmer count -i input.fa -o output.rkdb --threads 1
+# merge: --num-threads (0 = use all cores)
+rustkmer merge -i db1.rkdb db2.rkdb -o merged.rkdb --num-threads 8
 ```
 
-### Configuration
+## Configuration via Environment
+
+There is no `--config` flag. Thread count and logging are configured through environment variables:
+
 ```bash
-# Use configuration file
-rustkmer --config config.toml count -i input.fa -o output.rkdb
+# Thread precedence for count (highest wins):
+# --threads > RUSTKMER_THREADS > RAYON_NUM_THREADS > all available cores
+RUSTKMER_THREADS=8 rustkmer count -i input.fa -k 21 -o output.rkdb
+RAYON_NUM_THREADS=4 rustkmer count -i input.fa -k 21 -o output.rkdb
 
-# Set working directory
-rustkmer --working-dir /path/to/work count -i input.fa -o output.rkdb
-```
-
-## Configuration Files
-
-Create a TOML configuration file to store default settings:
-
-```toml
-# rustkmer.toml
-[general]
-default_threads = 8
-default_k = 21
-working_directory = "/data/rustkmer"
-
-[counting]
-canonical = true
-sort = true
-compress = false
-
-[querying]
-default_output_format = "tsv"
-include_zero_counts = false
-
-[fuzzy_search]
-max_default_distance = 2
-max_default_matches = 100
-```
-
-Use configuration:
-```bash
-rustkmer --config rustkmer.toml count -i input.fa -o output.rkdb
+# Logging verbosity (rustkmer logs at the "info" level by default)
+RUST_LOG=debug rustkmer count -i input.fa -k 21 -o output.rkdb
 ```
 
 ## Performance Tips
@@ -504,13 +459,13 @@ rustkmer --config rustkmer.toml count -i input.fa -o output.rkdb
 ```bash
 # Use optimal thread count
 THREADS=$(nproc)
-rustkmer count -i large_file.fa -o output.rkdb --threads $THREADS
+rustkmer count -i large_file.fa -k 21 -o output.rkdb --threads $THREADS
 
-# Use sorted databases for better query performance
-rustkmer count -i input.fa -o output.rkdb --sorted
+# Databases are sorted by default for better query performance
+rustkmer count -i input.fa -k 21 -o output.rkdb
 
-# Use compression for storage efficiency
-rustkmer count -i input.fa -o output.rkdb --compress
+# Skip sorting when the counts are all you need (faster counting)
+rustkmer count -i input.fa -k 21 -o output.rkdb --no-sort
 
 # Choose appropriate k-mer size
 rustkmer count -i input.fa -o output.rkdb -k 21  # Balanced
@@ -521,30 +476,29 @@ rustkmer count -i input.fa -o output.rkdb -k 31  # Slower, more specific
 ### Query Performance
 ```bash
 # Batch queries for better performance
-rustkmer query -d database.rkdb -f large_query_file.txt --threads 8
+rustkmer query database.rkdb -b large_query_file.txt -l
 
-# Use appropriate output format
-rustkmer query -d database.rkdb -f queries.txt --output-format tsv  # Fast
-rustkmer query -d database.rkdb -f queries.txt --output-format json  # Slower but more detailed
+# Avoid pre-loading for one-off lookups
+rustkmer query database.rkdb "ATCGATCGATCGATCGATCG" -L
 
-# Use sorted/indexed databases for frequent querying
-rustkmer count -i input.fa -o indexed.rkdb --indexed
-rustkmer query -d indexed.rkdb -f queries.txt
+# Sorted databases (the counting default) enable fast queries
+rustkmer count -i input.fa -k 21 -o sorted.rkdb
+rustkmer query sorted.rkdb -b queries.txt
 ```
 
 ### Memory Usage
 ```bash
 # Monitor memory usage with verbose output
-rustkmer count -i large_file.fa -o output.rkdb --verbose
+rustkmer count -i large_file.fa -k 21 -o output.rkdb --verbose
 
 # Use smaller k-mer sizes for memory efficiency
 rustkmer count -i input.fa -o output.rkdb -k 13
 
 # Process files in batches for very large datasets
 for file in *.fa; do
-  rustkmer count -i "$file" -o "${file%.fa}.rkdb"
+  rustkmer count -i "$file" -k 21 -o "${file%.fa}.rkdb"
 done
-rustkmer merge *.rkdb -o merged.rkdb
+rustkmer merge -i *.rkdb -o merged.rkdb --max-memory 16GB
 ```
 
 ## Pipeline Integration
@@ -569,9 +523,9 @@ for file in "$INPUT_DIR"/*.fa; do
 
   rustkmer count \
     -i "$file" \
+    -k 21 \
     -o "$OUTPUT_DIR/${sample}.rkdb" \
     --canonical \
-    --sorted \
     --threads "$THREADS" \
     --verbose
 done
@@ -582,9 +536,9 @@ echo "Generating summary..."
   echo "Sample,K-mer Size,Total K-mers,Unique K-mers"
   for db in "$OUTPUT_DIR"/*.rkdb; do
     sample=$(basename "$db" .rkdb)
-    info=$(rustkmer info -d "$db")
-    # Extract key statistics from info output
-    echo "$sample,21,$(echo "$info" | grep "Total" | cut -d: -f2 | tr -d ' '),$(echo "$info" | grep "Unique" | cut -d: -f2 | tr -d ' ')"
+    stats=$(rustkmer stats "$db")
+    # Extract key statistics from stats output
+    echo "$sample,21,$(echo "$stats" | grep "Total" | cut -d: -f2 | tr -d ' '),$(echo "$stats" | grep "Unique" | cut -d: -f2 | tr -d ' ')"
   done
 } > "$OUTPUT_DIR/summary.csv"
 
@@ -608,9 +562,9 @@ rule count_kmers:
         """
         rustkmer count \
             -i {input} \
+            -k 21 \
             -o {output} \
             --canonical \
-            --sorted \
             --threads {threads}
         """
 
@@ -621,12 +575,12 @@ rule generate_summary:
         "results/summary.csv"
     shell:
         """
-        # Generate summary using rustkmer info
+        # Generate summary using rustkmer stats
         echo "Sample,Total K-mers,Unique K-mers" > {output}
         for db in {input}; do
             sample=$(basename $db .rkdb)
-            info=$(rustkmer info -d $db)
-            echo "$sample,$(echo "$info" | grep "Total" | cut -d: -f2 | tr -d ' '),$(echo "$info" | grep "Unique" | cut -d: -f2 | tr -d ' ')" >> {output}
+            stats=$(rustkmer stats $db)
+            echo "$sample,$(echo "$stats" | grep "Total" | cut -d: -f2 | tr -d ' '),$(echo "$stats" | grep "Unique" | cut -d: -f2 | tr -d ' ')" >> {output}
         done
         """
 ```
@@ -648,9 +602,9 @@ process count_kmers {
     """
     rustkmer count \
         -i ${fasta_file} \
+        -k 21 \
         -o ${fasta_file.baseName}.rkdb \
         --canonical \
-        --sorted \
         --threads ${task.cpus}
     """
 }
@@ -667,8 +621,8 @@ process summarize_results {
     echo "Sample,Total K-mers,Unique K-mers" > summary.csv
     for db in ${db_files}; do
         sample=\$(basename \$db .rkdb)
-        info=\$(rustkmer info -d \$db)
-        echo "\$sample,\$(echo "\$info" | grep "Total" | cut -d: -f2 | tr -d ' '),\$(echo "\$info" | grep "Unique" | cut -d: -f2 | tr -d ' ')" >> summary.csv
+        stats=\$(rustkmer stats \$db)
+        echo "\$sample,\$(echo "\$stats" | grep "Total" | cut -d: -f2 | tr -d ' '),\$(echo "\$stats" | grep "Unique" | cut -d: -f2 | tr -d ' ')" >> summary.csv
     done
     """
 }
@@ -681,7 +635,7 @@ process summarize_results {
 #### File Not Found
 ```bash
 # Error: Input file not found
-rustkmer count -i missing.fa -o output.rkdb
+rustkmer count -i missing.fa -k 21 -o output.rkdb
 # Solution: Check file path and permissions
 ls -la missing.fa
 ```
@@ -697,30 +651,30 @@ rustkmer count -i huge_file.fa -o output.rkdb -k 13 --threads 32
 #### Database Format Errors
 ```bash
 # Error: Invalid database format
-rustkmer query -d corrupted.rkdb -q "ATCG"
+rustkmer query corrupted.rkdb "ATCG"
 # Solution: Recreate database or check integrity
-rustkmer info -d corrupted.rkdb
+rustkmer stats corrupted.rkdb
 ```
 
 #### Permission Errors
 ```bash
 # Error: Permission denied
-rustkmer count -i /protected/file.fa -o /protected/output.rkdb
+rustkmer count -i /protected/file.fa -k 21 -o /protected/output.rkdb
 # Solution: Check file permissions or use different directory
 chmod 644 /protected/file.fa
-rustkmer count -i /protected/file.fa -o ./output.rkdb
+rustkmer count -i /protected/file.fa -k 21 -o ./output.rkdb
 ```
 
 ### Debug Mode
 ```bash
-# Enable debug output
-rustkmer count -i input.fa -o output.rkdb --verbose --debug
+# Enable debug output (there is no --debug flag; use RUST_LOG)
+RUST_LOG=debug rustkmer count -i input.fa -k 21 -o output.rkdb --verbose
 
-# Check database integrity
-rustkmer info -d database.rkdb --detailed
+# Check database statistics
+rustkmer stats database.rkdb --detailed
 
 # Test with small sample
-rustkmer count -i small_test.fa -o test.rkdb --verbose
+rustkmer count -i small_test.fa -k 21 -o test.rkdb --verbose
 ```
 
 ---

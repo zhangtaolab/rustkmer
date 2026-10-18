@@ -144,4 +144,4 @@ Canonical k-mer encoding or error if k is too large
 
 ---
 
-*Source: [`operations.rs`](../../../kmer/operations.rs)*
+*Source: [`operations.rs`](../../../src/kmer/operations.rs)*

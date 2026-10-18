@@ -51,4 +51,4 @@ Expected file size in bytes
 
 ---
 
-*Source: [`binary.rs`](../../../output/binary.rs)*
+*Source: [`binary.rs`](../../../src/output/binary.rs)*

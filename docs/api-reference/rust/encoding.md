@@ -138,4 +138,4 @@ Check if a sequence contains ambiguous bases (N)
 
 ---
 
-*Source: [`encoding.rs`](../../../kmer/encoding.rs)*
+*Source: [`encoding.rs`](../../../src/kmer/encoding.rs)*

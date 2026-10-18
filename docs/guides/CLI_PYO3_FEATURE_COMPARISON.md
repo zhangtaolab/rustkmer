@@ -22,7 +22,7 @@
 - 可选排序
 
 **PyO3 现状**:
-- ✅ `PyKmerCounter` 类存在但**标记为简化状态**
+- ✅ `PyCounter` 类存在但**标记为简化状态**
 - ✅ `add_kmer()`, `get_stats()`, `is_empty()` 方法存在
 - ❌ 无法从文件读取序列
 - ❌ 无 FASTA/FASTQ 解析功能
@@ -42,12 +42,12 @@
 
 **PyO3 现状**:
 - ✅ `db.get_all_kmers()` - 返回所有 k-mer
-- ✅ `db.dump(limit, offset)` - 支持分页
-- ❌ 无法直接写入文件
-- ❌ 无专用导出方法
-- ❌ 需要手动遍历并写入
+- ✅ `db.dump(limit, offset)` - 支持分页（返回十六进制编码的 k-mer）
+- ✅ `db.export_to_file(path, limit, offset, progress_callback)` - 直接写出解码后的 k-mer 文本
+- ✅ `db.export_to_json(path)` / `db.export_to_csv(path)` - JSON/CSV 文件导出
+- ✅ `db.export_all_kmers(limit, offset)` - 分页获取全部 k-mer
 
-**影响**: 导出需要额外代码编写，不如 CLI 便捷
+**影响**: 文件导出能力已与 CLI 基本对齐；`dump()` 返回十六进制编码形式，需要序列文本时使用 `export_to_file()`
 
 ---
 
@@ -255,8 +255,8 @@ metrics = ext_query.query_prefix_metrics("AAA")
 
 **CLI 功能**:
 ```bash
-# 查询时过滤
-rustkmer query database.rkdb -i sequence.fasta --min-count 10 --max-count 1000
+# 计数时过滤（--min-count/--max-count 是 count 子命令选项，query 子命令不支持）
+rustkmer count -k 7 -i sequence.fasta -o database.rkdb --min-count 10 --max-count 1000
 
 # 前缀查询时过滤
 rustkmer prefix-query database.rkdb -p AAA --min-count 5 --max-count 500
@@ -430,7 +430,7 @@ rustkmer fuzzy-query-batch database.rkdb -s queries.txt --progress
 ## 💡 建议改进方向
 
 ### 短期改进（v0.4.0）
-1. 实现 `PyKmerCounter` 的完整功能
+1. 实现 `PyCounter` 的完整功能
 2. 添加格式化输出方法（`to_json()`, `to_csv()` 等）
 3. 实现数据库导出方法
 

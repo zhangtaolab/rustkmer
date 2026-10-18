@@ -19,14 +19,14 @@ Where:
 
 ```bash
 # Find 10-mers starting with "ATAC", followed by 5 wildcards, ending with "GTAC"
-rustkmer prefix-query database.rkdb "ATAC{N5}GTAC"
+rustkmer prefix-query database.rkdb -p "ATAC{N5}GTAC"
 
 # Shorthand notation for single N
-rustkmer prefix-query database.rkdb "ATAC{N}GTAC"
+rustkmer prefix-query database.rkdb -p "ATAC{N}GTAC"
 
 # Different N counts
-rustkmer prefix-query database.rkdb "ATG{N3}CGA"  # 3 wildcards
-rustkmer prefix-query database.rkdb "ATG{N8}CGA"  # 8 wildcards
+rustkmer prefix-query database.rkdb -p "ATG{N3}CGA"  # 3 wildcards
+rustkmer prefix-query database.rkdb -p "ATG{N8}CGA"  # 8 wildcards
 ```
 
 ## Command Options
@@ -66,17 +66,17 @@ rustkmer prefix-query database.rkdb "ATG{N8}CGA"  # 8 wildcards
 
 ```bash
 # Simple hybrid pattern
-rustkmer prefix-query genome_db.rkdb "ATG{N5}TGA"
+rustkmer prefix-query genome_db.rkdb -p "ATG{N5}TGA"
 
 # With output formatting
-rustkmer prefix-query genome_db.rkdb "ATG{N5}TGA" --format json
+rustkmer prefix-query genome_db.rkdb -p "ATG{N5}TGA" --format json
 ```
 
 ### 2. Performance Profiling
 
 ```bash
 # Enable performance profiling
-rustkmer prefix-query genome_db.rkdb "ATG{N5}TGA" --profile
+rustkmer prefix-query genome_db.rkdb -p "ATG{N5}TGA" --profile
 ```
 
 **Output:**
@@ -99,23 +99,23 @@ Performance gain: ~10-50x vs fuzzy-query for hybrid patterns
 
 ```bash
 # Filter by minimum count
-rustkmer prefix-query genome_db.rkdb "ATG{N5}TGA" --min-count 10
+rustkmer prefix-query genome_db.rkdb -p "ATG{N5}TGA" --min-count 10
 
 # Filter by count range
-rustkmer prefix-query genome_db.rkdb "ATG{N5}TGA" --min-count 5 --max-count 100
+rustkmer prefix-query genome_db.rkdb -p "ATG{N5}TGA" --min-count 5 --max-count 100
 ```
 
 ### 4. Multiple Output Formats
 
 ```bash
 # JSON format with detailed metadata
-rustkmer prefix-query genome_db.rkdb "ATG{N5}TGA" --format json
+rustkmer prefix-query genome_db.rkdb -p "ATG{N5}TGA" --format json
 
 # CSV format for spreadsheet analysis
-rustkmer prefix-query genome_db.rkdb "ATG{N5}TGA" --format csv --output results.csv
+rustkmer prefix-query genome_db.rkdb -p "ATG{N5}TGA" --format csv --output results.csv
 
 # TSV format for text processing
-rustkmer prefix-query genome_db.rkdb "ATG{N5}TGA" --format tsv
+rustkmer prefix-query genome_db.rkdb -p "ATG{N5}TGA" --format tsv
 ```
 
 ### 5. Batch Processing
@@ -123,7 +123,7 @@ rustkmer prefix-query genome_db.rkdb "ATG{N5}TGA" --format tsv
 ```bash
 # Process multiple patterns
 for pattern in "ATG{N3}TGA" "CTG{N4}TAA" "GTG{N2}CCA"; do
-    rustkmer prefix-query genome_db.rkdb "$pattern" --output "${pattern}_results.txt"
+    rustkmer prefix-query genome_db.rkdb -p "$pattern" --output "${pattern}_results.txt"
 done
 ```
 
@@ -198,7 +198,7 @@ Hybrid search leverages RKDB sorting characteristics:
 
 ```bash
 # Invalid characters
-$ rustkmer prefix-query db.rkdb "ATCN{N3}GCTA"
+$ rustkmer prefix-query db.rkdb -p "ATCN{N3}GCTA"
 Error: Invalid characters in prefix: ATCN
 
 # Solution: Use only A, T, C, G in prefix/suffix
@@ -208,7 +208,7 @@ Error: Invalid characters in prefix: ATCN
 
 ```bash
 # Pattern longer than k-mer size
-$ rustkmer prefix-query db.rkdb "ATCGATCG{N10}GCTA"
+$ rustkmer prefix-query db.rkdb -p "ATCGATCG{N10}GCTA"
 Error: Pattern length (18) does not match k-mer size (15)
 
 # Solution: Adjust pattern to match database k-mer size
@@ -228,8 +228,8 @@ Error: argument '--prefix' cannot be used with '--pattern'
 
 ```bash
 # Empty pattern
-$ rustkmer prefix-query db.rkdb ""
-Error: Pattern cannot be empty
+$ rustkmer prefix-query db.rkdb -p ""
+Error: Either --pattern or --prefix must be specified
 
 # Solution: Provide valid pattern
 ```
@@ -249,10 +249,10 @@ Error: Pattern cannot be empty
 rustkmer count --k 19 --input genome.fa --output genome.rkdb --sort
 
 # Enable profiling to analyze performance
-rustkmer prefix-query genome.rkdb "ATG{N5}TGA" --profile
+rustkmer prefix-query genome.rkdb -p "ATG{N5}TGA" --profile
 
 # Use appropriate output formats for your use case
-rustkmer prefix-query genome.rkdb "ATG{N5}TGA" --format json --quiet
+rustkmer prefix-query genome.rkdb -p "ATG{N5}TGA" --format json --quiet
 ```
 
 ### 3. Batch Operations
@@ -262,7 +262,7 @@ rustkmer prefix-query genome.rkdb "ATG{N5}TGA" --format json --quiet
 #!/bin/bash
 patterns=("ATG{N3}TGA" "CTG{N4}TAA" "GTG{N2}CCA")
 for pattern in "${patterns[@]}"; do
-    rustkmer prefix-query genome.rkdb "$pattern" --output "${pattern}_results.txt" --quiet
+    rustkmer prefix-query genome.rkdb -p "$pattern" --output "${pattern}_results.txt" --quiet
 done
 ```
 
@@ -276,13 +276,15 @@ from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 # Load database
 db = PyDatabase("genome.rkdb", LoadMode.Preload)
 
-# Extract by hybrid pattern
-results = db.extract_by_prefix("ATG{N5}TGA")
+# Query by hybrid pattern
+results = db.query_hybrid("ATG{N5}TGA")
 
 # Process results
 for kmer, count in results.items():
     print(f"{kmer}: {count}")
 ```
+
+For a runnable hybrid-query example, see `examples/python/unified_query_example.py` (demonstrates `query_hybrid()` on `PyDatabase`).
 
 ### Shell Scripting
 
@@ -296,7 +298,7 @@ PATTERNS=("ATG{N3}TGA" "CTG{N4}TAA" "GTG{N2}CCA")
 for db in "${DATABASES[@]}"; do
     for pattern in "${PATTERNS[@]}"; do
         output_file="${db%.*}_${pattern//[^A-Z0-9]/_}_results.txt"
-        rustkmer prefix-query "$db" "$pattern" --output "$output_file" --quiet
+        rustkmer prefix-query "$db" -p "$pattern" --output "$output_file" --quiet
     done
 done
 ```
@@ -306,7 +308,7 @@ done
 ### Enable Detailed Profiling
 
 ```bash
-rustkmer prefix-query genome.rkdb "ATG{N5}TGA" --profile --verbose
+rustkmer prefix-query genome.rkdb -p "ATG{N5}TGA" --profile --verbose
 ```
 
 ### Performance Metrics
@@ -345,7 +347,7 @@ rustkmer prefix-query genome.rkdb "ATG{N5}TGA" --profile --verbose
 
 ```bash
 # Enable verbose output for debugging
-rustkmer prefix-query genome.rkdb "ATG{N5}TGA" --verbose
+rustkmer prefix-query genome.rkdb -p "ATG{N5}TGA" --verbose
 ```
 
 This provides detailed information about:

@@ -1,114 +1,83 @@
+<!-- generated-by: gsd-doc-writer -->
 # QueryResult
 
-The `QueryResult` class represents the result of an exact k-mer query operation. It provides a simple container for query information with convenient methods for data access and serialization.
+The `PyQueryResult` class represents the result of an exact k-mer query operation. It provides a simple container for query information with convenient methods for data access and serialization.
 
 ## Class Definition
 
 ```python
-@dataclass
-class QueryResult:
+class PyQueryResult:
     """Result of a k-mer query.
 
     Attributes:
         kmer: The queried k-mer sequence
         count: Number of occurrences in the database
-        canonical: Canonical representation of the k-mer
+        found: Whether the k-mer was present in the database
     """
-    kmer: str
-    count: int
-    canonical: str
 ```
+
+`PyQueryResult` instances are produced by `PyDatabase` methods — you do not construct them directly:
+
+- `PyDatabase.query_exact(kmer)` → single `PyQueryResult`
+- `PyDatabase.query_exact_batch(kmers)` → `Dict[str, PyQueryResult]`
+- `PyDatabase.dump(limit, offset)` → `List[PyQueryResult]`
+- `PyDatabase.export_all_kmers(limit, offset)` → `List[PyQueryResult]`
 
 ## Attributes
 
 ### `kmer: str`
-The original k-mer sequence that was queried.
+The k-mer sequence associated with the result. For `query_exact` this is the upper-cased query k-mer; for `dump()` it is the lowercase hex encoding of the stored `u128` k-mer (use `export_all_kmers()` for decoded nucleotide sequences).
 
 ### `count: int`
 Number of occurrences of this k-mer in the database. Returns 0 if the k-mer is not present.
 
-### `canonical: str`
-The canonical representation of the k-mer. For DNA sequences, this is typically the lexicographically smaller of the k-mer and its reverse complement.
-
-## Properties
-
-### `is_present: bool`
-Check if the k-mer exists in the database.
-
-**Returns:**
-- `bool`: `True` if count > 0, `False` otherwise
-
-**Example:**
-```python
-result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
-
-if result.found:
-    print(f"K-mer found with count: {result.count}")
-else:
-    print("K-mer not found in database")
-```
+### `found: bool`
+Whether the k-mer exists in the database (`count > 0`).
 
 ## Methods
 
-### `to_dict() -> Dict[str, Union[str, int]]`
-Convert the QueryResult to a dictionary representation.
+### `to_dict() -> Dict[str, Union[str, int, bool]]`
+Convert the result to a dictionary representation.
 
 **Returns:**
-- `Dict[str, Union[str, int]]`: Dictionary with keys 'kmer', 'count', and 'canonical'
+- `Dict`: Dictionary with keys `kmer`, `count`, and `found`
 
 **Example:**
 ```python
-result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
+result = db.query_exact("ATCGATCGATCGATCGATCG")
 data = result.to_dict()
 
 print(data)
-# Output: {'kmer': 'ATCGATCG...', 'count': 42, 'canonical': 'ATCGATCG...'}
+# Output: {'kmer': 'ATCGATCGATCGATCGATCG', 'count': 42, 'found': True}
 ```
 
 ### `to_json() -> str`
-Convert the QueryResult to a JSON string.
+Convert the result to a JSON string.
 
 **Returns:**
-- `str`: JSON representation of the QueryResult
+- `str`: JSON representation with `kmer`, `count`, and `found` fields
 
 **Example:**
 ```python
-result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
-json_str = result.to_json()
-
-print(json_str)
-# Output: {"kmer": "ATCGATCG...", "count": 42, "canonical": "ATCGATCG..."}
+result = db.query_exact("ATCGATCGATCGATCGATCG")
+print(result.to_json())
+# Output: {"kmer": "ATCGATCGATCGATCGATCG", "count": 42, "found": true}
 ```
 
-### `from_dict(data: Dict[str, Union[str, int]]) -> QueryResult`
-Create a QueryResult from a dictionary.
+### `to_csv() -> str`
+Convert the result to a CSV string with a `kmer,count,found` header row.
 
-**Parameters:**
-- `data` (Dict[str, Union[str, int]]): Dictionary containing kmer, count, and canonical
+### `to_tsv() -> str`
+Convert the result to a TSV string with a `kmer\tcount\tfound` header row.
 
-**Returns:**
-- `QueryResult`: New QueryResult instance
-
-**Example:**
-```python
-data = {"kmer": "ATCGATCG...", "count": 42, "canonical": "ATCGATCG..."}
-result = QueryResult.from_dict(data)
-
-print(result.kmer)  # "ATCGATCG..."
-print(result.count)  # 42
-```
-
-### `__str__() -> str`
-String representation of the QueryResult.
-
-**Returns:**
-- `str`: String in format "kmer: count"
+### `__repr__() -> str`
+String representation of the result.
 
 **Example:**
 ```python
-result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
-print(str(result))
-# Output: ATCGATCGATCGATCGATCGATCGATCGATCGATCG: 42
+result = db.query_exact("ATCGATCGATCGATCGATCG")
+print(result)
+# Output: PyQueryResult(kmer='ATCGATCGATCGATCGATCG', count=42, found=True)
 ```
 
 ## Usage Examples
@@ -116,47 +85,43 @@ print(str(result))
 ### Basic Query Result Processing
 
 ```python
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
 db = PyDatabase("database.rkdb", LoadMode.Preload)
-    # Query a k-mer
-    result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
 
-    # Check if k-mer exists
-    if result.found:
-        print(f"Found k-mer {result.kmer} with count {result.count}")
-        print(f"Canonical form: {result.canonical}")
-    else:
-        print(f"K-mer {result.kmer} not found in database")
+# Query a k-mer
+result = db.query_exact("ATCGATCGATCGATCGATCG")
+
+# Check if k-mer exists
+if result.found:
+    print(f"Found k-mer {result.kmer} with count {result.count}")
+else:
+    print(f"K-mer {result.kmer} not found in database")
 ```
 
 ### Batch Query Processing
 
 ```python
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
 def analyze_kmers(db_path, kmers):
     """Analyze multiple k-mers and return statistics."""
     db = PyDatabase(db_path, LoadMode.Preload)
-        results = []
+    results = db.query_exact_batch(kmers)
 
-        for kmer in kmers:
-            result = db.query_exact(kmer)
-            results.append(result)
+    for kmer, result in results.items():
+        if result.found:
+            print(f"{kmer}: {result.count} occurrences")
+        else:
+            print(f"{kmer}: not found")
 
-            # Process result
-            if result.found:
-                print(f"{kmer}: {result.count} occurrences")
-            else:
-                print(f"{kmer}: not found")
-
-        return results
+    return results
 
 # Usage
 kmers = [
-    "ATCGATCGATCGATCGATCGATCGATCGATCGATCG",
-    "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTA",
-    "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
+    "ATCGATCGATCGATCGATCG",
+    "GCTAGCTAGCTAGCTAGCTA",
+    "TTTTTTTTTTTTTTTTTTTT",
 ]
 
 results = analyze_kmers("database.rkdb", kmers)
@@ -166,23 +131,20 @@ results = analyze_kmers("database.rkdb", kmers)
 
 ```python
 import json
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
 def export_query_results(db_path, kmers, output_file):
     """Export query results to JSON file."""
     db = PyDatabase(db_path, LoadMode.Preload)
-        all_results = []
+    results = db.query_exact_batch(kmers)
 
-        for kmer in kmers:
-            result = db.query_exact(kmer)
-            all_results.append(result.to_dict())
+    all_results = [result.to_dict() for result in results.values()]
 
-        # Save to JSON file
-        with open(output_file, 'w') as f:
-            json.dump(all_results, f, indent=2)
+    with open(output_file, 'w') as f:
+        json.dump(all_results, f, indent=2)
 
 # Usage
-kmers = ["ATCGATCG...", "GCTAGCTA..."]
+kmers = ["ATCGATCGATCGATCGATCG", "GCTAGCTAGCTAGCTAGCTA"]
 export_query_results("database.rkdb", kmers, "query_results.json")
 ```
 
@@ -190,29 +152,25 @@ export_query_results("database.rkdb", kmers, "query_results.json")
 
 ```python
 import pandas as pd
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
 def create_kmer_dataframe(db_path, kmers):
     """Create a pandas DataFrame from query results."""
     db = PyDatabase(db_path, LoadMode.Preload)
-        results = []
+    results = db.query_exact_batch(kmers)
 
-        for kmer in kmers:
-            result = db.query_exact(kmer)
-            results.append({
-                'kmer': result.kmer,
-                'count': result.count,
-                'canonical': result.canonical,
-                'present': result.found
-            })
+    rows = [{
+        'kmer': result.kmer,
+        'count': result.count,
+        'present': result.found
+    } for result in results.values()]
 
-        return pd.DataFrame(results)
+    return pd.DataFrame(rows)
 
 # Usage
-kmers = ["ATCGATCG...", "GCTAGCTA...", "TTTTTTTT..."]
+kmers = ["ATCGATCGATCGATCGATCG", "GCTAGCTAGCTAGCTAGCTA", "TTTTTTTTTTTTTTTTTTTT"]
 df = create_kmer_dataframe("database.rkdb", kmers)
 
-# Analyze results
 print(df.describe())
 print(f"\nK-mers found: {df['present'].sum()}")
 print(f"Total occurrences: {df[df['present']]['count'].sum()}")
@@ -222,95 +180,71 @@ print(f"Total occurrences: {df[df['present']]['count'].sum()}")
 
 ### Memory Efficiency
 
-QueryResult objects are lightweight and can be stored in large quantities:
+`PyQueryResult` objects are lightweight and can be stored in large quantities:
 
 ```python
-# Store millions of results efficiently
-all_results = []
+# Collect results for many k-mers
 db = PyDatabase("large_db.rkdb", LoadMode.Preload)
-    for kmer in many_kmers:  # Could be millions
-        result = db.query_exact(kmer)
-        all_results.append(result)  # Low memory overhead
+results = db.query_exact_batch(many_kmers)  # Dict[str, PyQueryResult]
 ```
 
-### Serialization for Caching
+### Pagination for Database Scans
 
-Serialize frequently accessed results to avoid repeated queries:
+When scanning a whole database, page through it with `limit`/`offset` rather than materializing everything at once:
 
 ```python
-import json
-import os
-from pyrustkmer import Database
-
-def cached_query(db_path, kmer, cache_dir="query_cache"):
-    """Query with caching to avoid repeated database access."""
-    cache_file = os.path.join(cache_dir, f"{kmer}.json")
-
-    # Check cache first
-    if os.path.exists(cache_file):
-        with open(cache_file, 'r') as f:
-            data = json.load(f)
-        return QueryResult.from_dict(data)
-
-    # Perform query and cache result
-    db = PyDatabase(db_path, LoadMode.Preload)
-        result = db.query_exact(kmer)
-
-        # Save to cache
-        os.makedirs(cache_dir, exist_ok=True)
-        with open(cache_file, 'w') as f:
-            f.write(result.to_json())
-
-        return result
+db = PyDatabase("large_db.rkdb", LoadMode.Preload)
+for start in range(0, 1_000_000, 10_000):
+    batch = db.export_all_kmers(limit=10_000, offset=start)
+    if not batch:
+        break
+    process(batch)
 ```
 
-## Comparison with FuzzyQueryResult
+## Comparison with PyFuzzyResult
 
-QueryResult is designed for exact queries and provides a simpler interface compared to FuzzyQueryResult:
+`PyQueryResult` is designed for exact queries and provides a simpler interface compared to `PyFuzzyResult`:
 
-| Feature | QueryResult | FuzzyQueryResult |
-|---------|-------------|------------------|
+| Feature | PyQueryResult | PyFuzzyResult |
+|---------|---------------|---------------|
 | Query Type | Exact matches only | Fuzzy matches within tolerance |
 | Count | Single count value | Multiple matches with individual counts |
 | Distance | Not applicable | Hamming distance for each match |
-| Mutations | Not applicable | List of mutations for each match |
+| Match types | Not applicable | `exact`, `wildcard_expansion`, `mutation_tolerance` |
 | Performance | Faster | Slower (generates variants) |
 
-Choose QueryResult when:
+Choose `PyQueryResult` (via `query_exact`) when:
 - You need exact matches only
 - Performance is critical
 - You're doing presence/absence checking
 
-Choose FuzzyQueryResult when:
+Choose `PyFuzzyResult` (via `PyFuzzyQuery`) when:
 - You need to handle sequencing errors
 - You're looking for similar sequences
 - You need mutation tolerance
 
 ## Best Practices
 
-1. **Use context managers** for Database objects to ensure proper cleanup
-2. **Check `is_present`** before accessing count if you need to differentiate between absent and zero-count
-3. **Serialize results** if you need to reuse them later
-4. **Batch queries** when processing many k-mers to reduce database overhead
-5. **Cache frequent queries** if the database doesn't change often
+1. **Use `query_exact_batch`** when processing many k-mers to reduce call overhead
+2. **Check `found`** to distinguish absent k-mers from zero counts
+3. **Use `export_all_kmers`** rather than `dump()` when you need nucleotide sequences rather than hex encodings
+4. **Serialize results** with `to_dict()`/`to_json()` if you need to reuse them later
 
 ## Error Handling
 
-QueryResult itself doesn't raise exceptions, but the database operations that create it can:
+`PyQueryResult` itself doesn't raise exceptions, but the database operations that create it can:
 
 ```python
-from pyrustkmer import Database, InvalidKmerError, DatabaseError
+from pyrustkmer import PyDatabase, LoadMode
 
 def safe_query(db_path, kmer):
     try:
         db = PyDatabase(db_path, LoadMode.Preload)
-            return db.query_exact(kmer)
-
-    except InvalidKmerError as e:
-        print(f"Invalid k-mer: {e.kmer} - {e.reason}")
+        return db.query_exact(kmer)
+    except FileNotFoundError as e:
+        print(f"Database not found: {e}")
         return None
-
-    except DatabaseError as e:
-        print(f"Database error: {e}")
+    except ValueError as e:
+        print(f"Invalid k-mer: {e}")
         return None
 ```

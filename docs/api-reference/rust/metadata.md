@@ -76,4 +76,4 @@ Get metadata file path for a database directory
 
 ---
 
-*Source: [`metadata.rs`](../../../core/metadata.rs)*
+*Source: [`metadata.rs`](../../../src/core/metadata.rs)*

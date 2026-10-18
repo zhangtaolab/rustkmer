@@ -22,11 +22,11 @@ Execute the count command
 #### decode_kmer
 
 ```rust
-fn decode_kmer(kmer: u64, k: usize) -> String {
+fn decode_kmer(kmer: u128, k: usize) -> String {
 ```
 
 Decode a k-mer from encoded format back to DNA sequence
 
 ---
 
-*Source: [`count.rs`](../../../cli/commands/count.rs)*
+*Source: [`count.rs`](../../../src/cli/commands/count.rs)*

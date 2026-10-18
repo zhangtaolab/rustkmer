@@ -7,7 +7,7 @@ Get started with RustKmer Python API in just 5 minutes!
 First, install RustKmer:
 
 ```bash
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 ## Basic K-mer Counting
@@ -23,8 +23,9 @@ sequence = "ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATC"
 counter.add_sequence(sequence)
 
 # Get results
-print(f"Total k-mers: {counter.get_stats().total_kmers}")
-print(f"Unique k-mers: {counter.get_unique_count()}")
+stats = counter.get_stats()
+print(f"Total k-mers: {stats.total_kmers}")
+print(f"Unique k-mers: {stats.unique_kmers}")
 
 
 # Save to database
@@ -51,15 +52,15 @@ from pyrustkmer import PyDatabase, LoadMode
 # Load a database
 db = PyDatabase("my_data.rkdb", LoadMode.Preload)
 
-# Query specific k-mers
-count = db.query_exact("ATCGATCGATCGATCGATCGATC")
-print(f"K-mer appears {count} times")
+# Query specific k-mers (length must match the database's k-mer size)
+result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATC")
+print(f"K-mer appears {result.count} times")
 
-# Batch queries
-sequences = ["ATCGATCG", "GCTAGCTA", "CCCCCCCC"]
+# Batch queries (returns a dict mapping each k-mer to its result)
+sequences = ["ATCGATCGATCGATCGATCGATCGATCGATC", "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGC"]
 results = db.query_exact_batch(sequences)
-for seq, count in zip(sequences, results):
-    print(f"{seq}: {count}")
+for seq, res in results.items():
+    print(f"{seq}: {res.count}")
 ```
 
 ## Fuzzy Search
@@ -73,11 +74,11 @@ db = PyDatabase("my_data.rkdb", LoadMode.Preload)
 # Create fuzzy query interface
 fuzzy = PyFuzzyQuery(db)
 
-# Search with wildcards (N = any base)
-results = fuzzy.query_fuzzy("AATN", max_mutations=1)  # Matches AATA, AATC, AATG, AATT
+# Search with wildcards (N = any base); pattern length must match the k-mer size
+results = fuzzy.query_fuzzy("AATCGATCGATCGATCGATCGATCGATCGAN", max_mutations=0)
 
 # Search with mismatches
-results = fuzzy.query_fuzzy("ATCGATCG", max_mutations=2)
+results = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGATCGATCGATC", max_mutations=2)
 
 # Display results
 for match in results.matches:
@@ -87,40 +88,35 @@ for match in results.matches:
 ## Database Statistics
 
 ```python
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
-db = PyDatabase("database.rkdb", LoadMode.Preload)
-db.load("my_data.rkdb")
+db = PyDatabase("my_data.rkdb", LoadMode.Preload)
 
-# Get comprehensive statistics
+# Get comprehensive statistics (get_stats() returns a PyDatabaseStats object)
 stats = db.get_stats()
 print(f"Database statistics:")
-print(f"  Total k-mers: {stats['total_kmers']:,}")
-print(f"  Unique k-mers: {stats['unique_kmers']:,}")
-print(f"  K-mer size: {stats['k_size']}")
-print(f"  Canonical mode: {stats['canonical_mode']}")
+print(f"  Total k-mers: {stats.total_kmers:,}")
+print(f"  Unique k-mers: {stats.unique_kmers:,}")
+print(f"  K-mer size: {stats.kmer_size}")
+print(f"  Canonical mode: {stats.canonical}")
 ```
 
 ## Database Merging
 
 ```python
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase
 
-# Load first database
-db = PyDatabase("database.rkdb", LoadMode.Preload)
-db.load("sample1.rkdb")
-
-# Merge with second database
-db.merge_with("sample2.rkdb")
-
-# Save merged result
-db.save("merged_samples.rkdb")
+# Merge multiple databases into a single output file (static method)
+PyDatabase.merge(
+    ["sample1.rkdb", "sample2.rkdb"],
+    "merged_samples.rkdb",
+)
 ```
 
 ## Complete Example
 
 ```python
-from pyrustkmer import KmerCounter, Database, FuzzyQuery
+from pyrustkmer import PyCounter, PyDatabase, PyFuzzyQuery, LoadMode
 import os
 
 # 1. Count k-mers from multiple files
@@ -136,35 +132,33 @@ for file in files:
 
 # 2. Save results
 counter.save_database("combined.rkdb")
-print(f"Total k-mers counted: {counter.get_stats().total_kmers):,}")
+print(f"Total k-mers counted: {counter.get_stats().total_kmers:,}")
 
 # 3. Load and analyze
-db = PyDatabase("database.rkdb", LoadMode.Preload)
-db.load("combined.rkdb")
+db = PyDatabase("combined.rkdb", LoadMode.Preload)
 stats = db.get_stats()
 print("\nDatabase Statistics:")
-for key, value in stats.items():
-    print(f"  {key}: {value}")
+print(f"  Total k-mers: {stats.total_kmers:,}")
+print(f"  Unique k-mers: {stats.unique_kmers:,}")
 
-# 4. Perform some queries
-test_kmers = ["ATCGATCGATCGATCGATCGATC", "GCTAGCTAGCTAGCTAGCTAGCT"]
+# 4. Perform some queries (k-mers must be 31 characters for k=31)
+test_kmers = ["ATCGATCGATCGATCGATCGATCGATCGATC", "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGC"]
 print("\nQuery Results:")
 for kmer in test_kmers:
-    count = db.query_exact(kmer)
-    print(f"  {kmer[:10]}...: {count}")
+    result = db.query_exact(kmer)
+    print(f"  {kmer[:10]}...: {result.count}")
 
 # 5. Fuzzy search example
-fq = FuzzyQuery()
-fq.load("combined.rkdb")
-fuzzy_results = fq.query_exact("ATGNNNGT", max_mismatches=2)
-print(f"\nFuzzy search found {len(fuzzy_results)} matches")
+fq = PyFuzzyQuery(db)
+fuzzy_results = fq.query_fuzzy("ATGNNNGTATCGATCGATCGATCGATCGAT", max_mutations=2)
+print(f"\nFuzzy search found {fuzzy_results.total_matches} matches")
 ```
 
 ## Next Steps
 
 - Read the [User Guide](concepts.md) for deeper understanding
 - Check out [Examples](examples.md) for real-world use cases
-- Follow [Tutorials](tutorials/) for step-by-step workflows
+- Follow [Tutorials](../tutorials/) for step-by-step workflows
 - Reference the [API Documentation](../api-reference/) for detailed information
 
 ## Tips
@@ -173,10 +167,10 @@ print(f"\nFuzzy search found {len(fuzzy_results)} matches")
 2. **Choose k=21-31** for most genomic applications
 3. **Compressed files** (.gz) work automatically
 4. **Batch queries** are more efficient than individual queries
-5. **Memory-mapped access** (`memory_mapped=True`) helps with large databases
+5. **Memory-mapped access** (`LoadMode.MemoryMapped`) helps with large databases
 
 ## Need Help?
 
-- Check the [FAQ](../faq.md)
+- Check the [Troubleshooting guide](../getting-started/troubleshooting.md)
 - Browse [Examples](../examples/)
 - Report issues on [GitHub](https://github.com/rustkmer/rustkmer/issues)

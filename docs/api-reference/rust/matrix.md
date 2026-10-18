@@ -58,4 +58,4 @@ Get size mask
 
 ---
 
-*Source: [`matrix.rs`](../../../hash/matrix.rs)*
+*Source: [`matrix.rs`](../../../src/hash/matrix.rs)*

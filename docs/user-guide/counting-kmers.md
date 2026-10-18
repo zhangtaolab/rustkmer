@@ -52,7 +52,7 @@ ATC, TCG, CGA, GAT, ATC, TCG
 #### FASTA Files
 
 ```python
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 
 # Create counter for 21-mers (recommended for most applications)
 counter = PyCounter(21, canonical=True)
@@ -61,8 +61,9 @@ counter = PyCounter(21, canonical=True)
 counter.add_from_fasta("genome.fa.gz")  # Handles gzip automatically
 
 # Get results
-total = counter.get_stats().total_kmers)
-unique = counter.get_unique_count()
+stats = counter.get_stats()
+total = stats.total_kmers
+unique = stats.unique_kmers
 
 print(f"Total k-mers: {total:,}")
 print(f"Unique k-mers: {unique:,}")
@@ -72,12 +73,13 @@ print(f"Uniqueness ratio: {unique/total:.4f}")
 #### FASTQ Files
 
 ```python
-# FASTQ files work the same way
-counter.add_from_fasta("reads.fq.gz")
+# FASTQ files use add_from_fastq
+counter.add_from_fastq("reads.fq.gz")
 
 # Get basic statistics
-print(f"Processed {counter.get_stats().total_kmers):,} k-mers")
-print(f"Found {counter.get_unique_count():,} unique k-mers")
+stats = counter.get_stats()
+print(f"Processed {stats.total_kmers:,} k-mers")
+print(f"Found {stats.unique_kmers:,} unique k-mers")
 ```
 
 ### Counting from Strings
@@ -87,16 +89,19 @@ print(f"Found {counter.get_unique_count():,} unique k-mers")
 sequence = "ATCGATCGATCGATCGATCGATCGATCGATCG"
 counter.add_sequence(sequence)
 
-print(f"Counted {counter.get_stats().total_kmers)} k-mers from string")
+print(f"Counted {counter.get_stats().total_kmers} k-mers from string")
 ```
 
 ### Getting Results
 
 ```python
 # Get basic statistics
-total_count = counter.get_stats().total_kmers)
-unique_count = counter.get_unique_count()
-top_kmers = counter.get_top_kmers(10)  # Top 10 most frequent
+stats = counter.get_stats()
+total_count = stats.total_kmers
+unique_count = stats.unique_kmers
+
+# Top 10 most frequent k-mers (sort the dict returned by get_all_counts)
+top_kmers = sorted(counter.get_all_counts().items(), key=lambda kv: kv[1], reverse=True)[:10]
 
 print("📊 K-mer Counting Results:")
 print(f"Total k-mers: {total_count:,}")
@@ -147,15 +152,15 @@ noncanonical_counter = PyCounter(21, canonical=False)
 noncanonical_counter.add_from_fasta("genome.fa.gz")
 
 # Compare results
-print(f"Canonical unique k-mers: {canonical_counter.get_unique_count():,}")
-print(f"Non-canonical unique k-mers: {noncanonical_counter.get_unique_count():,}")
+print(f"Canonical unique k-mers: {canonical_counter.get_stats().unique_kmers:,}")
+print(f"Non-canonical unique k-mers: {noncanonical_counter.get_stats().unique_kmers:,}")
 # Non-canonical will typically have ~2x more unique k-mers
 ```
 
 ### Working with Multiple Files
 
 ```python
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 import glob
 
 def process_multiple_files(file_pattern, k=21):
@@ -172,7 +177,7 @@ def process_multiple_files(file_pattern, k=21):
 
         try:
             counter.add_from_fasta(file_path)
-            print(f"      Current total: {counter.get_stats().total_kmers):,}")
+            print(f"      Current total: {counter.get_stats().total_kmers:,}")
         except Exception as e:
             print(f"      ⚠️  Error processing {filename}: {e}")
 
@@ -181,8 +186,8 @@ def process_multiple_files(file_pattern, k=21):
 # Example usage
 chromosomes = process_multiple_files("chr*.fa.gz")
 print(f"\nFinal results:")
-print(f"Total k-mers: {chromosomes.get_total_count():,}")
-print(f"Unique k-mers: {chromosomes.get_unique_count():,}")
+print(f"Total k-mers: {chromosomes.get_stats().total_kmers:,}")
+print(f"Unique k-mers: {chromosomes.get_stats().unique_kmers:,}")
 ```
 
 ---
@@ -208,7 +213,7 @@ counter = PyCounter(13, canonical=True)
 counter.add_from_fasta("large_genome.fa.gz")
 
 print(f"Memory after processing: {monitor_memory():.1f} MB")
-print(f"Memory efficiency: {counter.get_stats().total_kmers)/(monitor_memory()*1024*1024):.1f} k-mers per MB")
+print(f"Memory efficiency: {counter.get_stats().total_kmers/(monitor_memory()*1024*1024):.1f} k-mers per MB")
 ```
 
 ### Processing Large Files
@@ -262,7 +267,7 @@ def benchmark_batch_processing(files, batch_sizes=[1, 2, 4, 8]):
 
                 for file_path in batch:
                     counter = PyCounter(21, canonical=True)
-                    future = executor.submit(counter.count_file, file_path)
+                    future = executor.submit(counter.add_from_fasta, file_path)
                     futures.append(future)
 
                 # Wait for batch to complete
@@ -290,8 +295,9 @@ def benchmark_batch_processing(files, batch_sizes=[1, 2, 4, 8]):
 def analyze_memory_usage(counter):
     """Analyze memory usage patterns of k-mer counting."""
 
-    total_kmers = counter.get_stats().total_kmers)
-    unique_kmers = counter.get_unique_count()
+    stats = counter.get_stats()
+    total_kmers = stats.total_kmers
+    unique_kmers = stats.unique_kmers
 
     # Estimate memory usage
     # Each unique k-mer typically uses ~32 bytes (k-mer + count + overhead)
@@ -321,7 +327,7 @@ analyze_memory_usage(counter)
 ### Memory-Efficient Processing
 
 ```python
-def memory_efficient_counting(file_path, k=13, chunk_size=None):
+def memory_efficient_counting(file_path, k=13):
     """Process files with memory efficiency in mind."""
 
     import psutil
@@ -348,7 +354,7 @@ def memory_efficient_counting(file_path, k=13, chunk_size=None):
 
         print(f"Final memory: {final_memory:.1f} MB")
         print(f"Memory used: {memory_used:.1f} MB")
-        print(f"Memory efficiency: {counter.get_stats().total_kmers)/memory_used/1024:.1f} k-mers per MB")
+        print(f"Memory efficiency: {counter.get_stats().total_kmers/memory_used/1024:.1f} k-mers per MB")
 
         return counter
 
@@ -368,7 +374,7 @@ def memory_efficient_counting(file_path, k=13, chunk_size=None):
 ### Processing Multiple Files Efficiently
 
 ```python
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 import glob
 import time
 from pathlib import Path
@@ -402,17 +408,21 @@ class BatchProcessor:
                 duration = time.time() - start_time
 
                 # Store results
+                stats = counter.get_stats()
                 self.results[filename] = {
-                    'total_kmers': counter.get_stats().total_kmers),
-                    'unique_kmers': counter.get_unique_count(),
+                    'total_kmers': stats.total_kmers,
+                    'unique_kmers': stats.unique_kmers,
                     'duration': duration,
                     'file_size': Path(file_path).stat().st_size,
-                    'top_kmers': counter.get_top_kmers(5)
+                    'top_kmers': sorted(
+                        counter.get_all_counts().items(),
+                        key=lambda kv: kv[1], reverse=True,
+                    )[:5]
                 }
 
                 print(f"   ✅ Completed in {duration:.2f}s")
-                print(f"   Total k-mers: {counter.get_stats().total_kmers):,}")
-                print(f"   Unique k-mers: {counter.get_unique_count():,}")
+                print(f"   Total k-mers: {stats.total_kmers:,}")
+                print(f"   Unique k-mers: {stats.unique_kmers:,}")
 
             except Exception as e:
                 print(f"   ❌ Error: {e}")
@@ -480,7 +490,7 @@ processor.get_summary()
 ### Common Issues and Solutions
 
 ```python
-from pyrustkmer import KmerCounter, KmerError
+from pyrustkmer import PyCounter
 import logging
 
 # Set up logging
@@ -509,8 +519,9 @@ def robust_counting(file_path, k=21, canonical=True):
         counter.add_from_fasta(file_path)
 
         # Validate results
-        total_count = counter.get_stats().total_kmers)
-        unique_count = counter.get_unique_count()
+        stats = counter.get_stats()
+        total_count = stats.total_kmers
+        unique_count = stats.unique_kmers
 
         if total_count == 0:
             logger.warning("No k-mers were counted - possible empty or invalid file")
@@ -519,7 +530,7 @@ def robust_counting(file_path, k=21, canonical=True):
 
         return counter
 
-    except KmerError as e:
+    except ValueError as e:
         logger.error(f"K-mer processing error: {e}")
         return None
 
@@ -553,8 +564,9 @@ else:
 def validate_kmer_counting(counter, min_kmers=1000, max_uniqueness_ratio=0.1):
     """Validate k-mer counting results for quality control."""
 
-    total = counter.get_stats().total_kmers)
-    unique = counter.get_unique_count()
+    stats = counter.get_stats()
+    total = stats.total_kmers
+    unique = stats.unique_kmers
     uniqueness_ratio = unique / total if total > 0 else 0
 
     issues = []
@@ -611,9 +623,13 @@ def recommended_workflow(file_path, output_db=None):
         return None
 
     # Step 4: Get results
-    total = counter.get_stats().total_kmers)
-    unique = counter.get_unique_count()
-    top_kmers = counter.get_top_kmers(10)
+    stats = counter.get_stats()
+    total = stats.total_kmers
+    unique = stats.unique_kmers
+    top_kmers = sorted(
+        counter.get_all_counts().items(),
+        key=lambda kv: kv[1], reverse=True,
+    )[:10]
 
     # Step 5: Save database if requested
     if output_db:
@@ -661,7 +677,7 @@ def recommended_workflow(file_path, output_db=None):
 
 ### Python API
 ```python
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 
 # Create counter
 counter = PyCounter(21, canonical=True)
@@ -670,9 +686,9 @@ counter = PyCounter(21, canonical=True)
 counter.add_from_fasta("data.fa.gz")
 
 # Get results
-total = counter.get_stats().total_kmers)
-unique = counter.get_unique_count()
-top_kmers = counter.get_top_kmers(10)
+stats = counter.get_stats()
+total = stats.total_kmers
+unique = stats.unique_kmers
 
 # Save database
 counter.save_database("output.rkdb")
@@ -697,4 +713,4 @@ rustkmer count -k 21 -i file1.fa -i file2.fa -o combined.rkdb
 - **Documentation**: [Querying Databases](querying.md) for next steps
 - **API Reference**: [Python API](../api-reference/python/) for complete reference
 - **Performance Tips**: [Performance Guide](performance-tips.md) for optimization
-- **Troubleshooting**: [FAQ](../appendix/faq.md) for common issues
+- **Troubleshooting**: [Troubleshooting guide](../getting-started/troubleshooting.md) for common issues

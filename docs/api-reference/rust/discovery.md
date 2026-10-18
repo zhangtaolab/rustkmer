@@ -82,4 +82,4 @@ Get summary statistics for discovered files
 
 ---
 
-*Source: [`discovery.rs`](../../../io/discovery.rs)*
+*Source: [`discovery.rs`](../../../src/io/discovery.rs)*

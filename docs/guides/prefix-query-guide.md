@@ -10,27 +10,29 @@ The `prefix-query` command provides efficient prefix-based k-mer extraction for 
 
 ```bash
 # Find all k-mers starting with "ATCG"
-rustkmer prefix-query database.rkdb "ATCG"
+rustkmer prefix-query database.rkdb -p "ATCG"
 
 # Save results to file
-rustkmer prefix-query database.rkdb "ATCG" --output results.txt
+rustkmer prefix-query database.rkdb -p "ATCG" --output results.txt
 
 # Use different output formats
-rustkmer prefix-query database.rkdb "ATCG" --format json
-rustkmer prefix-query database.rkdb "ATCG" --format csv
-rustkmer prefix-query database.rkdb "ATCG" --format tsv
+rustkmer prefix-query database.rkdb -p "ATCG" --format json
+rustkmer prefix-query database.rkdb -p "ATCG" --format csv
+rustkmer prefix-query database.rkdb -p "ATCG" --format tsv
 ```
 
 ### Command Options
 
 ```
-Usage: rustkmer prefix-query [OPTIONS] <DATABASE> <PREFIX>
+Usage: rustkmer prefix-query [OPTIONS] <DATABASE>
 
 Arguments:
   <DATABASE>  Path to RKDB database file
-  <PREFIX>    Prefix sequence to match (must be A, T, C, G only)
 
 Options:
+  -p, --pattern <PATTERN>      Sequence pattern to match (prefix or hybrid format like ATAC{N5}ACAC)
+  -x, --prefix <PREFIX>        Explicit prefix sequence (alternative to pattern)
+      --hybrid                 Enable hybrid search mode for patterns with internal wildcards
   -f, --format <FORMAT>        Output format (table, json, csv, tsv) [default: table]
   -o, --output <OUTPUT>        Output file (stdout if not specified)
   -v, --verbose                Enable verbose output
@@ -47,7 +49,7 @@ Options:
 
 ```bash
 # Find all 19-mers starting with "ATG"
-rustkmer prefix-query genome_database.rkdb "ATG"
+rustkmer prefix-query genome_database.rkdb -p "ATG"
 ```
 
 **Output:**
@@ -63,7 +65,7 @@ ATGCGTACGTTAGCTT     8
 
 ```bash
 # Get results in JSON format with minimum count
-rustkmer prefix-query database.rkdb "AAAAA" --format json --min-count 5
+rustkmer prefix-query database.rkdb -p "AAAAA" --format json --min-count 5
 ```
 
 **Output:**
@@ -95,7 +97,7 @@ rustkmer prefix-query database.rkdb "AAAAA" --format json --min-count 5
 
 ```bash
 # Enable performance profiling for optimization analysis
-rustkmer prefix-query database.rkdb "ATG" --profile
+rustkmer prefix-query database.rkdb -p "ATG" --profile
 ```
 
 **Output:**
@@ -117,7 +119,7 @@ Performance gain: ~10-100x vs fuzzy-query for prefix patterns
 
 ```bash
 # Export results to CSV for further analysis
-rustkmer prefix-query database.rkdb "AAAAA" --format csv --output results.csv
+rustkmer prefix-query database.rkdb -p "AAAAA" --format csv --output results.csv
 ```
 
 ## Pattern Selection Guide
@@ -143,10 +145,10 @@ rustkmer prefix-query database.rkdb "AAAAA" --format csv --output results.csv
 
 ```bash
 # Pipe results to other tools
-rustkmer prefix-query database.rkdb "ATG" --quiet | head -10
+rustkmer prefix-query database.rkdb -p "ATG" --quiet | head -10
 
 # Use with grep for additional filtering
-rustkmer prefix-query database.rkdb "ATG" --quiet | grep "count.*[5-9][0-9]"
+rustkmer prefix-query database.rkdb -p "ATG" --quiet | grep "count.*[5-9][0-9]"
 ```
 
 ### Batch Processing
@@ -154,7 +156,7 @@ rustkmer prefix-query database.rkdb "ATG" --quiet | grep "count.*[5-9][0-9]"
 ```bash
 # Process multiple prefixes
 for prefix in ATG CTG GTG TTA TAA; do
-    rustkmer prefix-query database.rkdb "$prefix" --output "${prefix}_results.txt"
+    rustkmer prefix-query database.rkdb -p "$prefix" --output "${prefix}_results.txt"
 done
 ```
 
@@ -162,7 +164,7 @@ done
 
 ```bash
 # Compare with fuzzy-query timing
-time rustkmer prefix-query database.rkdb "ATG" --quiet
+time rustkmer prefix-query database.rkdb -p "ATG" --quiet
 time rustkmer fuzzy-query database.rkdb "ATG" --quiet
 ```
 
@@ -172,23 +174,23 @@ time rustkmer fuzzy-query database.rkdb "ATG" --quiet
 
 #### 1. Empty Prefix
 ```bash
-$ rustkmer prefix-query database.rkdb ""
-Error: Prefix cannot be empty
+$ rustkmer prefix-query database.rkdb -p ""
+Error: Either --pattern or --prefix must be specified
 ```
 
 **Solution**: Provide a non-empty prefix sequence.
 
 #### 2. Invalid Characters
 ```bash
-$ rustkmer prefix-query database.rkdb "ATGN"
-Error: Prefix contains invalid characters: ATGN. Only A, T, C, G are allowed.
+$ rustkmer prefix-query database.rkdb -p "ATGN"
+Error: Pattern contains invalid characters: ATGN. Only A, T, C, G are allowed.
 ```
 
 **Solution**: Use only A, T, C, G characters.
 
 #### 3. Prefix Too Long
 ```bash
-$ rustkmer prefix-query database.rkdb "ATCGATCGATCGATCGATCG"
+$ rustkmer prefix-query database.rkdb -p "ATCGATCGATCGATCGATCG"
 Error: Prefix length (20) must be less than k-mer size (19)
 ```
 
@@ -196,7 +198,7 @@ Error: Prefix length (20) must be less than k-mer size (19)
 
 #### 4. Database Not Found
 ```bash
-$ rustkmer prefix-query nonexistent.rkdb "ATG"
+$ rustkmer prefix-query nonexistent.rkdb -p "ATG"
 Error: File not found: nonexistent.rkdb
 ```
 
@@ -234,10 +236,12 @@ db = PyDatabase("database.rkdb", LoadMode.Preload)
 # Extract by prefix
 results = db.query_prefix("ATG")
 
-# Results format: {"kmer": "ATG...", "count": N}
-for kmer, count in results.items():
+# Results format: results.matches maps k-mer -> count (as string)
+for kmer, count in results.matches.items():
     print(f"{kmer}: {count}")
 ```
+
+For runnable examples, see `examples/python/simple_prefix_query.py` and `examples/python/unified_query_example.py`.
 
 ## Troubleshooting
 
@@ -261,7 +265,7 @@ for kmer, count in results.items():
 
 ```bash
 # Enable verbose output for debugging
-rustkmer prefix-query database.rkdb "ATG" --verbose
+rustkmer prefix-query database.rkdb -p "ATG" --verbose
 ```
 
 This provides detailed information about:

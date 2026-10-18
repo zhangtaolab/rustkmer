@@ -156,4 +156,4 @@ Optimize variant processing order for better cache performance
 
 ---
 
-*Source: [`performance.rs`](../../../fuzzy/performance.rs)*
+*Source: [`performance.rs`](../../../src/fuzzy/performance.rs)*

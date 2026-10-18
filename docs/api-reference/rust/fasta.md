@@ -58,4 +58,4 @@ Get file size
 
 ---
 
-*Source: [`fasta.rs`](../../../io/fasta.rs)*
+*Source: [`fasta.rs`](../../../src/io/fasta.rs)*

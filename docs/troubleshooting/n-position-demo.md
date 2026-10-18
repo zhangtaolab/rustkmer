@@ -103,22 +103,22 @@ def decide_strategy(pattern, n_positions, total_variants):
 
 ### 实际使用示例
 ```python
-from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
+from pyrustkmer import PyDatabase, LoadMode
 
-db = rustkmer_pyo3.PyDatabase("database.rkdb", LoadMode.Preload)
+db = PyDatabase("database.rkdb", LoadMode.Preload)
 
-# 场景1: AAAANNN - 自动选择前缀匹配
-results = db.smart_wildcard_query("AAAANNN")
+# 场景1: AAAANNN - 前缀匹配 (提取以 "AAAA" 开头的k-mer)
+results = db.extract_by_prefix("AAAA")
 print(f"Found {len(results)} matches with prefix strategy")
 
-# 场景2: NNNAAA - 自动选择后缀匹配  
-results = db.smart_wildcard_query("NNNAAA")
-print(f"Found {len(results)} matches with suffix strategy")
-
-# 场景3: AAANNNAAA - 自动选择混合匹配
-results = db.smart_wildcard_query("AAANNNAAA") 
+# 场景3: AAANNNAAA - 混合匹配 (hybrid格式，{N3} 表示中间3个通配位)
+results = db.extract_by_pattern("AAA{N3}AAA")
 print(f"Found {len(results)} matches with hybrid strategy")
 ```
+
+> 注意：自动策略选择的 `smart_wildcard_query` 目前仅在 Rust 核心 (src/database/suffix_query.rs)
+> 中实现，未绑定到当前发布的 `pyrustkmer` 模块；场景2 (NNNAAA 后缀匹配) 对应的
+> `extract_kmers_by_suffix` 同样只有 Rust 版本，Python 侧可暂时以 `fuzzy_query` 作为回退。
 
 ## 📈 性能基准测试
 
@@ -153,7 +153,7 @@ print(f"Found {len(results)} matches with hybrid strategy")
 
 ### 🚀 **最终建议:**
 1. **实现智能查询策略** - 根据N位置自动选择最佳方法
-2. **添加extract_by_suffix()** - 完善后缀匹配功能
+2. **为extract_kmers_by_suffix()添加Python绑定** - 完善后缀匹配功能 (Rust版本位于 src/database/suffix_query.rs)
 3. **设置变体生成上限** - 避免组合爆炸
 4. **优化混合匹配** - 处理N在中间的复杂情况
 
@@ -163,7 +163,7 @@ print(f"Found {len(results)} matches with hybrid strategy")
 - ✅ **智能策略选择** - 已实现
 - ✅ **混合匹配** - 已实现  
 - ✅ **变体生成限制** - 已实现
-- 🔄 **extract_by_suffix()** - 已实现Rust版本，Python绑定待完善
+- 🔄 **extract_kmers_by_suffix()** - 已实现Rust版本 (src/database/suffix_query.rs)，Python绑定待完善
 
 这个分析清楚地表明：**对于N在开头或结尾的情况，前后缀查询的效率远超变体生成！**
 

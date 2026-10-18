@@ -68,4 +68,4 @@ String containing file contents
 
 ---
 
-*Source: [`mmap.rs`](../../../io/mmap.rs)*
+*Source: [`mmap.rs`](../../../src/io/mmap.rs)*

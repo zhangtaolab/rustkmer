@@ -1,302 +1,206 @@
-# Exception Hierarchy
+<!-- generated-by: gsd-doc-writer -->
+# Exceptions
 
-This page documents the complete exception hierarchy used by the rustkmer Python API.
+This page documents error handling in the `pyrustkmer` Python bindings. The bindings do not define a custom exception hierarchy — methods raise standard Python built-in exceptions, and a single `RustKmerError` class is exported as a structured error payload type.
 
-## Base Exception
+## Standard Exceptions
 
-### `RustKmerError`
-
-Base exception for all rustkmer errors.
-
-All rustkmer-specific exceptions inherit from this class, allowing users to catch all rustkmer errors with a single except clause while still enabling fine-grained error handling with specific exception types.
+All errors raised by `pyrustkmer` methods are Python built-ins, mapped from Rust error conditions at the PyO3 boundary. Catch the built-in types:
 
 ```python
+from pyrustkmer import PyDatabase, LoadMode
+
 try:
     db = PyDatabase("nonexistent.rkdb", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-except RustKmerError as e:
-    print(f"rustkmer error occurred: {e}")
+except FileNotFoundError as e:
+    print(f"Database not found: {e}")
+except ValueError as e:
+    print(f"Invalid database: {e}")
 ```
 
-## Database Errors
+### Exception Types
 
-Database errors inherit from `RustKmerError` and handle issues related to database file operations.
+#### `ValueError`
 
-### `DatabaseError`
+Raised for invalid input or invalid file content. This is the most common exception and covers:
 
-Base class for all database-related errors.
+- Invalid constructor arguments — e.g. `PyCounter` k-mer length outside 1–64, or `threads` < 1
+- K-mer length mismatches — querying a k-mer whose length differs from the database's k-mer size
+- Invalid characters — k-mer/prefix characters outside `A`, `T`, `C`, `G` (fuzzy patterns additionally allow `N`)
+- Unreadable input files for `PyCounter.add_from_fasta` / `add_from_fastq`
+- Invalid parameters for `PyDatabase.merge` — empty input list, unknown `merge_mode`, unparseable `max_memory`
 
 ```python
+from pyrustkmer import PyCounter
+
 try:
-    db = PyDatabase("invalid.rkdb", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-except DatabaseError as e:
-    print(f"Database error: {e}")
+    counter = PyCounter(99)  # k-mer length must be 1-64
+except ValueError as e:
+    print(e)
+# Output contains: Invalid k-mer size: 99. Must be between 1 and 64
 ```
 
-### `DatabaseNotFoundError`
+#### `FileNotFoundError`
 
-Raised when a database file cannot be found at the specified path.
+Raised when a required file does not exist:
 
-**Attributes:**
-- `path`: The path that was attempted to be accessed
+- `PyDatabase(path, load_mode)` when `path` is missing
+- `PyDatabase.merge(...)` when one of the input databases is missing
 
 ```python
 try:
     db = PyDatabase("/nonexistent/path/database.rkdb", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-except DatabaseNotFoundError as e:
-    print(f"Database not found at: {e.path}")
-    print(f"Error: {e}")
+except FileNotFoundError as e:
+    print(f"Database not found: {e}")
 ```
 
-### `InvalidDatabaseError`
+#### `RuntimeError`
 
-Raised when a file exists but is not a valid rustkmer database.
+Raised when an operation fails after validation — engine-level failures rather than bad input:
+
+- Prefix/hybrid/pattern query engine failures on `PyDatabase`
+- Fuzzy query execution failures or database reload failures on `PyFuzzyQuery`
+- Merge failures on `PyDatabase.merge` (including the over-budget `merge_mode="memory"` rejection)
+- Mid-export write failures on the `export_to_*` methods
+
+```python
+from pyrustkmer import PyFuzzyQuery
+
+try:
+    result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCG", max_mutations=2)
+except RuntimeError as e:
+    print(f"Fuzzy query failed: {e}")
+```
+
+#### `PermissionError`
+
+Raised by the export methods (`export_to_file`, `export_to_json`, `export_to_csv`) when the output file cannot be created or written:
+
+```python
+try:
+    db.export_to_file("/root/forbidden/output.txt")
+except PermissionError as e:
+    print(f"Cannot write output: {e}")
+```
+
+### Exception Map by Operation
+
+| Operation | Exceptions |
+|-----------|------------|
+| `PyDatabase(path, load_mode)` | `FileNotFoundError`, `ValueError` |
+| `PyDatabase.query_exact` / `query_exact_batch` / `exists` | `ValueError` |
+| `PyDatabase.query_prefix` / `query_prefix_batch` / `query_hybrid` | `ValueError`, `RuntimeError` |
+| `PyDatabase.extract_by_prefix` / `extract_by_pattern` / `parse_pattern` | `ValueError`, `RuntimeError` |
+| `PyDatabase.dump` / `export_all_kmers` | `ValueError` |
+| `PyDatabase.export_to_file` / `export_to_json` / `export_to_csv` | `PermissionError`, `RuntimeError` |
+| `PyDatabase.merge(...)` | `ValueError`, `FileNotFoundError`, `RuntimeError` |
+| `PyCounter(...)` | `ValueError` |
+| `PyCounter.add_kmer` / `add_sequence` | `ValueError` |
+| `PyCounter.add_from_fasta` / `add_from_fastq` | `ValueError` |
+| `PyCounter.save_database` | `ValueError` |
+| `PyCounter.get_count` | `ValueError` |
+| `PyFuzzyQuery(db)` | `ValueError` |
+| `PyFuzzyQuery.query_fuzzy` / `query_fuzzy_position` | `ValueError`, `RuntimeError` |
+| `PyPrefixQuery(path)` / `PyExtendedPrefixQuery(path)` | `ValueError` |
+
+## RustKmerError
+
+`RustKmerError` is the single error class exported by the `pyrustkmer` module. It is a structured error payload with two string fields — not a Python `Exception` subclass, and it is not raised by the current bindings. It can be constructed directly for use as a uniform error representation in downstream code:
+
+```python
+from pyrustkmer import RustKmerError
+
+error = RustKmerError("k-mer length mismatch", "InvalidQuery")
+print(error.message)   # "k-mer length mismatch"
+print(error.error_type)  # "InvalidQuery"
+print(str(error))      # "InvalidQuery: k-mer length mismatch"
+print(repr(error))     # "RustKmerError('InvalidQuery', 'k-mer length mismatch')"
+```
 
 **Attributes:**
-- `path`: The path to the invalid database file
-- `reason`: Description of why the file is considered invalid
+- `message` (str): Human-readable description of the error
+- `error_type` (str): Category label for the error
 
+**Constructor:**
 ```python
-try:
-    db = PyDatabase("/path/to/wrong_format.txt", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-except InvalidDatabaseError as e:
-    print(f"Invalid database: {e.reason}")
-    print(f"File path: {e.path}")
+RustKmerError(message: str, error_type: str)
 ```
 
-### `DatabaseCorruptedError`
-
-Raised when a database file appears to be corrupted or unreadable.
-
-**Attributes:**
-- `path`: The path to the corrupted database file
-
-```python
-try:
-    db = PyDatabase("/path/to/corrupted.rkdb", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-except DatabaseCorruptedError as e:
-    print(f"Database corrupted: {e.path}")
-    # Try to recover or use backup
-```
-
-## Query Errors
-
-Query errors inherit from `RustKmerError` and handle issues related to database query operations.
-
-### `QueryError`
-
-Base class for all query-related errors.
-
-```python
-try:
-    result = db.query_exact("INVALID")
-except QueryError as e:
-    print(f"Query failed: {e}")
-```
-
-### `InvalidKmerError`
-
-Raised when an invalid k-mer sequence is provided.
-
-**Attributes:**
-- `kmer`: The invalid k-mer sequence
-- `reason`: Description of why the k-mer is invalid
-
-```python
-try:
-    result = db.query_exact("ATXG")  # Invalid character X
-except InvalidKmerError as e:
-    print(f"Invalid k-mer: {e.kmer}")
-    print(f"Reason: {e.reason}")
-```
-
-### `KmerLengthError`
-
-Raised when k-mer length doesn't match database k-mer size.
-
-**Attributes:**
-- `expected_length`: The correct k-mer length for the database
-- `actual_length`: The length of the provided k-mer
-
-```python
-try:
-    result = db.query_exact("ATCG")  # Too short for k=31 database
-except KmerLengthError as e:
-    print(f"Expected length: {e.expected_length}")
-    print(f"Actual length: {e.actual_length}")
-    print(f"Invalid k-mer: {e.kmer}")
-```
-
-## Fuzzy Query Errors
-
-Fuzzy query errors inherit from `QueryError` and handle issues specific to fuzzy query operations.
-
-### `FuzzyQueryError`
-
-Base exception for fuzzy query operations.
-
-```python
-try:
-    result = fuzzy.query_fuzzy("ATCG", mutations=10)  # Too high
-except FuzzyQueryError as e:
-    print(f"Fuzzy query error: {e}")
-```
-
-### `InvalidMutationToleranceError`
-
-Raised when mutation tolerance is out of valid range.
-
-```python
-try:
-    result = fuzzy.query_fuzzy("ATCG", mutations=10)  # Too high
-except InvalidMutationToleranceError as e:
-    print("Mutation tolerance too high")
-    print("Use a smaller value (0-5)")
-```
-
-### `InvalidPositionMutationError`
-
-Raised when position-mutations parameter has invalid format or values.
-
-**Attributes:**
-- `position_config`: The invalid position mutation configuration string
-
-```python
-try:
-    result = fuzzy.query_fuzzy("ATCG", position_mutations="invalid")
-except InvalidPositionMutationError as e:
-    print(f"Invalid format: {e.position_config}")
-    print("Use format like '3,4:1' or '2-5:2'")
-```
-
-**Valid position-mutations formats:**
-- `"3:1"` - Position 3 with max 1 mutation
-- `"3,4,5:2"` - Positions 3,4,5 with max 2 mutations total
-- `"4-7:1"` - Positions 4,5,6,7 with max 1 mutation
-- `"3,4:1;6,7:2"` - Multiple independent groups
-
-### `CombinatorialExplosionError`
-
-Raised when fuzzy query would generate too many variants.
-
-```python
-try:
-    result = fuzzy.query_fuzzy("ATCGATCGATCG", mutations=5)
-except CombinatorialExplosionError as e:
-    print("Too many variants would be generated")
-    # Try reducing mutations or using max_variants parameter
-    result = fuzzy.query_fuzzy("ATCGATCGATCG", mutations=3, max_variants=1000)
-```
-
-### `BatchQueryError`
-
-Raised when batch fuzzy query encounters issues.
-
-```python
-try:
-    results = db.fuzzy_query_batch(["ATCG", "GCTA", "INVALID"])
-except BatchQueryError as e:
-    print("Batch query failed")
-    # Process queries individually to identify the problem
-    for kmer in ["ATCG", "GCTA", "INVALID"]:
-        try:
-            result = fuzzy.query_fuzzy(kmer)
-        except FuzzyQueryError as query_error:
-            print(f"Query {kmer} failed: {query_error}")
-```
-
-
-### `ConfigurationError`
-
-Raised when there's a configuration issue with the rustkmer package.
-
-```python
-try:
-    db = PyDatabase("database.rkdb")
-fuzzy = PyFuzzyQuery(db)  # May trigger config validation
-except ConfigurationError as e:
-    print(f"Configuration issue: {e}")
-    print("Check rustkmer installation and environment")
-```
+Because `RustKmerError` is not an `Exception` subclass, do not use it in `except` clauses — catch the built-in types listed above.
 
 ## Error Handling Best Practices
 
-### 1. Specific Error Handling
+### 1. Catch the Built-in Types
 
 ```python
-# Handle specific errors appropriately
+from pyrustkmer import PyDatabase, LoadMode
+
 try:
     db = PyDatabase("database.rkdb", LoadMode.Preload)
-fuzzy = PyFuzzyQuery(db)
-except DatabaseNotFoundError:
+except FileNotFoundError:
     print("Database not found. Check the file path.")
-    sys.exit(1)
-except InvalidDatabaseError:
-    print("Invalid database format. The file may be corrupted.")
-    sys.exit(1)
+except ValueError as e:
+    print(f"Invalid database format or argument: {e}")
 ```
 
-### 2. General Error Handling
+### 2. Distinguish Input Errors from Engine Failures
+
+`ValueError` almost always means the input was rejected (fix the arguments); `RuntimeError` means the operation itself failed (inspect the message, which carries the underlying Rust error text):
 
 ```python
-# Catch all rustkmer errors
-try:
-    result = fuzzy.query_fuzzy("ATCG", mutations=2)
-except RustKmerError as e:
-    print(f"rustkmer error: {e}")
-    # Handle or log the error appropriately
+def safe_query(db, kmer):
+    try:
+        return db.query_exact(kmer)
+    except ValueError as e:
+        # Wrong length or invalid characters - fix the input
+        print(f"Invalid k-mer: {e}")
+        return None
+    except RuntimeError as e:
+        # Engine failure - the message carries the Rust error
+        print(f"Query failed: {e}")
+        return None
 ```
 
-### 3. Error Recovery Strategies
+### 3. Match Exception Type to Recovery Strategy
 
 ```python
-def safe_query_with_retry(db, kmer, max_retries=3):
-    """Query with retry logic for common errors."""
-    for attempt in range(max_retries):
-        try:
-            return db.query_exact(kmer)
-        except DatabaseNotFoundError:
-            # File doesn't exist, no point retrying
-            raise
-        except QueryError as e:
-            if attempt == max_retries - 1:
-                raise
-            print(f"Query attempt {attempt + 1} failed, retrying...")
-            time.sleep(1)  # Wait before retry
-    return None
+from pyrustkmer import PyDatabase
+
+def open_database(db_path):
+    """Open a database, with targeted error handling."""
+    try:
+        return PyDatabase(db_path, LoadMode.Preload)
+    except FileNotFoundError:
+        # Missing file - no point retrying with the same path
+        raise
+    except ValueError as e:
+        # Wrong format - try the lazy loader as a fallback
+        print(f"Preload failed ({e}); check whether the file is a valid .rkdb")
+        raise
 ```
 
-## Migration Guide
+## Migration Notes
 
-### From Previous Versions
-
-If you're upgrading from a version of rustkmer before 1.0:
-
-1. **New Exception Hierarchy**: The exception hierarchy has been restructured for better organization.
-2. **Additional Attributes**: Many exceptions now provide additional helpful attributes.
-3. **Better Error Messages**: Error messages are more descriptive and actionable.
-
-### Breaking Changes
-
-- `DatabaseError` no longer inherits from `FileNotFoundError` directly
-- `InvalidKmerError` no longer inherits from `ValueError` directly
-- New position mutation related exceptions have been added
-
-### Updated Imports
+Earlier documentation described a large custom exception hierarchy (`DatabaseNotFoundError`, `InvalidKmerError`, `FuzzyQueryError`, `QueryError`, etc.). **That hierarchy does not exist in the `pyrustkmer` module.** If you have code catching those names, migrate it to the built-in types:
 
 ```python
-# Old imports (pre-1.0)
-from rustkmer.exceptions import DatabaseError, QueryError
+# Old (does not work - these names are not exported)
+# except DatabaseNotFoundError as e: ...
+# except InvalidKmerError as e: ...
 
-# New imports (1.0+)
-from rustkmer.exceptions import (
-    DatabaseError, QueryError, InvalidKmerError,
-    DatabaseNotFoundError, InvalidDatabaseError,
-    FuzzyQueryError, InvalidMutationToleranceError,
-    ConfigurationError
-)
+# Current
+except FileNotFoundError as e: ...   # was DatabaseNotFoundError
+except ValueError as e: ...          # was InvalidKmerError / KmerLengthError
+except RuntimeError as e: ...        # was QueryError / FuzzyQueryError
 ```
+
+Migration mapping:
+
+| Previously documented name | Catch instead | When |
+|---------------------------|---------------|------|
+| `DatabaseNotFoundError` | `FileNotFoundError` | Database file missing |
+| `InvalidDatabaseError` / `DatabaseCorruptedError` | `ValueError` | File is not a valid `.rkdb` |
+| `InvalidKmerError` / `KmerLengthError` | `ValueError` | Bad k-mer length or characters |
+| `QueryError` | `RuntimeError` | Query engine failure |
+| `FuzzyQueryError` / `InvalidPositionMutationError` | `ValueError` or `RuntimeError` | Invalid pattern/config is `ValueError`; execution failure is `RuntimeError` |
+| `RustKmerError` (as catch-all) | `ValueError`, `FileNotFoundError`, `RuntimeError`, `PermissionError` | See the operation map above |

@@ -1,3 +1,4 @@
+<!-- generated-by: gsd-doc-writer -->
 # Basic Workflow Tutorial
 
 Complete end-to-end tutorial showing how to use RustKmer for basic k-mer analysis, from data preparation to results interpretation.
@@ -12,7 +13,7 @@ In this tutorial, you'll learn to:
 5. **Save and export** results for further use
 
 ### Prerequisites
-- Python 3.8+ with RustKmer installed
+- Python 3.11+ with RustKmer installed (`pip install pyrustkmer`)
 - Basic command line knowledge
 - 15 minutes to complete
 
@@ -23,10 +24,10 @@ In this tutorial, you'll learn to:
 ### Install RustKmer
 ```bash
 # Install Python package
-pip install rustkmer
+pip install pyrustkmer
 
 # Verify installation
-python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer installed successfully!')", LoadMode
+python -c "from pyrustkmer import PyCounter; print('RustKmer installed successfully!')"
 ```
 
 ### Create Sample Data
@@ -46,7 +47,7 @@ GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAG
 >tutorial_sequence_2
 GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAG
 GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAG
-TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
 >tutorial_sequence_3
 ATCGATCGATCGATCGATCGATCGATCGATCGATCG
@@ -71,7 +72,7 @@ ATCGATCGATCGATCGATCGATCGATCGATCGATCG
         for query in queries:
             f.write(f"{query}\n")
 
-    print("✅ Sample data files created:")
+    print("Sample data files created:")
     print("   - tutorial_data.fa (FASTA sequences)")
     print("   - tutorial_queries.txt (test k-mers)")
 
@@ -91,12 +92,12 @@ python3 create_sample_data.py
 ### Count K-mers from File
 ```python
 # step1_counting.py
-from pyrustkmer import KmerCounter, LoadMode
+from pyrustkmer import PyCounter
 
 def basic_kmer_counting(input_file, k=21, canonical=True):
     """Basic k-mer counting from a FASTA file."""
 
-    print("🧬 Starting k-mer counting...")
+    print("Starting k-mer counting...")
     print(f"   Input file: {input_file}")
     print(f"   K-mer size: {k}")
     print(f"   Canonical mode: {canonical}")
@@ -105,22 +106,25 @@ def basic_kmer_counting(input_file, k=21, canonical=True):
     counter = PyCounter(k, canonical=canonical)
 
     # Count k-mers from file
-    print("📊 Counting k-mers...")
+    print("Counting k-mers...")
     counter.add_from_fasta(input_file)
 
     # Get basic statistics
-    total_kmers = counter.get_stats().total_kmers)
-    unique_kmers = counter.get_unique_count()
+    stats = counter.get_stats()
+    total_kmers = stats.total_kmers
+    unique_kmers = stats.unique_kmers
     uniqueness_ratio = unique_kmers / total_kmers if total_kmers > 0 else 0
 
-    print(f"\n📈 Counting Results:")
+    print(f"\nCounting Results:")
     print(f"   Total k-mers processed: {total_kmers:,}")
     print(f"   Unique k-mers found: {unique_kmers:,}")
     print(f"   Uniqueness ratio: {uniqueness_ratio:.4f}")
 
-    # Get top k-mers
-    print(f"\n🔝 Top 10 Most Frequent K-mers:")
-    top_kmers = counter.get_top_kmers(10)
+    # Get top k-mers: get_all_counts() returns {kmer_string: count}
+    counts = counter.get_all_counts()
+    top_kmers = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:10]
+
+    print(f"\nTop 10 Most Frequent K-mers:")
     for i, (kmer, count) in enumerate(top_kmers, 1):
         print(f"   {i:2d}. {kmer}: {count:,}")
 
@@ -136,24 +140,24 @@ if __name__ == "__main__":
 python3 step1_counting.py
 ```
 
-**Expected Output:**
+**Expected Output** (illustrative — exact counts depend on the sample data):
 ```
-🧬 Starting k-mer counting...
+Starting k-mer counting...
    Input file: tutorial_data.fa
    K-mer size: 21
    Canonical mode: True
-📊 Counting k-mers...
+Counting k-mers...
 
-📈 Counting Results:
+Counting Results:
    Total k-mers processed: 296
    Unique k-mers found: 58
    Uniqueness ratio: 0.1959
 
-🔝 Top 10 Most Frequent K-mers:
+Top 10 Most Frequent K-mers:
     1. ATCGATCGATCGATCGATCG: 9
     2. GCTAGCTAGCTAGCTAGCTAG: 6
     3. TTTTTTTTTTTTTTTTTTTTT: 4
-    4. CCCCCCCCCCCCCCCCCCCCC: 4
+    4. CCCCCCCCCCCCCCCCCCCC: 4
    ...
 ```
 
@@ -164,50 +168,50 @@ python3 step1_counting.py
 ### Create K-mer Database
 ```python
 # step2_database.py
-from pyrustkmer import KmerCounter, Database, LoadMode
+from pyrustkmer import PyCounter, PyDatabase, LoadMode
 
 def create_database(counter, output_file):
     """Save k-mer counting results to database."""
 
-    print(f"\n💾 Creating k-mer database...")
+    print(f"\nCreating k-mer database...")
     print(f"   Output file: {output_file}")
 
     # Save to database
     counter.save_database(output_file)
 
-    print(f"✅ Database saved successfully!")
+    print(f"Database saved successfully!")
 
-    # Verify database
-    db = PyDatabase("database.rkdb", LoadMode.Preload)
-        stats = db.get_stats()
+    # Verify database (the constructor takes the path AND a LoadMode)
+    db = PyDatabase(output_file, LoadMode.Preload)
+    stats = db.get_stats()
 
-        print(f"\n📊 Database Statistics:")
-        print(f"   K-mer size: {stats.kmer_size}")
-        print(f"   Total k-mers: {stats.total_kmers:,}")
-        print(f"   Unique k-mers: {stats.unique_kmers:,}")
-        print(f"   Database file: {stats.filename}")
+    print(f"\nDatabase Statistics:")
+    print(f"   K-mer size: {stats.kmer_size}")
+    print(f"   Total k-mers: {stats.total_kmers:,}")
+    print(f"   Unique k-mers: {stats.unique_kmers:,}")
+    print(f"   Database file size: {stats.file_size:,} bytes")
 
 def query_database(db_file, queries):
     """Query specific k-mers from database."""
 
-    print(f"\n🔍 Querying k-mers from database...")
+    print(f"\nQuerying k-mers from database...")
     print(f"   Database: {db_file}")
 
-    db = PyDatabase("database.rkdb", LoadMode.Preload)
+    db = PyDatabase(db_file, LoadMode.Preload)
 
-        results = []
+    results = []
 
-        for i, query in enumerate(queries, 1):
-            print(f"\n   Query {i}: {query}")
+    for i, query in enumerate(queries, 1):
+        print(f"\n   Query {i}: {query}")
 
-            result = db.query_exact(query)
+        result = db.query_exact(query)
 
-            if result.exists:
-                print(f"   ✅ Found: {result.count:,} occurrences")
-                results.append((query, result.count, True))
-            else:
-                print(f"   ❌ Not found in database")
-                results.append((query, 0, False))
+        if result.found:
+            print(f"   Found: {result.count:,} occurrences")
+            results.append((query, result.count, True))
+        else:
+            print(f"   Not found in database")
+            results.append((query, 0, False))
 
     return results
 
@@ -240,43 +244,39 @@ python3 step2_database.py
 ```python
 # step3_analysis.py
 import matplotlib.pyplot as plt
-import numpy as np
-from pyrustkmer import Database, LoadMode
+from pyrustkmer import PyDatabase, LoadMode
 
 def analyze_kmer_frequencies(db_file):
     """Analyze and visualize k-mer frequency distribution."""
 
-    print("📊 Analyzing k-mer frequencies...")
+    print("Analyzing k-mer frequencies...")
 
-    db = PyDatabase("database.rkdb", LoadMode.Preload)
-        stats = db.get_stats()
+    db = PyDatabase(db_file, LoadMode.Preload)
+    stats = db.get_stats()
 
-        print(f"Database: {db_file}")
-        print(f"K-mer size: {stats.kmer_size}")
-        print(f"Unique k-mers: {stats.unique_kmers:,}")
+    print(f"Database: {db_file}")
+    print(f"K-mer size: {stats.kmer_size}")
+    print(f"Unique k-mers: {stats.unique_kmers:,}")
 
-        # For this tutorial, we'll get top k-mers since we can't easily get all
-        top_kmers = []
+    # Load our known queries and get their counts
+    with open("tutorial_queries.txt", "r") as f:
+        queries = [line.strip() for line in f if line.strip()]
 
-        # Load our known queries and get their counts
-        with open("tutorial_queries.txt", "r") as f:
-            queries = [line.strip() for line in f if line.strip()]
+    query_results = {}
+    for query in queries:
+        result = db.query_exact(query)
+        query_results[query] = result.count if result.found else 0
 
-        query_results = {}
-        for query in queries:
-            result = db.query_exact(query)
-            query_results[query] = result.count if result.exists else 0
+    print(f"\nQuery Results Analysis:")
+    for query, count in query_results.items():
+        print(f"   {query}: {count}")
 
-        print(f"\n🔍 Query Results Analysis:")
-        for query, count in query_results.items():
-            print(f"   {query}: {count}")
-
-        return query_results
+    return query_results
 
 def create_frequency_visualization(query_results):
     """Create simple visualization of query results."""
 
-    print("\n📈 Creating frequency visualization...")
+    print("\nCreating frequency visualization...")
 
     # Prepare data
     queries = list(query_results.keys())
@@ -303,12 +303,12 @@ def create_frequency_visualization(query_results):
     plt.savefig('tutorial_query_results.png', dpi=300, bbox_inches='tight')
     plt.show()
 
-    print("✅ Visualization saved as 'tutorial_query_results.png'")
+    print("Visualization saved as 'tutorial_query_results.png'")
 
 def export_results(query_results, output_file="tutorial_results.csv"):
     """Export query results to CSV file."""
 
-    print(f"\n💾 Exporting results to {output_file}...")
+    print(f"\nExporting results to {output_file}...")
 
     import csv
 
@@ -319,7 +319,7 @@ def export_results(query_results, output_file="tutorial_results.csv"):
         for kmer, count in query_results.items():
             writer.writerow([kmer, count, count > 0])
 
-    print("✅ Results exported successfully!")
+    print("Results exported successfully!")
 
 if __name__ == "__main__":
     # Analyze frequencies
@@ -329,7 +329,7 @@ if __name__ == "__main__":
     try:
         create_frequency_visualization(results)
     except ImportError:
-        print("⚠️  Matplotlib not installed. Skip visualization.")
+        print("Matplotlib not installed. Skip visualization.")
         print("   Install with: pip install matplotlib")
 
     # Export results
@@ -355,63 +355,64 @@ This script combines all steps into a single automated workflow.
 
 import os
 import sys
-from pyrustkmer import KmerCounter, Database, LoadMode
+from pyrustkmer import PyCounter, PyDatabase, LoadMode
 
 def run_complete_workflow():
     """Run the complete RustKmer workflow from start to finish."""
 
-    print("🚀 RustKmer Complete Workflow Tutorial")
+    print("RustKmer Complete Workflow Tutorial")
     print("=" * 50)
 
     # Step 1: Create sample data
-    print("\n📝 Step 1: Creating sample data...")
+    print("\nStep 1: Creating sample data...")
     from create_sample_data import create_sample_files
     create_sample_files()
 
     # Step 2: Count k-mers
-    print("\n🧬 Step 2: Counting k-mers...")
+    print("\nStep 2: Counting k-mers...")
     counter = PyCounter(21, canonical=True)
     counter.add_from_fasta("tutorial_data.fa")
 
-    total_kmers = counter.get_stats().total_kmers)
-    unique_kmers = counter.get_unique_count()
+    stats = counter.get_stats()
+    total_kmers = stats.total_kmers
+    unique_kmers = stats.unique_kmers
 
     print(f"   Total k-mers: {total_kmers:,}")
     print(f"   Unique k-mers: {unique_kmers:,}")
 
     # Step 3: Create database
-    print("\n💾 Step 3: Creating database...")
+    print("\nStep 3: Creating database...")
     db_file = "tutorial_complete.rkdb"
     counter.save_database(db_file)
 
     # Step 4: Query database
-    print("\n🔍 Step 4: Querying database...")
+    print("\nStep 4: Querying database...")
 
     # Load queries
     with open("tutorial_queries.txt", "r") as f:
         queries = [line.strip() for line in f if line.strip()]
 
     # Perform queries
-    db = PyDatabase("database.rkdb", LoadMode.Preload)
+    db = PyDatabase(db_file, LoadMode.Preload)
 
-        query_results = {}
-        found_count = 0
+    query_results = {}
+    found_count = 0
 
-        for query in queries:
-            result = db.query_exact(query)
-            count = result.count if result.exists else 0
-            query_results[query] = count
+    for query in queries:
+        result = db.query_exact(query)
+        count = result.count if result.found else 0
+        query_results[query] = count
 
-            if count > 0:
-                found_count += 1
-                print(f"   ✅ {query}: {count}")
-            else:
-                print(f"   ❌ {query}: not found")
+        if count > 0:
+            found_count += 1
+            print(f"   Found: {query}: {count}")
+        else:
+            print(f"   Not found: {query}")
 
     # Step 5: Generate report
-    print("\n📊 Step 5: Generating report...")
+    print("\nStep 5: Generating report...")
 
-    print(f"\n🎉 Workflow Complete!")
+    print(f"\nWorkflow Complete!")
     print(f"   Processed {total_kmers:,} k-mers")
     print(f"   Found {unique_kmers:,} unique k-mers")
     print(f"   Queried {len(queries)} k-mers")
@@ -430,10 +431,10 @@ def run_complete_workflow():
         for query, count in query_results.items():
             f.write(f"  {query}: {count}\n")
 
-    print(f"   📄 Summary saved to 'workflow_summary.txt'")
+    print(f"   Summary saved to 'workflow_summary.txt'")
 
     # Step 6: Cleanup
-    print("\n🧹 Step 6: Cleanup options...")
+    print("\nStep 6: Cleanup options...")
     print("   Files created:")
     files_created = [
         "tutorial_data.fa",
@@ -447,7 +448,7 @@ def run_complete_workflow():
             size = os.path.getsize(file)
             print(f"     {file} ({size:,} bytes)")
 
-    print(f"\n✅ Tutorial completed successfully!")
+    print(f"\nTutorial completed successfully!")
     print(f"You can now explore the created files and modify the workflow for your own data.")
 
     return query_results
@@ -456,7 +457,7 @@ if __name__ == "__main__":
     try:
         results = run_complete_workflow()
     except Exception as e:
-        print(f"❌ Error in workflow: {e}")
+        print(f"Error in workflow: {e}")
         sys.exit(1)
 ```
 
@@ -479,11 +480,11 @@ After running the complete workflow, you should have:
 
 ### Expected Query Results
 ```
-✅ ATCGATCGATCGATCGATCG: 9        (Most frequent)
-✅ GCTAGCTAGCTAGCTAGCTAG: 6        (Frequent)
-✅ TTTTTTTTTTTTTTTTTTTTT: 4        (Moderate)
-✅ CCCCCCCCCCCCCCCCCCCCCCC: 4      (Moderate)
-❌ AAAAAAAAAAAAAAAAAAAAA: 0        (Not present)
+Found: ATCGATCGATCGATCGATCG: 9        (Most frequent)
+Found: GCTAGCTAGCTAGCTAGCTAG: 6       (Frequent)
+Found: TTTTTTTTTTTTTTTTTTTTT: 4       (Moderate)
+Found: CCCCCCCCCCCCCCCCCCCC: 4        (Moderate)
+Not found: AAAAAAAAAAAAAAAAAAAAA: 0   (Not present)
 ```
 
 ### Performance Metrics
@@ -500,23 +501,23 @@ Memory Usage: <5MB for this tutorial
 
 Congratulations! You've completed the RustKmer basic workflow tutorial. Here's what you can do next:
 
-### 🎯 Explore Further
+### Explore Further
 - **[Counting Guide](../user-guide/counting-kmers.md)** - Advanced counting techniques
 - **[Querying Guide](../user-guide/querying.md)** - Database querying methods
 - **[Fuzzy Search](../user-guide/fuzzy-search.md)** - Pattern matching
 
-### 🧬 Real Data Applications
+### Real Data Applications
 - **Use your own FASTA files** in the workflow
 - **Try different k-mer sizes** (13, 21, 31)
 - **Process larger datasets** with memory optimization
 - **Integrate with bioinformatics pipelines**
 
-### ⚙️ Performance Optimization
+### Performance Optimization
 - **Benchmark on your system** to compare performance
 - **Try different parameters** for your specific use case
 - **Explore parallel processing** for large datasets
 
-### 🔧 Advanced Features
+### Advanced Features
 - **Fuzzy searching** with wildcards and distance constraints
 - **Batch processing** of multiple files
 - **Python API integration** with other tools
@@ -531,7 +532,7 @@ Congratulations! You've completed the RustKmer basic workflow tutorial. Here's w
 ```bash
 # If Python package installation fails
 pip install --upgrade pip
-pip install rustkmer
+pip install pyrustkmer
 
 # If you need Rust installation
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -540,7 +541,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 **Import Errors:**
 ```python
 # Verify RustKmer is properly installed
-python -c "from pyrustkmer import KmerCounter, Database; print('✅ OK')", LoadMode
+python -c "from pyrustkmer import PyCounter, PyDatabase, LoadMode; print('OK')"
 ```
 
 **File Not Found:**
@@ -566,13 +567,13 @@ counter = PyCounter(13, canonical=True)  # Instead of k=21
 
 ---
 
-## Tutorial Complete! 🎉
+## Tutorial Complete!
 
 You've successfully:
-✅ Created sample genomic data
-✅ Counted k-mers with RustKmer
-✅ Built and queried k-mer databases
-✅ Analyzed and exported results
-✅ Automated the complete workflow
+- Created sample genomic data
+- Counted k-mers with RustKmer
+- Built and queried k-mer databases
+- Analyzed and exported results
+- Automated the complete workflow
 
 You're now ready to use RustKmer for your own bioinformatics projects!

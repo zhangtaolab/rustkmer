@@ -41,7 +41,7 @@ with open("AAATT_kmers.txt", "w") as f:
 from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery, PyDatabase
 
 # 加载数据库
-db = rustkmer_pyo3.PyDatabase("database.rkdb", LoadMode.Preload)
+db = pyrustkmer.PyDatabase("database.rkdb", LoadMode.Preload)
 
 # 提取以"AAATT"开头的k-mer
 prefix_results = db.extract_by_prefix("AAATT")
@@ -148,12 +148,16 @@ cargo build --release
 ```bash
 cd /Users/forrest/Github/rustkmer/pyo3
  maturin build --release
-pip install target/wheels/rustkmer_pyo3-*.whl
+pip install target/wheels/pyrustkmer-*.whl
 ```
 
 ### 运行测试
 ```bash
-python test_prefix_simple.py
+# Python绑定测试 (覆盖 query_prefix 等前缀查询路径)
+cd pyo3 && python -m pytest tests/test_core.py tests/test_pyo3_simple.py
+
+# Rust前缀提取正确性测试 (extract_prefix_optimized 对比oracle)
+cargo test --test prefix_cache_output_order_tests
 ```
 
 ## 🎉 总结

@@ -153,7 +153,9 @@ fuzzy_result = db.fuzzy_query("GCCGCN", 1)            # 模糊查询
 
 ### **基础使用**
 ```python
-import rustkmer_pyo3
+# 历史注记：本报告撰写时扩展模块名为 rustkmer_pyo3（Rust crate 名 rustkmer-pyo3 沿用至今）。
+# 当前发布的 Python 模块名为 pyrustkmer，新代码请直接使用 `import pyrustkmer`。
+import pyrustkmer as rustkmer_pyo3
 
 # 创建统一数据库接口
 engine = rustkmer_pyo3.PyDatabase(

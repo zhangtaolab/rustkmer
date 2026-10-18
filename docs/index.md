@@ -27,7 +27,7 @@ RustKmer is a high-performance k-mer counting library written in Rust with Pytho
 cargo install rustkmer
 
 # Python (from PyPI)
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 ### Basic Usage

@@ -26,9 +26,9 @@ If you're new to RustKmer, start with the [Getting Started](../getting-started/)
 3. Learn about [Database Operations](querying.md) for storage strategies
 
 ### For Systems Administrators
-1. Follow the [Deployment Guide](../deployment/) for production setup
-2. Review [Performance Monitoring](../user-guide/performance-tips.md) for system requirements
-3. Check [Troubleshooting](../appendix/troubleshooting.md) for common issues
+1. Review the [Installation Guide](../getting-started/installation-advanced.md) for advanced setup options
+2. Check [Performance Tips](performance-tips.md) for system requirements
+3. See [Troubleshooting](../getting-started/troubleshooting.md) for common issues
 
 ## Key Concepts
 

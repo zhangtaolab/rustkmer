@@ -37,7 +37,7 @@ The count of the k-mer, or None if not found
 #### query_from_memory
 
 ```rust
-fn query_from_memory(&self, encoded_kmer: u64) -> ProcessingResult<Option<u32>> {
+fn query_from_memory(&self, encoded_kmer: u128) -> ProcessingResult<Option<u32>> {
 ```
 
 Query from in-memory cache
@@ -45,7 +45,7 @@ Query from in-memory cache
 #### query_from_disk
 
 ```rust
-fn query_from_disk(&mut self, encoded_kmer: u64) -> ProcessingResult<Option<u32>> {
+fn query_from_disk(&mut self, encoded_kmer: u128) -> ProcessingResult<Option<u32>> {
 ```
 
 Query from disk using binary search
@@ -114,4 +114,4 @@ Query multiple k-mers
 
 ---
 
-*Source: [`query.rs`](../../../database/query.rs)*
+*Source: [`query.rs`](../../../src/database/query.rs)*

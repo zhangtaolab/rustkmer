@@ -22,4 +22,4 @@ Generate query expansion from a fuzzy query
 
 ---
 
-*Source: [`expansion.rs`](../../../fuzzy/expansion.rs)*
+*Source: [`expansion.rs`](../../../src/fuzzy/expansion.rs)*

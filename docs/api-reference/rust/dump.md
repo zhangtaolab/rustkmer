@@ -61,4 +61,4 @@ Decode a k-mer from encoded format back to DNA sequence
 
 ---
 
-*Source: [`dump.rs`](../../../cli/commands/dump.rs)*
+*Source: [`dump.rs`](../../../src/cli/commands/dump.rs)*

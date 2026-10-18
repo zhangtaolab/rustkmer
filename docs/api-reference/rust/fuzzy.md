@@ -118,4 +118,4 @@ Output batch results in CSV format
 
 ---
 
-*Source: [`fuzzy.rs`](../../../cli/commands/fuzzy.rs)*
+*Source: [`fuzzy.rs`](../../../src/cli/commands/fuzzy.rs)*

@@ -19,10 +19,10 @@ source .venv/bin/activate
 .venv\Scripts\activate
 
 # Install RustKmer
-pip install rustkmer
+pip install pyrustkmer
 
 # Verify installation
-python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
+python -c "from pyrustkmer import PyCounter; print('✅ RustKmer installed successfully!')"
 
 # Deactivate when done
 deactivate
@@ -36,7 +36,7 @@ deactivate
 
 ### System-wide Python Installation
 ```bash
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 ### Modern Python with uv (Ultra-fast) ⚡
@@ -58,13 +58,13 @@ uv init rustkmer-analysis
 cd rustkmer-analysis
 
 # Add RustKmer dependency
-uv add rustkmer
+uv add pyrustkmer
 
 # Run RustKmer immediately
-uv run python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer ready with uv!')"
+uv run python -c "from pyrustkmer import PyCounter; print('✅ RustKmer ready with uv!')"
 
 # Create a simple analysis script
-echo 'from pyrustkmer import KmerCounter
+echo 'from pyrustkmer import PyCounter
 counter = PyCounter(21, canonical=True)
 print("🧬 RustKmer is ready for k-mer analysis!")' > analysis.py
 
@@ -112,27 +112,27 @@ source .venv/bin/activate
 #### Step 3: Install RustKmer
 ```bash
 # Install the latest version
-pip install rustkmer
+pip install pyrustkmer
 
 # Install a specific version
-pip install rustkmer==1.0.0
+pip install pyrustkmer==0.5.0
 
 # Install with development dependencies (optional)
-pip install rustkmer[dev]
+pip install pyrustkmer[dev]
 ```
 
 #### Step 4: Verify Installation
 ```bash
-python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
+python -c "from pyrustkmer import PyCounter; print('✅ RustKmer installed successfully!')"
 ```
 
 **Verification:**
 ```bash
-python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
+python -c "from pyrustkmer import PyCounter; print('✅ RustKmer installed successfully!')"
 ```
 
 **System Requirements:**
-- Python 3.8 or higher
+- Python 3.11 or higher
 - 64-bit operating system (Linux, macOS, Windows)
 - 50MB disk space for the package
 
@@ -155,7 +155,7 @@ cargo install --path .
 **Verification:**
 ```bash
 rustkmer --version
-# Expected output: rustkmer 1.0.0
+# Expected output: rustkmer 0.5.0
 ```
 
 **System Requirements:**
@@ -173,7 +173,7 @@ For development or when you need the latest features.
 
 **Required Dependencies:**
 - Rust 1.80+
-- Python 3.8+ (for Python bindings)
+- Python 3.11+ (for Python bindings)
 - C++ compiler (gcc/clang/MSVC)
 - Git
 
@@ -188,7 +188,7 @@ cd rustkmer
 cargo build --release
 
 # Build Python bindings (optional)
-cd python
+cd pyo3
 maturin develop --release
 
 # Install command-line tool
@@ -201,7 +201,7 @@ cargo install --path .
 rustkmer --version
 
 # Test Python bindings
-python -c "from pyrustkmer import KmerCounter; print('✅ Build successful!')"
+python -c "from pyrustkmer import PyCounter; print('✅ Build successful!')"
 ```
 
 ---
@@ -243,7 +243,7 @@ docker run --rm -it rustkmer:local rustkmer --version
 """Test RustKmer installation."""
 
 try:
-    from pyrustkmer import KmerCounter, Database
+    from pyrustkmer import PyCounter, PyDatabase
     print("✅ Python installation successful!")
 
     # Test basic functionality
@@ -311,7 +311,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
 # Install RustKmer
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 #### CentOS/RHEL/Fedora
@@ -324,7 +324,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
 # Install RustKmer
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 ### macOS
@@ -335,7 +335,7 @@ pip install rustkmer
 brew install python rust
 
 # Install RustKmer
-pip install rustkmer
+pip install pyrustkmer
 
 # Add Cargo to PATH (if not already)
 echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
@@ -348,7 +348,7 @@ source ~/.zshrc
 sudo port install python3 rust
 
 # Install RustKmer
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 ### Windows
@@ -359,14 +359,14 @@ pip install rustkmer
 choco install python rust
 
 # Install RustKmer
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 #### Manual Installation
 1. Install Python from [python.org](https://python.org)
 2. Install Rust from [rust-lang.org](https://rust-lang.org)
 3. Add Rust to system PATH
-4. Install RustKmer: `pip install rustkmer`
+4. Install RustKmer: `pip install pyrustkmer`
 
 ---
 
@@ -376,13 +376,13 @@ pip install rustkmer
 
 #### ImportError on Python
 ```bash
-# Error: ModuleNotFoundError: No module named 'rustkmer'
+# Error: ModuleNotFoundError: No module named 'pyrustkmer'
 # Solution: Install using pip
-pip install rustkmer
+pip install pyrustkmer
 
 # Or ensure you're using the right Python environment
 which python
-python -m pip install rustkmer
+python -m pip install pyrustkmer
 ```
 
 #### Cargo Not Found
@@ -416,17 +416,17 @@ xcode-select --install
 # Create virtual environment
 python3 -m venv rustkmer_env
 source rustkmer_env/bin/activate
-pip install rustkmer
+pip install pyrustkmer
 
 # Or install for current user
-pip install --user rustkmer
+pip install --user pyrustkmer
 ```
 
 ### Getting Help
 
 If you encounter installation issues:
 
-1. **Check System Requirements**: Ensure Python 3.8+ and Rust 1.80+ are installed
+1. **Check System Requirements**: Ensure Python 3.11+ and Rust 1.80+ are installed
 2. **Verify PATH**: Make sure `pip` and/or `cargo` are in your system PATH
 3. **Clear Cache**: Sometimes clearing pip cache helps: `pip cache purge`
 4. **Update Packages**: Ensure `pip` and `rustup` are up to date
@@ -441,10 +441,10 @@ Once RustKmer is installed, you're ready to start counting k-mers! Continue to [
 
 ```bash
 # Python usage
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 counter = PyCounter(21, canonical=True)
 counter.add_from_fasta("genome.fa.gz")
-print(f"Counted {counter.get_stats().total_kmers):,} k-mers!")
+print(f"Counted {counter.get_stats().total_kmers:,} k-mers!")
 
 # Command line usage
 rustkmer count -k 21 -i genome.fa.gz -o genome_k21.rkdb

@@ -9,4 +9,4 @@ Provides human-readable text format for k-mer counting results.
 
 ---
 
-*Source: [`text.rs`](../../../output/text.rs)*
+*Source: [`text.rs`](../../../src/output/text.rs)*

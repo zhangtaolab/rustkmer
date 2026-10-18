@@ -134,4 +134,4 @@ Percentage of k-mers kept (0.0 to 100.0)
 
 ---
 
-*Source: [`filtering.rs`](../../../hash/filtering.rs)*
+*Source: [`filtering.rs`](../../../src/hash/filtering.rs)*

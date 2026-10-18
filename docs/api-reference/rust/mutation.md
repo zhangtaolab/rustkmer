@@ -112,4 +112,4 @@ Validate mutation tolerance parameters
 
 ---
 
-*Source: [`mutation.rs`](../../../fuzzy/mutation.rs)*
+*Source: [`mutation.rs`](../../../src/fuzzy/mutation.rs)*

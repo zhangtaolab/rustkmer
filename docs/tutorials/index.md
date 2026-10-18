@@ -1,3 +1,4 @@
+<!-- generated-by: gsd-doc-writer -->
 # Tutorials
 
 Step-by-step tutorials for common RustKmer workflows and use cases, from basic operations to advanced bioinformatics applications.
@@ -18,29 +19,27 @@ If you're new to RustKmer, start with these foundational tutorials:
 
 ## Available Tutorials
 
-### 🎯 Essential Tutorials
+All tutorials live in this directory:
 
 | Tutorial | Difficulty | Time Required | Prerequisites |
 |----------|------------|---------------|----------------|
 | **[Basic Workflow](basic-workflow.md)** | Beginner | 15 minutes | Basic Python/CLI knowledge |
+| **[Batch Processing](batch-processing.md)** | Intermediate | 20 minutes | High-throughput workflows |
 | **[Integration](integration.md)** | Intermediate | 30 minutes | Python programming, file handling |
 | **[Large Genomes](large-genomes.md)** | Advanced | 45 minutes | Memory management, bioinformatics |
 
-### 🧬 Bioinformatics Applications
+### Further Reading by Topic
 
-| Tutorial | Difficulty | Time Required | Use Case |
-|----------|------------|---------------|----------|
-| **[Metagenomics Classification](metagenomics.md)** | Intermediate | 30 minutes | Species identification |
-| **[Variant Detection](variant-detection.md)** | Advanced | 60 minutes | SNP/indel finding |
-| **[Assembly Support](assembly-support.md)** | Advanced | 45 minutes | Genome assembly validation |
+The topics below are covered by the user guide, examples, and guides rather than standalone tutorials:
 
-### 🔧 Performance & Optimization
-
-| Tutorial | Difficulty | Time Required | Focus |
-|----------|------------|---------------|--------|
-| **[Performance Tuning](performance-tuning.md)** | Intermediate | 25 minutes | Speed optimization |
-| **[Memory Management](memory-management.md)** | Advanced | 35 minutes | Large dataset handling |
-| **[Batch Processing](batch-processing.md)** | Intermediate | 20 minutes | High-throughput workflows |
+| Topic | Where to Read |
+|-------|---------------|
+| Performance tuning | [Performance Tips](../user-guide/performance-tips.md) |
+| Fuzzy / pattern search | [Fuzzy Search Guide](../user-guide/fuzzy-search.md), [Hybrid Search Guide](../guides/hybrid-search-guide.md) |
+| Prefix queries | [Prefix Query Guide](../guides/prefix-query-guide.md) |
+| Worked code examples | [Examples](../examples/basic-usage.md) (batch processing, merging, fuzzy search, statistics) |
+| Python binding internals | [PyO3 Binding Guide](../guides/pyo3-binding-guide.md) |
+| CLI usage | [CLI Guide](../user-guide/cli.md) |
 
 ---
 
@@ -48,22 +47,22 @@ If you're new to RustKmer, start with these foundational tutorials:
 
 Each RustKmer tutorial includes:
 
-### ✅ Complete Code Examples
+### Complete Code Examples
 - Working Python scripts and shell commands
 - Real data files and expected outputs
 - Error handling and troubleshooting
 
-### 📊 Performance Metrics
+### Performance Metrics
 - Execution time benchmarks
 - Memory usage analysis
 - Comparison with other tools
 
-### 🎯 Practical Applications
+### Practical Applications
 - Real bioinformatics workflows
 - Industry-standard practices
 - Scalable solutions
 
-### 🔧 Step-by-Step Guidance
+### Step-by-Step Guidance
 - Detailed explanations
 - Common pitfalls and solutions
 - Best practices and tips
@@ -78,13 +77,13 @@ Each RustKmer tutorial includes:
 3. **[Integration](integration.md)** - Connect to existing workflows
 
 ### For Bioinformatics Researchers
-1. **[Performance Tuning](performance-tuning.md)** - Optimize for large datasets
-2. **[Metagenomics Classification](metagenomics.md)** - Species identification
-3. **[Variant Detection](variant-detection.md)** - Find genetic variations
+1. **[Basic Workflow](basic-workflow.md)** - Core counting and querying
+2. **[Batch Processing](batch-processing.md)** - Multi-sample analysis
+3. **[Fuzzy Search Guide](../user-guide/fuzzy-search.md)** - Pattern matching applications
 
 ### For Software Developers
 1. **[Integration](integration.md)** - API integration patterns
-2. **[Memory Management](memory-management.md)** - Resource optimization
+2. **[Large Genomes](large-genomes.md)** - Resource optimization
 3. **[Batch Processing](batch-processing.md)** - Production workflows
 
 ---
@@ -92,7 +91,7 @@ Each RustKmer tutorial includes:
 ## Prerequisites
 
 ### Basic Requirements
-- **Python 3.8+** or **Rust 1.80+**
+- **Python 3.11+** (for the `pyrustkmer` package) or **Rust 1.80+** (for the CLI)
 - **Command line familiarity**
 - **Basic genomic data understanding** (FASTA/FASTQ)
 
@@ -104,13 +103,13 @@ Each RustKmer tutorial includes:
 ### Software Dependencies
 ```bash
 # Python
-pip install rustkmer matplotlib pandas numpy
+pip install pyrustkmer matplotlib pandas numpy
 
 # Optional for advanced tutorials
 pip install biopython pysam
 
-# Rust (if using Rust API)
-cargo install rustkmer
+# Rust CLI (build from source)
+cargo install --path .
 ```
 
 ---
@@ -147,21 +146,14 @@ For tutorials requiring real genomic data:
 ```bash
 # Clone repository
 git clone https://github.com/rustkmer/rustkmer.git
-cd rustkmer/docs/tutorials
+cd rustkmer
 
-# Run tutorial script
-python3 basic-workflow.py
+# Save the code block you want to run from a tutorial page into a .py file,
+# then execute it
+python3 basic_workflow.py
 ```
 
-### Docker Environment
-```bash
-# Use official RustKmer image
-docker run -it --rm -v $(pwd):/workspace rustkmer/rustkmer:latest
-cd /workspace/docs/tutorials
-
-# Run tutorials
-python3 basic-workflow.py
-```
+The tutorial pages present their examples as named scripts (for example `complete_workflow.py` in the [Basic Workflow tutorial](basic-workflow.md)). Copy each block into the named file and run it — the tutorials do not ship separate script files.
 
 ### Interactive Jupyter
 ```bash
@@ -170,9 +162,9 @@ pip install jupyter
 
 # Start notebook server
 jupyter notebook
-
-# Open tutorial notebooks
 ```
+
+The [Integration tutorial](integration.md) includes a notebook-style walkthrough using `# %%` cell markers.
 
 ---
 
@@ -180,23 +172,23 @@ jupyter notebook
 
 After completing these tutorials, you'll be able to:
 
-### ✅ Core Skills
+### Core Skills
 - **Count k-mers** from genomic data efficiently
 - **Query databases** with exact and fuzzy searches
 - **Process large datasets** with memory optimization
 - **Integrate RustKmer** into existing workflows
 
-### 🎯 Advanced Capabilities
+### Advanced Capabilities
 - **Design experiments** with appropriate parameters
 - **Optimize performance** for specific use cases
 - **Handle errors** and edge cases gracefully
 - **Scale solutions** for production use
 
-### 🔬 Bioinformatics Applications
+### Bioinformatics Applications
 - **Analyze genomes** for research projects
 - **Process sequencing data** from various platforms
-- **Detect variants** and genetic differences
-- **Classify metagenomic** samples
+- **Compare k-mer content** across samples
+- **Build reproducible pipelines** with Snakemake or Nextflow
 
 ---
 
@@ -236,13 +228,13 @@ Help improve RustKmer tutorials!
 
 Choose your first tutorial based on your experience level:
 
-🚀 **New to RustKmer?** → [Basic Workflow](basic-workflow.md)
+**New to RustKmer?** → [Basic Workflow](basic-workflow.md)
 
-🧬 **Bioinformatics researcher?** → [Metagenomics Classification](metagenomics.md)
+**Bioinformatics researcher?** → [Batch Processing](batch-processing.md)
 
-⚙️ **Software developer?** → [Integration](integration.md)
+**Software developer?** → [Integration](integration.md)
 
-🎯 **Looking for performance?** → [Performance Tuning](performance-tuning.md)
+**Looking for performance?** → [Large Genomes](large-genomes.md)
 
 ---
 

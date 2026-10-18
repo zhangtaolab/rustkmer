@@ -61,4 +61,4 @@ Tuple of (forward_sequence, reverse_complement_sequence)
 
 ---
 
-*Source: [`canonical.rs`](../../../kmer/canonical.rs)*
+*Source: [`canonical.rs`](../../../src/kmer/canonical.rs)*

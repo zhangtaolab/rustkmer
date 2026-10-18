@@ -4,12 +4,12 @@ Complete guide to using RustKmer's k-mer counting functionality for efficient ge
 
 ## Overview
 
-The RustKmer `KmerCounter` provides high-performance k-mer counting from genomic sequences. It supports multiple input formats, configurable parameters, and optimized algorithms for different use cases.
+The RustKmer `PyCounter` class provides high-performance k-mer counting from genomic sequences. It supports multiple input formats, configurable parameters, and optimized algorithms for different use cases.
 
 ## Quick Start
 
 ```python
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 
 # Create counter with default settings
 counter = PyCounter(21, canonical=True)
@@ -18,9 +18,10 @@ counter = PyCounter(21, canonical=True)
 counter.add_from_fasta("input.fa")
 
 # Get results
-total_kmers = counter.get_stats().total_kmers)
-unique_kmers = counter.get_unique_count()
-top_kmers = counter.get_top_kmers(10)
+stats = counter.get_stats()
+total_kmers = stats.total_kmers
+unique_kmers = stats.unique_kmers
+top_kmers = sorted(counter.get_all_counts().items(), key=lambda kv: kv[1], reverse=True)[:10]
 
 print(f"Total k-mers: {total_kmers:,}")
 print(f"Unique k-mers: {unique_kmers:,}")
@@ -30,7 +31,7 @@ print(f"Unique k-mers: {unique_kmers:,}")
 
 ### Basic Counter
 ```python
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 
 # Simple counter with k=21
 counter = PyCounter(21)
@@ -43,10 +44,10 @@ counter = PyCounter(21, canonical=True)
 ```python
 # Counter with custom settings
 counter = PyCounter(
-    k=31,                    # K-mer size
-    canonical=True,          # Use canonical k-mers
-    threads=8,              # Number of threads
-    memory_limit="4GB"      # Memory limit
+    31,                       # K-mer size (positional, 1-64)
+    canonical=True,           # Use canonical k-mers
+    initial_capacity=100000,  # Initial hash table capacity (default 1000)
+    threads=8                 # Number of rayon worker threads (default: all cores)
 )
 ```
 
@@ -69,26 +70,28 @@ for file in files:
 
 ### FASTQ Files
 ```python
-# Count from FASTQ file
-counter.add_from_fasta("reads.fq")
+# Count from FASTQ file (use add_from_fastq, not add_from_fasta)
+counter.add_from_fastq("reads.fq")
 
 # Count from compressed FASTQ
-counter.add_from_fasta("reads.fq.gz")
+counter.add_from_fastq("reads.fq.gz")
 
 # Count from paired-end reads
-counter.add_from_fasta("reads_R1.fq.gz")
-counter.add_from_fasta("reads_R2.fq.gz")
+counter.add_from_fastq("reads_R1.fq.gz")
+counter.add_from_fastq("reads_R2.fq.gz")
 ```
 
 ### Streaming Input
 ```python
-# Count from file-like object (streaming)
-with open("large_file.fa", "r") as f:
-    counter.count_stream(f)
-
-# Count from string
+# Count from a string
 sequence = "ATCGATCGATCGATCGATCGATCGATCGATCGATCG"
 counter.add_sequence(sequence)
+
+# Stream a large FASTA line by line (headers are skipped)
+with open("large_file.fa", "r") as f:
+    for line in f:
+        if not line.startswith(">"):
+            counter.add_sequence(line.strip())
 ```
 
 ## Counting Parameters
@@ -132,11 +135,13 @@ counter = PyCounter(21, canonical=True, threads=1)
 
 ### Memory Limits
 ```python
-# Set memory limit
-counter = PyCounter(21, memory_limit="2GB")
+# Pre-size the hash table for the expected number of unique k-mers
+counter = PyCounter(21, initial_capacity=10_000_000)
 
-# Process large files in chunks
-counter.add_from_fasta("large_file.fa", chunk_size=1000000)
+# Process large inputs file by file — each add_from_* call accumulates
+# into the same counter, so no single call needs the whole dataset
+for file in ["part1.fa", "part2.fa", "part3.fa"]:
+    counter.add_from_fasta(file)
 ```
 
 ### Streaming Mode
@@ -161,45 +166,33 @@ def process_large_file(filename):
 
 ### Progress Callbacks
 ```python
-def progress_callback(current, total):
-    """Called during counting to show progress."""
-    progress = (current / total) * 100
-    print(f"Progress: {progress:.1f}% ({current:,}/{total:,})")
-
+# PyCounter does not accept a progress_callback — the heavy file methods
+# (add_from_fasta / add_from_fastq) release the GIL and run in Rust.
+# To report progress, process multiple files and check get_stats() between them:
 counter = PyCounter(21, canonical=True)
-counter.add_from_fasta("large_file.fa", progress_callback=progress_callback)
+
+for file in ["chr1.fa", "chr2.fa", "chr3.fa"]:
+    counter.add_from_fasta(file)
+    stats = counter.get_stats()
+    print(f"After {file}: {stats.total_kmers:,} k-mers "
+          f"({stats.unique_kmers:,} unique)")
 ```
 
 ### Real-time Statistics
 ```python
 import time
 
-def count_with_monitoring(filename):
-    """Monitor counting progress in real-time."""
+def count_with_timing(filename):
+    """Time a counting run and report the average rate."""
 
     counter = PyCounter(21, canonical=True)
 
     start_time = time.time()
-    last_time = start_time
-    last_count = 0
-
-    def monitor_progress(current, total):
-        nonlocal last_time, last_count
-
-        current_time = time.time()
-        if current_time - last_time >= 5.0:  # Update every 5 seconds
-            rate = (current - last_count) / (current_time - last_time)
-            progress = (current / total) * 100
-
-            print(f"Progress: {progress:.1f}% | Rate: {rate:.0f} k-mers/sec")
-
-            last_time = current_time
-            last_count = current
-
-    counter.add_from_fasta(filename, progress_callback=monitor_progress)
-
+    counter.add_from_fasta(filename)
     total_time = time.time() - start_time
-    total_kmers = counter.get_stats().total_kmers)
+
+    stats = counter.get_stats()
+    total_kmers = stats.total_kmers
 
     print(f"Complete! Processed {total_kmers:,} k-mers in {total_time:.1f}s")
     print(f"Average rate: {total_kmers/total_time:.0f} k-mers/sec")
@@ -215,9 +208,10 @@ counter = PyCounter(21, canonical=True)
 counter.add_from_fasta("input.fa")
 
 # Get basic counts
-total_kmers = counter.get_stats().total_kmers)
-unique_kmers = counter.get_unique_count()
-max_count = counter.get_max_count()
+stats = counter.get_stats()
+total_kmers = stats.total_kmers
+unique_kmers = stats.unique_kmers
+max_count = max(counter.get_all_counts().values())
 
 print(f"Total k-mers: {total_kmers:,}")
 print(f"Unique k-mers: {unique_kmers:,}")
@@ -227,14 +221,15 @@ print(f"Uniqueness ratio: {unique_kmers/total_kmers:.4f}")
 
 ### Top K-mers
 ```python
-# Get most frequent k-mers
-top_10 = counter.get_top_kmers(10)
+# Get most frequent k-mers (sort the full count dictionary)
+counts = counter.get_all_counts()
+top_10 = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:10]
 print("Top 10 k-mers:")
 for i, (kmer, count) in enumerate(top_10, 1):
     print(f"{i:2d}. {kmer}: {count:,}")
 
 # Get specific k-mer count
-kmer_count = counter.get_kmer_count("ATCGATCGATCGATCGATCG")
+kmer_count = counter.get_count("ATCGATCGATCGATCGATCG")
 print(f"ATCGATCGATCGATCGATCG: {kmer_count}")
 ```
 
@@ -246,15 +241,15 @@ def analyze_frequency_distribution(counter):
     """Analyze the distribution of k-mer frequencies."""
 
     # Get frequency statistics
-    top_kmers = counter.get_top_kmers(1000)
-    counts = [count for _, count in top_kmers]
+    all_counts = counter.get_all_counts()
+    counts = list(all_counts.values())
 
     # Create histogram
     plt.figure(figsize=(10, 6))
     plt.hist(counts, bins=50, alpha=0.7, edgecolor='black')
     plt.xlabel('K-mer Count')
     plt.ylabel('Number of K-mers')
-    plt.title('K-mer Frequency Distribution (Top 1000)')
+    plt.title('K-mer Frequency Distribution')
     plt.yscale('log')
     plt.grid(True, alpha=0.3)
     plt.show()
@@ -274,7 +269,7 @@ analyze_frequency_distribution(counter)
 
 ### Save to Database
 ```python
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 
 counter = PyCounter(21, canonical=True)
 counter.add_from_fasta("input.fa")
@@ -286,32 +281,29 @@ print("Database saved successfully!")
 
 ### Database Options
 ```python
-# Save with compression
-counter.save_database("compressed.rkdb", compress=True)
+# save_database takes only the output path
+counter.save_database("output.rkdb")
 
-# Save with sorting (faster querying)
-counter.save_database("sorted.rkdb", sort=True)
-
-# Save with indexing (very fast querying)
-counter.save_database("indexed.rkdb", index=True)
+# The database is always written sorted for binary search — there are
+# no compress/sort/index keyword options
 ```
 
 ### Database Statistics
 ```python
-# Get database statistics before saving
-stats = counter.get_database_stats()
+# Get counter statistics before saving
+stats = counter.get_stats()
 print(f"Database Statistics:")
-print(f"  K-mer size: {stats.kmer_size}")
+print(f"  K-mer size: {stats.kmer_length}")
 print(f"  Total k-mers: {stats.total_kmers:,}")
 print(f"  Unique k-mers: {stats.unique_kmers:,}")
-print(f"  Estimated database size: {stats.estimated_size_mb:.1f} MB")
+print(f"  Estimated database size: {stats.unique_kmers * 20 / 1_048_576:.1f} MB")
 ```
 
 ## Error Handling
 
 ### Common Errors and Solutions
 ```python
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 import os
 
 def safe_count_file(filename):
@@ -344,7 +336,7 @@ def safe_count_file(filename):
 # Usage
 try:
     counter = safe_count_file("input.fa")
-    print(f"Successfully counted {counter.get_stats().total_kmers):,} k-mers")
+    print(f"Successfully counted {counter.get_stats().total_kmers:,} k-mers")
 except Exception as e:
     print(f"Failed to count k-mers: {e}")
 ```
@@ -371,13 +363,12 @@ non_canonical_counter = PyCounter(21, canonical=False)  # Faster counting
 # Use smaller k-mer size for large files
 memory_efficient_counter = PyCounter(13, canonical=True)
 
-# Process in chunks for very large files
+# Process very large files by accumulation
 def count_large_file_efficiently(filename):
     counter = PyCounter(21, canonical=True)
 
-    # Process file in chunks of 1MB
-    chunk_size = 1024 * 1024
-    counter.add_from_fasta(filename, chunk_size=chunk_size)
+    # add_from_fasta streams the file; there is no chunk_size parameter
+    counter.add_from_fasta(filename)
 
     return counter
 
@@ -413,9 +404,10 @@ def count_multiple_samples(sample_files, output_prefix):
         counter.save_database(db_file)
 
         # Store statistics
+        stats = counter.get_stats()
         results[sample_name] = {
-            'total_kmers': counter.get_stats().total_kmers),
-            'unique_kmers': counter.get_unique_count(),
+            'total_kmers': stats.total_kmers,
+            'unique_kmers': stats.unique_kmers,
             'database_file': db_file
         }
 
@@ -441,8 +433,8 @@ def compare_kmer_compositions(counter1, counter2, name1="Sample1", name2="Sample
     """Compare k-mer compositions between two samples."""
 
     # Get top k-mers from both
-    top1 = dict(counter1.get_top_kmers(100))
-    top2 = dict(counter2.get_top_kmers(100))
+    top1 = dict(sorted(counter1.get_all_counts().items(), key=lambda kv: kv[1], reverse=True)[:100])
+    top2 = dict(sorted(counter2.get_all_counts().items(), key=lambda kv: kv[1], reverse=True)[:100])
 
     # Find common and unique k-mers
     common_kmers = set(top1.keys()) & set(top2.keys())
@@ -473,10 +465,10 @@ def compare_kmer_compositions(counter1, counter2, name1="Sample1", name2="Sample
 
 # Usage
 counter1 = PyCounter(21, canonical=True)
-counter1.count_file("sample1.fa")
+counter1.add_from_fasta("sample1.fa")
 
 counter2 = PyCounter(21, canonical=True)
-counter2.count_file("sample2.fa")
+counter2.add_from_fasta("sample2.fa")
 
 comparison = compare_kmer_compositions(counter1, counter2, "Sample1", "Sample2")
 ```
@@ -502,8 +494,9 @@ def complete_genome_analysis(genome_file, output_prefix):
 
         counters[k] = counter
 
-        total = counter.get_stats().total_kmers)
-        unique = counter.get_unique_count()
+        stats = counter.get_stats()
+        total = stats.total_kmers
+        unique = stats.unique_kmers
 
         print(f"   Total k-mers: {total:,}")
         print(f"   Unique k-mers: {unique:,}")
@@ -513,7 +506,7 @@ def complete_genome_analysis(genome_file, output_prefix):
     print(f"\n💾 Saving databases...")
     for k, counter in counters.items():
         db_file = f"{output_prefix}_k{k}.rkdb"
-        counter.save_database(db_file, sort=True, index=True)
+        counter.save_database(db_file)
         print(f"   Saved: {db_file}")
 
     # Step 3: Generate analysis report
@@ -527,14 +520,17 @@ def complete_genome_analysis(genome_file, output_prefix):
         f.write(f"Output prefix: {output_prefix}\n\n")
 
         for k, counter in counters.items():
+            stats = counter.get_stats()
+            counts = counter.get_all_counts()
             f.write(f"K-mer size: {k}\n")
-            f.write(f"  Total k-mers: {counter.get_stats().total_kmers):,}\n")
-            f.write(f"  Unique k-mers: {counter.get_unique_count():,}\n")
-            f.write(f"  Max count: {counter.get_max_count():,}\n")
+            f.write(f"  Total k-mers: {stats.total_kmers:,}\n")
+            f.write(f"  Unique k-mers: {stats.unique_kmers:,}\n")
+            f.write(f"  Max count: {max(counts.values()):,}\n")
 
             # Top 10 k-mers
             f.write(f"  Top 10 k-mers:\n")
-            for i, (kmer, count) in enumerate(counter.get_top_kmers(10), 1):
+            top_10 = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:10]
+            for i, (kmer, count) in enumerate(top_10, 1):
                 f.write(f"    {i:2d}. {kmer}: {count:,}\n")
             f.write("\n")
 
@@ -568,14 +564,15 @@ def process_metagenomics_samples(sample_files, output_dir):
 
             # Save database
             db_file = os.path.join(output_dir, f"{sample_name}.rkdb")
-            counter.save_database(db_file, sort=True)
+            counter.save_database(db_file)
 
             # Collect statistics
+            stats_obj = counter.get_stats()
             stats = {
-                'total_kmers': counter.get_stats().total_kmers),
-                'unique_kmers': counter.get_unique_count(),
+                'total_kmers': stats_obj.total_kmers,
+                'unique_kmers': stats_obj.unique_kmers,
                 'database_file': db_file,
-                'top_kmers': counter.get_top_kmers(20)
+                'top_kmers': sorted(counter.get_all_counts().items(), key=lambda kv: kv[1], reverse=True)[:20]
             }
 
             all_results[sample_name] = stats
@@ -612,7 +609,7 @@ def process_metagenomics_samples(sample_files, output_dir):
 
 ## Need More Help?
 
-- **[Database Creation](database-creation.md)** - Working with k-mer databases
+- **[Counting k-mers](counting-kmers.md)** - Building k-mer databases from count data
 - **[Querying](querying.md)** - Querying k-mer databases
 - **[Performance Tips](performance-tips.md)** - Optimization strategies
 - **[API Reference](../api-reference/python/)** - Complete function documentation

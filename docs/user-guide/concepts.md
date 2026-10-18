@@ -36,15 +36,14 @@ Canonical:   ATCGATCG (lexicographically smaller)
 RustKmer uses a custom binary format (RKDB) for storing k-mer data:
 
 ### Structure
-- **Header**: Metadata (k-size, canonical mode, counts)
-- **Index**: Fast lookup structure
-- **Data**: Compressed k-mer and count pairs
+- **Header**: 42-byte metadata block (magic `RKDB`, format version 2, k-mer size, total/unique counts, canonical flag)
+- **Entries**: A flat sequence of fixed 20-byte records — a 16-byte little-endian `u128`-encoded k-mer followed by a 4-byte `u32` count
 
 ### Advantages
-- **Fast queries**: Milliseconds even for billions of k-mers
-- **Memory efficient**: Stores only necessary information
-- **Portable**: Cross-platform compatible
-- **Compressed**: Minimizes disk space
+- **Fast queries**: Sorted databases allow binary search; millisecond lookups even for billions of k-mers
+- **Memory efficient**: Exactly 20 bytes per unique k-mer
+- **Portable**: Cross-platform compatible little-endian layout
+- **Simple**: No index structures to rebuild — readers can stream or memory-map the entry array
 
 ## Performance Characteristics
 
@@ -55,7 +54,7 @@ RustKmer uses a custom binary format (RKDB) for storing k-mer data:
 
 ### Memory Usage
 - **Counting**: ~1KB per 1000 unique k-mers
-- **Database**: 12-16 bytes per unique k-mer
+- **Database**: 20 bytes per unique k-mer (fixed-size entries)
 - **Queries**: <100MB overhead even for large databases
 
 ## Key Operations
@@ -63,7 +62,7 @@ RustKmer uses a custom binary format (RKDB) for storing k-mer data:
 ### 1. K-mer Counting
 
 ```python
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 
 # Create counter
 counter = PyCounter(31, canonical=True)
@@ -72,23 +71,25 @@ counter = PyCounter(31, canonical=True)
 counter.add_from_fasta("genome.fa")
 
 # Get statistics
-total = counter.get_stats().total_kmers)  # Total k-mers counted
-unique = counter.get_unique_count()  # Unique k-mers
+stats = counter.get_stats()
+total = stats.total_kmers  # Total k-mers counted
+unique = stats.unique_kmers  # Unique k-mers
 ```
 
 ### 2. Database Queries
 
 ```python
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
+# The database is loaded on construction — there is no separate load() call
 db = PyDatabase("database.rkdb", LoadMode.Preload)
-db.load("genome.rkdb")
 
-# Exact match
-count = db.query_exact("ATCGATCGATCGATCGATCGATC")
+# Exact match (returns a PyQueryResult with .kmer, .count, and .found)
+result = db.query_exact("ATCGATCGATCGATCGATCGATC")
+count = result.count
 
 # Batch queries (more efficient)
-results = db.query_multiple(["ATCG", "GCTA", "CCCC"])
+results = db.query_exact_batch(["ATCG", "GCTA", "CCCC"])
 ```
 
 ### 3. Fuzzy Searching
@@ -96,16 +97,17 @@ results = db.query_multiple(["ATCG", "GCTA", "CCCC"])
 Find k-mers with patterns or mismatches:
 
 ```python
-from pyrustkmer import FuzzyQuery
+from pyrustkmer import PyDatabase, PyFuzzyQuery, LoadMode
 
-fq = FuzzyQuery()
-fq.load("genome.rkdb")
+db = PyDatabase("genome.rkdb", LoadMode.Preload)
+fq = PyFuzzyQuery(db)
 
-# Wildcard search (N = any base)
-results = fuzzy.query_fuzzy("AATN")  # Matches AATA, AATC, AATG, AATT
+# Wildcard search (N = any base) — query_fuzzy(pattern, max_mutations);
+# the pattern length must match the database's k-mer size
+results = fq.query_fuzzy("AATN", 0)  # Matches AATA, AATC, AATG, AATT
 
-# Mismatch search
-results = fuzzy.query_fuzzy("ATCGATCG", max_mismatches=2)
+# Mismatch search (Hamming distance up to 2)
+results = fq.query_fuzzy("ATCGATCG", 2)
 ```
 
 ## Choosing K-mer Size
@@ -156,9 +158,8 @@ counter = PyCounter(31, canonical=True)
 
 ### Memory Mapping
 ```python
-# For databases larger than RAM
-db = PyDatabase("database.rkdb", LoadMode.Preload)
-db.load("huge_db.rkdb", memory_mapped=True)
+# For databases larger than RAM — the load mode is chosen at construction
+db = PyDatabase("huge_db.rkdb", LoadMode.MemoryMapped)
 ```
 
 ### Progressive Counting
@@ -181,11 +182,13 @@ for file in file_list:
 RustKmer automatically detects file format from extension:
 
 ```python
-# All these work automatically
+# FASTA inputs (plain or compressed) go through add_from_fasta
 counter.add_from_fasta("genome.fa")
-counter.add_from_fasta("reads.fq")
 counter.add_from_fasta("data.fa.gz")
-counter.add_from_fasta("sequences.fastq.gz")
+
+# FASTQ inputs (plain or compressed) go through add_from_fastq
+counter.add_from_fastq("reads.fq")
+counter.add_from_fastq("sequences.fastq.gz")
 ```
 
 ## Error Handling
@@ -193,19 +196,22 @@ counter.add_from_fasta("sequences.fastq.gz")
 Common errors and how to handle them:
 
 ```python
-from pyrustkmer import KmerCounter, SequenceError, DatabaseError
+from pyrustkmer import PyCounter
 
 try:
     counter = PyCounter(31)
     counter.add_from_fasta("nonexistent.fa")
-except SequenceError as e:
-    print(f"File error: {e}")
-except DatabaseError as e:
-    print(f"Database error: {e}")
+except ValueError as e:
+    # Invalid input (missing file, wrong k-mer length, bad characters)
+    # raises ValueError with a descriptive message
+    print(f"Error: {e}")
 ```
 
+The module also exports a `RustKmerError` exception class (with `message`
+and `error_type` attributes) for library-level failures.
+
 ### Common Issues
-1. **Invalid k-mer size**: Must be 1-127
+1. **Invalid k-mer size**: Must be 1-64
 2. **File not found**: Check file path
 3. **Invalid characters**: Non-ACGT characters in sequences
 4. **Memory limits**: Use canonical mode or smaller k
@@ -223,20 +229,19 @@ except DatabaseError as e:
 ### With Pandas
 ```python
 import pandas as pd
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
 db = PyDatabase("database.rkdb", LoadMode.Preload)
-db.load("data.rkdb")
 
 # Query from DataFrame
 df = pd.read_csv("queries.csv")
-df['count'] = df['sequence'].apply(db.query)
+df['count'] = df['sequence'].apply(lambda seq: db.query_exact(seq).count)
 ```
 
 ### With Biopython
 ```python
 from Bio import SeqIO
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 
 counter = PyCounter(21)
 for record in SeqIO.parse("sequences.fasta", "fasta"):
@@ -246,11 +251,11 @@ for record in SeqIO.parse("sequences.fasta", "fasta"):
 ### With NumPy
 ```python
 import numpy as np
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
 db = PyDatabase("database.rkdb", LoadMode.Preload)
 sequences = np.array(['ATCG', 'GCTA', 'CCCC'])
-counts = np.array([db.query_exact(seq) for seq in sequences])
+counts = np.array([db.query_exact(seq).count for seq in sequences])
 ```
 
 ## Understanding the Output
@@ -263,13 +268,14 @@ counts = np.array([db.query_exact(seq) for seq in sequences])
 ### Database Statistics
 ```python
 stats = db.get_stats()
-# Returns:
+# Returns a PyDatabaseStats object with attributes:
 # {
-#     'total_kmers': 1234567,      # Total occurrences
-#     'unique_kmers': 98765,       # Distinct k-mers
-#     'k_size': 21,                # K-mer length used
-#     'canonical_mode': True,       # Whether canonical k-mers
-#     'file_size': 1048576          # Database file size in bytes
+#     'kmer_size': 21,            # K-mer length used
+#     'total_kmers': 1234567,     # Total k-mers
+#     'unique_kmers': 98765,      # Distinct k-mers
+#     'file_size': 1048576,       # Database file size in bytes
+#     'is_sorted': True,          # Whether the database is sorted
+#     'canonical': True           # Whether canonical k-mers are used
 # }
 ```
 

@@ -24,8 +24,8 @@ This guide explains how to use Python virtual environments with RustKmer to ensu
 # Create virtual environment named .venv
 python3 -m venv .venv
 
-# Alternative: Create with specific Python version
-python3.9 -m venv .venv
+# Alternative: Create with specific Python version (3.11+ required)
+python3.11 -m venv .venv
 ```
 
 ### Step 2: Activate Environment
@@ -59,20 +59,20 @@ where python
 pip install --upgrade pip
 
 # Install RustKmer
-pip install rustkmer
+pip install pyrustkmer
 
 # For development with extra dependencies
-pip install rustkmer[dev]
+pip install pyrustkmer[dev]
 
 # Verify installation
-python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer installed successfully!')"
+python -c "from pyrustkmer import PyCounter; print('✅ RustKmer installed successfully!')"
 ```
 
 ### Step 4: Start Working
 ```bash
 # Your Python prompt should show (.venv)
 # Create a test script
-echo 'from pyrustkmer import KmerCounter
+echo 'from pyrustkmer import PyCounter
 counter = PyCounter(21)
 print("🧬 RustKmer is ready!")' > test_rustkmer.py
 
@@ -118,16 +118,16 @@ source .venv/bin/activate  # Linux/macOS
 pip list
 
 # Show package information
-pip show rustkmer
+pip show pyrustkmer
 
 # Upgrade pip
 pip install --upgrade pip
 
 # Upgrade specific package
-pip install --upgrade rustkmer
+pip install --upgrade pyrustkmer
 
 # Uninstall package
-pip uninstall rustkmer
+pip uninstall pyrustkmer
 
 # Deactivate environment
 deactivate
@@ -161,14 +161,14 @@ deactivate
 
 ### Environment with Specific Python Version
 ```bash
-# Use Python 3.9
-python3.9 -m venv .venv-py39
+# Use Python 3.11
+python3.11 -m venv .venv-py311
 
-# Use Python 3.10
-python3.10 -m venv .venv-py310
+# Use Python 3.12
+python3.12 -m venv .venv-py312
 
 # Check Python version in environment
-source .venv-py39/bin/activate
+source .venv-py311/bin/activate
 python --version
 ```
 
@@ -193,11 +193,11 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # 2. Install development dependencies
-pip install -r requirements-dev.txt
+pip install maturin pytest
 
-# 3. Install RustKmer in development mode
-cd rustkmer/
-pip install -e .
+# 3. Build and install RustKmer in development mode
+cd pyo3/
+maturin develop
 
 # 4. Run tests
 pytest tests/
@@ -213,7 +213,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # 2. Install RustKmer and bioinformatics tools
-pip install rustkmer pandas matplotlib seaborn biopython
+pip install pyrustkmer pandas matplotlib seaborn biopython
 
 # 3. Save dependencies
 pip freeze > requirements.txt
@@ -253,7 +253,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 #### Package Installation Fails
 ```bash
-# Error: Could not build wheels for rustkmer
+# Error: Could not build wheels for pyrustkmer
 # Solution: Check Rust installation
 rustc --version
 cargo --version
@@ -264,14 +264,14 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 #### Import Error
 ```bash
-# Error: ModuleNotFoundError: No module named 'rustkmer'
+# Error: ModuleNotFoundError: No module named 'pyrustkmer'
 # Solution: Check if you're in the right environment
 which python
-pip list | grep rustkmer
+pip list | grep pyrustkmer
 
 # Reinstall if necessary
-pip uninstall rustkmer
-pip install rustkmer
+pip uninstall pyrustkmer
+pip install pyrustkmer
 ```
 
 ### Recovery Commands
@@ -284,7 +284,7 @@ pip install -r requirements.txt
 
 # Clear pip cache if installation fails
 pip cache purge
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 ## 📚 Best Practices
@@ -294,10 +294,10 @@ pip install rustkmer
 # ✅ Good: Use virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-pip install rustkmer
+pip install pyrustkmer
 
 # ❌ Bad: Install globally
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 ### 2. Keep .venv Out of Version Control
@@ -314,7 +314,7 @@ __pycache__/
 pip freeze > requirements.txt
 
 # Or use specific versions
-echo "rustkmer==1.0.0" > requirements.txt
+echo "pyrustkmer==0.5.0" > requirements.txt
 echo "pandas>=1.3.0" >> requirements.txt
 ```
 
@@ -367,11 +367,11 @@ pip install -r requirements.txt
 ### Using conda (Alternative)
 ```bash
 # Create conda environment
-conda create -n rustkmer python=3.9
+conda create -n rustkmer python=3.11
 conda activate rustkmer
 
 # Install RustKmer
-pip install rustkmer
+pip install pyrustkmer
 
 # Export environment
 conda env export > environment.yml
@@ -403,13 +403,13 @@ uv init rustkmer-project
 cd rustkmer-project
 
 # Add RustKmer dependency
-uv add rustkmer
+uv add pyrustkmer
 
 # Add development dependencies
 uv add --dev pytest pandas matplotlib
 
 # Run Python
-uv run python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer ready!')"
+uv run python -c "from pyrustkmer import PyCounter; print('✅ RustKmer ready!')"
 ```
 
 ### uv vs Traditional venv
@@ -417,15 +417,15 @@ uv run python -c "from pyrustkmer import KmerCounter; print('✅ RustKmer ready!
 # Traditional venv (slower)
 python3 -m venv .venv
 source .venv/bin/activate
-pip install rustkmer
+pip install pyrustkmer
 
 # uv (much faster)
 uv venv
 source .venv/bin/activate
-uv pip install rustkmer
+uv pip install pyrustkmer
 
 # Or even better: let uv manage everything
-uv add rustkmer
+uv add pyrustkmer
 ```
 
 ### Advantages of uv

@@ -33,40 +33,43 @@ rustkmer count -k 31 -i input.fa -o output.rkdb
 
 ### Database Format Options
 ```bash
-# Uncompressed (faster loading, more disk space)
-rustkmer count -i input.fa -o output.rkdb
+# Binary .rkdb output (default, compact fixed-layout records)
+rustkmer count -k 21 -i input.fa -o output.rkdb
 
-# Compressed (slower loading, less disk space)
-rustkmer count -i input.fa -o output.rkdb --compress
+# Plain-text output instead of binary
+rustkmer count -k 21 -i input.fa -o output.txt --format text
 ```
 
 ## Speed Optimization
 
 ### Thread Configuration
 ```bash
-# Auto-detect optimal threads (recommended)
-rustkmer count -i input.fa -o output.rkdb
+# Auto-detect optimal threads (recommended, uses all cores)
+rustkmer count -k 21 -i input.fa -o output.rkdb
 
 # Manual thread specification
-rustkmer count -i input.fa -o output.rkdb --threads 8
+rustkmer count -k 21 -i input.fa -o output.rkdb --threads 8
 
 # Disable threading for small files
-rustkmer count -i input.fa -o output.rkdb --threads 1
+rustkmer count -k 21 -i input.fa -o output.rkdb --threads 1
 ```
 
 ### Canonical vs Non-Canonical
 ```bash
 # Canonical k-mers (slower counting, smaller database)
-rustkmer count -i input.fa --canonical -o output.rkdb
+rustkmer count -k 21 -i input.fa --canonical -o output.rkdb
 
 # Non-canonical k-mers (faster counting, larger database)
-rustkmer count -i input.fa -o output.rkdb
+rustkmer count -k 21 -i input.fa -o output.rkdb
 ```
 
 ### Database Sorting
 ```bash
-# Create sorted database for faster querying
-rustkmer count -i input.fa -o output.rkdb --sorted
+# Databases are sorted by default for faster querying
+rustkmer count -k 21 -i input.fa -o output.rkdb
+
+# Skip sorting for faster counting (unsorted database)
+rustkmer count -k 21 -i input.fa -o output.rkdb --no-sort
 
 # Query performance comparison
 # Unsorted: ~50,000 queries/second
@@ -78,7 +81,7 @@ rustkmer count -i input.fa -o output.rkdb --sorted
 ### Batch Processing
 ```python
 import os
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 
 def process_large_dataset(input_files, k=21, batch_size=1000000):
     """Process large genomic datasets in batches."""
@@ -89,11 +92,8 @@ def process_large_dataset(input_files, k=21, batch_size=1000000):
         # Create counter with memory-efficient settings
         counter = PyCounter(k, canonical=True)
 
-        # Process in chunks if very large
-        if os.path.getsize(file) > 1_000_000_000:  # 1GB
-            counter.add_from_fasta(file, chunk_size=1000000)
-        else:
-            counter.add_from_fasta(file)
+        # Compressed and uncompressed files are both read incrementally
+        counter.add_from_fasta(file)
 
         # Save intermediate results
         output_file = f"batch_{i+1:03d}.rkdb"
@@ -104,16 +104,15 @@ def process_large_dataset(input_files, k=21, batch_size=1000000):
 
 ### Streaming Processing
 ```python
-from pyrustkmer import KmerCounter
+from pyrustkmer import PyCounter
 
 def stream_process_fasta(fasta_file, k=21):
-    """Stream large FASTA files without loading entirely into memory."""
+    """Stream large FASTA files without loading them entirely into memory."""
 
     counter = PyCounter(k, canonical=True)
 
-    # Process file in streaming mode
-    with open(fasta_file, 'r') as f:
-        counter.count_stream(f)
+    # add_from_fasta reads and decompresses the file incrementally
+    counter.add_from_fasta(fasta_file)
 
     return counter
 ```
@@ -122,17 +121,20 @@ def stream_process_fasta(fasta_file, k=21):
 
 ### Database Indexing
 ```bash
-# Create indexed database for fast queries
-rustkmer count -i input.fa -o output.rkdb --indexed
+# Sorted databases (the default) enable binary-search lookups
+rustkmer count -k 21 -i input.fa -o output.rkdb
+
+# Skip sorting only if you do not plan to query the database
+rustkmer count -k 21 -i input.fa -o output.rkdb --no-sort
 
 # Query performance comparison
-# Non-indexed: ~10,000 queries/second
-# Indexed: ~500,000 queries/second
+# Unsorted: ~10,000 queries/second
+# Sorted: ~200,000 queries/second
 ```
 
 ### Batch Querying
 ```python
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 import time
 
 def batch_query_examples():
@@ -144,45 +146,43 @@ def batch_query_examples():
         # ... thousands more queries
     ]
 
-    # PyDatabase doesn't use context manager
-        db.load("large_database.rkdb")
+    db = PyDatabase("large_database.rkdb", LoadMode.Preload)
 
-        # Batch query (much faster)
-        start_time = time.time()
-        results = db.query_exact_batch(queries)  # 推荐使用新命名
-        batch_time = time.time() - start_time
-        
-        # 兼容性说明：旧方法名仍然可用但已废弃
-        # results = db.query_batch(queries)  # 已废弃，请使用 query_exact_batch()
+    # Batch query (much faster)
+    start_time = time.time()
+    results = db.query_exact_batch(queries)  # 推荐使用新命名
+    batch_time = time.time() - start_time
 
-        print(f"Batch query: {len(queries)} queries in {batch_time:.2f}s")
-        print(f"Rate: {len(queries)/batch_time:.0f} queries/second")
+    # 兼容性说明：旧方法名仍然可用但已废弃
+    # results = db.query_batch(queries)  # 已废弃，请使用 query_exact_batch()
+
+    print(f"Batch query: {len(queries)} queries in {batch_time:.2f}s")
+    print(f"Rate: {len(queries)/batch_time:.0f} queries/second")
 ```
 
 ### Fuzzy Query Optimization
 ```python
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
 def optimize_fuzzy_queries():
     """Optimize fuzzy search parameters for speed vs accuracy."""
 
-    # PyDatabase doesn't use context manager
-        db.load("database.rkdb")
+    db = PyDatabase("database.rkdb", LoadMode.Preload)
+    fuzzy = PyFuzzyQuery(db)
 
-        # Fast fuzzy search (less accurate)
-        results = fuzzy.query_fuzzy(
-            pattern="ATCGATCGATCGATCGATCG",
-            max_distance=2,
-            max_results=100
-        )
+    # Fast fuzzy search (fewer results)
+    results = fuzzy.query_fuzzy(
+        pattern="ATCGATCGATCGATCGATCGA",
+        max_mutations=2,
+        max_results=100
+    )
 
-        # Comprehensive fuzzy search (slower, more accurate)
-        results = fuzzy.query_fuzzy(
-            pattern="ATCGATCGATCGATCGATCG",
-            max_distance=3,
-            max_results=1000,
-            exhaustive=True
-        )
+    # Comprehensive fuzzy search (slower, more results)
+    results = fuzzy.query_fuzzy(
+        pattern="ATCGATCGATCGATCGATCGA",
+        max_mutations=3,
+        max_results=1000
+    )
 ```
 
 ## System-Level Optimization
@@ -195,32 +195,35 @@ sysctl -n hw.ncpu  # macOS
 
 # Set threads based on CPU cores
 THREADS=$(nproc)
-rustkmer count -i input.fa -o output.rkdb --threads $THREADS
+rustkmer count -k 21 -i input.fa -o output.rkdb --threads $THREADS
 ```
 
 ### Disk I/O Optimization
 ```bash
 # Use fast storage for temporary files
 export TMPDIR="/fast/ssd/temp"
-rustkmer count -i input.fa -o output.rkdb
+rustkmer count -k 21 -i input.fa -o output.rkdb
 
 # Prefer uncompressed files on fast storage
-rustkmer count -i input.fa -o /fast/storage/output.rkdb
+rustkmer count -k 21 -i input.fa -o /fast/storage/output.rkdb
 ```
 
 ### Memory Mapping
 ```python
-from pyrustkmer import Database
+from pyrustkmer import PyDatabase, LoadMode
 
-def use_memory_mapping():
-    """Enable memory mapping for large databases."""
+def choose_load_mode():
+    """Pick a database loading mode for large databases."""
 
-    # PyDatabase doesn't use context manager
-        # Use memory-mapped access for large files
-        db.load("large_database.rkdb", memory_mapped=True)
+    # Preload: all k-mers in memory (fastest repeated queries)
+    db = PyDatabase("large_database.rkdb", LoadMode.Preload)
+    result = db.query_exact("ATCGATCGATCGATCGATCG")
 
-        # Queries will be much faster for repeated access
-        result = db.query_exact("ATCGATCGATCGATCGATCG")
+    # MemoryMapped: direct file access (lowest memory footprint)
+    db = PyDatabase("large_database.rkdb", LoadMode.MemoryMapped)
+
+    # Lazy: sorted index with binary-search lookups
+    db = PyDatabase("large_database.rkdb", LoadMode.Lazy)
 ```
 
 ## Benchmarking Your System
@@ -229,7 +232,7 @@ def use_memory_mapping():
 ```python
 import time
 import psutil
-from pyrustkmer import KmerCounter, Database
+from pyrustkmer import PyCounter, PyDatabase, LoadMode
 
 def benchmark_system():
     """Benchmark RustKmer performance on your system."""
@@ -253,8 +256,9 @@ def benchmark_system():
         counter.add_from_fasta(test_file)
         count_time = time.time() - start_time
 
-        total_kmers = counter.get_stats().total_kmers)
-        unique_kmers = counter.get_unique_count()
+        stats = counter.get_stats()
+        total_kmers = stats.total_kmers
+        unique_kmers = stats.unique_kmers
 
         print(f"   Counting time: {count_time:.2f}s")
         print(f"   Processing rate: {total_kmers/count_time:.0f} k-mers/sec")
@@ -268,16 +272,15 @@ def benchmark_system():
     db_file = "test_database.rkdb"
     queries = ["ATCGATCGATCGATCGATCG"] * 10000  # 10k queries
 
-    # PyDatabase doesn't use context manager
-        db.load(db_file)
+    db = PyDatabase(db_file, LoadMode.Preload)
 
-        start_time = time.time()
-        for query in queries:
-            db.query_exact(query)
-        query_time = time.time() - start_time
+    start_time = time.time()
+    for query in queries:
+        db.query_exact(query)
+    query_time = time.time() - start_time
 
-        print(f"   Query time: {query_time:.2f}s")
-        print(f"   Query rate: {len(queries)/query_time:.0f} queries/sec")
+    print(f"   Query time: {query_time:.2f}s")
+    print(f"   Query rate: {len(queries)/query_time:.0f} queries/sec")
 
 if __name__ == "__main__":
     benchmark_system()
@@ -295,9 +298,8 @@ if __name__ == "__main__":
 ### Querying Performance
 | Database Type | Load Time | Query Speed | Memory Usage |
 |---------------|-----------|-------------|--------------|
-| Unsorted | Fast | ~50,000 q/s | Low |
-| Sorted | Medium | ~200,000 q/s | Medium |
-| Indexed | Slow | ~500,000 q/s | High |
+| Unsorted (`--no-sort`) | Fast | ~50,000 q/s | Low |
+| Sorted (default) | Medium | ~200,000 q/s | Medium |
 
 ### File Format Performance
 | Format | Counting Speed | Storage Size | Loading Speed |
@@ -322,18 +324,17 @@ if __name__ == "__main__":
 **Problem**: Running out of memory
 **Solutions**:
 - Use smaller k-mer size
-- Enable database compression
+- Count files into separate databases and merge them
 - Process files in batches
 - Use streaming mode for very large files
-- Close databases when not in use
+- Release database references when not in use
 
 ### Slow Querying
 **Problem**: Database queries are slow
 **Solutions**:
-- Create sorted databases (`--sorted`)
-- Use indexed databases for frequent queries
+- Keep databases sorted (sorting is on by default; avoid `--no-sort`)
+- Preload the database (`--load` on the CLI, `LoadMode.Preload` in Python) for frequent queries
 - Batch multiple queries together
-- Enable memory mapping for large databases
 - Consider using a smaller k-mer size
 
 ### Database Loading Issues
@@ -355,7 +356,7 @@ if __name__ == "__main__":
 
 ### For Production Systems
 1. **Monitor memory usage** and implement limits
-2. **Use database compression** to save disk space
+2. **Save intermediate databases** to break large jobs into stages
 3. **Implement proper error handling** and retry logic
 4. **Use connection pooling** for multi-user systems
 5. **Regular performance monitoring** and optimization

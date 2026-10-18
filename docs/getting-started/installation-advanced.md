@@ -153,7 +153,7 @@ rustkmer query test.rkdb GCG
 rustkmer count -k 21 --sort -i large_genome.fa -o sorted_genome.rkdb
 
 # 测试前缀查询性能
-rustkmer prefix-query sorted_genome.rkdb "ATCGATCG"
+rustkmer prefix-query sorted_genome.rkdb -p "ATCGATCG"
 ```
 
 ## Python绑定安装
@@ -163,13 +163,11 @@ rustkmer prefix-query sorted_genome.rkdb "ATCGATCG"
 ```bash
 cd rustkmer/pyo3
 
-# 构建Python绑定
-export RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup"
-export PYO3_PYTHON=/usr/bin/python3
-cargo build
-
-# 设置Python路径
-export PYTHONPATH="$PWD/target/debug:$PYTHONPATH"
+# 使用 maturin 构建并安装 Python 绑定（需要 Python 3.11+ 虚拟环境）
+python3 -m venv .venv
+source .venv/bin/activate
+pip install maturin
+maturin develop --release
 
 # 测试导入
 python3 -c "from pyrustkmer import PyCounter, PyDatabase, LoadMode; print('✅ PyO3绑定安装成功！')"
@@ -185,12 +183,12 @@ db = PyDatabase("test.rkdb", LoadMode.Preload)
 
 # 查询k-mer
 result = db.query_exact("ATG")
-if result:
+if result.found:
     print(f"ATG count: {result.count}")
 
 # 前缀查询
 prefix_results = db.query_prefix("ATG")
-print(f"Found {len(prefix_results)} k-mers starting with ATG")
+print(f"Found {prefix_results.total_matches} k-mers starting with ATG")
 ```
 
 ## 验证安装
@@ -198,22 +196,18 @@ print(f"Found {len(prefix_results)} k-mers starting with ATG")
 ### 功能测试
 
 ```bash
-# 运行内置测试
-rustkmer test
+# 运行Rust测试套件
+cargo test
 
-# 或手动验证核心功能
-cd python/tests/test_data
-
-# 测试基本查询
-python3 example_usage.py
+# 运行Python绑定测试（需要先在 pyo3/ 中 maturin develop）
+pytest pyo3/tests/
 ```
 
 ### 性能基准
 
 ```bash
-# 运行性能基准测试
-cd benchmarks
-python3 prefix_query_performance.py
+# 运行性能基准测试（前缀查询 vs 模糊查询）
+bash scripts/benchmark_prefix_vs_fuzzy.sh
 ```
 
 ## 故障排除
@@ -262,14 +256,12 @@ cargo build --release
 
 **解决**:
 ```bash
-# 检查Python路径设置
-echo $PYTHONPATH
+# 在 pyo3/ 目录中使用 maturin 重新安装到当前Python环境
+cd pyo3
+maturin develop --release
 
-# 重新设置路径
-export PYTHONPATH="/path/to/rustkmer/pyo3/target/debug:$PYTHONPATH"
-
-# 检查动态库
-ls pyo3/target/debug/librustkmer_pyo3.*
+# 确认已安装
+pip show pyrustkmer
 ```
 
 ### 获取帮助

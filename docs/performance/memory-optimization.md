@@ -197,28 +197,33 @@ pub struct MemoryBlockInfo {
 ## 🔬 验证方法
 
 ### 性能测试
-```bash
-# 测试不同大小的数据库
-./benchmark_prefix_query --database large.rkdb --prefix "AAATT" --iterations 100
 
-# 对比优化前后的性能
-./benchmark_prefix_query --database large.rkdb --prefix "AAATT" --optimized --compare
+仓库中不存在 `benchmark_prefix_query` 这样的独立基准二进制；性能测量统一使用 `scripts/bench/` 标准基准框架（完整用法见 [docs/guides/benchmarking.md](../guides/benchmarking.md)）：
+
+```bash
+cargo build --release
+
+# 合成输入自检 + 测量 (经 /usr/bin/time 计量 wall-clock 与峰值RSS)
+python3 scripts/bench/bench.py --mode synthetic --self-check
+python3 scripts/bench/bench.py --mode synthetic --out results.json
+
+# 真实数据切片 / 全规模运行
+python3 scripts/bench/bench.py --input reads.r2.fq.gz --merge-input reads.r1.fq.gz
+python3 scripts/bench/bench.py --mode full --input "data/*.fq.gz" --skip-merge --reps 3
+
+# 回归门禁：与基线 results.json 对比
+python3 scripts/bench/compare.py --baseline baseline.json --current results.json
 ```
 
+注意：该框架测量 `rustkmer count` / `merge` 的完整命令调用 (wall-clock + 峰值RSS)，不针对单个前缀查询函数计时。
+
 ### 正确性验证
-```rust
-#[test]
-fn test_prefix_optimization_correctness() {
-    let db = load_test_database();
-    let prefix = "AAATT";
-    
-    // 对比优化版本和原始版本的结果
-    let optimized = extract_prefix_optimized(&db, prefix)?;
-    let traditional = extract_prefix_traditional(&db, prefix)?;
-    
-    assert_eq!(optimized.matches, traditional.matches);
-    assert!(optimized.query_time_ms <= traditional.query_time_ms);
-}
+
+`load_test_database()` / `extract_prefix_traditional()` 并不存在；实际的正确性验证位于 `tests/prefix_cache_output_order_tests.rs`，它将 `extract_prefix_optimized` 的输出与逐条扫描得到的 oracle 子集逐一对比：
+
+```bash
+cargo test --test prefix_cache_output_order_tests
+cargo test --test prefix_cache_conservation_tests
 ```
 
 ## 💡 关键洞察
