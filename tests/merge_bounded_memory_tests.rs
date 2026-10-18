@@ -87,7 +87,11 @@ use rustkmer::database::format::RKDatabase;
 use rustkmer::database::merge_config::{MergeConfig, MergeStrategy};
 use rustkmer::database::temp_lifecycle::{DEFAULT_MERGE_TEMP_TTL, MERGE_TEMP_PREFIX};
 use std::path::{Path, PathBuf};
+// Windows has no stdlib RSS source (see the gated measurement test below),
+// so the sampler machinery these imports serve compiles dead there.
+#[cfg(not(target_os = "windows"))]
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+#[cfg(not(target_os = "windows"))]
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -99,14 +103,17 @@ const K: u8 = 21;
 ///
 /// Everything else in the measurement arithmetic is derived from this
 /// constant, so the bound cannot drift away from the working set it bounds.
+#[cfg(not(target_os = "windows"))]
 const CHUNK_ENTRIES: usize = 50_000;
 
 /// `size_of::<KmerEntry>()`: a 16-byte `u128` (align 16) + a 4-byte `u32` +
 /// 4 bytes of tail padding = 32. Asserted, not assumed, in
 /// `streaming_merge_peak_memory_is_bounded_by_chunk_not_dataset`.
+#[cfg(not(target_os = "windows"))]
 const KMER_ENTRY_BYTES: usize = 32;
 
 /// One chunk load of `KmerEntry` at the pinned chunk size: 1,600,000 B.
+#[cfg(not(target_os = "windows"))]
 const CHUNK_BYTES: u64 = (CHUNK_ENTRIES * KMER_ENTRY_BYTES) as u64;
 
 /// The RSS bound: 12x one chunk load = 19,200,000 B.
@@ -122,6 +129,7 @@ const CHUNK_BYTES: u64 = (CHUNK_ENTRIES * KMER_ENTRY_BYTES) as u64;
 /// "loosen to fit a smaller N" move `MEASUREMENT_ENTRIES` forbids: N is
 /// unchanged; the widened factor absorbs allocator variance, not fixture
 /// shrinkage.
+#[cfg(not(target_os = "windows"))]
 const RSS_BOUND_BYTES: u64 = CHUNK_BYTES * 12;
 
 /// A budget no toy fixture can approach, so the within-budget branch is
@@ -133,6 +141,7 @@ const HUGE_BUDGET_BYTES: usize = 1024 * 1024 * 1024;
 /// nor `RSS_BOUND_BYTES` may be loosened to fit a smaller N**: the bound is
 /// a property of the chunk size, and moving it to accommodate a fixture
 /// reintroduces exactly the defect this file exists to catch.
+#[cfg(not(target_os = "windows"))]
 const MEASUREMENT_ENTRIES: usize = 1_000_000;
 
 /// Encode `value` as a base-4 k-mer over `kmer_size` bases (A=0, C=1, G=2,
@@ -174,7 +183,7 @@ fn current_rss_kb() -> Option<u64> {
 /// memory bound that never runs on the developer's machine proves nothing
 /// (this plan's own RED discipline demands the measurement be executable
 /// wherever the tests run).
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
 fn current_rss_kb() -> Option<u64> {
     let out = std::process::Command::new("ps")
         .args(["-o", "rss=", "-p", &std::process::id().to_string()])
@@ -196,6 +205,7 @@ fn current_rss_kb() -> Option<u64> {
 /// before it returns: an after-the-fact reading would measure whatever the
 /// allocator chose to retain, not what the merge actually held (the 03-06
 /// lesson — see the module docstring).
+#[cfg(not(target_os = "windows"))]
 fn run_tracking_peak_rss<T>(f: impl FnOnce() -> T) -> (T, u64) {
     let peak_kb = Arc::new(AtomicU64::new(0));
     let stop = Arc::new(AtomicBool::new(false));
