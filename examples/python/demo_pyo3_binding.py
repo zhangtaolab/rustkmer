@@ -11,9 +11,7 @@ import sys
 import os
 import tempfile
 import subprocess
-
-# 添加当前目录到 Python 路径
-sys.path.insert(0, "/Users/forrest/Github/rustkmer/examples/python")
+from pathlib import Path
 
 try:
     import pyrustkmer
@@ -31,7 +29,7 @@ def create_test_database():
     # 创建临时FASTA文件
     fasta_content = """>test_sequence_1
 AAAAAAAAAAATTTTTTTTTTCCCCCCCCCCGGGGGGGGGG
->test_sequence_2  
+>test_sequence_2
 ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG
 >test_sequence_3
 AAAAAAAAAAACCCCCCCCGGGGGGGGGGTTTTTTTTTT
@@ -46,16 +44,17 @@ AAAAAAAAAAACCCCCCCCGGGGGGGGGGTTTTTTTTTT
     db_file.close()
 
     try:
-        # 使用Rust CLI创建数据库
+        # 使用Rust CLI创建数据库（count是当前的构建子命令）
+        repo_root = Path(__file__).resolve().parents[2]
         cmd = [
-            "/Users/forrest/Github/rustkmer/target/release/rustkmer",
-            "build-kmer-db",
+            str(repo_root / "target" / "release" / "rustkmer"),
+            "count",
+            "-i",
             fasta_file,
+            "-o",
             db_file.name,
-            "--kmer-size",
+            "-k",
             "19",
-            "--load-mode",
-            "memory",
         ]
 
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -123,9 +122,13 @@ def demo_basic_usage():
             except Exception as e:
                 print(f"   模式 '{pattern}': 查询失败 - {e}")
 
-        # 演示混合搜索
+        # 演示混合搜索（模式总长度必须等于数据库k-mer大小）
         print(f"\n🎯 混合搜索演示:")
-        hybrid_patterns = ["AAAAA{N5}GGGGG", "ATCG{N3}GCTA"]
+        k = engine.kmer_size()
+        hybrid_patterns = [
+            "A" * 5 + "{N%d}" % (k - 10) + "G" * 5,  # 5 + (k-10) + 5 = k
+            "ATCG" + "{N%d}" % (k - 8) + "GCTA",  # 4 + (k-8) + 4 = k
+        ]
         for pattern in hybrid_patterns:
             try:
                 # 先解析模式
@@ -178,19 +181,19 @@ def demo_command_equivalence():
 
     print("\n📝 Rust CLI 命令:")
     print(
-        "   ./target/release/rustkmer prefix-query ~/Data/data/kmer/K19/R1_001.rkdb AAAAAAAA{N5}AAAAAA"
+        "   ./target/release/rustkmer prefix-query test_data/databases/small_test.rkdb A{N5}C"
     )
 
     print("\n🐍 Python PyO3 等价代码:")
     print("""
    import pyrustkmer
-   
+
    # 创建查询引擎
-   engine = pyrustkmer.PyPrefixQuery("~/Data/data/kmer/K19/R1_001.rkdb")
-   
+   engine = pyrustkmer.PyPrefixQuery("test_data/databases/small_test.rkdb")
+
    # 执行混合搜索
-   results = engine.query_hybrid("AAAAAAAA{N5}AAAAAA")
-   
+   results = engine.query_hybrid("A{N5}C")
+
    # 处理结果
    for kmer, count in results.items():
        print(f"{kmer}: {count}")
@@ -198,12 +201,12 @@ def demo_command_equivalence():
 
     print("\n📋 简化脚本使用:")
     print(
-        "   python3 simple_prefix_query.py ~/Data/data/kmer/K19/R1_001.rkdb 'AAAAAAAA{N5}AAAAAA'"
+        "   python3 simple_prefix_query.py test_data/databases/small_test.rkdb"
     )
 
     print("\n🎛️  完整脚本使用:")
     print(
-        "   python3 prefix_query_pyo3_binding.py ~/Data/data/kmer/K19/R1_001.rkdb 'AAAAAAAA{N5}AAAAAA' --with-metrics"
+        "   python3 unified_query_example.py"
     )
 
 
