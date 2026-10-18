@@ -1265,14 +1265,26 @@ def _methodology_lines(files_data):
     lines.append("### Input fingerprints (size + sha256 per file, as recorded)")
     lines.append("")
     for results in files_data:
-        for fp in results["input_fingerprint"]:
+        for fp in results.get("input_fingerprint") or []:
             lines.append(f"- {_results_label(results)}: `{fp['path']}` "
                          f"({fp['size_bytes']:,} bytes) sha256 "
                          f"`{fp['sha256']}`")
     lines.append("")
     first = files_data[0]
     plat = first["platform"]
-    fp0 = first["input_fingerprint"][0]
+    # WR-08: the halt-note figure must come from the first mode=FULL file —
+    # files_data[0] is the first file *as given*, which may be a slice file
+    # whose (smaller) input size would attach the number to the wrong run.
+    # render_report's guard guarantees a mode=full entry exists by the time
+    # this builder runs.
+    full0 = next(d for d in files_data if d["mode"] == "full")
+    fps = full0.get("input_fingerprint") or []
+    if not fps:
+        raise ValueError(
+            f"render needs a non-empty input_fingerprint on the mode=full "
+            f"results file (created {full0.get('created')}) to source the "
+            f"methodology note's input-size figure")
+    fp0 = fps[0]
     # Zero measurement literals (04-04 prohibition P7): the attempt-1 count
     # is un-sourced narrative — no committed JSON carries it — so the note
     # derives its only figure from the fingerprinted input size instead.
