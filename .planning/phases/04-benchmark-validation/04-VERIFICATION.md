@@ -1,145 +1,120 @@
 ---
 phase: 04-benchmark-validation
-verified: 2026-10-17T15:49:47Z
-status: gaps_found
-score: 8/10 must-haves verified
-covered_files: [".github/workflows/benchmark.yml", ".gitignore", ".planning/phases/04-benchmark-validation/04-01-PLAN.md", ".planning/phases/04-benchmark-validation/04-01-SUMMARY.md", ".planning/phases/04-benchmark-validation/04-02-PLAN.md", ".planning/phases/04-benchmark-validation/04-02-SUMMARY.md", ".planning/phases/04-benchmark-validation/04-03-PLAN.md", ".planning/phases/04-benchmark-validation/04-03-SUMMARY.md", ".planning/phases/04-benchmark-validation/04-04-PLAN.md", ".planning/phases/04-benchmark-validation/04-04-SUMMARY.md", ".planning/phases/04-benchmark-validation/04-pilot-calibration.md", ".planning/phases/04-benchmark-validation/04-results-full-k21.json", ".planning/phases/04-benchmark-validation/04-results-full-k31.json", ".planning/phases/04-benchmark-validation/04-results-slice.json", "docs/benchmark-report.md", "scripts/__init__.py", "scripts/bench/README.md", "scripts/bench/__init__.py", "scripts/bench/baselines/bench_baseline.darwin.json", "scripts/bench/baselines/bench_baseline.linux.json", "scripts/bench/bench.py", "scripts/bench/compare.py", "scripts/bench/gen_synthetic.py", "scripts/bench/make_slice.sh", "scripts/bench/tests/__init__.py", "scripts/bench/tests/fixtures/time_l_macos.txt", "scripts/bench/tests/fixtures/time_v_linux.txt", "scripts/bench/tests/test_cmd_matrix.py", "scripts/bench/tests/test_compare.py", "scripts/bench/tests/test_degradation.py", "scripts/bench/tests/test_generator.py", "scripts/bench/tests/test_merge_input.py", "scripts/bench/tests/test_render_report.py", "scripts/bench/tests/test_schema.py", "scripts/bench/tests/test_time_parser.py"]
-covered_digest: "v3:sha256:46e07f82f01d4dae6fc985582630ec2caf7d4c58130b3c73cb8134e58d2b4b17"
+verified: 2026-10-18T07:58:24Z
+status: passed
+score: 10/10 must-haves verified
+covered_files: [".planning/phases/04-benchmark-validation/04-01-PLAN.md", ".planning/phases/04-benchmark-validation/04-01-SUMMARY.md", ".planning/phases/04-benchmark-validation/04-02-PLAN.md", ".planning/phases/04-benchmark-validation/04-02-SUMMARY.md", ".planning/phases/04-benchmark-validation/04-03-PLAN.md", ".planning/phases/04-benchmark-validation/04-03-SUMMARY.md", ".planning/phases/04-benchmark-validation/04-04-PLAN.md", ".planning/phases/04-benchmark-validation/04-04-SUMMARY.md", ".planning/phases/04-benchmark-validation/04-05-PLAN.md", ".planning/phases/04-benchmark-validation/04-05-SUMMARY.md", "docs/benchmark-report.md", "scripts/bench/bench.py", "scripts/bench/tests/test_compare.py", "scripts/bench/tests/test_render_report.py", "tests/merge_bounded_memory_tests.rs"]
+covered_digest: "v3:sha256:41913d57eb522818c19f73ea7e6920764c8a75386bc92e42a5128a6e839b9009"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
-  previous_status: human_needed
-  previous_score: 10/10
-  gaps_closed: []   # prior report carried no gaps: frontmatter (status was human_needed); its human items resolved below
+  previous_status: gaps_found
+  previous_score: 8/10
+  gaps_closed:
+    - "04-01 core: dead-infra deletion with cargo clippy --all-targets -- -D warnings plus cargo test staying green (CR-02 — windows-latest clippy leg green at pushed SHA 764f53f, CI run 39108077664, verifier-verified first-hand via gh this pass)"
+    - "04-04: docs/benchmark-report.md is rendered mechanically from the committed results JSONs — re-running the renderer reproduces a byte-identical file (T-04-07 tamper evidence) (fresh render diffs empty against the committed report; provenance line 105 = 78e5eec = git log -1 -- scripts/bench/bench.py, verifier-run this pass)"
   gaps_remaining: []
-  regressions:
-    - "CR-02: windows-latest clippy merge gate red at HEAD — introduced after the 2026-10-10 pass by 8f23225 (ungated Windows-off test helpers) + b514331/0c90f4d (windows added to the clippy matrix); CI run 39018676504, re-verified first-hand this pass"
-    - "Report byte-identity broken — bb5ccb0 (the CR-01 fix, 2026-10-11) changed bench.py and docs/benchmark-report.md in one commit, leaving the committed provenance line stale by exactly one commit (7eb510d vs bb5ccb0)"
-gaps:
-  - truth: "04-01 core: dead-infra deletion with cargo clippy --all-targets -- -D warnings plus cargo test staying green"
-    status: failed
-    reason: "clippy (root) (windows-latest) is RED at HEAD: CI run 39018676504 fails that one job while all 9 other jobs succeed (re-verified via gh this pass). HEAD (971c110) is 6 docs-only commits ahead of the CI-tested 0c90f4d — code-identical, so the red applies to HEAD. 8f23225 gated the RSS measurement test off on Windows without gating its seven exclusive helpers; b514331/0c90f4d then added windows-latest to the clippy matrix where -D warnings turns the dead_code into errors. Local darwin clippy exits 0 (verifier-run) and the full cargo test suite is green (direct exit 0 this session) — the failure is Windows-only and mechanically proven."
-    artifacts:
-      - path: "tests/merge_bounded_memory_tests.rs"
-        issue: "CHUNK_ENTRIES (102), KMER_ENTRY_BYTES (107), CHUNK_BYTES (110), RSS_BOUND_BYTES (125), MEASUREMENT_ENTRIES (136), non-Linux current_rss_kb (178), and run_tracking_peak_rss (199) have their ONLY usages inside the #[cfg(not(target_os = \"windows\"))] test at line 363 — dead code on Windows, 7 dead_code errors under -D warnings"
-      - path: ".github/workflows/ci.yml"
-        issue: "clippy-root matrix includes windows-latest (line 46) running cargo clippy --all-targets -- -D warnings (line 69); every subsequent push/PR to dev fails the merge gate until fixed"
-    missing:
-      - "Gate the seven measurement items to match their consumer — or the one-liner from 04-REVIEW.md CR-02: #![cfg_attr(target_os = \"windows\", allow(dead_code))] at the top of tests/merge_bounded_memory_tests.rs (if gating per-item instead, also handle the std::sync::atomic/Arc imports only run_tracking_peak_rss uses)"
-      - "Push and confirm the windows-latest clippy leg goes green (the 6 unpushed commits are docs-only; run 39018676504 is the red baseline)"
-  - truth: "04-04: docs/benchmark-report.md is rendered mechanically from the committed results JSONs — re-running the renderer reproduces a byte-identical file (T-04-07 tamper evidence)"
-    status: partial
-    reason: "A fresh render differs from the committed report on exactly ONE line (105, the harness provenance hash: committed 7eb510d… vs fresh bb5ccb0…). bb5ccb0 (the CR-01 fix) changed bench.py and the re-rendered report in a single commit, so the committed provenance line went stale the moment the commit landed — harness_source_commit() (bench.py:977) resolves to the last commit touching bench.py, which is now bb5ccb0 itself. Every measurement number in the report is identical to the fresh render; the defect is the DETECTION property: the byte-identity check now fires on a clean tree, so it can no longer discriminate a hand-edit from a legitimate render. Note: 04-REVIEW-DISPOSITION.md's 're-render byte-identical' claim for CR-01 held only pre-commit (the fix was then uncommitted, so git log still resolved 7eb510d)."
-    artifacts:
-      - path: "docs/benchmark-report.md"
-        issue: "Line 105 carries the pre-bb5ccb0 provenance hash 7eb510dae56194a4059afc65e886ee9d9be34ff2; the renderer now emits bb5ccb083d06cf23f2936fae00c353f2c438e60b"
-    missing:
-      - "Re-render and recommit docs/benchmark-report.md (python3 scripts/bench/bench.py --render-report --results <the three 04-results-*.json> --out docs/benchmark-report.md); the provenance then re-stabilizes at bb5ccb0 until bench.py next changes — and never bundle a bench.py change and its re-rendered report in one commit again"
-      - "Optional hardening: record the harness commit inside the results JSONs at measurement time and render from that field, removing the self-reference paradox for any future bench.py+report commit"
-advisory:
-  - finding: "WR-08 (open review finding, warning): render_report's methodology note indexes first[\"input_fingerprint\"][0] unguarded (bench.py:1275) and takes the figure from files_data[0] — the first file as given, which may be a mode=slice file"
-    category: other
-    reason: "Latent robustness defect, not a must-have failure: an empty/absent fingerprint on a schema-valid file crashes with a bare IndexError, and a slice-first --results order attaches the figure to the wrong run. The committed report is unaffected (full file listed first; fingerprint non-empty and internally consistent). Fix sketch in 04-REVIEW.md WR-08."
-    evidence_status: "none provided — no failing test; latent only"
-  - finding: "IN-08 (open review finding, info): compare.py's advisory-mode PASS summary line is not pinned by any test"
-    category: other
-    reason: "test_compare.py asserts only the 'GATE: PASS' prefix, which the plain all-axes PASS line also matches; a regression swapping the advisory summary for the plain line would not be caught. One assertIn(\"wall breach(es) advisory, not gating\", out) closes it."
-    evidence_status: "none provided — missing-test gap, no observed failure"
+  regressions: []
 ---
 
 # Phase 4: Benchmark & Validation Verification Report
 
 **Phase Goal:** Reproducible performance measurement and validation against Jellyfish2 on human-scale data
-**Verified:** 2026-10-17T15:49:47Z
-**Status:** gaps_found
-**Re-verification:** Yes — stale-verification regeneration after covered-input changes (bb5ccb0, 6cffc30, 375fac5, 8f23225, b514331, 0c90f4d)
+**Verified:** 2026-10-18T07:58:24Z
+**Status:** passed
+**Re-verification:** Yes — after gap closure (04-05-PLAN.md, gap_closure: true; commits 444f660, 4eeb9d4, 78e5eec, 764f53f, 63f2835)
 
 ## Goal Achievement
 
-The phase goal remains **substantially achieved in the codebase**: the harness exists and is fully tested (128 Python tests green, verifier-run), the CI benchmark regression gate is live and green at the latest run (39018676486, success on both legs — gh-verified this pass), the milestone comparison evidence is committed, schema-valid, and internally consistent, and the report's verdict content (k=31 YES / k=21 NO / overall NO, substitute label, cold-cache PARTIALLY SATISFIED) is intact.
+The phase goal IS achieved in the codebase. The reproducible harness exists and is fully tested (130 Python tests, verifier-run, OK), the CI regression gate is live and green at the pushed gap-closure head (benchmark.yml run 39108077776 at 764f53f = success; ci.yml run 39108077664 at 764f53f = all 10 jobs success including the previously-red `clippy (root) (windows-latest)`), the milestone comparison evidence is committed, schema-valid, internally consistent, and untouched by the gap-closure round, and the report is byte-identically re-renderable from the committed JSONs (tamper evidence restored).
 
-**Two gaps introduced AFTER the 2026-10-10 verification now fail must-have clauses** (both by the post-verification follow-on commits, not by the original phase plans):
+Both prior gaps are closed with first-hand verifier evidence this pass:
 
-1. **CR-02 — the dev-branch CI merge gate is red at HEAD.** `clippy (root) (windows-latest)` fails (CI run 39018676504, re-verified first-hand via gh this pass; all 9 other jobs green). 8f23225 gated the RSS measurement test off on Windows without gating its seven exclusive helpers in `tests/merge_bounded_memory_tests.rs`; b514331/0c90f4d then added windows-latest to the clippy matrix where `-D warnings` turns the dead_code into errors. Local darwin clippy exits 0 and the full cargo test suite is green — the failure is Windows-only and mechanically proven (fail-log quoted in 04-REVIEW.md CR-02).
-2. **The report's byte-identity tamper-evidence property is broken.** A fresh re-render differs from the committed `docs/benchmark-report.md` on exactly one line — the harness provenance hash (committed `7eb510d`, fresh `bb5ccb0`). bb5ccb0 (the CR-01 fix) bundled the bench.py change and the re-rendered report in one commit, making the committed provenance stale-by-one forever. All measurement numbers are identical; the detection property itself is what broke. One-command fix: re-render and recommit.
+1. **CR-02 (windows clippy red) — CLOSED by construction and by CI.** All seven Windows-dead measurement items in `tests/merge_bounded_memory_tests.rs` plus the two atomic/Arc imports they exclusively use now carry `#[cfg(not(target_os = "windows"))]`; the portable `current_rss_kb` carries `not(any(linux, windows))`; the old `cfg(not(target_os = "linux"))` form appears nowhere (verifier-run awk attribute audit + greps: 10 not-windows / 1 any-form / 0 old-form). Commit 444f660 is gates-only (11 insertions, 1 replacement — no test deleted, no bound loosened: `RSS_BOUND_BYTES` still `CHUNK_BYTES * 12`, `MEASUREMENT_ENTRIES` still 1,000,000). Local darwin `cargo clippy --all-targets -- -D warnings` exit 0; `cargo test --test merge_bounded_memory_tests` 6 passed with the `rss_delta_bytes=1818624` measurement line printed. Authoritative proof: CI run 39108077664 at pushed SHA 764f53f — `clippy (root) (windows-latest)` conclusion **success**, all 10 jobs green (red baseline was run 39018676504 at 0c90f4d, prior pass).
+2. **Report byte-identity — CLOSED under strict equality.** A fresh render from the three committed 04-results-*.json (fingerprint-listing order: full-k31, full-k21, slice) is byte-identical to the committed `docs/benchmark-report.md` — the diff is EMPTY (verifier-run this pass). Provenance line 105 carries `78e5eec409f0fede27e69167357f82a630b096f2`, exactly `git log -1 --format=%H -- scripts/bench/bench.py`. The report commit 764f53f contains `docs/benchmark-report.md` and nothing else (numstat 1/1; the one changed line is the provenance hash 7eb510d → 78e5eec); the bench.py change (78e5eec) rode completely alone — the never-bundle discipline held.
 
-Prior human items: #3 (CR-01) is **fixed and verified** (no `220,028` literal anywhere; the figure now derives from `fp0['size_bytes']`; report line 111 shows the mechanical 2,637,234,342-byte figure). #2 (red darwin benchmark leg) is **operationally resolved** (baseline regenerated in 6cffc30; wall axis demoted to advisory per the pre-locked README contingency in 375fac5; latest benchmark.yml runs green). #1 (BENCH-02 milestone decision) **remains open by design** — see Milestone Product Criterion Status.
+Riding along, both prior advisories were closed by the same round: WR-08 (guarded, named `ValueError` on empty/absent `input_fingerprint`; methodology figure sourced from the first mode=full file regardless of `--results` order — bench.py:1280-1285, both named tests pass, verifier-run) and IN-08 (`assertIn("wall breach(es) advisory, not gating", out)` at test_compare.py:200). Evidence integrity: the three 04-results-*.json files are byte-for-byte unchanged (last touched by 8d63b91, the original 04-04 evidence commit; `git diff 1c41c40..HEAD` over them is empty).
+
+Note on HEAD: local HEAD (8f58e27) is two docs-only commits (`.planning/` review docs, 3d042f9 + 8f58e27 — verifier-checked stats) ahead of the CI-tested pushed SHA 764f53f; the tree is code-identical, so the CI verdict applies to HEAD's code state. The working tree is clean of tracked-file modifications.
 
 ### Observable Truths
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | SC-1/BENCH-01: Reproducible harness measures counting and merge wall-clock AND peak memory, runnable in CI as a regression gate | ✓ VERIFIED | `scripts/bench/bench.py` (1,497 lines: measure, parse_time_output, validate_schema, resolve_mode, run_comparison_protocol, render_report); 128/128 stdlib-unittest tests pass (verifier-run, exit 0); `benchmark.yml` builds `--release`, runs synthetic mode, uploads artifact, gates via compare.py; latest run 39018676486 at 0c90f4d = success (gh-verified this pass) |
-| 2 | SC-1/04-03: Gate decision logic proven at boundaries, independent axes, per-platform baselines | ✓ VERIFIED | compare.py imports validate_schema from scripts.bench.bench (compare.py:55 — single schema source, verified); 31 comparator tests incl. 4 new TestWallAdvisory; both baselines self-compare GATE: PASS (verifier-run, exit 0 x2); wall-advisory CI mode keeps full wall bookkeeping, RSS still hard-gates at 15% — matches the pre-locked README contingency ("Wall advisory activated 2026-10-17") |
-| 3 | SC-2 methodology: Fair comparison — parity gate before timing, matched settings, interleaved counterbalanced protocol | ✓ VERIFIED | Golden-argv tests pin -k/-m, -C, threads, gz-pipe-for-jellyfish-only (suite green); committed JSONs show counterbalanced arm_order per round and per-rep cache_state; params record hash_size 10G, decompressor gzcat, release binary path (verifier-inspected this pass) |
-| 4 | SC-2 evidence: Committed full k=31 + k=21 results with >=3 reps, per-rep cache_state, medians on both axes, input fingerprints | ✓ VERIFIED | Verifier ran validate_schema over all three 04-results-*.json this pass: VALID; 3 reps/arm (count-A/count-B/jellyfish-count-A [+ merge in slice]); cache_state recorded; fingerprints internally consistent (2,637,234,342 bytes / sha256 131ca561b851… matches the report figure). Disk re-verification no longer possible — the dataset is ABSENT from /Users/forrest/Downloads this pass; the 2026-10-10 pass verified it on disk (T-04-08) |
-| 5 | SC-2/04-04: Report mechanically rendered — re-running the renderer reproduces a byte-identical file | ✗ FAILED | Fresh re-render diff vs committed report: exactly one line differs (105 — provenance hash 7eb510d vs bb5ccb0). Root cause: bb5ccb0 bundled bench.py + report in one commit. Every measurement line is identical; the tamper-evidence DETECTION property is what fails — see gap 2 |
-| 6 | SC-3/BENCH-03: Peak memory reported alongside wall-clock — memory as visible as speed | ✓ VERIFIED | Every arm in every results JSON and every report table carries median peak RSS + per-rep RSS + RSS delta vs jellyfish (k=31: rustkmer 55.2 GiB vs jellyfish 84.0 GiB, -34%) |
-| 7 | SC-4/BENCH-04: Graceful degradation to slice/synthetic; CI runs without the dataset | ✓ VERIFIED | resolve_mode ladder unit-pinned (15-row table, suite green); benchmark.yml synthetic-only — no jellyfish, no dataset, no pip installs (grep 0), green on both runners at 0c90f4d |
-| 8 | 04-01 core: Dual-platform parser, deterministic generator, schema v1, self-check, dead-infra deletion with gates green | ✗ FAILED | Deletion holds (benchmark.rs and performance-regression.yml both ABSENT, 0 module references — verifier-checked); parser/generator/schema tests green; local darwin clippy --all-targets -D warnings exit 0 (verifier-run); full cargo test green this session. BUT the clause "cargo clippy --all-targets -- -D warnings … stays green" is violated in CI: clippy (root) (windows-latest) RED at HEAD (run 39018676504, re-verified first-hand) — see gap 1 / CR-02 |
-| 9 | 04-02 protocol: Warmup discard, counterbalanced rounds, cooldown, honest cache_state, median+CV reduction, disk guardrail | ✓ VERIFIED | Committed data shows 3 measured reps with alternating first-position tools; median/CV/cv_warning present; verifier reproduced the disk guardrail live this pass: --disk-floor-gb 9999999 exits 3 before any provisioning/measurement |
-| 10 | 04-04 prohibitions: No CI/synthetic run presented as BENCH-02 evidence; report numbers mechanically rendered | ✓ VERIFIED | All BENCH-02 verdict numbers trace to mode=full committed JSONs (CI appears nowhere as milestone evidence); CR-01 FIXED and verified: the "220,028 k-mers" literal is gone everywhere (grep clean), the methodology figure now derives mechanically from the fingerprinted input size (bench.py:1275,1283; report line 111 = 2,637,234,342 bytes = the committed JSON fingerprint). P7 flag from the prior pass is resolved; note the detection mechanism itself is degraded by gap 2 |
+| 1 | SC-1/BENCH-01: Reproducible harness measures counting and merge wall-clock AND peak memory, runnable in CI as a regression gate | ✓ VERIFIED (regression) | `scripts/bench/bench.py` present and substantive; 130/130 stdlib-unittest tests pass (verifier-run, exit 0); benchmark.yml hygiene greps 0/0/0; latest gate run 39108077776 at 764f53f = success (gh-verified this pass) |
+| 2 | SC-1/04-03: Gate decision logic proven at boundaries, independent axes, per-platform baselines | ✓ VERIFIED (regression) | compare.py imports shared `validate_schema` (compare.py:55); darwin baseline self-compare GATE: PASS, exit 0 (verifier-run); wall-advisory gate step with 0.25/0.15 thresholds intact in benchmark.yml |
+| 3 | SC-2 methodology: Fair comparison — parity gate before timing, matched settings, interleaved counterbalanced protocol | ✓ VERIFIED (regression) | Golden-argv tests in the green suite; committed JSONs carry counterbalanced arm_order, per-rep cache_state, params hash_size 10G / decompressor / release binary path (verifier-inspected) |
+| 4 | SC-2 evidence: Committed full k=31 + k=21 results with >=3 reps, per-rep cache_state, medians on both axes, input fingerprints | ✓ VERIFIED (regression) | Verifier ran validate_schema over all three 04-results-*.json this pass: VALID; 3 reps/arm; cache_state on every rep; median_wall_s + median_peak_rss_bytes in every arm; fingerprints present (2,637,234,342 bytes / sha256 131ca561…). Dataset absent from disk (as in the prior pass) — on-disk binding rests on the 2026-10-10 pass (T-04-08) |
+| 5 | SC-2/04-04: Report mechanically rendered — re-running the renderer reproduces a byte-identical file | ✓ VERIFIED (was FAILED — gap 2 CLOSED) | Verifier re-rendered from the three committed JSONs this pass: diff vs committed report is EMPTY (byte-identical); provenance line 105 = 78e5eec409f0… = `git log -1 --format=%H -- scripts/bench/bench.py`; report commit 764f53f is report-only (numstat 1/1, provenance line only); bench.py commit 78e5eec rode alone |
+| 6 | SC-3/BENCH-03: Peak memory reported alongside wall-clock — memory as visible as speed | ✓ VERIFIED (regression) | Every arm in the JSONs carries median peak RSS + per-rep RSS; report tables carry "median peak RSS (GiB)" + "RSS vs jellyfish" columns (verifier-inspected; k=31 rustkmer 5.59 GiB vs jellyfish 84.84 GiB at slice, -93.4%) |
+| 7 | SC-4/BENCH-04: Graceful degradation to slice/synthetic; CI runs without the dataset | ✓ VERIFIED (regression) | resolve_mode ladder unit-pinned (suite green); benchmark.yml synthetic-only — no jellyfish, no dataset, no pip installs; green on both runners at 764f53f |
+| 8 | 04-01 core: Dual-platform parser, deterministic generator, schema v1, self-check, dead-infra deletion with gates green | ✓ VERIFIED (was FAILED — gap 1 / CR-02 CLOSED) | Dead infra still absent (benchmark.rs + performance-regression.yml gone, 0 module references); awk attribute audit passes — all six declarations gated `not(windows)`, `not(any(linux, windows))` present for portable current_rss_kb, old form absent (census 10/1/0); local darwin clippy -D warnings exit 0; measurement test 6 passed with rss_delta_bytes=1818624 printed; CI run 39108077664: `clippy (root) (windows-latest)` success, all 10 jobs green (verifier-verified via gh this pass) |
+| 9 | 04-02 protocol: Warmup discard, counterbalanced rounds, cooldown, honest cache_state, median+CV reduction, disk guardrail | ✓ VERIFIED (regression) | Committed data: 3 measured reps with alternating first-position tools, median/CV/cv_warning present, cache_state recorded (verifier-inspected); report methodology block records warmup/cooldown/counterbalanced schedule |
+| 10 | 04-04 prohibitions: No CI/synthetic run presented as BENCH-02 evidence; report numbers mechanically rendered | ✓ VERIFIED (regression + strengthened) | All BENCH-02 verdict numbers trace to mode=full committed JSONs (parity EQUAL lines from recorded distinct/total; CI appears nowhere as milestone evidence); byte-identity now holds on a clean tree (truth 5), so the detection property discriminates hand-edits again; no report figure is hand-written — the methodology figure derives from the fingerprinted input size (report lines 96-97 = committed JSON fingerprint) |
 
-**Score:** 8/10 truths verified (0 present, behavior-unverified)
+**Score:** 10/10 truths verified (0 present, behavior-unverified)
 
 ### Milestone Product Criterion Status (NOT a gaps_found trigger — escalated by design)
 
-**BENCH-02's product outcome is NOT MET: rustkmer does not match-or-beat Jellyfish2 on counting speed overall.** Measured verdict: **NO** — k=31 YES (rustkmer 494.19/485.89 s vs jellyfish 843.02 s; -34% RSS), k=21 NO (rustkmer 505.77/494.14 s vs jellyfish 97.26 s), on the user-approved CRR2044018 substitute, cold-cache partially satisfied. This is not an implementation gap: plan 04-04's flagged assumptions pre-declare a NO verdict a valid phase outcome that MUST be escalated, never tuned away. The verification requirement (fair measurement + verdict computed and recorded from evidence) is met; REQUIREMENTS.md honestly records BENCH-02 as the sole unchecked requirement (Pending). Phase 4 is the milestone's final phase — no later-phase deferral applies. The user decision (ship v1.0 on the k=31 result with k=21 documented, or plan a k=21 investigation first) belongs at `/gsd-complete-milestone`.
+**BENCH-02's product outcome is NOT MET: rustkmer does not match-or-beat Jellyfish2 on counting speed overall.** Measured verdict: **NO** — k=31 YES (rustkmer 494.19/485.89 s vs jellyfish 843.02 s; -34% RSS), k=21 NO (rustkmer 505.77/494.14 s vs jellyfish 97.26 s), on the user-approved CRR2044018 substitute, cold-cache partially satisfied. This is not an implementation gap: plan 04-04's flagged assumptions pre-declare a NO verdict a valid phase outcome that MUST be escalated, never tuned away. The gap-closure plan's prohibition 4 explicitly forbade re-deriving or re-litigating it, and nothing in the round touched it (evidence JSONs unchanged; verdict block re-verified intact this pass). The verification requirement (fair measurement + verdict computed and recorded from evidence) is met; REQUIREMENTS.md honestly records BENCH-02 as the sole unchecked requirement (Pending). Phase 4 is the milestone's final phase — no later-phase deferral applies. The user decision (ship v1.0 on the k=31 result with k=21 documented, or plan a k=21 investigation first) belongs at `/gsd-complete-milestone`.
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `scripts/bench/bench.py` | Measurement core + protocol + renderer | ✓ VERIFIED | 1,497 lines; all claimed functions present; stdlib-only imports (verified this pass) |
-| `scripts/bench/gen_synthetic.py` | Seeded deterministic FASTQ generator | ✓ VERIFIED | Determinism unit-pinned (suite green) |
-| `scripts/bench/make_slice.sh` | Deterministic slice tool | ✓ VERIFIED | gunzip -c pipeline (never zcat) |
-| `scripts/bench/tests/` (9 modules + 2 fixtures) | Unit tests | ✓ VERIFIED | 128 tests, verifier-run, exit 0; fixtures git-tracked via .gitignore negations (lines 70-71, verified) |
-| `scripts/bench/compare.py` | Gate comparator, exit 0/1/2 (+ advisory mode) | ✓ VERIFIED | 281 lines; imports shared validate_schema; 31 tests green |
-| `scripts/bench/baselines/bench_baseline.{darwin,linux}.json` | Per-platform committed baselines | ✓ VERIFIED | Both self-compare GATE: PASS (verifier-run); darwin baseline regenerated from run 38098134712 artifact with provenance note (6cffc30) |
-| `scripts/bench/README.md` | Bootstrap/regeneration/threshold procedures | ✓ VERIFIED | bootstrap/regeneration/threshold + the wall-advisory contingency and its 2026-10-17 activation record |
-| `.github/workflows/benchmark.yml` | CI regression gate | ✓ VERIFIED | Hygiene greps 0/0/0 (continue-on-error / \|\| true / pull_request_target); gate step carries --wall-advisory per the documented contingency; latest run green |
-| `.planning/.../04-pilot-calibration.md` | Parity line + calibration | ✓ VERIFIED | PARITY OK distinct=23241904 recorded with full extrapolation |
-| `.planning/.../04-results-full-k31.json` | k=31 full evidence | ✓ VERIFIED | 3 reps/arm, validate_schema VALID (verifier-run) |
-| `.planning/.../04-results-full-k21.json` | k=21 full evidence | ✓ VERIFIED | Same checks green |
-| `.planning/.../04-results-slice.json` | Slice + merge evidence | ✓ VERIFIED | VALID; merge conservation holds (239,912,072 == 119,972,170 + 119,939,902) |
-| `docs/benchmark-report.md` | Mechanically rendered milestone report | ✗ STALE-BY-ONE-LINE | Verdict content intact; byte-identity broken on line 105 (provenance) — gap 2 |
-| Deleted: `src/cli/commands/benchmark.rs`, `.github/workflows/performance-regression.yml` | Dead infra gone | ✓ VERIFIED | Both absent, 0 module references (verifier-checked this pass) |
+| `scripts/bench/bench.py` | Measurement core + protocol + renderer | ✓ VERIFIED | Substantive; WR-08 hardening present (full0 selection + guarded ValueError at :1280-1285; absent-key tolerance at :1268); stdlib-only |
+| `scripts/bench/gen_synthetic.py` | Seeded deterministic FASTQ generator | ✓ VERIFIED (regression) | Determinism unit-pinned (suite green) |
+| `scripts/bench/make_slice.sh` | Deterministic slice tool | ✓ VERIFIED (regression) | gunzip -c pipeline |
+| `scripts/bench/tests/` (9 modules + 2 fixtures) | Unit tests | ✓ VERIFIED | 130 tests, verifier-run, OK, exit 0 |
+| `scripts/bench/compare.py` | Gate comparator, exit 0/1/2 (+ advisory mode) | ✓ VERIFIED | Shared validate_schema import; IN-08 advisory-summary pin present (test_compare.py:200) |
+| `scripts/bench/baselines/bench_baseline.{darwin,linux}.json` | Per-platform committed baselines | ✓ VERIFIED (regression) | Darwin self-compare GATE: PASS (verifier-run, exit 0); wall-advisory contingency recorded in README |
+| `.github/workflows/benchmark.yml` | CI regression gate | ✓ VERIFIED (regression) | Hygiene greps 0/0/0; gate step with --wall-advisory; latest run 39108077776 at 764f53f success |
+| `.planning/.../04-pilot-calibration.md` | Parity line + calibration | ✓ VERIFIED (regression) | PARITY OK distinct=23241904 recorded |
+| `.planning/.../04-results-full-k31.json` | k=31 full evidence | ✓ VERIFIED (regression) | validate_schema VALID (verifier-run); untouched by the gap-closure round (last touched 8d63b91) |
+| `.planning/.../04-results-full-k21.json` | k=21 full evidence | ✓ VERIFIED (regression) | VALID; untouched |
+| `.planning/.../04-results-slice.json` | Slice + merge evidence | ✓ VERIFIED (regression) | VALID; merge conservation 239,912,072 == 119,972,170 + 119,939,902; untouched |
+| `docs/benchmark-report.md` | Mechanically rendered milestone report | ✓ VERIFIED (was STALE — restored) | Byte-identity holds on a clean tree (verifier-run diff empty); provenance = 78e5eec = bench.py's last commit; report-only commit 764f53f |
+| `tests/merge_bounded_memory_tests.rs` | Bounded-memory measurement test + helpers | ✓ VERIFIED (was the CR-02 defect file — fixed) | Gates on all seven items + two imports; consumer test intact, bound unchanged, measurement executes (rss_delta_bytes= printed) |
+| Deleted: `src/cli/commands/benchmark.rs`, `.github/workflows/performance-regression.yml` | Dead infra gone | ✓ VERIFIED (regression) | Both absent, 0 module references (verifier-checked) |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|----|--------|---------|
 | compare.py | bench.py | `from scripts.bench.bench import validate_schema` | ✓ WIRED | compare.py:55, verified this pass |
-| benchmark.yml | compare.py | gate step invokes CLI with 0.25/0.15 + --wall-advisory | ✓ WIRED | Step present after artifact upload (line 82-87) |
-| Results JSONs | render_report | `--render-report --results <jsons>` | ⚠️ WIRED (identity broken) | Render succeeds; output differs from committed report on the provenance line only — gap 2 |
-| Parity gate | Full-run trust | Pilot PARITY OK precedes full run; attempt-1 halt recorded (fix 8102985) | ✓ WIRED | Calibration file + report methodology block (lines 111+) |
-| Dataset file | Results fingerprint | size + sha256 per input | ⚠️ PARTIAL | Internally consistent (JSON == report figure); dataset absent from disk this pass — on-disk binding verified by the 2026-10-10 pass only |
-| Test fixtures | .gitignore negations | `!scripts/bench/tests/fixtures/time_*.txt` | ✓ WIRED | Lines 70-71 present |
+| benchmark.yml | compare.py | gate step invokes CLI with 0.25/0.15 + --wall-advisory | ✓ WIRED | Step present after artifact upload |
+| Results JSONs | render_report | `--render-report --results <jsons>` | ✓ WIRED | Render succeeds; output byte-identical to the committed report (gap 2 closed) |
+| cfg gates in merge_bounded_memory_tests.rs | gated consumer test at :373 | helper and consumer compile on the same platform set | ✓ WIRED | awk audit passes; CI windows clippy leg green — the dead_code errors cannot exist by construction |
+| harness_source_commit() (bench.py) | report provenance line | git log -1 -- bench.py, rendered after every bench.py-touching commit, committed separately | ✓ WIRED | Provenance = 78e5eec exactly; bench.py and report in separate commits (78e5eec vs 764f53f) |
+| Parity gate | Full-run trust | Pilot PARITY OK precedes full run; attempt-1 halt recorded (fix 8102985) | ✓ WIRED | Calibration file + report methodology block |
+| Dataset file | Results fingerprint | size + sha256 per input | ⚠️ PARTIAL (unchanged from prior pass) | Internally consistent (JSON == report figure); dataset absent from disk this pass — on-disk binding verified by the 2026-10-10 pass only |
+| Test fixtures | .gitignore negations | `!scripts/bench/tests/fixtures/time_*.txt` | ✓ WIRED | Present |
 
 ### Data-Flow Trace (Level 4)
 
 | Artifact | Data Variable | Source | Produces Real Data | Status |
 |----------|---------------|--------|--------------------|--------|
-| docs/benchmark-report.md | all medians/reps/deltas | committed 04-results-*.json | Yes | ✓ FLOWING (provenance line excepted — gap 2) |
-| 04-results-*.json | wall_s / peak_rss_bytes | /usr/bin/time on real runs (mode=full, CRR2044018) | Yes | ✓ FLOWING |
-| baselines | medians | real CI runner artifacts (linux: run 37951280461; darwin: regenerated from run 38098134712 in 6cffc30) | Yes | ✓ FLOWING |
-| bench_baseline.darwin.json | current gate input | live CI run results.json | Yes | ✓ FLOWING (latest run 39018676486 green with the advisory wall axis) |
+| docs/benchmark-report.md | all medians/reps/deltas/provenance | committed 04-results-*.json + git log | Yes | ✓ FLOWING (byte-identity proven this pass) |
+| 04-results-*.json | wall_s / peak_rss_bytes | /usr/bin/time on real runs (mode=full, CRR2044018) | Yes | ✓ FLOWING (files untouched since 8d63b91) |
+| baselines | medians | real CI runner artifacts | Yes | ✓ FLOWING (latest gate run green at 764f53f) |
+| methodology figure | input-size bytes | first mode=full file's input_fingerprint (size_bytes) | Yes | ✓ FLOWING (WR-08: now full-mode-sourced and order-independent, unit-pinned) |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Full harness unit suite | `python3 -m unittest discover -s scripts/bench/tests -t .` | Ran 128 tests, OK, exit 0 | ✓ PASS |
-| Report tamper-evidence | re-render from committed JSONs + `diff` | 1 line differs (line 105, provenance hash) | ✗ FAIL — gap 2 |
+| Full harness unit suite | `python3 -m unittest discover -s scripts/bench/tests -t .` | Ran 130 tests, OK, exit 0 | ✓ PASS |
+| WR-08 named tests (explicit) | `python3 -m unittest scripts.bench.tests.test_render_report.TestMethodologyFigure -v` | 2 tests, OK | ✓ PASS |
+| Report tamper-evidence | re-render from committed JSONs + `diff` | diff EMPTY — byte-identical | ✓ PASS (gap 2 closed) |
 | Committed evidence schema | `validate_schema` over all three 04-results-*.json | all VALID | ✓ PASS |
-| Baseline self-compare (both platforms) | `compare.py --baseline X --current X` | GATE: PASS x2, exit 0 | ✓ PASS |
-| Disk guardrail | `bench.py --mode full --disk-floor-gb 9999999` | exit 3 before any measurement | ✓ PASS |
-| Local Rust lint gate | `cargo clippy --all-targets -- -D warnings` (darwin) | exit 0, 0 errors | ✓ PASS |
-| Windows clippy merge gate | `gh run view 39018676504` (at 0c90f4d, code-identical to HEAD) | `clippy (root) (windows-latest): failure`; all 9 other jobs success | ✗ FAIL — gap 1 (CR-02) |
-| Benchmark CI gate liveness | `gh run list --workflow=benchmark.yml --branch dev` | latest 39018676486 @ 0c90f4d = success | ✓ PASS |
+| Baseline self-compare (darwin) | `compare.py --baseline X --current X` | GATE: PASS, exit 0 | ✓ PASS |
+| cfg attribute audit | awk audit + any-form/old-form greps | audit passes; 10 / 1 / 0 census | ✓ PASS |
+| Local Rust lint gate | `cargo clippy --all-targets -- -D warnings` (darwin) | exit 0 | ✓ PASS |
+| Bounded-memory measurement test | `cargo test --test merge_bounded_memory_tests -- --test-threads=1 --nocapture` | 6 passed; rss_delta_bytes=1818624 printed | ✓ PASS |
+| CI merge gate (authoritative, windows) | `gh run view 39108077664` (at 764f53f) | conclusion success; all 10 jobs green incl. clippy (root) (windows-latest) | ✓ PASS (gap 1 closed) |
+| Benchmark CI gate liveness | `gh run list --workflow=benchmark.yml --branch dev` | latest 39108077776 @ 764f53f = success | ✓ PASS |
 | Workflow hygiene | negative greps (continue-on-error / `\|\| true` / pull_request_target) | 0 / 0 / 0 | ✓ PASS |
-| Dataset fingerprint on disk | shasum + stat on CRR2044018_r1.fq.gz | dataset absent from disk | ? SKIP — internal consistency verified; on-disk binding rests on the 2026-10-10 pass |
-| Rust workspace tests | `cargo test` | green, direct exit 0 | ✓ PASS (run this session per orchestrator context; consistent with the green windows test legs of run 39018676504) |
+| Dataset fingerprint on disk | shasum + stat on CRR2044018_r1.fq.gz | dataset absent from disk | ? SKIP — internal consistency verified; on-disk binding rests on the 2026-10-10 pass (unchanged from prior) |
 
 ### Probe Execution
 
@@ -148,28 +123,28 @@ None declared — no `probe-*.sh` scripts exist under `scripts/` and no plan dec
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
-|-------------|------------|---------------------|----------|----------|
-| BENCH-01 | 04-01, 04-03 | Reproducible harness measuring count+merge wall + peak RSS, CI regression gate | ✓ SATISFIED | Harness + gate live, tested, and green at the latest run; REQUIREMENTS.md [x] |
-| BENCH-02 | 04-02, 04-04 | rustkmer matches or beats Jellyfish2 on counting speed on human-scale data, fair methodology | ✓ MEASURED, ✗ OUTCOME NOT MET — escalated | Measurement + fair methodology + verdict produced and committed honestly; verdict is NO (k=21 fails ~4-5x); REQUIREMENTS.md honestly Pending; user decision at milestone close (see Milestone Product Criterion Status) |
-| BENCH-03 | 04-01, 04-04 | Peak memory reported alongside wall-clock | ✓ SATISFIED | Every rep/arm/table carries both metrics; REQUIREMENTS.md [x] |
+|-------------|------------|---------------------|--------|----------|
+| BENCH-01 | 04-01, 04-03, 04-05 | Reproducible harness measuring count+merge wall + peak RSS, CI regression gate | ✓ SATISFIED | Harness + gate live, tested (130 OK), green at 764f53f on both workflows; the merge gate is green on every CI platform including windows-latest; REQUIREMENTS.md [x] |
+| BENCH-02 | 04-02, 04-04, 04-05 | rustkmer matches or beats Jellyfish2 on counting speed on human-scale data, fair methodology | ✓ MEASURED, ✗ OUTCOME NOT MET — escalated | Measurement + fair methodology + verdict produced and committed honestly; verdict is NO (k=21 fails ~4-5x); evidence untouched by the gap-closure round; REQUIREMENTS.md honestly Pending; user decision at milestone close (see Milestone Product Criterion Status) |
+| BENCH-03 | 04-01, 04-04, 04-05 | Peak memory reported alongside wall-clock | ✓ SATISFIED | Every rep/arm/table carries both metrics; REQUIREMENTS.md [x] |
 | BENCH-04 | 04-01, 04-03 | Graceful degradation to slice/synthetic; CI without the dataset | ✓ SATISFIED | Resolver ladder tested; CI synthetic-only, green on both runners; REQUIREMENTS.md [x] |
 
-Orphaned requirements: none — all four phase-4 IDs (BENCH-01..04) are claimed by plans and map to verified evidence.
+Orphaned requirements: none — all four phase-4 IDs (BENCH-01..04) are claimed by plans (04-01 through 04-05) and map to verified evidence.
 
 ### Test Quality Audit
 
 | Test File | Linked Req | Active | Skipped | Circular | Assertion Level | Verdict |
 |-----------|-----------|--------|---------|----------|-----------------|---------|
-| test_time_parser.py | BENCH-01 | yes | 0 | no | Value (exact 62384*1024) | Strong |
-| test_generator.py | BENCH-04 | yes | 0 | no | Value (sha256 equality) | Strong |
-| test_schema.py | BENCH-03 | yes | 0 | no | Value (negative + real-run cases) | Strong |
-| test_degradation.py | BENCH-04 | yes | 0 | no | Behavioral (15-row ladder) | Strong |
-| test_cmd_matrix.py | BENCH-02 | yes | 0 | no | Value (golden argv, 16 hostile paths) | Strong |
-| test_compare.py | BENCH-01 | yes | 0 | no | Value (one-ulp boundaries, all exit-2 classes, 4 advisory cases) | Strong — note IN-08: the advisory PASS summary line itself is not pinned |
+| test_time_parser.py | BENCH-01 | yes | 0 | no | Value | Strong |
+| test_generator.py | BENCH-04 | yes | 0 | no | Value (sha256) | Strong |
+| test_schema.py | BENCH-03 | yes | 0 | no | Value | Strong |
+| test_degradation.py | BENCH-04 | yes | 0 | no | Behavioral | Strong |
+| test_cmd_matrix.py | BENCH-02 | yes | 0 | no | Value (golden argv) | Strong |
+| test_compare.py | BENCH-01 | yes | 0 | no | Value + assertIn | Strong — IN-08 now closed: the advisory PASS summary line is pinned |
 | test_merge_input.py | BENCH-02/03 | yes | 0 | no | Behavioral | Strong |
-| test_render_report.py | BENCH-03 | yes | 0 | no | Value (byte-identity, verdict truth table, JSON-sensitivity) | Strong — note: cannot catch a stale COMMITTED report (this pass's gap 2 is exactly that class) |
+| test_render_report.py | BENCH-03/02 | yes | 0 | no | Value (byte-identity, verdict truth table, ValueError regex, order-independence) | Strong — WR-08 now closed: both new tests pin the fixed behavior |
 
-Disabled tests on requirements: 0 (the two grep hits for "skip" are docstring prose). Circular patterns: 0. No BLOCKERs from test quality.
+Disabled tests on requirements: 0 (verifier grep on the two modified test files: 0 hits). Circular patterns: 0 (expected values derive from fixtures/independent construction, not from the system under test). No BLOCKERs from test quality.
 
 ### Decision Coverage
 
@@ -179,43 +154,32 @@ Skipped cleanly — no `04-CONTEXT.md` exists in the phase directory (no `<decis
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| tests/merge_bounded_memory_tests.rs | 102-219 | Ungated Windows-dead measurement helpers behind a windows-gated consumer (CR-02, review disposition open) | 🛑 Blocker | windows-latest clippy merge gate red at HEAD — every push/PR to dev fails CI until gated |
-| docs/benchmark-report.md | 105 | Stale provenance hash — byte-identity re-render fails by one line | 🛑 Blocker | T-04-07 tamper-evidence property non-discriminating until re-rendered and recommitted |
-| scripts/bench/bench.py | 1275 | WR-08: unguarded `first["input_fingerprint"][0]` + files_data[0] ordering sensitivity | ⚠️ Warning | Latent; committed report unaffected; open review finding |
-| scripts/bench/tests/test_compare.py | 190-236 | IN-08: advisory-mode PASS summary line not pinned by any test | ℹ️ Info | Missing-test gap; one assertIn closes it |
-| src/cli/commands/count.rs | 27 | Stale prose comment "Phase 4's benchmark will sweep this" | ℹ️ Info | Carried from prior pass; doc comment only |
+| (none) | - | Debt-marker gate: 0 hits for TBD/FIXME/XXX/TODO/HACK/PLACEHOLDER across all five gap-closure-modified files (verifier-run) | — | Clean |
 
-Debt-marker gate: clean — 0 hits for TBD/FIXME/XXX/TODO/HACK/PLACEHOLDER across all phase files and the post-verification delta files (verifier-run, per-pattern counts). Carried open review findings WR-01..WR-07 and IN-01..IN-07 (04-REVIEW-DISPOSITION.md) remain non-blocking advisory inventory with open dispositions; the review gate is advisory.
+Resolved this round: the two prior 🛑 Blockers (ungated Windows-dead helpers in tests/merge_bounded_memory_tests.rs; stale provenance line in docs/benchmark-report.md) and the two prior advisories (WR-08, IN-08) are all closed with first-hand evidence above. Remaining open review findings WR-01..WR-07 and IN-01..IN-07 (04-REVIEW-DISPOSITION.md) stay non-blocking advisory inventory; the review gate is advisory. Info-level note: `src/io/fastq.rs:597` contains a "220,028 k-mers" historical code comment (from 8102985, 2026-10-10) documenting the multi-member-gzip truncation bug — it is a code-comment rationale, not a benchmark report figure; the report's figures render mechanically (byte-identity proven).
 
 ### Advisory (New Scope, Unevidenced)
 
-Reported, not blocking — no deterministic failing test behind either row.
+None — no new-scope Step 7 findings this pass. Both prior advisory rows (WR-08, IN-08) were closed by the gap-closure round with deterministic evidence (unit tests + verifier-run renders).
 
-| # | Finding | Category | Why Advisory |
-|---|---------|----------|--------------|
-| 1 | WR-08: renderer's unguarded input_fingerprint[0] / files_data[0] ordering (bench.py:1275) | other | Latent robustness defect; no failing test; committed report unaffected |
-| 2 | IN-08: advisory-mode PASS summary line not pinned by a test (test_compare.py) | other | Missing-test gap; no observed failure |
+### Re-verification Context (2026-10-17 → 2026-10-18)
 
-### Re-verification Context (2026-10-10 → 2026-10-17)
+Prior report: gaps_found, 8/10, two gaps. Resolution this pass (04-05-PLAN.md, gap_closure: true — commits 444f660, 4eeb9d4, 78e5eec, 764f53f, 63f2835):
 
-Prior report: human_needed, 10/10, three human items. Resolution this pass:
+| Prior gap | Resolution |
+|-----------|------------|
+| Gap 1 — CR-02: clippy (root) (windows-latest) red at HEAD (7 dead_code errors in tests/merge_bounded_memory_tests.rs) | CLOSED: per-item cfg gating on all seven items + two exclusive imports (444f660); local clippy exit 0; measurement test green with output line; authoritative CI proof run 39108077664 at 764f53f — windows clippy leg success, all 10 jobs green (verifier-verified via gh this pass) |
+| Gap 2 — report byte-identity broken (stale provenance line 105) | CLOSED: WR-08-hardened renderer committed alone (78e5eec), report re-rendered and committed alone (764f53f, numstat 1/1); fresh render of the committed tree is byte-identical (verifier-run diff empty); provenance re-stabilized at 78e5eec |
+| Prior advisory WR-08 (unguarded fingerprint[0] / files_data[0] ordering) | CLOSED as a Task 2 rider: guarded named ValueError + full-mode-sourced figure; both tests pass (TDD RED 4eeb9d4 → GREEN 78e5eec) |
+| Prior advisory IN-08 (advisory PASS line unpinned) | CLOSED as a Task 2 rider: assertIn pin in the exit-0 wall-breach test |
 
-| Prior human item | Resolution |
-|------------------|------------|
-| #1 BENCH-02 milestone decision | Still open BY DESIGN — escalated to /gsd-complete-milestone (see Milestone Product Criterion Status) |
-| #2 Red darwin benchmark leg + unpushed tree | RESOLVED operationally: darwin baseline regenerated from run 38098134712 (6cffc30), wall axis demoted to advisory per the pre-locked README contingency (375fac5), tree pushed through 0c90f4d, latest benchmark.yml runs green (39018676486) |
-| #3 Flagged prohibition P7 / CR-01 | RESOLVED: fixed in bb5ccb0 — literal gone, figure now mechanical (verified this pass); disposition recorded in 04-REVIEW-DISPOSITION.md — but the fix commit itself introduced gap 2 |
+Evidence integrity across the round: the three 04-results-*.json are byte-for-byte unchanged (`git diff 1c41c40..HEAD` empty over them; last touch 8d63b91); the report diff is exactly the one provenance line; no measurement, verdict, or fingerprint moved; the BENCH-02 NO verdict was not re-derived or re-litigated (prohibition 4).
 
 ### Gaps Summary
 
-Two gaps, both introduced by post-verification follow-on commits, both cheap to close, both mechanically proven:
-
-1. **CR-02 (windows clippy red at HEAD)** — one gating attribute (or file-top cfg_attr) in `tests/merge_bounded_memory_tests.rs` plus a push to verify the leg green. Until then the dev-branch merge gate fails every push/PR.
-2. **Report byte-identity broken** — re-render `docs/benchmark-report.md` from the committed JSONs and recommit (docs-only). The provenance line then re-stabilizes; consider rendering provenance from the results JSONs to kill the self-reference paradox permanently.
-
-Neither gap touches a measurement, the verdict, or the committed evidence — all numbers remain mechanically sourced and internally consistent. The BENCH-02 product decision (verdict NO on the substitute dataset) remains the milestone-close escalation it was designed to be, not a phase gap.
+None. Both prior gaps are closed with their authoritative evidence (CI leg green at the pushed SHA; byte-identity on a clean tree), the two riding advisories are closed with unit-pinned fixes, all suites are green (cargo test, clippy -D warnings local + windows CI, 130 harness tests OK), and the committed evidence is untouched. The BENCH-02 product decision (verdict NO on the substitute dataset) remains the milestone-close escalation it was designed to be — see Milestone Product Criterion Status.
 
 ---
 
-_Verified: 2026-10-17T15:49:47Z_
+_Verified: 2026-10-18T07:58:24Z_
 _Verifier: Claude (gsd-verifier)_

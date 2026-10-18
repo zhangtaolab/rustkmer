@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation & Quality** - Establish CI protection, consolidate format logic, and clean library I/O (completed 2026-07-01)
 - [x] **Phase 2: Parallel Counting** - Implement lock-free concurrent counting for multi-core speedup (completed 2026-07-01)
 - [x] **Phase 3: Memory Safety** - Bounded merge routing and dense k-mer storage (completed 2026-10-09)
-- [ ] **Phase 4: Benchmark & Validation** - Reproducible harness and Jellyfish2 comparison on CRR1936095
+- [x] **Phase 4: Benchmark & Validation** - Reproducible harness and Jellyfish2 comparison on CRR1936095 (completed 2026-10-18)
 
 ## Phase Details
 
@@ -142,7 +142,7 @@ Plans:
   3. The benchmark reports peak memory alongside wall-clock — memory wins (not just speed) are visible and validated
   4. The harness degrades gracefully to a slice or synthetic input on machines without the full CRR1936095 dataset — CI can run without the full 5.2 GB data
 
-**Plans**: 5/5 plans executed (gap-closure round opened 2026-10-17 by `04-VERIFICATION.md` — status `gaps_found`, 8/10 truths: 04-05)
+**Plans**: 5/5 plans complete (gap-closure round opened 2026-10-17 by `04-VERIFICATION.md` — status `gaps_found`, 8/10 truths: 04-05)
 
 Plans:
 **Wave 1**
@@ -171,7 +171,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation & Quality | 4/4 | Complete    | 2026-07-01 |
 | 2. Parallel Counting | 5/5 | Complete    | 2026-07-01 |
 | 3. Memory Safety | 17/17 | Complete    | 2026-10-09 |
-| 4. Benchmark & Validation | 5/5 | In Progress | - |
+| 4. Benchmark & Validation | 5/5 | Complete    | 2026-10-18 |
 
 ## Backlog
 
