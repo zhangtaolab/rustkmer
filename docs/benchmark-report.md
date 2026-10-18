@@ -102,7 +102,7 @@
 
 ### Harness provenance
 
-- harness: `scripts/bench/bench.py` @ git commit `7eb510dae56194a4059afc65e886ee9d9be34ff2`; results schema_version 1
+- harness: `scripts/bench/bench.py` @ git commit `78e5eec409f0fede27e69167357f82a630b096f2`; results schema_version 1
 - platform (as recorded): Darwin 25.6.0 arm64, python 3.12.8
 - rustkmer binary path (as recorded): `target/release/rustkmer`
 
