@@ -264,6 +264,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 261017-n2p | Add windows-latest to all three OS matrices (clippy-root/test-root/pyo3-build) in .github/workflows/ci.yml — closes #15 | 2026-10-17 | b514331 | [261017-n2p-add-windows-latest-to-all-three-os-matri](./quick/261017-n2p-add-windows-latest-to-all-three-os-matri/) |
+| 261018-ret | Fix examples/python legacy-API scripts: syntax error, personal DB paths -> repo fixtures, k-derived patterns, dead build-kmer-db subcommand | 2026-10-18 | 2e0efcb | [261018-ret-fix-examples-python-legacy-api-scripts](./quick/261018-ret-fix-examples-python-legacy-api-scripts/) |
 
 ## Deferred Items
 
@@ -275,6 +276,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-18T07:41:09.581Z
-Stopped at: Phase 04 complete — all phases complete
+Last session: 2026-10-18T12:05:00.000Z
+Stopped at: Completed quick-261018-ret (examples/python legacy-API fixes, 3 commits)
 Resume file: None
