@@ -157,7 +157,7 @@ results = engine.query_hybrid("AAAAAAAA{N5}AAAAAA")
 # 显示结果
 for kmer, count in results.items():
     print(f"{kmer}: {count}")
-""",
+''',
         },
         {
             "title": "带指标的查询",
@@ -175,7 +175,7 @@ print(f"总匹配数: {metrics.total_matches}")
 
 # 获取结果
 results = dict(metrics.results)
-""",
+''',
         },
         {
             "title": "批量查询",
@@ -190,7 +190,7 @@ results = engine.query_prefix_batch_metrics(patterns)
 
 for pattern, metrics in results.items():
     print(f"模式 '{pattern}': {metrics.total_matches} 个结果")
-""",
+''',
         },
     ]
 
@@ -219,7 +219,7 @@ def main():
     print(f"\n💡 下一步:")
     print(f"   1. 使用真实数据库文件测试:")
     print(
-        f"      python3 simple_prefix_query.py ~/Data/data/kmer/K19/R1_001.rkdb 'AAAAAAA{{N5}}AAAAAA'"
+        f"      python3 simple_prefix_query.py test_data/databases/small_test.rkdb"
     )
     print(f"   2. 查看完整文档:")
     print(f"      PYO3_PYTHON_BINDING_GUIDE.md")

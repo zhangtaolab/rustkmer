@@ -61,7 +61,9 @@ class UnifiedQueryExample:
         print("🔍 精确查询演示")
         print("=" * 50)
 
-        test_kmers = ["GCCGCGG", "ATCCTGA", "GGCCGGC", "TTTAAAA"]
+        k = self.db.kmer_size
+
+        test_kmers = ["A" * k, "T" * k, "G" * k, "C" * k]
 
         for kmer in test_kmers:
             try:
@@ -87,7 +89,10 @@ class UnifiedQueryExample:
         print("🔤 前缀查询演示")
         print("=" * 50)
 
-        test_prefixes = ["GCC", "ATC", "AAA", "TTT"]
+        # 前缀从k长度的探针序列切片得到
+        probe_a = "A" * self.db.kmer_size
+        probe_t = "T" * self.db.kmer_size
+        test_prefixes = [probe_a[:3], probe_t[:3], probe_a[:2], probe_t[:2]]
 
         for prefix in test_prefixes:
             try:
@@ -125,50 +130,14 @@ class UnifiedQueryExample:
         kmer_size = int(db_info["kmer_size"])
         print(f"   数据库k-mer大小: {kmer_size}")
 
-        # 根据数据库大小生成合适的测试模式
-        hybrid_patterns = []
-        if kmer_size == 7:
-            # 对于k-mer大小7，确保前缀+后缀+N=7
-            hybrid_patterns = [
-                "A{N5}C",  # 1+5+1=7 ✅ (已验证工作)
-                "G{N4}T",  # 1+4+1=6 ❌ (修正: G{N5}C)
-                "C{N3}G",  # 1+3+1=5 ❌ (修正: C{N5}G)
-                "GC{N2}T",  # 2+2+1=5 ❌ (修正: GC{N2}T)
-            ]
-            # 修正模式长度计算 (前缀+后缀+N必须等于7)
-            corrected_patterns = [
-                "A{N5}C",  # A(1) + N(5) + C(1) = 7 ✅
-                "G{N5}C",  # G(1) + N(5) + C(1) = 7 ✅
-                "C{N5}G",  # C(1) + N(5) + G(1) = 7 ✅
-                "GC{N3}T",  # GC(2) + N(3) + T(1) = 6 ❌ (修正: GCG{N1})
-            ]
-            # 确保所有模式都正确计算
-            valid_patterns = [
-                "A{N5}C",  # 1+5+1=7 ✅
-                "G{N5}C",  # 1+5+1=7 ✅
-                "C{N5}G",  # 1+5+1=7 ✅
-                "G{N4}CG",  # 1+4+2=7 ✅
-                "GC{N3}G",  # 2+3+1=6 ❌ (修正: GC{N2}T)
-                "GC{N2}T",  # 2+2+1=5 ❌ (修正: G{N3}CT)
-                "G{N3}CT",  # 1+3+2=6 ❌ (修正: GCC{N1}T)
-                "GCC{N1}T",  # 3+1+1=5 ❌ (修正: GC{N3}A)
-                "GC{N3}A",  # 2+3+1=6 ❌ (修正: 简化)
-                "G{N2}C",  # 1+2+1=4 ❌ (保留一个简单的)
-            ]
-            # 选择已验证有效的模式
-            reliable_patterns = [
-                "A{N5}C",  # 1+5+1=7 ✅ (已验证工作，找到52个结果)
-                "G{N5}C",  # 1+5+1=7 ✅ (已验证工作，找到24个结果)
-                "C{N5}G",  # 1+5+1=7 ✅ (已验证工作，找到22个结果)
-                "G{N4}CG",  # 1+4+2=7 ✅ (已验证工作，找到0个结果)
-            ]
-            hybrid_patterns = reliable_patterns
-        else:
-            # 其他大小的通用示例
-            hybrid_patterns = [
-                "A{N5}C",  # 1+5+1=7 (标准示例)
-                "GCC{N1}G",  # 3+1+1=5 (测试长度验证)
-            ]
+        # 根据数据库k-mer大小生成总长度为k的混合模式
+        # 格式: 前缀长度 + N数量 + 后缀长度 = k
+        hybrid_patterns = [
+            "A{N%d}C" % (kmer_size - 2),  # 1 + (k-2) + 1 = k
+            "G{N%d}C" % (kmer_size - 2),  # 1 + (k-2) + 1 = k
+            "C{N%d}G" % (kmer_size - 2),  # 1 + (k-2) + 1 = k
+            "A{N%d}CGT" % (kmer_size - 4),  # 1 + (k-4) + 3 = k
+        ]
 
         for pattern in hybrid_patterns:
             try:
@@ -225,16 +194,20 @@ class UnifiedQueryExample:
         print("🎯 模糊查询演示")
         print("=" * 50)
 
+        # 模糊查询使用专门的PyFuzzyQuery引擎（真实实现）
+        k = self.db.kmer_size
+        fuzzy = pyrustkmer.PyFuzzyQuery(self.db)
+
         fuzzy_patterns = [
-            ("GCCGCNG", 1),  # GCCGCN G，允许1个突变
-            ("ATCGTA", 2),  # ATCGTA，允许2个突变
+            ("A" * k, 1),  # 全A序列，允许1个突变
+            ("A" * (k - 1) + "N", 2),  # N通配符结尾，允许2个突变
         ]
 
         for pattern, max_mutations in fuzzy_patterns:
             try:
                 print(f"\n🔍 模糊查询: {pattern} (最大突变: {max_mutations})")
 
-                result = self.db.query_fuzzy(pattern, max_mutations)
+                result = fuzzy.query_fuzzy(pattern, max_mutations=max_mutations)
                 print(f"   ✓ 查询完成，耗时 {result.query_time_ms}ms")
                 print(f"   总匹配数: {result.total_matches}")
                 print(f"   突变容忍度: {result.mutation_tolerance}")
@@ -295,10 +268,8 @@ class UnifiedQueryExample:
 
 def main():
     """主函数"""
-    # 使用测试数据路径
-    test_data_dir = (
-        Path(__file__).parent.parent.parent / "python" / "tests" / "test_data"
-    )
+    # 使用测试数据路径（仓库内置fixture）
+    test_data_dir = Path(__file__).parent.parent.parent / "test_data" / "databases"
 
     # 查找可用的测试数据库
     possible_databases = [
