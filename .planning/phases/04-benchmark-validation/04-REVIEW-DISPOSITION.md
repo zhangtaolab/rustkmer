@@ -3,6 +3,10 @@ phase: 04
 review: 04-REVIEW.md
 titles: json
 findings:
+  - id: IN-09
+    severity: info
+    disposition: open
+    title: "Fingerprint-less results files now pass through the fingerprints section silently"
   - id: CR-02
     severity: critical
     disposition: open
@@ -75,18 +79,19 @@ findings:
     severity: info
     disposition: open
     title: "Leading-hyphen paths pass validate_path and reach argv positions where tools parse options"
-open: 17
-total: 18
-recorded: 2026-10-17T15:39:34.693Z
+open: 18
+total: 19
+recorded: 2026-10-18T07:52:46.221Z
 ---
 
 # Phase 04: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-02 | critical | open | - |
-| WR-08 | warning | open | - |
-| IN-08 | info | open | - |
+| IN-09 | info | open | - |
+| CR-02 | critical | open | - (not in the current review) |
+| WR-08 | warning | open | - (not in the current review) |
+| IN-08 | info | open | - (not in the current review) |
 | CR-01 | critical | fixed | bb5ccb0 (user-approved during UAT: figure now derived from fingerprinted input size; re-render byte-identical) (not in the current review) |
 | WR-01 | warning | open | - (not in the current review) |
 | WR-02 | warning | open | - (not in the current review) |
