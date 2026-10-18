@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 04
 current_phase_name: Benchmark & Validation
 status: executing
-stopped_at: Phase 03 complete, ready to verify Phase 04
-last_updated: "2026-10-18T07:16:42.048Z"
-last_activity: 2026-10-17
+stopped_at: Completed 04-05-PLAN.md (phase 04 gap closure; CI green incl. windows clippy)
+last_updated: "2026-10-18T07:41:09.735Z"
+last_activity: 2026-10-18
 last_activity_desc: Phase 04 execution started
-state_head: f76ccb18ebd64035f7c623a6df36ed00e28afa4d
+state_head: 764f53f2589a7f30414c4f53bfffb3b0b88e6672
 progress:
   total_phases: 4
   completed_phases: 3
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 
 ## Current Position
 
-Phase: 04 (Benchmark & Validation) — READY TO EXECUTE
-Plan: 1 of 4
-Status: Ready to execute
-Last activity: 2026-10-17 — Phase 04 execution started
+Phase: 04 (Benchmark & Validation) — EXECUTING
+Plan: 5 of 5 (all plans summarized; phase ready for verification)
+Status: Phase 04 execution complete
+Last activity: 2026-10-18 — Completed 04-05-PLAN.md (gap closure: CR-02 + report byte-identity)
 
-Progress: [████████░░] 75%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -97,6 +97,7 @@ Progress: [████████░░] 75%
 | Phase 04 P02 | 16 min | 2 tasks | 2 files |
 | Phase 04 P03 | 33 min | 3 tasks | 6 files |
 | Phase 04 P04 | ~12 min (Task 3); plan incl. 3.2h benchmark run | 3 tasks | 6 files |
+| Phase 04 P05 | 16 min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -238,6 +239,9 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-04: Option (b) no-sudo benchmark execution (user-resolved checkpoint, 2026-10-10): every rep records cache_state 'unavailable' and docs/benchmark-report.md states plainly the cold-cache BENCH-02 criterion is PARTIALLY SATISFIED — the criterion's evidence is the recording, not the claim
 - [Phase 04]: 04-04: attempt-1 full run halted at the count-parity gate (single-member GzDecoder silently truncated concatenated gzip; 220,028 vs 4.45 B k-mers) — fixed in 8102985 (MultiGzDecoder + regression test, RED->GREEN); recorded as a methodology finding in the report; results are from post-fix attempt 2
 - [Phase 04]: 04-04: BENCH-02 verdict computed conservatively from recorded medians: NO overall — k=31 YES (rustkmer 494.19/485.89 s @ 55.2/55.3 GiB vs jellyfish 843.02 s @ 84.0 GiB), k=21 NO (jellyfish 97.26 s vs rustkmer ~500 s, 5x); BENCH-02 left unchecked in REQUIREMENTS.md — a NO is a valid measured outcome, escalated to the user at milestone close (also: substitute dataset CRR2044018, cold-cache partial)
+- [Phase 04]: 04-05: per-item cfg gating over the file-top cfg_attr allow for the Windows-dead measurement helpers — per-item keeps -D warnings meaningful for future Windows dead code and matches the file's existing per-platform style
+- [Phase 04]: 04-05: Task 2 executed as TDD RED->GREEN commit pair (test 4eeb9d4, feat 78e5eec) per the binding tdd contract; bench.py and its re-rendered report never share a commit (gap-2 discipline), and bench.py rode completely alone
+- [Phase 04]: 04-05: render_report's methodology figure sources from the first mode=full file with a named ValueError on empty/absent input_fingerprint (WR-08); BENCH-02's measured NO verdict untouched — stays escalated to /gsd-complete-milestone
 
 ### Pending Todos
 
@@ -270,6 +274,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-17T09:35:00.000Z
-Stopped at: Phase 03 complete (re-verified 2026-10-17), ready to verify Phase 04
+Last session: 2026-10-18T07:41:09.581Z
+Stopped at: Completed 04-05-PLAN.md (phase 04 gap closure; CI green incl. windows clippy)
 Resume file: None
