@@ -195,6 +195,9 @@ class TestWallAdvisory(CompareHarness):
         self.assertEqual(code, 0)
         self.assertIn("GATE: PASS", out)
         self.assertNotIn("GATE: FAIL", out)
+        # IN-08: pin the ADVISORY-mode PASS summary itself — the plain
+        # all-axes PASS line also matches the bare "GATE: PASS" prefix.
+        self.assertIn("wall breach(es) advisory, not gating", out)
         self.assertIn("threshold 25.00%  ADVISORY", out)
         self.assertIn("ADVISORY wall regression", out)
         self.assertIn("metric=median_wall_s", out)

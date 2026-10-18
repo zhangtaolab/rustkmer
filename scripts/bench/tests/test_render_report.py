@@ -254,6 +254,81 @@ class TestMandatoryStatements(RenderFixtureBase):
         self.assertIn("cv_warning flags:", report)
 
 
+class TestMethodologyFigure(RenderFixtureBase):
+    """WR-08: the methodology note's input-size figure must come from the
+    first mode=FULL results file, with a named failure when it cannot."""
+
+    FULL_SIZE = 2_637_234_342
+    SLICE_SIZE = 359_504_511
+
+    def _full_results(self):
+        return build_results(
+            mode="full",
+            arms=[
+                build_arm("count-A", "rustkmer", (494.19, 494.18, 499.98),
+                          (11 * (1 << 30),) * 3),
+                build_arm("jellyfish-count-A", "jellyfish", (843.02, 657.82,
+                                                             875.18),
+                          (80 * (1 << 30),) * 3),
+            ],
+            fingerprints=[{"path": "full_r1.fq.gz",
+                           "size_bytes": self.FULL_SIZE,
+                           "sha256": "ab" * 32}])
+
+    def _slice_results(self):
+        return build_results(
+            mode="slice",
+            arms=[
+                build_arm("count-A", "rustkmer", (16.0, 16.0, 16.0),
+                          (5 * (1 << 30),) * 3, distinct=100, total=1000),
+                build_arm("count-B", "rustkmer", (16.0, 16.0, 16.0),
+                          (5 * (1 << 30),) * 3, distinct=120, total=1100),
+                build_arm("jellyfish-count-A", "jellyfish", (22.0, 22.0,
+                                                             22.0),
+                          (80 * (1 << 30),) * 3, distinct=100, total=1000),
+                build_arm("merge", "rustkmer", (7.5, 7.5, 7.5),
+                          (16 * (1 << 30),) * 3, distinct=150, total=2100),
+            ],
+            fingerprints=[
+                {"path": "slice-0.fq", "size_bytes": self.SLICE_SIZE,
+                 "sha256": "aa" * 32},
+                {"path": "slice-1.fq", "size_bytes": self.SLICE_SIZE,
+                 "sha256": "bb" * 32},
+            ])
+
+    def test_methodology_figure_empty_fingerprint_raises_named_error(self):
+        """Empty (or absent) fingerprint on the full file raises a ValueError
+        naming input_fingerprint and mode=full — never a bare IndexError."""
+        arms = [
+            build_arm("count-A", "rustkmer", (100.0,) * 3,
+                      (10 * (1 << 30),) * 3),
+            build_arm("jellyfish-count-A", "jellyfish", (200.0,) * 3,
+                      (80 * (1 << 30),) * 3),
+        ]
+        empty = self.write_results(
+            build_results(mode="full", arms=arms, fingerprints=[]),
+            "empty.json")
+        with self.assertRaisesRegex(ValueError,
+                                    "input_fingerprint.*mode=full"):
+            render_report([str(empty)], self.root / "out.md")
+        absent = build_results(mode="full", arms=arms, fingerprints=[])
+        del absent["input_fingerprint"]
+        absent_path = self.write_results(absent, "absent.json")
+        with self.assertRaisesRegex(ValueError,
+                                    "input_fingerprint.*mode=full"):
+            render_report([str(absent_path)], self.root / "out.md")
+
+    def test_methodology_figure_sourced_from_full_mode_file_not_order(self):
+        """--results ordered slice-first: the halt-note figure is the FULL
+        run's input size — CLI order cannot attach it to the wrong run."""
+        report = self.render([
+            self.write_results(self._slice_results(), "slice.json"),
+            self.write_results(self._full_results(), "full.json"),
+        ])
+        self.assertIn(f"{self.FULL_SIZE:,}-byte input", report)
+        self.assertNotIn(f"{self.SLICE_SIZE:,}-byte input", report)
+
+
 class TestErrorClasses(RenderFixtureBase):
     """Loud failures, never silent skips."""
 
