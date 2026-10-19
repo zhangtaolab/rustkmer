@@ -68,8 +68,13 @@ impl CompressedFileReader for DefaultCompressedFileReader {
                 // Multi-member (concatenated) gzip files are common for
                 // archive-downloaded FASTQ/FASTA inputs; a single-member
                 // decoder silently stops at the first member's EOF.
-                // MultiGzDecoder decodes all concatenated members and is
-                // byte-identical on single-member files.
+                // MultiGzDecoder decodes all concatenated members. Its
+                // output matches the single-member decoder's only when
+                // nothing follows the final member; any trailing non-gzip
+                // bytes (padded writes, appended text, a torn second
+                // member) surface as a mid-stream io error instead of
+                // being silently ignored — loud failure is deliberate.
+                // Pinned by test_read_all_errors_on_trailing_garbage_after_gzip_member.
                 let decoder = flate2::read::MultiGzDecoder::new(file);
                 Box::new(io::BufReader::new(decoder))
             }
@@ -765,5 +770,41 @@ mod tests {
         );
         assert_eq!(filtered[0].id(), "q40");
         assert_eq!(filtered[1].id(), "q39");
+    }
+
+    /// IN-12 pin: a `.fastq.gz` consisting of one valid gzip member followed
+    /// by literal non-gzip trailing bytes must fail LOUDLY through the same
+    /// process_file -> open_compressed path the CLI uses — the reader must
+    /// not silently stop at the first member and swallow the garbage. The
+    /// assertion checks this module's own record-reading context, never
+    /// flate2-internal error wording (not stable across versions).
+    #[test]
+    fn test_read_all_errors_on_trailing_garbage_after_gzip_member() {
+        fn gzip_bytes(payload: &[u8]) -> Vec<u8> {
+            let mut encoder =
+                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            encoder.write_all(payload).unwrap();
+            encoder.finish().unwrap()
+        }
+
+        let member = b"@mem_seq1\nATGCATGC\n+\nIIIIIIII\n";
+        let mut payload = gzip_bytes(member);
+        payload.extend_from_slice(b"trailing garbage, not a gzip member");
+
+        // The file must be detected as gzip, so it needs the .gz extension.
+        let mut temp_file = Builder::new().suffix(".gz").tempfile().unwrap();
+        temp_file.write_all(&payload).unwrap();
+
+        let processor = FastqProcessor::new(temp_file.path());
+        assert_eq!(processor.compression_type(), CompressionType::Gzip);
+
+        let err = processor
+            .read_all()
+            .expect_err("trailing garbage after the final member must error loudly");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Error reading FASTQ record from file"),
+            "error must carry this module's record-reading context, got: {msg}"
+        );
     }
 }
