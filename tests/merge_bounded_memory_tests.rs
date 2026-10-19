@@ -410,18 +410,18 @@ fn streaming_merge_peak_memory_is_bounded_by_chunk_not_dataset() -> Result<()> {
     // --- The budget: DERIVED from the estimator, provably streaming --------
     //
     // The 03-04 discipline: derive the budget from
-    // `estimate_total_kmers` and ASSERT the derived estimate exceeds it, so
-    // a shrunken fixture fails loudly instead of silently measuring the
-    // in-memory path.
+    // `estimate_total_kmers` and ASSERT the derived estimate is strictly
+    // positive BEFORE subtracting, so an empty (or shrunken-to-zero)
+    // fixture fails this guard loudly instead of panicking on u64
+    // underflow or silently measuring the in-memory path.
     let estimated = RKDatabase::estimated_bytes_for_route(MergeStrategy::InMemory, n);
-    let budget = estimated - 1;
     assert!(
-        estimated > budget,
-        "GUARD: the derived estimate ({}) must exceed the budget ({}) for the streaming \
-         route to be selected",
-        estimated,
-        budget
+        estimated > 0,
+        "GUARD: the derived estimate must be strictly positive (a zero estimate means an \
+         empty fixture and no selectable streaming budget), got {}",
+        estimated
     );
+    let budget = estimated - 1;
 
     let work = tempfile::tempdir()?;
     let output = dir.path().join("measurement_output.rkdb");
@@ -714,8 +714,9 @@ fn to_path_and_in_ram_entry_points_agree_byte_for_byte() -> Result<()> {
 ///
 /// If this test fails, `tests/merge_routing_tests.rs` has been silently made
 /// vacuous — that is the alarm it exists to raise. The budget is DERIVED
-/// from the estimator (never hard-coded) and asserted to sit below the
-/// estimate, per the 03-04 lesson.
+/// from the estimator (never hard-coded) and the estimate's strict
+/// positivity is asserted before the budget is derived from it, per the
+/// 03-04 lesson.
 #[test]
 fn streaming_route_probe_survives_the_to_path_entry_point() -> Result<()> {
     let dir = tempfile::tempdir()?;
@@ -728,13 +729,13 @@ fn streaming_route_probe_survives_the_to_path_entry_point() -> Result<()> {
         n = n.saturating_add(RKDatabase::estimate_total_kmers(p)?);
     }
     let estimated = RKDatabase::estimated_bytes_for_route(MergeStrategy::InMemory, n);
-    let budget = estimated - 1;
     assert!(
-        estimated > budget,
-        "GUARD: the derived estimate ({}) must exceed the budget ({})",
-        estimated,
-        budget
+        estimated > 0,
+        "GUARD: the derived estimate must be strictly positive (a zero estimate means an \
+         empty fixture and no selectable streaming budget), got {}",
+        estimated
     );
+    let budget = estimated - 1;
 
     let missing = missing_temp_dir(dir.path());
     let config = MergeConfig {
