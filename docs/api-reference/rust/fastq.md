@@ -113,13 +113,20 @@ Get file size
 #### filter_by_quality
 
 ```rust
-pub fn filter_by_quality(&self, min_quality: u8) -> ProcessingResult<Vec<Record>> {
+pub fn filter_by_quality(&self, min_quality_ascii: u8) -> ProcessingResult<Vec<Record>> {
 ```
 
-Filter records based on minimum quality score
+Filter records based on a minimum raw quality byte value
+
+The comparison is against the RAW Phred+33 ASCII byte value of each
+quality character, not the decoded Phred score: pass a threshold in
+the raw ASCII range (for Phred+33 data every real quality byte is at
+least 33, e.g. ASCII 55 corresponds to Q20). Passing a decoded Phred
+score instead would silently keep every record.
 
 # Arguments
-* `min_quality` - Minimum quality score (0-40 for Phred+33)
+* `min_quality_ascii` - Minimum raw Phred+33 ASCII quality byte value
+  (worked example: 55 corresponds to Q20)
 
 # Returns
 Vector of records meeting quality threshold

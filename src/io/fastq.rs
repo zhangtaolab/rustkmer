@@ -280,19 +280,26 @@ impl FastqProcessor {
         Ok(metadata.len())
     }
 
-    /// Filter records based on minimum quality score
+    /// Filter records based on a minimum raw quality byte value
+    ///
+    /// The comparison is against the RAW Phred+33 ASCII byte value of each
+    /// quality character, not the decoded Phred score: pass a threshold in
+    /// the raw ASCII range (for Phred+33 data every real quality byte is at
+    /// least 33, e.g. ASCII 55 corresponds to Q20). Passing a decoded Phred
+    /// score instead would silently keep every record.
     ///
     /// # Arguments
-    /// * `min_quality` - Minimum quality score (0-40 for Phred+33)
+    /// * `min_quality_ascii` - Minimum raw Phred+33 ASCII quality byte value
+    ///   (worked example: 55 corresponds to Q20)
     ///
     /// # Returns
     /// Vector of records meeting quality threshold
-    pub fn filter_by_quality(&self, min_quality: u8) -> ProcessingResult<Vec<Record>> {
+    pub fn filter_by_quality(&self, min_quality_ascii: u8) -> ProcessingResult<Vec<Record>> {
         let mut filtered = Vec::new();
 
         self.process_file(|record| {
             // Check if all quality scores meet minimum
-            let quality_ok = record.qual().iter().all(|q| *q >= min_quality);
+            let quality_ok = record.qual().iter().all(|q| *q >= min_quality_ascii);
 
             if quality_ok {
                 filtered.push(record.clone());
@@ -407,7 +414,16 @@ pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> 
     let reader = Reader::new(reader);
     let mut count = 0;
 
-    for _ in reader.records() {
+    // WR-16: bind each record Result and propagate failures instead of
+    // tallying malformed/truncated records as sequences — the same error
+    // contract `process_file` and `validate_fastq_file` already follow.
+    for record_result in reader.records() {
+        record_result.map_err(|e| {
+            ProcessingError::with_context(
+                format!("Error reading FASTQ record from file: {:?}", path),
+                e,
+            )
+        })?;
         count += 1;
     }
 
@@ -417,18 +433,30 @@ pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> 
 /// Get total sequence length in a FASTQ file
 ///
 /// # Arguments
-/// * `file_path` - Path to FASTQ file
+/// * `file_path` - Path to FASTQ file (supports `.gz` / `.bz2` / `.xz`)
 ///
 /// # Returns
 /// Total sequence length or error
 pub fn total_sequence_length<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> {
     let path = file_path.as_ref();
+    let compression_type = CompressionType::from_path(path);
 
-    let file = io::BufReader::new(std::fs::File::open(path).map_err(|e| {
-        ProcessingError::with_context(format!("Failed to open FASTQ file: {:?}", path), e)
-    })?);
+    // WR-15: route through the compression-aware opener so `.fastq.gz` /
+    // `.bz2` / `.xz` inputs are decompressed before bio's reader parses
+    // them — the same opener `process_file` and `count_sequences` use (and
+    // the same fix WR-03 applied to the FASTA analogues).
+    let (reader, _) = DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
+        ProcessingError::with_context(
+            format!(
+                "Failed to open FASTQ file: {:?} ({})",
+                path,
+                compression_type.name()
+            ),
+            e,
+        )
+    })?;
 
-    let reader = Reader::new(file);
+    let reader = Reader::new(reader);
     let mut total_length = 0;
 
     for record_result in reader.records() {
@@ -444,18 +472,30 @@ pub fn total_sequence_length<P: AsRef<Path>>(file_path: P) -> ProcessingResult<u
 /// Get average quality score in a FASTQ file
 ///
 /// # Arguments
-/// * `file_path` - Path to FASTQ file
+/// * `file_path` - Path to FASTQ file (supports `.gz` / `.bz2` / `.xz`)
 ///
 /// # Returns
-/// Average quality score or error
+/// Mean of the raw Phred+33 ASCII quality bytes across all positions, or error
 pub fn average_quality<P: AsRef<Path>>(file_path: P) -> ProcessingResult<f64> {
     let path = file_path.as_ref();
+    let compression_type = CompressionType::from_path(path);
 
-    let file = io::BufReader::new(std::fs::File::open(path).map_err(|e| {
-        ProcessingError::with_context(format!("Failed to open FASTQ file: {:?}", path), e)
-    })?);
+    // WR-15: route through the compression-aware opener so `.fastq.gz` /
+    // `.bz2` / `.xz` inputs are decompressed before bio's reader parses
+    // them — the same opener `process_file` and `count_sequences` use (and
+    // the same fix WR-03 applied to the FASTA analogues).
+    let (reader, _) = DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
+        ProcessingError::with_context(
+            format!(
+                "Failed to open FASTQ file: {:?} ({})",
+                path,
+                compression_type.name()
+            ),
+            e,
+        )
+    })?;
 
-    let reader = Reader::new(file);
+    let reader = Reader::new(reader);
     let mut total_quality = 0u64;
     let mut total_positions = 0u64;
 
@@ -642,5 +682,88 @@ mod tests {
         assert_eq!(sequences[2].qual(), b"JJJJJJJJ");
         assert_eq!(sequences[4].seq(), b"AAAATTTT"); // last record of member B
         assert_eq!(sequences[4].qual(), b"LLLLLLLL");
+    }
+
+    /// WR-15 regression: `total_sequence_length` and `average_quality` must
+    /// transparently decompress gzipped inputs. Previously both helpers
+    /// opened the raw file via plain `File::open`, so a `.fastq.gz` was
+    /// parsed as deflate bytes and either errored opaquely or produced a
+    /// garbage statistic — unlike every sibling FASTQ helper and the
+    /// already-fixed FASTA analogues.
+    #[test]
+    fn test_total_length_and_average_quality_gzipped() {
+        fn gzip_bytes(payload: &[u8]) -> Vec<u8> {
+            let mut encoder =
+                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            encoder.write_all(payload).unwrap();
+            encoder.finish().unwrap()
+        }
+
+        // Two records with known content: quality lines of ASCII 'I' (73)
+        // and 'H' (72), so the expected length sum and raw-ASCII mean are
+        // exact.
+        let payload = b"@seq1\nATGCATGC\n+\nIIIIIIII\n@seq2\nGCTAGCTA\n+\nHHHHHHHH\n";
+        let mut temp_file = Builder::new().suffix(".gz").tempfile().unwrap();
+        temp_file.write_all(&gzip_bytes(payload)).unwrap();
+
+        // 8 + 8 = 16 decompressed bases.
+        assert_eq!(
+            total_sequence_length(temp_file.path()).unwrap(),
+            16,
+            "gzipped input must yield the exact decompressed length sum"
+        );
+        // (73*8 + 72*8) / 16 = 72.5 mean of raw Phred+33 ASCII bytes.
+        let avg = average_quality(temp_file.path()).unwrap();
+        assert!(
+            (avg - 72.5).abs() < f64::EPSILON,
+            "gzipped input must yield the exact decompressed raw-ASCII mean, got {avg}"
+        );
+    }
+
+    /// WR-16 regression: a truncated final record (header + sequence only,
+    /// no plus/quality lines) must make `count_sequences` return Err whose
+    /// message carries the record-reading context naming the file — never
+    /// Ok with the broken record tallied as a sequence.
+    #[test]
+    fn test_count_sequences_truncated_record_is_err() {
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file
+            .write_all(b"@seq1\nATGC\n+\nIIII\n@broken\nATGC")
+            .unwrap();
+
+        let err = count_sequences(temp_file.path())
+            .expect_err("a truncated final record must not be counted as Ok");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Error reading FASTQ record from file"),
+            "error must carry the record-reading context, got: {msg}"
+        );
+        assert!(
+            msg.contains(temp_file.path().to_str().unwrap()),
+            "error must name the offending file path, got: {msg}"
+        );
+    }
+
+    /// WR-17 pin: `filter_by_quality` compares RAW Phred+33 ASCII byte
+    /// values, not decoded Phred scores. ASCII 72/73 are Q39/Q40 and ASCII
+    /// 43 is Q10; a threshold argument of 55 (the documented stand-in for
+    /// Q20) must keep the former records and drop the latter.
+    #[test]
+    fn test_filter_by_quality_compares_raw_ascii_bytes() {
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file
+            .write_all(b"@q40\nATGC\n+\nIIII\n@q39\nATGC\n+\nHHHH\n@q10\nATGC\n+\n++++\n")
+            .unwrap();
+
+        let processor = FastqProcessor::new(temp_file.path());
+        let filtered = processor.filter_by_quality(55).unwrap();
+
+        assert_eq!(
+            filtered.len(),
+            2,
+            "threshold 55 (Q20 stand-in) keeps ASCII 73/72 records, drops ASCII 43"
+        );
+        assert_eq!(filtered[0].id(), "q40");
+        assert_eq!(filtered[1].id(), "q39");
     }
 }
