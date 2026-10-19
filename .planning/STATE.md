@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 current_phase: 04
 status: completed
 stopped_at: Phase 04 complete — all phases complete
-last_updated: "2026-10-19T02:18:47.616Z"
+last_updated: "2026-10-19T03:00:55.330Z"
 last_activity: 2026-10-19
 last_activity_desc: Phase 04 complete
-state_head: b417e3ab8a95e8504a9fd1dc3c2bc386c64efe4f
+state_head: e9901601d36be8f59388911708459e1e1b9dca1f
 progress:
   total_phases: 4
   completed_phases: 4
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 Phase: 04
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-10-19 — Completed quick task 261019-dwf: round-4 review advisories WR-15/16/17 + IN-12/13 fixed (fastq gz-aware stats, honest errors, raw-ASCII docs, de-tautologized asserts)
+Last activity: 2026-10-19 — Completed quick task 261019-ese: ledger cleanup (WINDOWS #16/#18 → fixed, counters 7/8; INBOX-TRIAGE.md deleted; Session Continuity refreshed)
 
 Progress: [██████████] 100%
 
@@ -255,7 +255,7 @@ None yet.
 - [RESOLVED 2026-10-19 quick-261019-d1y] pyo3 test executability: the maturin `python-source` key was dropped in dbb13ef, so `maturin develop` now works — the 2026-10-17 phase-03 re-verification rebuilt pyrustkmer from source and ran the full pyo3 suite green (125/0, incl. test_database_merge.py 12/12 for the first time), closing the carried MERGE-04 human-verification item. Formerly STILL OPEN, both fixed by quick-261019-d1y: (a) cov flags removed from pytest addopts (local runs plain, no `--no-cov` needed); (b) `.github/workflows/ci.yml` gained a 3-OS `pyo3-pytest` job carrying the 80% gate. The historical consequence for phase 03 (03-09/03-10 shipped without Python-level verification at the time) is now back-filled by the 2026-10-17 evidence.
 - [MOOT 2026-10-19] deferred-items.md's IN-02 clippy entry: the file no longer exists in `.planning/` — nothing left to mark closed (the underlying clippy finding was already verified fixed by plan 03-09).
 - [Phase 03 UAT 2026-10-09] Partially superseded by the UAT session: the pyo3 extension WAS built and the merge suite EXECUTED 12/12 green (manual PYO3_PYTHON build + RUSTFLAGS dynamic_lookup + manual .so install — see 03-UAT test 22); the python-source key is now RESOLVED (dbb13ef, see above); --cov-fail-under and the missing CI pytest job were resolved 2026-10-19 by quick-261019-d1y. pyo3 0.27 additionally needs the extension crate's build.rs to call pyo3_build_config::add_extension_module_link_args() — deferred to ROADMAP backlog 999.1.
-- [2026-10-17 re-verification advisories] WINDOWS.md rows #16 and #18 are discharged in substance (pyo3 suite now runnable; rustfmt drift fixed by ba7f451) but the ledger rows still read "open" — flip them at triage time. Round-4 code review (03-REVIEW.md 2026-10-17) advisories WR-15/16/17 + IN-12/13 (fastq helpers / test-assert nuances) were RESOLVED 2026-10-19 by quick-261019-dwf (WR-17 as non-breaking doc/code alignment; the breaking Phred-decode semantic change remains explicitly deferred in that task's plan).
+- [2026-10-17 re-verification advisories] WINDOWS.md rows #16 and #18 were FLIPPED to fixed 2026-10-19 by quick-261019-ese (ledger now 7 open / 8 fixed; /gsd-ship still blocked on the 7 genuinely-open rows 4/5/11-15 — rows 4/5/11 may be dischargeable with the same dbb13ef + quick-261019-d1y evidence, pending triage). Round-4 code review (03-REVIEW.md 2026-10-17) advisories WR-15/16/17 + IN-12/13 (fastq helpers / test-assert nuances) were RESOLVED 2026-10-19 by quick-261019-dwf (WR-17 as non-breaking doc/code alignment; the breaking Phred-decode semantic change remains explicitly deferred in that task's plan).
 
 ### Quick Tasks Completed
 
@@ -268,6 +268,7 @@ None yet.
 | 261018-wrx | Remove fabricated milestone v1.0 identity (old tool default) from STATE.md frontmatter — milestone warning gone, progress counters restored (4/4 phases, 31/31 plans) | 2026-10-18 | 55e8a5c | [261018-wrx-fix-state-md-roadmap-milestone-mismatch-](./quick/261018-wrx-fix-state-md-roadmap-milestone-mismatch-/) |
 | 261019-d1y | Move pyo3 coverage gate from pytest addopts to new 3-OS pyo3-pytest CI job + relocate gate docs (b6ea0ee, 31071ab) | 2026-10-19 | 31071ab | [261019-d1y-pyo3-pytest-closeout-move-coverage-gate-](./quick/261019-d1y-pyo3-pytest-closeout-move-coverage-gate-/) |
 | 261019-dwf | Fix round-4 review advisories: gz-aware fastq stats + honest count errors (WR-15/16), raw-ASCII quality docs (WR-17 non-breaking), MultiGzDecoder comment + pin test (IN-12), de-tautologized GUARD asserts (IN-13) | 2026-10-19 | b417e3a | [261019-dwf-address-round-4-review-advisories-wr-15-](./quick/261019-dwf-address-round-4-review-advisories-wr-15-/) |
+| 261019-ese | Ledger cleanup: WINDOWS #16/#18 flipped to fixed via gsd-tools (counters 9/6 -> 7/8), stale INBOX-TRIAGE.md deleted, Session Continuity refreshed | 2026-10-19 | e990160 | [261019-ese-ledger-cleanup-flip-windows-md-rows-16-1](./quick/261019-ese-ledger-cleanup-flip-windows-md-rows-16-1/) |
 
 ## Deferred Items
 
@@ -279,6 +280,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-18T12:05:00.000Z
-Stopped at: Completed quick-261018-ret (examples/python legacy-API fixes, 3 commits)
+Last session: 2026-10-19T02:57:44.000Z
+Stopped at: Completed four quick tasks 2026-10-18/19 (261018-uq6 no-op issue-15 verify, 261018-wrx milestone identity fix, 261019-d1y pyo3 coverage gate moved to CI, 261019-dwf round-4 review advisories) plus this ledger cleanup (261019-ese: WINDOWS rows 16/18 flipped to fixed, ledger 7 open / 8 fixed); dev is unpushed ahead of origin/dev (29 commits). Remaining follow-ups: push dev, WR-17 deferred Phred-decode option, milestone close via gsd-complete-milestone
 Resume file: None
