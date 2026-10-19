@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 current_phase: 04
 status: completed
 stopped_at: Phase 04 complete — all phases complete
-last_updated: "2026-10-19T01:46:54.370Z"
-last_activity: 2026-10-18
+last_updated: "2026-10-19T02:18:47.616Z"
+last_activity: 2026-10-19
 last_activity_desc: Phase 04 complete
-state_head: 31071ab6cf90968820bce6603695e0a9f86f8602
+state_head: b417e3ab8a95e8504a9fd1dc3c2bc386c64efe4f
 progress:
   total_phases: 4
   completed_phases: 4
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 Phase: 04
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-10-19 — Completed quick task 261019-d1y: pyo3 coverage gate moved from addopts to new 3-OS pyo3-pytest CI job (blockers a+b resolved)
+Last activity: 2026-10-19 — Completed quick task 261019-dwf: round-4 review advisories WR-15/16/17 + IN-12/13 fixed (fastq gz-aware stats, honest errors, raw-ASCII docs, de-tautologized asserts)
 
 Progress: [██████████] 100%
 
@@ -255,7 +255,7 @@ None yet.
 - [RESOLVED 2026-10-19 quick-261019-d1y] pyo3 test executability: the maturin `python-source` key was dropped in dbb13ef, so `maturin develop` now works — the 2026-10-17 phase-03 re-verification rebuilt pyrustkmer from source and ran the full pyo3 suite green (125/0, incl. test_database_merge.py 12/12 for the first time), closing the carried MERGE-04 human-verification item. Formerly STILL OPEN, both fixed by quick-261019-d1y: (a) cov flags removed from pytest addopts (local runs plain, no `--no-cov` needed); (b) `.github/workflows/ci.yml` gained a 3-OS `pyo3-pytest` job carrying the 80% gate. The historical consequence for phase 03 (03-09/03-10 shipped without Python-level verification at the time) is now back-filled by the 2026-10-17 evidence.
 - [MOOT 2026-10-19] deferred-items.md's IN-02 clippy entry: the file no longer exists in `.planning/` — nothing left to mark closed (the underlying clippy finding was already verified fixed by plan 03-09).
 - [Phase 03 UAT 2026-10-09] Partially superseded by the UAT session: the pyo3 extension WAS built and the merge suite EXECUTED 12/12 green (manual PYO3_PYTHON build + RUSTFLAGS dynamic_lookup + manual .so install — see 03-UAT test 22); the python-source key is now RESOLVED (dbb13ef, see above); --cov-fail-under and the missing CI pytest job were resolved 2026-10-19 by quick-261019-d1y. pyo3 0.27 additionally needs the extension crate's build.rs to call pyo3_build_config::add_extension_module_link_args() — deferred to ROADMAP backlog 999.1.
-- [2026-10-17 re-verification advisories] WINDOWS.md rows #16 and #18 are discharged in substance (pyo3 suite now runnable; rustfmt drift fixed by ba7f451) but the ledger rows still read "open" — flip them at triage time. Round-4 code review (03-REVIEW.md 2026-10-17) added WR-15/16/17 + IN-12/13 (fastq helpers / test-assert nuances) to the open advisory set; no must-have depends on them.
+- [2026-10-17 re-verification advisories] WINDOWS.md rows #16 and #18 are discharged in substance (pyo3 suite now runnable; rustfmt drift fixed by ba7f451) but the ledger rows still read "open" — flip them at triage time. Round-4 code review (03-REVIEW.md 2026-10-17) advisories WR-15/16/17 + IN-12/13 (fastq helpers / test-assert nuances) were RESOLVED 2026-10-19 by quick-261019-dwf (WR-17 as non-breaking doc/code alignment; the breaking Phred-decode semantic change remains explicitly deferred in that task's plan).
 
 ### Quick Tasks Completed
 
@@ -267,6 +267,7 @@ None yet.
 | 261018-uq6 | Verify #15 windows-latest CI coverage — already complete via 261017-n2p (b514331); kept pyo3-build windows leg (user decision), no code changes (no-op) | 2026-10-18 | 4e8e392 | [261018-uq6-fix-15-add-windows-latest-to-ci-matrices](./quick/261018-uq6-fix-15-add-windows-latest-to-ci-matrices/) |
 | 261018-wrx | Remove fabricated milestone v1.0 identity (old tool default) from STATE.md frontmatter — milestone warning gone, progress counters restored (4/4 phases, 31/31 plans) | 2026-10-18 | 55e8a5c | [261018-wrx-fix-state-md-roadmap-milestone-mismatch-](./quick/261018-wrx-fix-state-md-roadmap-milestone-mismatch-/) |
 | 261019-d1y | Move pyo3 coverage gate from pytest addopts to new 3-OS pyo3-pytest CI job + relocate gate docs (b6ea0ee, 31071ab) | 2026-10-19 | 31071ab | [261019-d1y-pyo3-pytest-closeout-move-coverage-gate-](./quick/261019-d1y-pyo3-pytest-closeout-move-coverage-gate-/) |
+| 261019-dwf | Fix round-4 review advisories: gz-aware fastq stats + honest count errors (WR-15/16), raw-ASCII quality docs (WR-17 non-breaking), MultiGzDecoder comment + pin test (IN-12), de-tautologized GUARD asserts (IN-13) | 2026-10-19 | b417e3a | [261019-dwf-address-round-4-review-advisories-wr-15-](./quick/261019-dwf-address-round-4-review-advisories-wr-15-/) |
 
 ## Deferred Items
 
