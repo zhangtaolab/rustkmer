@@ -213,6 +213,7 @@ Layout: a 42-byte header followed by 20-byte entries (16-byte u128 k-mer + 4-byt
 - Build backend: maturin (`maturin>=1.0,<2.0`), `[tool.maturin]` with `module-name = "pyrustkmer"` and the `pyo3/extension-module` feature; `[tool.maturin.build]` passes `--release`.
 - `requires-python = ">=3.11"`; runtime dependency `numpy>=1.21`.
 - Optional dependency groups: `dev` (pytest, black, flake8, mypy, ...), `performance` (memory-profiler, psutil), `docs`, `jupyter`.
-- Tool config in the same file: black (line length 88, py311 target), mypy (strict, python_version 3.11), pytest (`--cov-fail-under=80`), coverage source `pyrustkmer`.
+- Tool config in the same file: black (line length 88, py311 target), mypy (strict, python_version 3.11), coverage source `pyrustkmer`.
+- pytest is configured with verbosity-only `addopts = ["-v"]`; the 80% threshold is applied by the CI `pyo3-pytest` job's pytest command line, not by local defaults.
 
 Build and install the extension with `maturin develop --release` (helper script: `pyo3/build_with_python.sh`). Version bumps must keep the root `Cargo.toml`, `pyo3/Cargo.toml`, and `pyo3/pyproject.toml` versions in sync (`scripts/sync_versions.sh`).

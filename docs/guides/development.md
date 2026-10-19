@@ -53,7 +53,7 @@ No `.env` files or required environment variables exist; see the [configuration 
 | `cargo clippy --all-targets -- -D warnings` | `pyo3/` | Lint gate for the bindings crate |
 | `maturin develop --release` | `pyo3/` | Build and install `pyrustkmer` into the active venv |
 | `maturin build` | `pyo3/` | Build sdist + wheel into `pyo3/target/wheels/` (what CI runs and uploads) |
-| `pytest` | `pyo3/` | Python tests in `pyo3/tests/` (coverage gate `--cov-fail-under=80` via `pyproject.toml` addopts) |
+| `pytest` | `pyo3/` | Python tests in `pyo3/tests/` — plain run, no forced flags (`--no-cov` workaround obsolete); the 80% coverage gate lives in the CI `pyo3-pytest` job |
 | `python3 -m unittest discover -s scripts/bench/tests -t .` | root | Unit tests for the benchmark harness (Python stdlib only) |
 | `python3 scripts/bench/bench.py --mode synthetic --self-check` | root | ~1-minute benchmark sanity self-check (exact k-mer counts on synthetic input) |
 | `python3 scripts/bench/compare.py --baseline ... --current ...` | root | Performance gate comparator (exit 0 within / 1 regression / 2 invalid input) |

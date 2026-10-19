@@ -6,7 +6,7 @@
 rustkmer has four distinct test surfaces, each with its own runner:
 
 1. **Rust crate tests** (`cargo test`) — unit tests inside `src/` modules, runnable doc examples, and 20 auto-discovered integration-test binaries under `tests/` (19 named binaries plus the `mod` target that wires the shared helper trees). Property-based tests use `proptest`.
-2. **Python binding tests** (`pyo3/tests/`, pytest) — 178 test methods across 7 `test_*.py` files exercising the `pyrustkmer` extension, with an 80% coverage gate enforced by default `addopts`.
+2. **Python binding tests** (`pyo3/tests/`, pytest) — 178 test methods across 7 `test_*.py` files exercising the `pyrustkmer` extension, with an 80% coverage gate enforced by the CI `pyo3-pytest` job.
 3. **Benchmark harness tests** (`scripts/bench/tests/`) — 130 tests in 8 modules, stdlib `unittest` only (no pytest, no conftest, no pip installs).
 4. **Cross-validation / legacy Python trees** (`tests/007-api-compatibility/`, `tests/converted/`, `tests/performance/`) — pytest configuration and committed reports, but currently no collected test modules (see [Legacy Python trees](#legacy-python-trees)).
 
@@ -23,7 +23,8 @@ CI enforces the Rust and benchmark surfaces (plus lint/wheel jobs) on every PR a
 
 ### Python bindings — pytest via maturin
 
-- Framework: `pytest>=7.0` with `pytest-cov>=4.0` and `pytest-benchmark>=4.0` (the `dev` extra in `pyo3/pyproject.toml`). Configuration lives in `[tool.pytest.ini_options]`: `testpaths = ["tests"]`, `python_files = ["test_*.py"]`, markers `slow` / `performance` / `integration`, and default `addopts` including `--cov=pyrustkmer ... --cov-fail-under=80`.
+- Framework: `pytest>=7.0` with `pytest-cov>=4.0` and `pytest-benchmark>=4.0` (the `dev` extra in `pyo3/pyproject.toml`). Configuration lives in `[tool.pytest.ini_options]`: `testpaths = ["tests"]`, `python_files = ["test_*.py"]`, markers `slow` / `performance` / `integration`.
+- Default `addopts` are verbosity-only (`["-v"]`): a plain `pytest` run carries no forced flags; the 80% gate runs in CI on the `pyo3-pytest` job's command line (see [CI integration](#ci-integration)).
 - Requires Python 3.11+ and the native module built and installed into the active environment first:
 
 ```bash
@@ -158,11 +159,11 @@ One binary per `tests/*.rs` file (verified via `cargo metadata`; 20 targets tota
 
 | Surface | Tool | Threshold |
 |---|---|---|
-| Python bindings | `pytest-cov` (`--cov=pyrustkmer` in default `addopts`) | **80%** (`--cov-fail-under=80`); reports `term-missing`, `html`, `xml` |
+| Python bindings | `pytest-cov`, invoked by the CI `pyo3-pytest` job's pytest command line (`--cov=pyrustkmer --cov-report=term-missing`) | **80%** (`--cov-fail-under=80`) |
 | Rust crate | none | No coverage threshold configured |
 | Benchmark harness | none | Functional sanity assertion only (`distinct_kmers > 0` per run) |
 
-The Python gate is enforced on every plain `pytest` invocation in `pyo3/` because the flags are baked into `[tool.pytest.ini_options]` `addopts`. Coverage measures the `pyrustkmer` module only (`[tool.coverage.run] source = ["pyrustkmer"]`, tests omitted). To explore coverage open `pyo3/htmlcov/index.html` after a run.
+The Python gate is enforced in CI by the `pyo3-pytest` job's pytest command line; a plain local `pytest` in `pyo3/` runs with verbosity-only default options and needs no `--no-cov` workaround anymore. Coverage measures the `pyrustkmer` module only (`[tool.coverage.run] source = ["pyrustkmer"]`, tests omitted) — in practice that is the maturin-generated `pyrustkmer/__init__.py` shim re-exporting the native extension, so the gate effectively asserts that the freshly built extension imports (a broken build or import yields 0% and red). To explore coverage locally, run `pytest --cov=pyrustkmer --cov-report=html` and open `pyo3/htmlcov/index.html`.
 
 ## CI integration
 
