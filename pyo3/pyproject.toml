@@ -96,14 +96,11 @@ markers = [
     "performance: marks tests as performance benchmarks",
     "integration: marks tests as integration tests",
 ]
-addopts = [
-    "--cov=pyrustkmer",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
-    "--cov-fail-under=80",
-    "-v",
-]
+# Coverage flags are deliberately NOT baked into addopts: coverage against
+# a compiled extension measures only the maturin-generated Python shim, and
+# forcing cov flags onto every run breaks plain pytest in venvs without
+# pytest-cov. The 80% gate is enforced in CI (pyo3-pytest job in ci.yml).
+addopts = ["-v"]
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",

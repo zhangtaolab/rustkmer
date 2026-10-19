@@ -129,3 +129,55 @@ jobs:
         with:
           name: wheel-${{ matrix.os }}
           path: pyo3/target/wheels/*
+
+  pyo3-pytest:
+    name: pyo3 pytest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        # Exactly what the suite imports (verified live: pyo3/tests/*.py use
+        # only stdlib + pytest — no hypothesis imports, no benchmark fixture
+        # uses, so neither is installed). numpy is pre-installed so the later
+        # --no-index wheel install finds pyrustkmer's runtime dependency
+        # already satisfied.
+        run: pip install 'maturin>=1.0,<2.0' 'pytest>=7.0' 'pytest-cov>=4.0' numpy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            pyo3/target
+          # Distinct writable cache key (CR-04, see clippy-root for the
+          # rationale): pyo3-pytest runs in parallel with pyo3-build against
+          # the same pyo3/target dir, so it must not write pyo3-build's key.
+          # The shared restore-keys prefix warm-restores from pyo3-build's
+          # saved cache (read-only restore is safe — only this job's own
+          # post-job save writes the -test- key).
+          key: ${{ runner.os }}-cargo-pyo3-test-${{ hashFiles('pyo3/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-pyo3-
+      - name: maturin build (wheel)
+        working-directory: pyo3
+        run: maturin build
+      - name: Install wheel
+        # --no-index + --find-links avoids shell globbing so this works in
+        # Windows PowerShell too. (maturin develop was rejected: it requires
+        # a virtualenv and the runner's setup-python is not one.)
+        run: pip install --no-index --find-links pyo3/target/wheels pyrustkmer
+      - name: pytest
+        # The 80% coverage gate lives here and only here. Coverage traces
+        # the maturin-generated pyrustkmer Python shim (the native .so is
+        # not Python-traceable), so the gate effectively asserts the
+        # freshly built extension imports — a broken build or import
+        # yields 0% and red.
+        working-directory: pyo3
+        run: pytest tests/ --cov=pyrustkmer --cov-report=term-missing --cov-fail-under=80
