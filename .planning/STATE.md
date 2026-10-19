@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 current_phase: 04
 status: completed
 stopped_at: Phase 04 complete — all phases complete
-last_updated: "2026-10-18T15:51:46.409Z"
+last_updated: "2026-10-19T01:46:54.370Z"
 last_activity: 2026-10-18
 last_activity_desc: Phase 04 complete
-state_head: 55e8a5cbf12e865e711f0e5f7ddc1fed2110818f
+state_head: 31071ab6cf90968820bce6603695e0a9f86f8602
 progress:
   total_phases: 4
   completed_phases: 4
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 Phase: 04
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-10-18 — Completed quick task 261018-wrx: removed fabricated milestone v1.0 identity from frontmatter (counters restored, warning gone)
+Last activity: 2026-10-19 — Completed quick task 261019-d1y: pyo3 coverage gate moved from addopts to new 3-OS pyo3-pytest CI job (blockers a+b resolved)
 
 Progress: [██████████] 100%
 
@@ -252,9 +252,9 @@ None yet.
 
 [Issues that affect future work]
 
-- [LARGELY RESOLVED 2026-10-17] pyo3 test executability: the maturin `python-source` key was dropped in dbb13ef, so `maturin develop` now works — the 2026-10-17 phase-03 re-verification rebuilt pyrustkmer from source and ran the full pyo3 suite green (125/0, incl. test_database_merge.py 12/12 for the first time), closing the carried MERGE-04 human-verification item. STILL OPEN: (a) addopts hard-codes `--cov-fail-under=80` against a compiled extension, so local runs need `--no-cov`; (b) `.github/workflows/ci.yml` still has no pyo3 pytest job. The historical consequence for phase 03 (03-09/03-10 shipped without Python-level verification at the time) is now back-filled by the 2026-10-17 evidence.
-- deferred-items.md's IN-02 clippy entry is STALE and should be marked closed: the 4 `useless_borrows_in_formatting` sites it names no longer exist (src/io/fastq.rs:216 writes `self.file_path`, :343 writes `path`, src/io/fasta.rs:56 writes `self.file_path`, and fasta.rs:153 is not a `format!` at all), and `cargo clippy --all-targets -- -D warnings` — the entry's own reproduction command — exits 0. Verified by plan 03-09; the file itself was outside that plan's scope.
-- [Phase 03 UAT 2026-10-09] Partially superseded by the UAT session: the pyo3 extension WAS built and the merge suite EXECUTED 12/12 green (manual PYO3_PYTHON build + RUSTFLAGS dynamic_lookup + manual .so install — see 03-UAT test 22); the python-source key is now RESOLVED (dbb13ef, see above); --cov-fail-under and the missing CI pytest job remain open. pyo3 0.27 additionally needs the extension crate's build.rs to call pyo3_build_config::add_extension_module_link_args() — deferred to ROADMAP backlog 999.1.
+- [RESOLVED 2026-10-19 quick-261019-d1y] pyo3 test executability: the maturin `python-source` key was dropped in dbb13ef, so `maturin develop` now works — the 2026-10-17 phase-03 re-verification rebuilt pyrustkmer from source and ran the full pyo3 suite green (125/0, incl. test_database_merge.py 12/12 for the first time), closing the carried MERGE-04 human-verification item. Formerly STILL OPEN, both fixed by quick-261019-d1y: (a) cov flags removed from pytest addopts (local runs plain, no `--no-cov` needed); (b) `.github/workflows/ci.yml` gained a 3-OS `pyo3-pytest` job carrying the 80% gate. The historical consequence for phase 03 (03-09/03-10 shipped without Python-level verification at the time) is now back-filled by the 2026-10-17 evidence.
+- [MOOT 2026-10-19] deferred-items.md's IN-02 clippy entry: the file no longer exists in `.planning/` — nothing left to mark closed (the underlying clippy finding was already verified fixed by plan 03-09).
+- [Phase 03 UAT 2026-10-09] Partially superseded by the UAT session: the pyo3 extension WAS built and the merge suite EXECUTED 12/12 green (manual PYO3_PYTHON build + RUSTFLAGS dynamic_lookup + manual .so install — see 03-UAT test 22); the python-source key is now RESOLVED (dbb13ef, see above); --cov-fail-under and the missing CI pytest job were resolved 2026-10-19 by quick-261019-d1y. pyo3 0.27 additionally needs the extension crate's build.rs to call pyo3_build_config::add_extension_module_link_args() — deferred to ROADMAP backlog 999.1.
 - [2026-10-17 re-verification advisories] WINDOWS.md rows #16 and #18 are discharged in substance (pyo3 suite now runnable; rustfmt drift fixed by ba7f451) but the ledger rows still read "open" — flip them at triage time. Round-4 code review (03-REVIEW.md 2026-10-17) added WR-15/16/17 + IN-12/13 (fastq helpers / test-assert nuances) to the open advisory set; no must-have depends on them.
 
 ### Quick Tasks Completed
@@ -266,6 +266,7 @@ None yet.
 | 261018-swu | Fix .claude/CLAUDE.md outdated architecture descriptions (gitignored file: local-only, no commit) | 2026-10-18 | 219c48a | [261018-swu-fix-claude-md-outdated-architecture-desc](./quick/261018-swu-fix-claude-md-outdated-architecture-desc/) |
 | 261018-uq6 | Verify #15 windows-latest CI coverage — already complete via 261017-n2p (b514331); kept pyo3-build windows leg (user decision), no code changes (no-op) | 2026-10-18 | 4e8e392 | [261018-uq6-fix-15-add-windows-latest-to-ci-matrices](./quick/261018-uq6-fix-15-add-windows-latest-to-ci-matrices/) |
 | 261018-wrx | Remove fabricated milestone v1.0 identity (old tool default) from STATE.md frontmatter — milestone warning gone, progress counters restored (4/4 phases, 31/31 plans) | 2026-10-18 | 55e8a5c | [261018-wrx-fix-state-md-roadmap-milestone-mismatch-](./quick/261018-wrx-fix-state-md-roadmap-milestone-mismatch-/) |
+| 261019-d1y | Move pyo3 coverage gate from pytest addopts to new 3-OS pyo3-pytest CI job + relocate gate docs (b6ea0ee, 31071ab) | 2026-10-19 | 31071ab | [261019-d1y-pyo3-pytest-closeout-move-coverage-gate-](./quick/261019-d1y-pyo3-pytest-closeout-move-coverage-gate-/) |
 
 ## Deferred Items
 
