@@ -6,7 +6,7 @@ status: validated
 nyquist_compliant: true
 wave_0_complete: true
 created: 2026-10-09
-validated: 2026-10-11
+validated: 2026-10-20
 ---
 
 # Phase 04 — Validation Strategy
@@ -41,6 +41,8 @@ validated: 2026-10-11
 
 Audited 2026-10-11 (validate-phase, post-execution): every row cross-referenced against the file on disk and the test run at HEAD `29ae679`. Task IDs attributed by introducing commit (`git log --diff-filter=A`).
 
+Re-audited 2026-10-20 (verification refresh, stale VERIFICATION trigger): unittest 9/9 modules green + `cargo test` 23 binaries green at HEAD `5a2bda7`; `benchmark.yml` green on the latest pushed commit `764f53f` (run 39108077776) — local-only commits after it are docs plus one quick-task code fix (`b417e3a`), not yet pushed.
+
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
 | 04-01-T1 | 01 | 1 | BENCH-01 | T-04-xx | Time-output parser handles BOTH platform formats (macOS `-l` bytes vs Linux `-v` kbytes ×1024 trap), rejects garbage | unit | `python3 -m unittest scripts.bench.tests.test_time_parser` | ✅ (8685e9e) | ✅ green |
@@ -53,7 +55,7 @@ Audited 2026-10-11 (validate-phase, post-execution): every row cross-referenced 
 | 04-03-T1 | 03 | 3 | BENCH-01 | — | Comparator flags regression beyond threshold, passes within (wall + RSS axes; boundary-proven, exit 0/1/2) | unit | `python3 -m unittest scripts.bench.tests.test_compare` | ✅ (8acd514) | ✅ green |
 | 04-04-T1 | 04 | 4 | BENCH-02/03 | T-04-08 | merge-input/skip-merge arms; count conservation on measured input | unit | `python3 -m unittest scripts.bench.tests.test_merge_input` | ✅ (3831d8b) | ✅ green |
 | 04-04-T3 | 04 | 4 | BENCH-02/03 | — | Mechanical report renderer: zero measurement literals, byte-identical re-render, substitute labeling | unit | `python3 -m unittest scripts.bench.tests.test_render_report` | ✅ (f31d0b5) | ✅ green |
-| 04-03-T1 | 03 | 3 | BENCH-01/04 | — | CI gate workflow green on synthetic input (rustkmer-vs-committed-baseline; both platform baselines committed) | e2e | push; `benchmark.yml` must pass | ✅ | ✅ green on 3ae8ab3 (04-03 close); ⚠ one variance-driven count-B RSS breach on 437cec6 (jellyfish-less CI arm, runner noise suspected — see phase 04 issues; rerun pending) |
+| 04-03-T1 | 03 | 3 | BENCH-01/04 | — | CI gate workflow green on synthetic input (rustkmer-vs-committed-baseline; both platform baselines committed) | e2e | push; `benchmark.yml` must pass | ✅ | ✅ green — 437cec6 variance breach resolved 2026-10-17 by demoting the wall axis to advisory in the CI gate (README contingency); 4 straight green runs since, latest 39108077776 on `764f53f` |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
