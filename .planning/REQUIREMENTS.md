@@ -31,7 +31,7 @@ Requirements for this performance milestone. Each maps to a roadmap phase (trace
 ### Benchmark / Validation
 
 - [x] **BENCH-01**: A reproducible benchmark harness measures counting and merge wall-clock time and peak memory, runnable in CI as a regression gate
-- [x] **BENCH-02**: rustkmer matches or beats **Jellyfish2** on counting speed on the CRR1936095 human-scale dataset, under fair methodology (cold cache, decompression counted, matched k / canonicalization / input settings)
+- [ ] **BENCH-02**: rustkmer matches or beats **Jellyfish2** on counting speed on the CRR1936095 human-scale dataset, under fair methodology (cold cache, decompression counted, matched k / canonicalization / input settings) — **measured NO** on the user-approved substitute CRR2044018 (k=31 YES: -41.4%/-42.4% wall, -34% RSS; k=21 NO: ~5x slower); accepted as a known gap at milestone close 2026-10-20 (user decision), k=21 performance deferred to v2 (MINIM-01..03)
 - [x] **BENCH-03**: The benchmark reports peak memory alongside wall-clock, so memory wins (not just speed) are visible
 - [x] **BENCH-04**: The harness degrades gracefully to a slice or synthetic input on machines without the full CRR1936095 dataset, so CI can still run
 
@@ -99,7 +99,7 @@ Explicitly excluded from this milestone. Documented to prevent scope creep.
 | DENSE-02 | Phase 3 | Complete |
 | DENSE-03 | Phase 3 | Complete |
 | BENCH-01 | Phase 4 | Complete |
-| BENCH-02 | Phase 4 | Complete |
+| BENCH-02 | Phase 4 | Not met — measured NO; accepted as known gap at close (2026-10-20) |
 | BENCH-03 | Phase 4 | Complete |
 | BENCH-04 | Phase 4 | Complete |
 
@@ -107,6 +107,7 @@ Explicitly excluded from this milestone. Documented to prevent scope creep.
 
 - v1 requirements: 19 total
 - Mapped to phases: 19
+- Complete: 18 (BENCH-02 measured NO — accepted as known gap at milestone close 2026-10-20)
 - Unmapped: 0 ✓
 
 ---
