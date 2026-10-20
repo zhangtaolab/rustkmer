@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 04
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 04 complete — all phases complete
-last_updated: "2026-10-20T11:47:26.306Z"
+last_updated: "2026-10-20T12:50:44.774Z"
 last_activity: 2026-10-20
-last_activity_desc: Phase 04 complete
-state_head: 4a4d44b282a9f347baf4cd71ed7d82ea73ed9f14
+last_activity_desc: Milestone v1.0 completed and archived
+state_head: b40a993475ea1fbb7e33088ec66ba46d4e648034
 progress:
   total_phases: 4
   completed_phases: 4
   total_plans: 31
   completed_plans: 31
   percent: 100
+current_phase: 04
 ---
 
 # Project State
@@ -26,12 +26,10 @@ See: .planning/PROJECT.md (updated 2026-10-20)
 
 ## Current Position
 
-Phase: 04
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-10-20 — Phase 04 complete
-
-Progress: [██████████] 100%
+Phase: Milestone v1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-10-20 — Milestone v1.0 completed and archived
 
 ## Performance Metrics
 
@@ -265,15 +263,6 @@ None yet.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 261017-n2p | Add windows-latest to all three OS matrices (clippy-root/test-root/pyo3-build) in .github/workflows/ci.yml — closes #15 | 2026-10-17 | b514331 | [261017-n2p-add-windows-latest-to-all-three-os-matri](./quick/261017-n2p-add-windows-latest-to-all-three-os-matri/) |
-| 261018-ret | Fix examples/python legacy-API scripts: syntax error, personal DB paths -> repo fixtures, k-derived patterns, dead build-kmer-db subcommand | 2026-10-18 | 2e0efcb | [261018-ret-fix-examples-python-legacy-api-scripts](./quick/261018-ret-fix-examples-python-legacy-api-scripts/) |
-| 261018-swu | Fix .claude/CLAUDE.md outdated architecture descriptions (gitignored file: local-only, no commit) | 2026-10-18 | 219c48a | [261018-swu-fix-claude-md-outdated-architecture-desc](./quick/261018-swu-fix-claude-md-outdated-architecture-desc/) |
-| 261018-uq6 | Verify #15 windows-latest CI coverage — already complete via 261017-n2p (b514331); kept pyo3-build windows leg (user decision), no code changes (no-op) | 2026-10-18 | 4e8e392 | [261018-uq6-fix-15-add-windows-latest-to-ci-matrices](./quick/261018-uq6-fix-15-add-windows-latest-to-ci-matrices/) |
-| 261018-wrx | Remove fabricated milestone v1.0 identity (old tool default) from STATE.md frontmatter — milestone warning gone, progress counters restored (4/4 phases, 31/31 plans) | 2026-10-18 | 55e8a5c | [261018-wrx-fix-state-md-roadmap-milestone-mismatch-](./quick/261018-wrx-fix-state-md-roadmap-milestone-mismatch-/) |
-| 261019-d1y | Move pyo3 coverage gate from pytest addopts to new 3-OS pyo3-pytest CI job + relocate gate docs (b6ea0ee, 31071ab) | 2026-10-19 | 31071ab | [261019-d1y-pyo3-pytest-closeout-move-coverage-gate-](./quick/261019-d1y-pyo3-pytest-closeout-move-coverage-gate-/) |
-| 261019-dwf | Fix round-4 review advisories: gz-aware fastq stats + honest count errors (WR-15/16), raw-ASCII quality docs (WR-17 non-breaking), MultiGzDecoder comment + pin test (IN-12), de-tautologized GUARD asserts (IN-13) | 2026-10-19 | b417e3a | [261019-dwf-address-round-4-review-advisories-wr-15-](./quick/261019-dwf-address-round-4-review-advisories-wr-15-/) |
-| 261019-ese | Ledger cleanup: WINDOWS #16/#18 flipped to fixed via gsd-tools (counters 9/6 -> 7/8), stale INBOX-TRIAGE.md deleted, Session Continuity refreshed | 2026-10-19 | e990160 | [261019-ese-ledger-cleanup-flip-windows-md-rows-16-1](./quick/261019-ese-ledger-cleanup-flip-windows-md-rows-16-1/) |
-| 261020-lec | WINDOWS ledger triage: rows 4/5/11 fixed (maturin/cov-gate/merge-suite evidence), 12/13/14 waived (wrong-instrument gates, by-design deferral), 15 stays open (1/6/11/18) | 2026-10-20 | b78b1d5 | [261020-lec-windows-ledger-triage-evaluate-all-7-ope](./quick/261020-lec-windows-ledger-triage-evaluate-all-7-ope/) |
 
 ## Deferred Items
 
@@ -288,3 +277,7 @@ Items acknowledged and carried forward from previous milestone close:
 Last session: 2026-10-20T11:50:31Z
 Stopped at: Phase 04 verification refresh complete — stale 04-VERIFICATION.md regenerated (passed 10/10, fresh digest v3:sha256:268ff74c) after covered-file drift (b417e3a); VALIDATION re-audited green (0 gaps), SECURITY created for Phase 04 (12/12 closed, threats_open: 0), code review re-run (0 critical / 8 warning / 6 info, all docs-level, disposition 18 open), regression gate green, phase.complete re-run. All 4 phases complete; next step: milestone close via /gsd-complete-milestone (triage BENCH-02 checkbox W2 + 18 open docs findings + ledger row 15 first; push dev for W1)
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

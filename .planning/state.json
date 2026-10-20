@@ -1,0 +1,33 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": null,
+  "phases": [
+    {
+      "number": "1",
+      "name": "Foundation & Quality",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "Parallel Counting",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Memory Safety",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "Benchmark & Validation",
+      "status": "complete"
+    }
+  ],
+  "next": {
+    "command": "/gsd-progress",
+    "label": "Show progress",
+    "reason": "Unsure of state — showing progress"
+  },
+  "updated_at": "2026-10-20T12:50:44.789Z"
+}
