@@ -3,6 +3,18 @@ phase: 03
 review: 03-REVIEW.md
 titles: json
 findings:
+  - id: IN-01
+    severity: info
+    disposition: open
+    title: "`process_file_with_progress` doc mislabels the callback's second argument — \"total_estimate\" is actually raw file size in bytes (and always `None` for compressed inputs)"
+  - id: IN-02
+    severity: info
+    disposition: open
+    title: "Literal `{route}` placeholder in `expect_err` messages — `expect_err` takes a plain string, not a format string"
+  - id: IN-03
+    severity: info
+    disposition: open
+    title: "Dead `[tool.setuptools]` sections reference a `pyrustkmer` Python source package that does not exist, contradicting the file's own layout comment"
   - id: WR-01
     severity: warning
     disposition: open
@@ -39,14 +51,6 @@ findings:
     severity: warning
     disposition: open
     title: "`filter_by_quality` / `average_quality` document Phred scores but operate on raw ASCII bytes — doc-following callers get a near-no-op filter (new this round)"
-  - id: IN-02
-    severity: info
-    disposition: open
-    title: "`Drop` logs the wrong directory when `TempDir::close()` fails (carried, still open)"
-  - id: IN-03
-    severity: info
-    disposition: open
-    title: "Phase-1 log claims parallel bucketing; the loop is serial (carried, still open)"
   - id: IN-04
     severity: info
     disposition: open
@@ -99,10 +103,6 @@ findings:
     severity: warning
     disposition: open
     title: "`validate_merge_compatibility` panics on an empty input slice (carried; file outside this round's scope, unchanged)"
-  - id: IN-01
-    severity: info
-    disposition: open
-    title: "`merge_prologue` runs twice on the materializing delegating path (carried; file outside this round's scope, unchanged)"
   - id: IN-06
     severity: info
     disposition: open
@@ -137,39 +137,38 @@ findings:
     title: "`frequency_distribution` zero-fills `min_count..=max_count` — unbounded allocation up to ~4.3 billion entries"
 open: 33
 total: 33
-unparsed: 1
-recorded: 2026-10-17T09:13:20.637Z
+recorded: 2026-10-20T09:03:30.349Z
 ---
 
 # Phase 03: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| WR-01 | warning | open | - |
-| WR-02 | warning | open | - |
-| WR-11 | warning | open | - |
-| WR-12 | warning | open | - |
-| WR-13 | warning | open | - |
-| WR-14 | warning | open | - |
-| WR-15 | warning | open | - |
-| WR-16 | warning | open | - |
-| WR-17 | warning | open | - |
+| IN-01 | info | open | - |
 | IN-02 | info | open | - |
 | IN-03 | info | open | - |
-| IN-04 | info | open | - |
-| IN-05 | info | open | - |
-| IN-07 | info | open | - |
-| IN-08 | info | open | - |
-| IN-09 | info | open | - |
-| IN-10 | info | open | - |
-| IN-11 | info | open | - |
-| IN-12 | info | open | - |
-| IN-13 | info | open | - |
+| WR-01 | warning | open | - (not in the current review) |
+| WR-02 | warning | open | - (not in the current review) |
+| WR-11 | warning | open | - (not in the current review) |
+| WR-12 | warning | open | - (not in the current review) |
+| WR-13 | warning | open | - (not in the current review) |
+| WR-14 | warning | open | - (not in the current review) |
+| WR-15 | warning | open | - (not in the current review) |
+| WR-16 | warning | open | - (not in the current review) |
+| WR-17 | warning | open | - (not in the current review) |
+| IN-04 | info | open | - (not in the current review) |
+| IN-05 | info | open | - (not in the current review) |
+| IN-07 | info | open | - (not in the current review) |
+| IN-08 | info | open | - (not in the current review) |
+| IN-09 | info | open | - (not in the current review) |
+| IN-10 | info | open | - (not in the current review) |
+| IN-11 | info | open | - (not in the current review) |
+| IN-12 | info | open | - (not in the current review) |
+| IN-13 | info | open | - (not in the current review) |
 | CR-01 | critical | open | - (not in the current review) |
 | WR-04 | warning | open | - (not in the current review) |
 | WR-05 | warning | open | - (not in the current review) |
 | WR-06 | warning | open | - (not in the current review) |
-| IN-01 | info | open | - (not in the current review) |
 | IN-06 | info | open | - (not in the current review) |
 | WR-03 | warning | open | - (not in the current review) |
 | CR-02 | critical | open | - (not in the current review) |
