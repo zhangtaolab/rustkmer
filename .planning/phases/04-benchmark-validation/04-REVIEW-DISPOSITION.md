@@ -3,6 +3,62 @@ phase: 04
 review: 04-REVIEW.md
 titles: json
 findings:
+  - id: WR-01
+    severity: warning
+    disposition: open
+    title: "README ships eight `count` commands the CLI rejects (positional input)"
+  - id: WR-02
+    severity: warning
+    disposition: open
+    title: "README documents a nonexistent `--kmer-size` long flag"
+  - id: WR-03
+    severity: warning
+    disposition: open
+    title: "CONTRIBUTING.md states the opposite of what CI now does (stale within the same review window)"
+  - id: WR-04
+    severity: warning
+    disposition: open
+    title: "docs/mkdocs.yml nav references four files that do not exist — docs build cannot pass"
+  - id: WR-05
+    severity: warning
+    disposition: open
+    title: "docs site footer PyPI link is a 404"
+  - id: WR-06
+    severity: warning
+    disposition: open
+    title: "\"Verify Installation\" snippet is a Python syntax error"
+  - id: WR-07
+    severity: warning
+    disposition: open
+    title: "Migration table documents CLI commands the CLI rejects"
+  - id: WR-08
+    severity: warning
+    disposition: open
+    title: "Example scripts point users at guide documents that do not exist"
+  - id: IN-01
+    severity: info
+    disposition: open
+    title: "docs/mkdocs.yml declares the `search` plugin twice; most of the docs tree is absent from nav"
+  - id: IN-02
+    severity: info
+    disposition: open
+    title: "docs/README.md example treats a PyQueryResult as always-truthy"
+  - id: IN-03
+    severity: info
+    disposition: open
+    title: "demo_performance.py — misleading unit name and inconsistent zero-guard"
+  - id: IN-04
+    severity: info
+    disposition: open
+    title: "Inconsistent GitHub org across the doc corpus"
+  - id: IN-05
+    severity: info
+    disposition: open
+    title: "mkdocs preview server binds all interfaces"
+  - id: IN-06
+    severity: info
+    disposition: open
+    title: "Uninterpolated `{route}` placeholders in expect_err messages"
   - id: IN-09
     severity: info
     disposition: open
@@ -11,10 +67,6 @@ findings:
     severity: critical
     disposition: open
     title: "Windows clippy gate is red at HEAD — un-gated measurement helpers are dead code under the Windows test gating (CI merge gate failing)"
-  - id: WR-08
-    severity: warning
-    disposition: open
-    title: "CR-01's replacement figure indexes `input_fingerprint[0]` unguarded — and can silently take the number from the wrong results file"
   - id: IN-08
     severity: info
     disposition: open
@@ -23,89 +75,37 @@ findings:
     severity: critical
     disposition: fixed
     title: "Renderer hard-codes a measurement literal, violating the T-04-07 \"zero measurement literals\" contract it implements"
-  - id: WR-01
-    severity: warning
-    disposition: open
-    title: "make_slice.sh swallows gunzip failure — corrupt input yields exit 0 and a partial slice"
-  - id: WR-02
-    severity: warning
-    disposition: open
-    title: "`--render-report` without `--out` clobbers the default measurement results file"
-  - id: WR-03
-    severity: warning
-    disposition: open
-    title: "A typo'd or missing explicit `--input` silently degrades to a synthetic run"
-  - id: WR-04
-    severity: warning
-    disposition: open
-    title: "`total_sequence_length` and `average_quality` bypass the compressed opener — `.fq.gz` parsed as raw deflate bytes"
-  - id: WR-05
-    severity: warning
-    disposition: open
-    title: "benchmark.yml cache key hashes a file that does not exist in CI (Cargo.lock is gitignored)"
-  - id: WR-06
-    severity: warning
-    disposition: open
-    title: "MultiGzDecoder hard-fails on trailing bytes after the last member — stricter than GzDecoder and than gzip itself"
-  - id: WR-07
-    severity: warning
-    disposition: open
-    title: "NaN/Infinity medians pass the gate as \"ok\" — comparator fails open on non-finite data"
-  - id: IN-01
-    severity: info
-    disposition: open
-    title: "Dead validation branch in gen_synthetic.py"
-  - id: IN-02
-    severity: info
-    disposition: open
-    title: "bench.py exit-code contract is ambiguous at the edges"
-  - id: IN-03
-    severity: info
-    disposition: open
-    title: "Methodology schedule sorts round keys lexicographically"
-  - id: IN-04
-    severity: info
-    disposition: open
-    title: "Duplicate or tool-less arms collapse silently in compare.py's dict build"
-  - id: IN-05
-    severity: info
-    disposition: open
-    title: "test_schema.py's real-run test fails confusingly on a fresh clone"
-  - id: IN-06
-    severity: info
-    disposition: open
-    title: "No timeout on measured subprocesses"
   - id: IN-07
     severity: info
     disposition: open
     title: "Leading-hyphen paths pass validate_path and reach argv positions where tools parse options"
 open: 18
 total: 19
-recorded: 2026-10-18T07:52:46.221Z
+recorded: 2026-10-20T11:37:14.347Z
 ---
 
 # Phase 04: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| IN-09 | info | open | - |
+| WR-01 | warning | open | - |
+| WR-02 | warning | open | - |
+| WR-03 | warning | open | - |
+| WR-04 | warning | open | - |
+| WR-05 | warning | open | - |
+| WR-06 | warning | open | - |
+| WR-07 | warning | open | - |
+| WR-08 | warning | open | - |
+| IN-01 | info | open | - |
+| IN-02 | info | open | - |
+| IN-03 | info | open | - |
+| IN-04 | info | open | - |
+| IN-05 | info | open | - |
+| IN-06 | info | open | - |
+| IN-09 | info | open | - (not in the current review) |
 | CR-02 | critical | open | - (not in the current review) |
-| WR-08 | warning | open | - (not in the current review) |
 | IN-08 | info | open | - (not in the current review) |
 | CR-01 | critical | fixed | bb5ccb0 (user-approved during UAT: figure now derived from fingerprinted input size; re-render byte-identical) (not in the current review) |
-| WR-01 | warning | open | - (not in the current review) |
-| WR-02 | warning | open | - (not in the current review) |
-| WR-03 | warning | open | - (not in the current review) |
-| WR-04 | warning | open | - (not in the current review) |
-| WR-05 | warning | open | - (not in the current review) |
-| WR-06 | warning | open | - (not in the current review) |
-| WR-07 | warning | open | - (not in the current review) |
-| IN-01 | info | open | - (not in the current review) |
-| IN-02 | info | open | - (not in the current review) |
-| IN-03 | info | open | - (not in the current review) |
-| IN-04 | info | open | - (not in the current review) |
-| IN-05 | info | open | - (not in the current review) |
-| IN-06 | info | open | - (not in the current review) |
 | IN-07 | info | open | - (not in the current review) |
 
 Dispositions: `open` (recorded, not yet triaged), `fixed`, `skipped`, `deferred`.
