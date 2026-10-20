@@ -19,10 +19,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-09)
+See: .planning/PROJECT.md (updated 2026-10-20)
 
 **Core value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools, from both the CLI and Python.
-**Current focus:** Phase 04 — Benchmark & Validation
+**Current focus:** All 4 phases complete — milestone close pending
 
 ## Current Position
 
@@ -252,6 +252,10 @@ None yet.
 
 [Issues that affect future work]
 
+- [Phase 04 verification refresh 2026-10-20, W1] Unpushed local dev commits lack CI validation: origin/dev is at `764f53f`; local HEAD is ahead including 4 code commits (815aad5/957c069 src/io/fastq.rs, b6ea0ee ci.yml, b417e3a covered merge test). Windows-latest clippy leg has not executed against b417e3a; local evidence (clippy 0, tests green, no cfg items changed) covers the interval. Push dev to resolve.
+- [Phase 04 verification refresh 2026-10-20, W2] REQUIREMENTS.md marks BENCH-02 `[x]` Complete (flipped by bookkeeping commit 51629b5) contradicting the committed report's measured NO verdict and the deliberate "left unchecked, escalated" decision in this file. The user's milestone-close acceptance decision is not on record — revert the checkbox or record the acceptance explicitly at /gsd-complete-milestone.
+- [Milestone close 2026-10-20] 18 open code-review findings in .planning/phases/04-benchmark-validation/04-REVIEW-DISPOSITION.md (0 critical; docs/examples-level: README positional-arg examples, --kmer-size, CONTRIBUTING CI claims, mkdocs nav 4 dead links — strict build will fail when they reach main, PyPI link 404, syntax-error snippet, invalid doc commands, stale guide references). Triage before/with /gsd-complete-milestone.
+
 - [RESOLVED 2026-10-19 quick-261019-d1y] pyo3 test executability: the maturin `python-source` key was dropped in dbb13ef, so `maturin develop` now works — the 2026-10-17 phase-03 re-verification rebuilt pyrustkmer from source and ran the full pyo3 suite green (125/0, incl. test_database_merge.py 12/12 for the first time), closing the carried MERGE-04 human-verification item. Formerly STILL OPEN, both fixed by quick-261019-d1y: (a) cov flags removed from pytest addopts (local runs plain, no `--no-cov` needed); (b) `.github/workflows/ci.yml` gained a 3-OS `pyo3-pytest` job carrying the 80% gate. The historical consequence for phase 03 (03-09/03-10 shipped without Python-level verification at the time) is now back-filled by the 2026-10-17 evidence.
 - [MOOT 2026-10-19] deferred-items.md's IN-02 clippy entry: the file no longer exists in `.planning/` — nothing left to mark closed (the underlying clippy finding was already verified fixed by plan 03-09).
 - [Phase 03 UAT 2026-10-09] Partially superseded by the UAT session: the pyo3 extension WAS built and the merge suite EXECUTED 12/12 green (manual PYO3_PYTHON build + RUSTFLAGS dynamic_lookup + manual .so install — see 03-UAT test 22); the python-source key is now RESOLVED (dbb13ef, see above); --cov-fail-under and the missing CI pytest job were resolved 2026-10-19 by quick-261019-d1y. pyo3 0.27 additionally needs the extension crate's build.rs to call pyo3_build_config::add_extension_module_link_args() — deferred to ROADMAP backlog 999.1.
@@ -281,6 +285,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-20T09:35:00Z
-Stopped at: Phase 04 complete — all phases complete
+Last session: 2026-10-20T11:50:31Z
+Stopped at: Phase 04 verification refresh complete — stale 04-VERIFICATION.md regenerated (passed 10/10, fresh digest v3:sha256:268ff74c) after covered-file drift (b417e3a); VALIDATION re-audited green (0 gaps), SECURITY created for Phase 04 (12/12 closed, threats_open: 0), code review re-run (0 critical / 8 warning / 6 info, all docs-level, disposition 18 open), regression gate green, phase.complete re-run. All 4 phases complete; next step: milestone close via /gsd-complete-milestone (triage BENCH-02 checkbox W2 + 18 open docs findings + ledger row 15 first; push dev for W1)
 Resume file: None

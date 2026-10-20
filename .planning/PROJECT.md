@@ -20,16 +20,16 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 - ✓ Memory-mapped reads and streaming / prefix-cache external-sort merge for large databases — existing
 - ✓ `u128` k-mer encoding (k ≤ 64), canonicalization (`min(kmer, revcomp)`) — existing
 - ✓ Fuzzy matching (wildcard expansion + Hamming-distance mutation) and sorted-prefix lookup — existing
+- ✓ Reproducible benchmark harness on human-scale Illumina WGS data with synthetic-input CI degradation ladder (`scripts/bench/bench.py` + `benchmark.yml` gate + committed per-platform baselines; milestone run on user-approved substitute CRR2044018, CRR1936095 re-runnable via `--input`) — Phase 4
+- ✓ Memory footprint bounded so human-scale count/merge runs within practical RAM (merge admission-controlled + streaming; counting measured 55.2 GiB at k=31 human-scale) — Phases 3–4
 
 ### Active
 
 <!-- Current milestone: performance. Hypotheses until shipped and benchmarked. -->
 
-- [ ] Counting at human-genome scale is competitive with a reference tool (KMC / Jellyfish) in speed and/or memory
-- [ ] Merging at human-genome scale is competitive with a reference tool in speed and/or memory
-- [ ] Both the CLI and `pyrustkmer` deliver the gains (single Rust core; neither surface regresses)
-- [ ] A reproducible benchmark harness on real human-scale Illumina WGS data (CRR1936095) — supplemented by synthetic inputs where needed — guards against regressions (CI)
-- [ ] Memory footprint is bounded so human-scale count/merge runs within practical RAM
+- [ ] Counting at human-genome scale is competitive with a reference tool (KMC / Jellyfish) in speed and/or memory — Phase 4 measured (substitute dataset CRR2044018, 3 counterbalanced reps): k=31 YES (rustkmer 494 s @ 55.2 GiB vs jellyfish2 843 s @ 84.0 GiB — faster and leaner); k=21 NO (jellyfish 97 s vs rustkmer ~500 s, ~5x). BENCH-02 overall verdict NO — escalated to milestone close for the user's acceptance decision
+- [ ] Merging at human-genome scale is competitive with a reference tool in speed and/or memory — Phase 4 measured merge arms at slice scale (04-results-slice.json); full-scale verdict rides the same BENCH-02 escalation
+- [ ] Both the CLI and `pyrustkmer` deliver the gains (single Rust core; neither surface regresses) — core-layer gains through Phase 4; no Python-surface regression observed (pyo3 suite green, CI 3-OS)
 
 ### Out of Scope
 
@@ -75,7 +75,9 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 | Performance (not features, not broad tech debt) is this milestone's focus | Counting + merging at human scale is memory-bound; the user wants competitiveness with reference tools | — Pending |
 | Both CLI and Python are first-class surfaces | A single Rust core serves both; core-layer wins flow to both, and the user serves both audiences equally | — Pending |
 | Breaking format/API changes are deferred to the point of decision | User prefers to preserve compatibility and weigh tradeoffs only when a concrete change demands it | — Pending |
-| Reference comparator (KMC vs Jellyfish vs both) is pinned during requirements | Choice determines whether to optimize for memory-efficiency or raw speed, shaping the whole roadmap | — Pending |
+| Reference comparator (KMC vs Jellyfish vs both) is pinned during requirements | Choice determines whether to optimize for memory-efficiency or raw speed, shaping the whole roadmap | ✅ Jellyfish2 2.3.1 for v1 (KMC3 deferred to v2) |
+| Milestone benchmark ran on substitute dataset CRR2044018 with honest per-rep cache-state recording (Phase 4, user-approved 2026-10-09) | CRR1936095 absent from host; sudo cold-cache purge unavailable — every rep records its true cache_state and the report states cold-cache PARTIALLY satisfied | ✅ Phase 4 (measured) |
+| BENCH-02 verdict computed conservatively from recorded medians: NO overall (k=31 YES, k=21 ~5x slower) | A NO is a valid measured outcome; the acceptance decision belongs to the user | ⚠ Escalated to milestone close |
 | Dense `u64` width applies to the counting hot path only; merge accumulator / read path stays `u128`-wide (Phase 3, 03-06 D7) | DENSE-01 names counting memory; in-memory merge only runs when already under budget and its peak is charged honestly by the admission model | ✅ Phase 3 |
 | Prefix-cache mixed-canonical merge capability preserved as-is (Phase 3, WR-04 residual / AR-03-6) | Changing merge outcomes for existing callers is a user-visible break; the residual is documented and developer-triaged, not silently "fixed" | ✅ Phase 3 |
 
@@ -97,4 +99,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-09 after Phase 3 (Memory Safety) completion*
+*Last updated: 2026-10-20 after Phase 4 (Benchmark & Validation) completion*
