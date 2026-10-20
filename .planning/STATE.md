@@ -22,7 +22,7 @@ current_phase: 04
 See: .planning/PROJECT.md (updated 2026-10-20)
 
 **Core value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools, from both the CLI and Python.
-**Current focus:** All 4 phases complete — milestone close pending
+**Current focus:** v1.0 (Performance) shipped 2026-10-20 — next milestone not yet defined (/gsd-new-milestone)
 
 ## Current Position
 
