@@ -1,6 +1,6 @@
 ---
 phase: 03-memory-safety
-verified: 2026-10-17T09:28:19Z
+verified: 2026-10-20T09:10:26Z
 status: passed
 score: 11/11 must-haves verified
 covered_files:
@@ -67,136 +67,128 @@ covered_files:
   - "tests/parallel_count_tests.rs"
   - "tests/prefix_cache_conservation_tests.rs"
   - "tests/prefix_cache_output_order_tests.rs"
-covered_digest: "v3:sha256:da4b87480af02ded55494e49163df717cc2c0ef6dedf82c04d2792679c6b4609"
+covered_digest: "v3:sha256:7a935a5a530728be0b43761e32475edf6b51926ca65994d603706cf747f1dfc4"
 behavior_unverified: 0 # Count of PRESENT_BEHAVIOR_UNVERIFIED truths (present + wired, behavior not exercised); each is detailed in behavior_unverified_items below (and in human_verification when status is human_needed)
 overrides_applied: 0
 re_verification:
   previous_status: passed
   previous_score: 11/11
-  gaps_closed:
-    - "Carried human item (03-12 D4, WINDOWS.md #16): the pyo3 maturin blocker was lifted by dbb13ef (python-source key dropped, pyo3/pyproject.toml). This round I rebuilt pyrustkmer from CURRENT source (maturin develop, exit 0) and executed the item's exact procedure from Python: k=21+k=31 inputs and mixed-canonical inputs under merge_mode='streaming' both raise PyRuntimeError carrying 'Merge operation failed' + the prologue's k-mer-size / canonical compatibility text, with NO output file written; a compatible-input control merges successfully under the same budget (3/3 PASS). The MERGE-04 contract suite (pyo3/tests/test_database_merge.py) also ran for the first time: 12/12. The prior frontmatter said status: passed while its body carried one open human item — this round the human section is genuinely empty, making 'passed' fully valid."
+  gaps_closed: []  # no gaps were open — this round is a staleness refresh, not gap closure
   gaps_remaining: []
   regressions: []
 advisory:
-  - finding: "Post-verification source changes audited this round, all regression-clean: (1) 8f23225 touches src/database/prefix_cache_merge.rs ONLY inside #[cfg(test)] mod tests (both hunks at lines 1999+/2027+, production mod tests starts :1545; unix branch of failed_bucket_aborts_the_merge_with_err ran green here); (2) 8102985 swaps GzDecoder->MultiGzDecoder in src/io/fastq.rs open_compressed (production, input-reading only — no merge/dense-format interaction) with a two-member gzip regression test, green in the lib suite; (3) cc64fbc/97f54bf/8f23225 narrow merge_routing/merge_cleanup off shared-common SELF-tests (those still run in golden/round_trip binaries: round_trip 23 passed incl. common::* self-tests) and gate platform-specific test plants; suite 400/0 on darwin; (4) ba7f451 applies rustfmt to the 4 drifted files — rustfmt --check exit 0 on all 8 files I spot-checked."
+  - finding: "Stale pyrustkmer install in the default interpreter: /Users/forrest/miniconda3/lib/python3.13/site-packages/pyrustkmer/ is dated Jul 2 16:33 — BEFORE plan 03-10 landed merge_databases_to_path and plan 03-12 landed the merge kwargs. Running pytest against it would assert against code no longer on disk (exactly the trap STATE.md records for 03-07). The 2026-10-17 behavioral evidence (maturin develop from current source; test_database_merge.py 12/12; full pyo3 suite 125 passed / 0 failed) carries for the current tree because git diff 992e17c..HEAD shows ZERO changes under pyo3/src/ and pyo3/tests/ — only pyo3/pyproject.toml changed (pytest addopts de-cov'd), which does not affect the compiled extension."
     category: other
-    reason: "None of these falsifies a must-have truth; each is covered by a green behavioral run recorded in this report."
-    evidence_status: "diffs read + suite/clippy/fmt runs executed by me this round"
-  - finding: "WINDOWS.md ledger rows #16 (unrun-verify: PyRuntimeError manifestation never pytest-run) and #18 (lint-warning: cargo fmt drift on 4 files) are now discharged in substance but still read 'open' in the table: #16's blocker was lifted (dbb13ef) and the manifestation executed this round (12/12 + direct 3-variant check); #18's drift was fixed by ba7f451 (rustfmt --check exit 0 on all 4 named files, re-verified by me). Ledger flips are a developer/orchestrator edit — not made by the verifier."
+    reason: "Recorded so the next pyo3 test run rebuilds first (maturin develop) instead of trusting the stale site-packages copy; not a phase-truth failure."
+    evidence_status: "git diff audited + module mtime/version checked by me this round"
+  - finding: "WINDOWS.md ledger triaged 2026-10-20 (quick-261020-lec): 1 open / 6 waived / 11 fixed. The single open row #15 (a Python-level test driving a final merged-output write failure, asserting the 'Merge operation failed' prefix) is a /gsd-ship gate tied to ROADMAP backlog — not a phase-03 must-have: MERGE-04's truth (PyDatabase.merge routes through the CLI's bounded core) is behaviorally verified (2026-10-17: 12/12 contract suite + 3-variant rejection check with compatible-input control; pyo3/src unchanged since)."
     category: other
-    reason: "Stale bookkeeping, not live defects; flipping the two rows to fixed/closed with this report's evidence would reconcile the ledger."
-    evidence_status: "WINDOWS.md rows read; underlying conditions re-verified by me"
-  - finding: "Fresh post-fix code review committed after the prior verification (03-REVIEW.md 2026-10-17, critical: 0) grew the open advisory set by 5: WR-15/16/17 (src/io/fastq.rs helpers total_sequence_length/average_quality/count_sequences/filter_by_quality — compression/Phred/parse-error handling; no phase-03 truth depends on these helpers) and IN-12/13 (MultiGzDecoder hard-errors on trailing garbage after the final member; two tautological GUARD asserts in merge_bounded_memory_tests — the routing proofs rest on the missing-temp-dir probe and D-02 rejection-text assertions, which remain discriminating). The 'open' CR-01/CR-02/CR-03 rows are keep-rule artifacts marked 'not in the current review' — the current review confirms closure, and this round's behavioral evidence re-confirms all three (mixed-canonical both-writer test, output-order tests, Python rejection check)."
+    reason: "Ship-gate bookkeeping outside this phase's truths; flagged so the orchestrator knows /gsd-ship still blocks on it."
+    evidence_status: "STATE.md ledger note + WINDOWS.md triage records read by me"
+  - finding: "gsd-tools `verify.artifacts` cannot parse this phase's plan frontmatter (all 17 plans declare must_haves.artifacts as annotated plain strings, e.g. 'src/database/format.rs (edited: ...)', not {path:} mappings) — it returns all_passed:false with total:0. Manual three-level artifact verification (as in every prior round) was used instead: existence via wc -l, substance via symbol greps at named lines, wiring via module declaration + call-site greps + green behavioral runs."
     category: other
-    reason: "All warning/info severity, recorded open in the committed 03-REVIEW-DISPOSITION.md for developer triage; no must-have depends on them."
-    evidence_status: "committed review + disposition records read by me"
-  - finding: "pyo3 pytest run needs --no-cov on this host: pyproject addopts force --cov-fail-under=80 over testpaths, and 63 of 188 collected Python tests skip on a missing fixture (python/tests/test_data/tiny_test.rkdb, export tests) — pre-existing, outside phase-03 scope. The 125 that ran all passed."
+    reason: "Tool/format mismatch, not an artifact failure; noted in case the plan frontmatter format is ever normalized."
+    evidence_status: "tool JSON output (total: 0) inspected by me; manual checks re-executed this round"
+  - finding: "The three post-verification source changes that drove this refresh were audited hunk-by-hunk: (1) 815aad5+957c069 fastq.rs WR-15/16/17 + IN-12 — helper correctness in INPUT reading only (gz-aware openers, honest count errors, raw-ASCII quality docs), each fix carrying its own new regression test, 13/13 module tests green; no merge/dense-format path touched. (2) b417e3a merge_bounded_memory_tests.rs IN-13 — replaced the two TAUTOLOGICAL premise asserts (estimated > budget where budget = estimated-1) with strict-positivity asserts before subtraction, making the guards MORE discriminating, plus Windows cfg-gating of measurement machinery; 6/6 green. (3) b6ea0ee pyproject.toml — coverage gate relocated from pytest addopts to a CI job; pure build/test config."
     category: other
-    reason: "Repo tooling/fixture state, not a phase truth; recorded so the next pyo3 test run is not misread."
-    evidence_status: "reproduced by me (pytest -rs output)"
+    reason: "All quality improvements; none falsifies a must-have truth; each covered by a green behavioral run executed by me this round."
+    evidence_status: "diffs read + targeted and full-suite runs executed by me this round"
 ---
 
-# Phase 03: Memory Safety — Re-Verification Report (Round 5, staleness refresh)
+# Phase 03: Memory Safety — Re-Verification Report (Round 6, staleness refresh)
 
 **Phase Goal:** Bounded-memory merge operations and dense k-mer storage for the common k ≤ 32 case
-**Verified:** 2026-10-17T09:28:19Z
+**Verified:** 2026-10-20T09:10:26Z
 **Status:** passed
-**Re-verification:** Yes — staleness refresh. The round-4 report (2026-10-09, 11/11) went stale because covered source changed afterward (8f23225 test-module-only Windows cfg in prefix_cache_merge.rs; 8102985 MultiGzDecoder production fix in src/io/fastq.rs; merge_* test Windows gating/de-flake/narrowing; ba7f451 rustfmt). This round regenerates the report over the current covered set and re-executes the full behavioral evidence chain.
+**Re-verification:** Yes — staleness refresh. The round-5 report (2026-10-17, 11/11, passed) went stale because three covered files changed afterward via post-verification quick tasks: src/io/fastq.rs + tests/merge_bounded_memory_tests.rs (quick-261019-dwf: WR-15/16/17 + IN-12/13) and pyo3/pyproject.toml (quick-261019-d1y: coverage-gate relocation to CI). This round audits those diffs hunk-by-hunk, re-executes the full behavioral evidence chain on the current tree, and regenerates the covered-input fingerprint.
 
 ## Goal Achievement
 
-I did not take the prior report's word for standing truths: I audited every post-verification
-diff, re-ran the full cargo suite, both clippy gates, rustfmt on every touched file, and —
-because dbb13ef lifted the maturin blocker — rebuilt `pyrustkmer` from current source and
-executed the one item that had kept this phase from a clean pass: the Python-surface
-merge-rejection manifestation, including a compatible-input control. Everything is green.
+Adversarial stance applied: I did not take the round-5 report, the SUMMARYs, or the caller's
+context claims on faith. The git history since the round-5 verification commit (992e17c) was
+enumerated commit-by-commit; the only source changes under src/, tests/, pyo3/src/, pyo3/tests/
+are the two files named above (fastq.rs 200 lines changed, merge_bounded_memory_tests.rs 45) —
+everything else is docs/.planning. Each changed hunk was read. The full cargo suite, both
+clippy gates, and the three most affected test binaries were executed by me on the current
+working tree, not inferred from any recorded claim.
 
 ### Observable Truths
 
-| # | Truth | Status | Evidence (re-executed this round unless noted) |
+| # | Truth | Status | Evidence (symbol check + behavioral run executed this round unless noted) |
 |---|-------|--------|----------|
-| 1 | DENSE-01: k ≤ 32 stored as u64, ~halving counting memory | ✓ VERIFIED | `CounterTable::Dense(DashMap<u64, u32>)` + `uses_dense_storage()` live in src/hash/table.rs:40,163,199 (re-read); dense_differential 6/6, dense_proptest 3/3, dense_memory 2/2 in the suite I ran |
-| 2 | Merge core respects memory budget; routes bounded (MERGE-02) | ✓ VERIFIED | merge_bounded_memory_tests 6/6 and merge_routing_tests 17/17 green in the suite I ran |
-| 3 | In-memory and streaming routes produce identical data | ✓ VERIFIED | merge_route_parity_tests 5/5 green |
-| 4 | Failed/interrupted merges clean up temp files (MERGE-03) | ✓ VERIFIED | merge_cleanup_tests 9/9 green (post-narrowing binary; removed cases were shared-common self-tests, which still run in golden/round_trip binaries) |
-| 5 | u64/u128 counts + canonicalization match (DENSE-03) | ✓ VERIFIED | dense_differential 6/6 + dense_proptest 3/3 green |
-| 6 | PyDatabase merge shares the CLI's bounded path (MERGE-04) | ✓ VERIFIED | **Upgraded from carried-human to behaviorally verified.** pyo3/src/database.rs:1457 still calls `RKDatabase::merge_databases_to_path` (re-read; pyo3/src untouched since 4b9f095). Freshly built extension from current source: pyo3/tests/test_database_merge.py 12/12 (first-ever run), full pyo3 suite 125 passed / 0 failed, and my direct 3-variant check below |
-| 7 | .rkdb v2 byte-identity preserved (DENSE-02) | ✓ VERIFIED | golden_sha256_tests 5/5 green; format.rs untouched by every post-verification commit (git log) |
-| 8 | Incompatible inputs rejected on EVERY route | ✓ VERIFIED | merge_routing_tests 17/17 green (kmer-size-mismatch text, empty-list, header-validation, D-02 reject all present as test fns, re-listed by me); PLUS Python-surface variants A and B below now executed and passing |
-| 9 | Prefix-cache bucket merge lossless for shards > one ~4 MB batch | ✓ VERIFIED | prefix_cache_conservation_tests 2/2 green |
-| 10 | Prefix-cache-merged database queryable correctly (sorted flag truthful) — mixed-canonical capability on BOTH bucket writers | ✓ VERIFIED | prefix_cache_output_order_tests 3/3 green incl. `mixed_canonical_prefix_cache_output_is_ascending_summed_and_queryable` (both writer arms); override + same-mode-control + refusal unit tests all green in the lib suite (re-confirmed by name in the log); both `pop_front` consumption sites present (:1004, :1032, re-grepped); 8f23225 touched this file only inside `mod tests` (hunks 1999+/2027+, mod starts :1545) |
-| 11 | CLI merge front-end does not materialize input databases | ✓ VERIFIED | comment-filtered `from_file_path` grep in src/cli/commands/merge.rs = 0 (re-run by me); merge_frontend_validation_tests 3/3 green |
+| 1 | DENSE-01: k ≤ 32 stored as u64, ~halving counting memory | ✓ VERIFIED | `CounterTable::Dense(DashMap<u64, u32>)` at src/hash/table.rs:40 and `uses_dense_storage()` at :199 re-grepped; dense_differential 6/6, dense_proptest 3/3, dense_memory 2/2 in the full suite I ran |
+| 2 | Merge core respects memory budget; routes bounded (MERGE-02) | ✓ VERIFIED | merge_bounded_memory_tests 6/6 (run twice: standalone + in full suite) — including `streaming_merge_peak_memory_is_bounded_by_chunk_not_dataset` with the DE-TAUTOLOGIZED positivity guard; merge_routing_tests 17/17; `estimate_total_kmers`/`estimated_bytes_for_route` live in src/database/format.rs (:871) |
+| 3 | In-memory and streaming routes produce identical data | ✓ VERIFIED | merge_route_parity_tests 5/5 green in the full suite I ran |
+| 4 | Failed/interrupted merges clean up temp files (MERGE-03) | ✓ VERIFIED | merge_cleanup_tests 9/9 green; temp_lifecycle.rs RAII/sweep machinery intact (MERGE_TEMP_PREFIX :45, sweep_stale_merge_dirs) |
+| 5 | u64/u128 counts + canonicalization match (DENSE-03) | ✓ VERIFIED | dense_differential 6/6 + dense_proptest 3/3 green in the suite I ran |
+| 6 | PyDatabase merge shares the CLI's bounded path (MERGE-04) | ✓ VERIFIED | pyo3/src/database.rs:1457 calls `RKDatabase::merge_databases_to_path` (re-grepped; pyo3/src byte-identical since 992e17c per git diff — the 2026-10-17 source-built run: test_database_merge.py 12/12 + full pyo3 suite 125/0 + 3-variant rejection check with control, remains valid for identical source). NOTE: the miniconda site-packages extension is a stale Jul-2 build and was deliberately NOT used (see advisory) |
+| 7 | .rkdb v2 byte-identity preserved (DENSE-02) | ✓ VERIFIED | golden_sha256_tests 5/5 + golden_tests 34/34 green in the suite I ran; src/database/format.rs untouched by every post-verification commit (git diff --stat) |
+| 8 | Incompatible inputs rejected on EVERY route | ✓ VERIFIED | merge_routing_tests 17/17 green (kmer-size-mismatch, empty-list, header-validation, D-02 rejection test fns all in the binary I ran) |
+| 9 | Prefix-cache bucket merge lossless for shards > one ~4 MB batch | ✓ VERIFIED | prefix_cache_conservation_tests 2/2 green in the suite I ran |
+| 10 | Prefix-cache-merged database queryable correctly (sorted flag truthful) — mixed-canonical capability on BOTH bucket writers | ✓ VERIFIED | prefix_cache_output_order_tests 3/3 green in the suite I ran; both `pop_front` consumption sites present (src/database/prefix_cache_merge.rs:1004, :1032, re-grepped); `prefix_cache_route_still_merges_mixed_canonical` observed `ok` in my merge_routing run |
+| 11 | CLI merge front-end does not materialize input databases | ✓ VERIFIED | `from_file_path` grep in src/cli/commands/merge.rs: exactly 2 matches, BOTH inside comments (:257 `//`, :363 `///`) — 0 production calls; merge_frontend_validation_tests 3/3 green |
 
 **Score:** 11/11 truths verified (0 present-but-unverified; 0 failed)
 
-### Python-Surface Rejection Manifestation (carried human item — CLOSED this round)
-
-The blocker (maturin `python-source` refusal, WINDOWS.md #16) was lifted by dbb13ef. I rebuilt
-`pyrustkmer` from current source into a scratch venv (`maturin develop`, exit 0) and executed
-the item's exact procedure:
-
-| Variant | Procedure | Result |
-|---------|-----------|--------|
-| A: k=21 + k=31 inputs, `merge_mode="streaming"`, `max_memory="1024"` | `PyDatabase.merge` → expect PyRuntimeError + no output file | **PASS** — PyRuntimeError carrying "Merge operation failed" + k-mer-size text; `out.rkdb` not written |
-| B: mixed canonical (one `canonical=True`, one `canonical=False`, k=21), same budget | same expectation | **PASS** — PyRuntimeError carrying "Merge operation failed" + canonical text; no output file |
-| Control: compatible inputs, same budget | merge must succeed | **PASS** — output file written, non-empty |
-
-Script: 3/3 PASS (exit 0). This discharges WINDOWS.md #16's substance and closes the last open
-human-verification item; the human_verification section is therefore empty and `passed` is valid.
-
 ### Post-Verification Change Audit (the staleness drivers)
 
-| Change | Files | Audit result |
-|--------|-------|--------------|
-| 8102985 fix(io) MultiGzDecoder | src/io/fastq.rs (production) | Real fix: reads ALL concatenated gzip members; two-member regression test asserts exact ids/seqs/quals from both members, green in lib suite (237). Input-reading only — no merge/dense-format path touched. Note: file is phase-03 covered source via plan 03-01 key-files. |
-| 8f23225 test(win) | prefix_cache_merge.rs + merge_bounded/merge_cleanup tests | prefix_cache_merge.rs diff is 100% inside `#[cfg(test)] mod tests` (both hunks after :1545); darwin/unix branches ran green here; Windows share-lock plant is CI's windows-latest leg (now in matrix per b514331) |
-| cc64fbc narrow + 97f54bf de-flake | tests/common/{factories,mod,performance}.rs, merge_routing/merge_cleanup/bounded tests | Removed per-binary cases were `common::*::tests::*` shared-helper SELF-tests (still run in golden/round_trip binaries — round_trip 23 passed includes them); no routing/cleanup test was deleted (test fns re-listed by me); de-flake recalibrates wall-clock assertions only |
-| ba7f451 rustfmt | count.rs, parallel_count, merge_bounded, merge_cleanup tests | rustfmt --check exit 0 on all 8 files I checked (incl. all 4 named in WINDOWS #18) — fmt drift resolved |
-| dbb13ef maturin fix | pyo3/pyproject.toml | python-source key dropped; extension builds and imports (verified by me — build + 125 passing Python tests) |
+| Change | Commit(s) | Files | Audit result |
+|--------|-----------|-------|--------------|
+| fastq helper fixes (WR-15/16/17) | 815aad5 | src/io/fastq.rs (+docs) | Input-reading helpers only: `total_sequence_length`/`average_quality` now route through the compression-aware opener; `count_sequences` propagates record-read errors instead of tallying malformed records; `filter_by_quality` raw-ASCII semantics documented + pinned. Each fix has its own new regression test. No merge/dense path touched. 13/13 module tests green (run by me) |
+| MultiGzDecoder comment + trailing-garbage pin (IN-12) | 957c069 | src/io/fastq.rs | Comment accuracy fix + `test_read_all_errors_on_trailing_garbage_after_gzip_member` pin; green in my run |
+| De-tautologize GUARD asserts (IN-13) | b417e3a | tests/merge_bounded_memory_tests.rs | The two premise asserts were `estimated > budget` with `budget = estimated - 1` (always true); now assert `estimated > 0` BEFORE subtraction — strictly more discriminating. Plus Windows cfg-gating of measurement-only imports/consts. 6/6 green (run by me, twice) |
+| Coverage gate relocation | b6ea0ee | pyo3/pyproject.toml (+ci.yml, docs) | addopts reduced to `["-v"]`; 80% gate moved to a CI pyo3-pytest job. No effect on the compiled extension or phase logic; TOML parses (checked) |
+| Review/security/validation refresh | 1b97178, 3c486bc, a868bad | .planning docs only | 03-REVIEW.md (2026-10-20): 0 critical / 0 warning / 3 info over exactly the 3 changed files; 03-SECURITY.md: verified, threats_open: 0; 03-VALIDATION.md: nyquist_compliant: true — all read by me |
 
 ### Required Artifacts
 
+Step 4 note: `gsd-tools query verify.artifacts` returns total:0 for all 17 plans (their
+must_haves.artifacts use annotated plain strings the tool cannot map to paths) — manual
+three-level verification, as in every prior round.
+
 | Artifact | Expected | Status | Details |
 | -------- | -------- | ------ | ------- |
-| src/database/prefix_cache_merge.rs | override + refusal + unit tests (03-17) intact after 8f23225 | ✓ VERIFIED | production code byte-identical to round-4-verified state (8f23225 test-mod-only); override :158-190, refusal :947-1041, both pop_front sites :1004/:1032 (re-grepped) |
-| src/io/fastq.rs | MultiGzDecoder + regression test | ✓ VERIFIED | production swap :73 + two-member fixture test with exact-content assertions, green |
-| src/hash/table.rs | Dense u64 table | ✓ VERIFIED | CounterTable::Dense(DashMap<u64,u32>) :40, :163; uses_dense_storage :199; dense tests green |
-| tests/* evidence binaries | all green | ✓ VERIFIED | 23 result lines, 400 passed / 0 failed / 3 ignored (platform-gated) |
-| pyo3 extension + tests | buildable, MERGE-04 suite green | ✓ VERIFIED | maturin develop exit 0; test_database_merge.py 12/12; full pyo3 pytest 125/0 |
+| src/hash/table.rs | Dense u64 table + accessors | ✓ VERIFIED | Dense(DashMap<u64,u32>) :40, uses_dense_storage :199; dense tests 11 total green |
+| src/database/format.rs | estimator + bounded core | ✓ VERIFIED | estimate_total_kmers :871, estimated_bytes_for_route; unchanged since 992e17c; golden 5/5 + 34/34 |
+| src/database/prefix_cache_merge.rs | override + refusal + both pop_front sites | ✓ VERIFIED | pop_front :1004/:1032 re-grepped; conservation 2/2 + output-order 3/3 green |
+| src/database/temp_lifecycle.rs | RAII subdir + sweep | ✓ VERIFIED | MERGE_TEMP_PREFIX :45, sweep machinery intact; cleanup 9/9 green |
+| src/io/fastq.rs | compression-aware helpers + regression tests (post quick-261019-dwf) | ✓ VERIFIED | 810 lines, wired via `pub mod fastq` (io/mod.rs:7), imported by count.rs:17 and used at :230/:253; 13/13 module tests green |
+| tests/merge_bounded_memory_tests.rs | 6 bounded-memory proofs with non-tautological guards | ✓ VERIFIED | 896 lines; 6/6 green standalone AND in full suite |
+| pyo3/pyproject.toml | valid build/test config | ✓ VERIFIED | TOML parses; addopts `["-v"]`; extension-module/maturin config intact |
+| pyo3/src/database.rs + test_database_merge.py | MERGE-04 wiring + contract suite | ✓ VERIFIED | :1457 → merge_databases_to_path (re-grepped); files byte-identical to the 2026-10-17 source-built 12/12 run |
 
 ### Key Link Verification
 
+Step 5 note: same frontmatter-format caveat as Step 4; wiring verified manually (greps) plus behaviorally (test runs).
+
 | From | To | Via | Status | Details |
 | ---- | -- | --- | ------ | ------- |
-| PyDatabase.merge (Python) | bounded core | pyo3/src/database.rs:1457 → `RKDatabase::merge_databases_to_path` | ✓ WIRED | **behaviorally executed this round** (12/12 + 3-variant check incl. control) |
-| ExternalSortMerger::new canonical fold | merge_mode="memory" override | :158-190 → :482 → :526-541 | ✓ WIRED | unit tests green in lib suite (names re-confirmed in log) |
-| every record leaving a shard buffer | last-key monotonicity check | both pop_front sites :1004, :1032 | ✓ WIRED | refusal unit test green |
-| CLI execute_merge | to-path core (no materialization) | merge.rs (0 comment-filtered `from_file_path`) | ✓ WIRED | grep re-run by me = 0; frontend validation tests 3/3 |
-| gzip inputs | full-member decode | fastq.rs:73 MultiGzDecoder | ✓ WIRED | regression test green (2 members, 5 records, exact ids) |
+| PyDatabase.merge (Python) | bounded core | pyo3/src/database.rs:1457 → `RKDatabase::merge_databases_to_path` | ✓ WIRED | re-grepped this round; behaviorally proven 2026-10-17 on byte-identical source (12/12 + 3-variant rejection incl. control) |
+| CLI execute_merge | to-path core (no materialization) | src/cli/commands/merge.rs — 0 production `from_file_path` | ✓ WIRED | grep re-run by me: only 2 comment matches (:257, :363); frontend validation tests 3/3 |
+| every record leaving a shard buffer | last-key monotonicity check | both pop_front sites prefix_cache_merge.rs:1004, :1032 | ✓ WIRED | re-grepped; output-order tests 3/3 green |
+| FASTQ compressed read path | full-member decode | fastq.rs MultiGzDecoder + compression-aware openers | ✓ WIRED | 13/13 module tests incl. multi-member, trailing-garbage, gzipped-helpers pins |
+| Dense counter → .rkdb write | u64→u128 zero-extension, v2 bytes | KmerEntry path + golden/write-path differentials | ✓ WIRED | golden_sha256 5/5, dense_merge_integration 3/3, round_trip 23+8 green |
 
 ### Data-Flow Trace (Level 4)
 
 | Artifact | Data Variable | Source | Produces Real Data | Status |
 | -------- | ------------- | ------ | ------------------ | ------ |
-| prefix-cache merged output (both writer arms) | entries + header counts | canonicalized shards → override → writer | Yes — oracle-equality e2e tests green | ✓ FLOWING |
-| Python merge output / rejection | output file or PyRuntimeError | real .rkdb inputs → shared bounded core | Yes — control writes real output; variants A/B raise with the core's message | ✓ FLOWING |
-| FASTQ compressed read path | decoded records | MultiGzDecoder over real multi-member fixture | Yes — exact ids/seqs/quals from both members | ✓ FLOWING |
+| prefix-cache merged output (both writer arms) | entries + header counts | canonicalized shards → override → writer | Yes — conservation + oracle-equality e2e green this round | ✓ FLOWING |
+| merge route outputs | .rkdb bytes per route | real fixtures → estimator-routed core | Yes — route parity 5/5 green | ✓ FLOWING |
+| FASTQ stats helpers | length/quality/count | real decompressed records (now gz-aware) | Yes — exact-value assertions on gzipped fixtures (new tests green) | ✓ FLOWING |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 | -------- | ------- | ------ | ------ |
-| Full cargo suite (23 binaries) | `cargo test` | 400 passed / 0 failed / 3 ignored; CARGO_EXIT=0 | ✓ PASS |
-| lib unit layer (override/refusal/fastq/format/streaming) | in suite | 237 passed / 0 failed | ✓ PASS |
-| Discriminating names present in log | grep log for override/refusal/mixed-canonical/fastq-gzip test names | all present, all `ok` | ✓ PASS |
-| Python merge rejection + control (this round's closure) | `python -I check.py` (fresh maturin build of current source) | 3/3 PASS, exit 0 | ✓ PASS |
-| pyo3 MERGE-04 contract suite (first run ever) | `pytest pyo3/tests/test_database_merge.py --no-cov -q` | 12 passed | ✓ PASS |
-| Full pyo3 Python suite | `pytest pyo3/tests/ --no-cov -q` | 125 passed / 0 failed / 63 skipped (missing fixture data, pre-existing) | ✓ PASS |
+| Full cargo suite (single full run) | `cargo test` | every binary `ok`, 0 failed anywhere; lib 241/0 (up from 237 — the 4 new fastq tests); exit 0 | ✓ PASS |
+| merge_bounded_memory_tests (changed file) | `cargo test --test merge_bounded_memory_tests` | 6 passed / 0 failed | ✓ PASS |
+| fastq module (changed source) | `cargo test --lib io::fastq` | 13 passed / 0 failed (incl. 4 new pins) | ✓ PASS |
+| merge_routing_tests | `cargo test --test merge_routing_tests` | 17 passed / 0 failed | ✓ PASS |
 | Root clippy gate | `cargo clippy --all-targets -- -D warnings` | exit 0 | ✓ PASS |
-| pyo3 clippy gate | `cargo clippy --all-targets -- -D warnings` (pyo3 crate) | exit 0 | ✓ PASS |
-| rustfmt on all files touched since round 4 | `rustfmt --check` (8 files) | exit 0 | ✓ PASS |
-| Debt-marker gate | grep TBD/FIXME/XXX + TODO/HACK/PLACEHOLDER on 10 touched files | 0 real markers (one false positive: `b"XXXX"` test bytes) | ✓ PASS |
-| Windows-only test branches (share-lock plant, cfg(windows) backdate) | not executable on darwin | ? SKIP (platform; runs in windows-latest CI leg added by b514331; production code unaffected — 8f23225 is test-mod-only) |
+| pyo3 clippy gate | `cargo clippy --all-targets -- -D warnings` (pyo3/) | exit 0 | ✓ PASS |
+| Debt-marker gate | grep TBD/FIXME/XXX/TODO/HACK/PLACEHOLDER on both changed files | 0 matches | ✓ PASS |
+| pyo3 pytest vs stale extension | not run — site-packages .so predates phase-03 merge work (Jul 2) | would assert against code no longer on disk | ? SKIP (recorded 2026-10-17 source-built evidence carries; see advisory) |
 
 ### Probe Execution
 
@@ -207,52 +199,51 @@ by any Phase-3 plan or SUMMARY (re-checked).
 
 | Requirement | Source Plans | Description | Status | Evidence |
 | ----------- | ------------ | ----------- | ------ | -------- |
-| MERGE-01 | 03-01..05, 03-07, 03-09..17 | Default streaming path, no OOM at human scale; output correct | **MET** | bounded core + validation + conservation + order proofs on BOTH writers; suite 400/0 |
-| MERGE-02 | 03-01, 03-04, 03-07, 03-09, 03-10 | Admission control, budget routing | **MET** | routing 17/17 + bounded 6/6 green |
-| MERGE-03 | 03-02, 03-09, 03-11, 03-13 | Temp cleanup on any exit | **MET** | cleanup 9/9 green |
-| MERGE-04 | 03-05, 03-10, 03-12 | PyDatabase merge uses the CLI's bounded path | **MET** | shared entry point re-read; **Python manifestation now behaviorally executed** (12/12 + 3-variant check) |
-| DENSE-01 | 03-03, 03-06 | k ≤ 32 as u64 | **MET** | dense_memory/differential/proptest green; Dense table live |
-| DENSE-02 | 03-03, 03-04, 03-08, 03-15..17 | Transparent to readers, byte identity | **MET** | golden_sha256 5/5; mixed-canonical queryability proven on BOTH writers |
-| DENSE-03 | 03-03, 03-04 | Canonicalization/counts match u128 | **MET** | differential + proptest green |
+| MERGE-01 | 03-01..05, 03-07, 03-09..17 (12 plan claims) | Default streaming path, no OOM at human scale; output correct | ✓ SATISFIED | bounded core symbols re-grepped; suite all-green incl. bounded 6/6, parity 5/5, conservation 2/2, output-order 3/3 |
+| MERGE-02 | 03-01, 03-04, 03-07, 03-09, 03-10 (5 claims) | Admission control, budget routing | ✓ SATISFIED | routing 17/17 + bounded 6/6 (de-tautologized guards) green this round |
+| MERGE-03 | 03-02, 03-09, 03-11, 03-13 (4 claims) | Temp cleanup on any exit | ✓ SATISFIED | cleanup 9/9 green; sweep test in bounded binary green |
+| MERGE-04 | 03-05, 03-10, 03-12 (3 claims) | PyDatabase merge uses the CLI's bounded path | ✓ SATISFIED | database.rs:1457 wiring re-grepped; pyo3/src unchanged since the 2026-10-17 source-built 12/12 + 125/0 run |
+| DENSE-01 | 03-03, 03-06 (2 claims) | k ≤ 32 as u64 | ✓ SATISFIED | Dense table live (:40); dense_memory 2/2, differential 6/6, proptest 3/3 green |
+| DENSE-02 | 03-03, 03-04, 03-08, 03-15..17 (8 claims) | Transparent to readers, byte identity | ✓ SATISFIED | golden_sha256 5/5 + golden_tests 34/34 green; mixed-canonical output-order 3/3 |
+| DENSE-03 | 03-03, 03-04 (3 claims) | Canonicalization/counts match u128 | ✓ SATISFIED | differential 6/6 + proptest 3/3 green |
 
-Orphaned requirements: none — all 7 phase-3 IDs appear in REQUIREMENTS.md (all marked Complete,
-Phase 3) and every ID is declared in at least one plan's `requirements` frontmatter (re-checked
-this round). Step 9b deferred filtering: no gaps exist to defer.
+Orphaned requirements: none — all 7 phase-3 IDs appear in REQUIREMENTS.md (marked Complete,
+Phase 3) and each is claimed by at least one plan's `requirements` frontmatter (counts
+re-checked this round: MERGE-01×12, MERGE-02×5, MERGE-03×4, MERGE-04×3, DENSE-01×2,
+DENSE-02×8, DENSE-03×3). Step 9b deferred filtering: no gaps exist to defer.
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 | ---- | ---- | ------- | -------- | ------ |
-| tests/merge_routing_tests.rs | 516 | `b"XXXX"` matched the XXX debt grep | — | false positive: 4 literal test bytes written to a header fixture, not a debt marker |
-| src/hash/matrix.rs | 9 | "placeholder implementation" doc comment | ℹ️ info | pre-existing file, untouched by phase 03, not load-bearing for any truth |
-| per 03-REVIEW-DISPOSITION.md | — | WR-01..WR-17, IN-01..IN-13 open (5 new this round: WR-15/16/17, IN-12/13) | ⚠/ℹ advisory | recorded open for developer triage; current review verdict critical: 0; no must-have depends on them |
+| src/io/fastq.rs | 419-436 | `count_sequences` now errors on malformed records (behavior change) | ℹ️ info | deliberate WR-16 fix with regression test; stricter, not stubbed |
+| (none) | — | no TBD/FIXME/XXX/TODO/HACK/PLACEHOLDER in either changed file; no empty-return/console-only stubs | — | clean |
 
-Debt-marker gate: clean. The 3 suite-ignored tests are platform/flag-gated
-(golden_generate regen flag, parallel_count platform arm, lib doctest), not skipped work.
+Prior-round advisories (WR/IN rows in 03-REVIEW-DISPOSITION.md) were dispositioned by
+quick-261019-dwf (WR-15/16/17 + IN-12/13 fixed — verified in code and tests this round) and
+quick-261020-lec (ledger triage); the current incremental 03-REVIEW.md (2026-10-20) reads
+0 critical / 0 warning / 3 info over exactly the three changed files.
 
 ### Human Verification Required
 
-None. The single carried item (Python-surface rejection manifestation) was executed this round
-by the verifier with a compatible-input control, after the maturin blocker (dbb13ef) lifted:
-variants A (k=21+k=31) and B (mixed canonical) both raise PyRuntimeError with the prologue's
-compatibility message and write no output file; the control merges successfully. The pyo3
-contract suite ran 12/12 for the first time. No visual/UX/external-service items exist for
-this phase (03-UAT.md: status complete, pending 0, blocked 0).
+None. 03-UAT.md: status complete, pending 0, blocked 0. No `<verify><human-check>` blocks are
+deferred in any phase-03 plan (re-checked). The single prior carried item (Python-surface
+merge rejection) was behaviorally closed on 2026-10-17 and its evidence carries unchanged
+(pyo3/src byte-identical since). No visual/UX/external-service items exist for this phase.
 
 ### Gaps Summary
 
-No gaps. All eleven standing truths hold with re-executed behavioral evidence over the current
-code. The staleness drivers were audited one by one: the only production-code change
-(MultiGzDecoder) is a correct input-reading fix with its own green regression test and no
-interaction with merge/dense truths; the prefix_cache_merge.rs change is test-module-only;
-the test-binary narrowing removed only shared-helper self-tests (which still run in the
-full-common binaries); formatting drift is fixed. The last open item from round 4 — the
-never-executed Python-surface merge rejection — is now executed and green, closing WINDOWS.md
-#16 in substance (row flip left to the developer). Advisory items (open warnings in
-03-REVIEW-DISPOSITION.md, two stale WINDOWS.md ledger rows, pyo3 pytest --no-cov note,
-63 fixture-missing Python skips) are developer-triage material, not phase-truth failures.
+No gaps. All eleven standing truths hold with behavioral evidence executed by me on the
+current tree (full suite + both clippy gates + three targeted binaries). The three
+staleness-driving changes were audited hunk-by-hunk: two are input-helper/test-quality
+improvements with their own green regression tests and no interaction with merge or
+dense-format truths; one is pytest/CI configuration. The report and its covered-input
+fingerprint are regenerated over the current covered set. Advisory items (stale miniconda
+pyrustkmer install — do not pytest against it without rebuilding; WINDOWS.md #15 ship-gate
+row still open; verify.artifacts tool unable to parse annotated plan frontmatter) are
+developer-triage material, not phase-truth failures.
 
 ---
 
-_Verified: 2026-10-17T09:28:19Z_
+_Verified: 2026-10-20T09:10:26Z_
 _Verifier: Claude (gsd-verifier)_
