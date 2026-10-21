@@ -53,9 +53,6 @@ plugins:
   - search:
       lang: en
 
-  - search:
-      lang: en
-
 # Markdown extensions
 markdown_extensions:
   - admonition
@@ -86,11 +83,6 @@ nav:
       - Quick Start: user-guide/quickstart.md
       - Concepts: user-guide/concepts.md
       - Examples: user-guide/examples.md
-      - Tutorials:
-          - Basic Workflow: user-guide/tutorials/basic-workflow.md
-          - Large Datasets: user-guide/tutorials/large-datasets.md
-          - Performance: user-guide/tutorials/performance.md
-          - Integration: user-guide/tutorials/integration.md
   - API Reference:
       - Overview: api-reference/overview.md
       - KmerCounter: api-reference/kmercounter.md
@@ -142,14 +134,18 @@ extra_css:
 extra_javascript:
   - javascripts/extra.js
 
-# Development server (for local testing)
-dev_addr: 0.0.0.0:8000
-
 # Directory where documentation markdown files are located
-docs_dir: .
+docs_dir: docs
 
 # Directory where the output site will be built
-site_dir: ../site
+site_dir: site
+
+# Pages that are not part of the site: they are either repo-facing files or
+# nested example trees whose cross-links point outside the documentation set.
+exclude_docs: |
+  README.md
+  api-reference/rust/**
+  examples/python/**
 
 # Requirements for documentation
 # Install with: pip install -r docs/requirements.txt

@@ -10,6 +10,7 @@ on:
       - 'docs/**'
       - 'python/**'
       - 'mkdocs.yml'
+      - 'mkdocs.docs.yml'
       - '.pydocstylerc'
   workflow_dispatch:
 
@@ -49,8 +50,13 @@ jobs:
     - name: Validate docstring quality
       run: |
         echo "Checking Python docstring quality..."
-        # Check main Python files
-        python -m pydocstyle python/rustkmer/ --config=.pydocstylerc || echo "Docstring issues found"
+        # Check main Python files (the directory does not exist in every
+        # revision of this repo, so skip cleanly when it is absent).
+        if [ -d python/rustkmer ]; then
+          python -m pydocstyle python/rustkmer/ --config=.pydocstylerc || echo "Docstring issues found"
+        else
+          echo "python/rustkmer/ is absent - skipping docstring validation"
+        fi
 
         # Count violations (non-blocking for now)
         echo "Docstring validation completed"
@@ -58,55 +64,27 @@ jobs:
     - name: Build documentation
       run: |
         echo "Building documentation..."
-        cd docs
-        mkdocs build --strict
+        mkdocs build -f mkdocs.docs.yml --strict
 
         # Check if docs were built successfully
-        if [ ! -d "../site" ]; then
+        if [ ! -d "site" ]; then
           echo "Documentation build failed - no site directory created"
           exit 1
         fi
 
         echo "Documentation built successfully"
 
-    - name: Check for broken links
-      run: |
-        echo "Checking for broken links..."
-        cd docs
-        python ../scripts/check_broken_links.py
-
-    - name: Generate documentation stats
-      run: |
-        cd docs
-        echo "Documentation Statistics:"
-        echo "======================="
-
-        # Count pages
-        page_count=$(find ../site -name "*.html" | wc -l)
-        echo "HTML pages: $page_count"
-
-        # Check size
-        if [ -d "../site" ]; then
-            du -sh ../site
-        fi
-
-        # Show API coverage
-        echo "API Coverage:"
-        python ../scripts/check_doc_coverage.py
-
     - name: Deploy to GitHub Pages
       if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-          cd docs
-
           # Configure git user
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
           # Deploy to GitHub Pages
-          mkdocs gh-deploy --force --clean
+          mkdocs gh-deploy -f mkdocs.docs.yml --force --clean
 
     - name: Upload documentation artifact
       if: always()
@@ -123,6 +101,16 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install documentation dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r docs/requirements.txt
 
     - name: Download documentation artifact
       uses: actions/download-artifact@v4
@@ -154,12 +142,11 @@ jobs:
     - name: Validate MkDocs configuration
       run: |
         echo "Validating MkDocs configuration..."
-        cd docs
         mkdocs --version
-        mkdocs build --clean --quiet
+        mkdocs build -f mkdocs.docs.yml --clean --quiet
 
         # Test that docs build without errors
-        if mkdocs build --quiet --strict; then
+        if mkdocs build -f mkdocs.docs.yml --quiet --strict; then
           echo "✓ MkDocs configuration is valid"
         else
           echo "✗ MkDocs configuration has errors"

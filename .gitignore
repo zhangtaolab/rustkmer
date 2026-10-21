@@ -70,6 +70,11 @@ yarn-error.log*
 !scripts/bench/tests/fixtures/time_l_macos.txt
 !scripts/bench/tests/fixtures/time_v_linux.txt
 
+# Documentation build requirements (quick task 261021-p0z) — the docs workflow
+# runs `pip install -r docs/requirements.txt` on a clean checkout, so this file
+# must be committed despite the blanket *.txt rule.
+!docs/requirements.txt
+
 # Examples output and data
 examples/output/
 examples/data/*.fa

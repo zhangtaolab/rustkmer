@@ -198,7 +198,7 @@ db = PyDatabase("huge_db.rkdb", LoadMode.MemoryMapped)  # Uses memory mapping
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](../CONTRIBUTING.md) for details.
+We welcome contributions! Please see our [Contributing Guide](https://github.com/zhangtaolab/rustkmer/blob/dev/CONTRIBUTING.md) for details.
 
 ### Development Setup
 ```bash

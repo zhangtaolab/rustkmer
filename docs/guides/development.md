@@ -90,7 +90,7 @@ Tooling is configured in `pyo3/pyproject.toml`: **black** (line length 88, py311
 ## Branch conventions
 
 - The protected branches are **`dev` and `main`** — both `ci.yml` and `benchmark.yml` gate pull requests and direct pushes to them. Day-to-day work lands on `dev` via PR.
-- No branch-naming scheme is documented ([CONTRIBUTING.md](../../CONTRIBUTING.md) exists at the repo root, but it does not define a branch-naming scheme; no PR template exists). Commit messages in history follow Conventional-Commits-style prefixes such as `docs:` and `type(scope):`; matching that style is customary, not enforced.
+- No branch-naming scheme is documented ([CONTRIBUTING.md](https://github.com/zhangtaolab/rustkmer/blob/dev/CONTRIBUTING.md) exists at the repo root, but it does not define a branch-naming scheme; no PR template exists). Commit messages in history follow Conventional-Commits-style prefixes such as `docs:` and `type(scope):`; matching that style is customary, not enforced.
 
 ## Pull request process
 
