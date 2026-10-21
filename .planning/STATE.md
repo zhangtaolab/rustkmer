@@ -1,11 +1,12 @@
 ---
 gsd_state_version: "1.0"
+milestone: v1.0
 status: Awaiting next milestone
 stopped_at: Phase 04 complete — all phases complete
-last_updated: "2026-10-20T12:50:44.774Z"
-last_activity: 2026-10-20
-last_activity_desc: Milestone v1.0 completed and archived
-state_head: b40a993475ea1fbb7e33088ec66ba46d4e648034
+last_updated: "2026-10-21T10:08:59.069Z"
+last_activity: 2026-10-21
+last_activity_desc: Completed quick task 261021-p0z: fix post-v1.0 CI failures (fastq display, TMP/TEMP probe, docs workflow)
+state_head: 6c2ebcbb65c9ee678525df7a4016448c89b3b0b6
 progress:
   total_phases: 4
   completed_phases: 4
@@ -29,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-20)
 Phase: Milestone v1.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-10-20 — Milestone v1.0 completed and archived
+Last activity: 2026-10-21 — Completed quick task 261021-p0z: fix post-v1.0 CI failures (fastq display, TMP/TEMP probe, docs workflow)
 
 ## Performance Metrics
 
@@ -263,6 +264,7 @@ None yet.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 261021-p0z | Fix post-v1.0 CI failures: fastq display() on Windows, TMP/TEMP probe on Windows, docs workflow repair (requirements, config relocation, dead steps) | 2026-10-21 | 6c2ebcb | [261021-p0z-fix-post-v1-0-ci-failures-fastq-path-dis](./quick/261021-p0z-fix-post-v1-0-ci-failures-fastq-path-dis/) |
 
 ## Deferred Items
 
