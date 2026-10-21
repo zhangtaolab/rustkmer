@@ -408,8 +408,8 @@ pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> 
     let (reader, _) = DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
         ProcessingError::with_context(
             format!(
-                "Failed to open FASTQ file: {:?} ({})",
-                path,
+                "Failed to open FASTQ file: {} ({})",
+                path.display(),
                 compression_type.name()
             ),
             e,
@@ -425,7 +425,7 @@ pub fn count_sequences<P: AsRef<Path>>(file_path: P) -> ProcessingResult<usize> 
     for record_result in reader.records() {
         record_result.map_err(|e| {
             ProcessingError::with_context(
-                format!("Error reading FASTQ record from file: {:?}", path),
+                format!("Error reading FASTQ record from file: {}", path.display()),
                 e,
             )
         })?;
