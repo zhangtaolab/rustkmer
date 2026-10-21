@@ -389,13 +389,18 @@ def test_over_budget_auto_hard_route_completes(two_dbs, tmp_path, monkeypatch):
 def _bogus_temp_dir(tmp_path, monkeypatch):
     """Point the merge's temp dir at a directory that does not exist.
 
-    `MergeConfig::temp_dir` defaults to `std::env::temp_dir()`, which on unix
-    reads `TMPDIR` on every call (it is not cached), so the environment
-    variable is enough to redirect it. This is 03-01's nonexistent-`temp_dir`
-    probe lifted to Python: it needs no new API and no log capture.
+    `MergeConfig::temp_dir` defaults to `std::env::temp_dir()`, which is read
+    from the environment on every call (it is not cached). Unix consults
+    `TMPDIR`; Windows consults `TMP` and `TEMP` and ignores `TMPDIR` entirely,
+    so all three are redirected or the probe is a no-op on Windows. Setting
+    all three is harmless on Unix, where only `TMPDIR` is consulted. This is
+    03-01's nonexistent-`temp_dir` probe lifted to Python: it needs no new API
+    and no log capture.
     """
     bogus = tmp_path / "no_such_temp_dir"
     monkeypatch.setenv("TMPDIR", str(bogus))
+    monkeypatch.setenv("TMP", str(bogus))
+    monkeypatch.setenv("TEMP", str(bogus))
     assert not bogus.exists()
     return bogus
 
