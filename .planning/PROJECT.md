@@ -8,6 +8,17 @@ rustkmer is a high-performance k-mer counting and querying toolkit written in Ru
 
 Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools (KMC / Jellyfish class), from both the CLI and Python.
 
+## Current Milestone: v2.0 k=21 Counting Parity
+
+**Goal:** Match or beat Jellyfish2 on human-scale k=21 counting — closing the BENCH-02 gap outright — on both the CLI and Python surfaces, with the approach chosen from profiling evidence rather than guesswork.
+
+**Target features:**
+- Deep research + profiling: establish WHY k=21 is ~5x slower on the actual workload (hashing overhead, memory bandwidth, decompression, rayon scheduling) before committing to an approach
+- Architecture-level counting optimization: minimizer/signature partitioning (KMC-class) or equivalent; disk-backed exact counting if the evidence demands it (MINIM-01..03 staged)
+- KMC3 comparison as a second validation reference (BENCH-V2-01)
+- Exact-count contract preserved: 1-vs-N differentials + golden baselines prove optimized counts are byte-identical
+- Regression gate: existing bench harness + CI baselines, no performance regression
+
 ## Requirements
 
 ### Validated
@@ -31,27 +42,31 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 
 ### Active
 
-<!-- Next milestone (v2) candidates — to be re-shaped by /gsd-new-milestone. -->
+<!-- v2.0 scope — confirmed by user 2026-11-11: k=21 counting parity first; merge untouched this round. -->
 
-- [ ] k=21 counting performance — measured ~5x slower than jellyfish2 at human scale (the accepted BENCH-02 known gap); candidate direction: minimizer/signature partitioning (MINIM-01..03, already staged in the v1.0 requirements archive)
-- [ ] Full-scale merge competitiveness vs a reference tool — merge arms were measured at slice scale only in v1.0; full-scale merge comparison is unmeasured
-- [ ] Benchmark against KMC3 in addition to Jellyfish2 (BENCH-V2-01 — covers the disk-backed, memory-efficient comparator)
-- [ ] Docs/examples cleanup — 18 open docs-level review findings from Phase 4 (README positional-arg examples, mkdocs nav dead links, PyPI 404, etc.; preserved in `milestones/v1.0-phases/…/04-REVIEW-DISPOSITION.md`)
-- [ ] Backlog 999.1–999.3 (pyo3 `build.rs` link args, stale site-packages `pyrustkmer` shadowing, `deferred-items.md` stale sweep claim)
+- [ ] k=21 counting parity with Jellyfish2 at human scale — match or beat (closes BENCH-02 outright); approach chosen from profiling evidence; candidate direction minimizer/signature partitioning (MINIM-01..03 staged in the v1.0 requirements archive)
+- [ ] Root-cause profiling of the k=21 ~5x gap on the real workload — evidence before architecture (hashing overhead hypothesis from the Chorus3 small-k direct-address-vs-DashMap result needs validation on rustkmer's exact-u32 workload)
+- [ ] KMC3 benchmark comparison (BENCH-V2-01) — the disk-backed, memory-efficient gold standard as a second validation reference
+- [ ] Exact-count preservation proof — optimized counting stays byte-identical to the current counter (1-vs-N differentials + committed golden baselines, PCOUNT-04 discipline)
+- [ ] Backlog 999.1–999.3 (pyo3 `build.rs` link args, stale site-packages `pyrustkmer` shadowing, `deferred-items.md` stale sweep claim) — opportunistic, only if touched by the perf work
 
 ### Out of Scope
 
 <!-- Explicit boundaries for this round. -->
 
+- Full-scale merge competitiveness — merge is already bounded-memory (v1.0 Phase 3); user chose counting-first 2026-11-11, merge comparison deferred to a later milestone
 - New user-facing features / new commands — this round is performance, not feature expansion; would dilute focus
 - Rewriting the `.rkdb` format from scratch — format stays compatible; a bump is a surfaced decision only if a specific win demands it
 - Non-performance tech debt as the milestone's spine (committed backup files, dead PyO3 modules, orphaned `merge_tests.rs`, god-module splits that don't touch hot paths) — tracked in `.planning/codebase/CONCERNS.md`, cleaned opportunistically when the relevant code is touched, not pursued for its own sake this round
 - UI / visualization — N/A (CLI + library)
-- Query / prefix-query / fuzzy-query micro-optimization — the user's stated bottleneck is counting and merging, not lookups
+- Query / prefix-query / fuzzy-query micro-optimization — the user's stated bottleneck is counting, not lookups
+- Chorus3-style shortcuts (fixed-k saturating 2-bit counters, rusty_alloc global allocator) — researched 2026-11-11 and rejected: break the exact-u32 count contract, 4^21 dense table is 1 TiB+, rusty_alloc needs MSRV 1.87 and is disqualified for the PyO3 surface
 
 ## Context
 
-**Current state (v1.0 shipped 2026-10-20).** 4 phases, 31 plans, 19 requirements (18 satisfied; BENCH-02 partial by user acceptance). Human-scale verdict vs Jellyfish2 2.3.1 on CRR2044018: k=31 faster (494 vs 843 s) and leaner (55.2 vs 84.0 GiB); k=21 ~5x slower — accepted gap, v2 minimizer work staged. The codebase map under `.planning/codebase/` predates the milestone; refresh at v2 start.
+**Current state (v2.0 started 2026-11-11; v1.0 shipped 2026-10-20).** v1.0: 4 phases, 31 plans, 19 requirements (18 satisfied; BENCH-02 partial by user acceptance). Human-scale verdict vs Jellyfish2 2.3.1 on CRR2044018: k=31 faster (494 vs 843 s) and leaner (55.2 vs 84.0 GiB); k=21 ~5x slower — the gap v2.0 exists to close. Post-v1.0 hygiene wave (2026-11-11, quick tasks): memmap2 ≥0.9.11 security floor, Cargo.lock tracking + CI `--locked`, MSRV 1.80 enforced in both manifests, Python ≥3.11 policy normalized, unused deps removed, Phase-04 review findings triaged (11 fixed / 4 already-fixed / 3 deferred IN-06/07/09), both crates' clippy gates green. The codebase map under `.planning/codebase/` predates v1.0; refresh during v2.0 research.
+
+**v2.0 research input (2026-11-11, Chorus3 investigation).** Sibling lab repo Chorus3 vendors rustkmer but worked AROUND its unbounded DashMap counter, not on it: chorus-kmer is a fixed-k=17 direct-address table of 2-bit saturating counters (clips counts at 3) + disk-spill; rusty_alloc is a binary-only global allocator. None of it transfers to rustkmer's k=21 exact-u32 counting of read sets (saturating counts break the exact-count contract; a 4^21 dense table is 1 TiB at 2 bits / 16 TiB at u32; rusty_alloc needs MSRV 1.87 and a global allocator is disqualified for PyO3). The v2 direction stands: minimizer/signature partitioning or CQF. Borrowable discipline: pre-registered peak-gate measurement max(rss, phys_footprint); never mmap spill files when RSS is the budget. The ~5x small-k direct-address-vs-DashMap result corroborates hashing overhead as the k=21 bottleneck hypothesis — but it was measured at k=17 on a 135 Mbp reference with saturating semantics, so it MUST be validated on rustkmer's actual workload before the architecture is chosen.
 
 **Counting — the primary lever.** Phase 2 (Parallel Counting) shipped: the counter is now `dashmap::DashMap<u128, u32>` (sharded, atomic per-key increments — no global write lock) and the per-record loop runs multi-core via rayon chunked `par_iter`, with thread count configurable through `--threads` / `RUSTKMER_THREADS` (default = all cores; precedence `--threads` > `RUSTKMER_THREADS` > `RAYON_NUM_THREADS` > num_cpus) and the GIL released in `pyrustkmer.PyCounter` via `py.detach`. The hardcoded `num_threads = 1` and `parking_lot::RwLock<HashMap>` contention are gone; both the CLI and Python inherit the speedup through the shared core, and a `--threads 1`-vs-`N` differential test proves counts stay identical to the sequential path (PCOUNT-04). What remains is **denser storage** — `u128` still doubles memory for the common k ≤ 32 case that fits in `u64`, so a human genome (~3 Gbp → ~2.5–3 B distinct k-mers for typical k) still demands ~100 GB+ of RAM today. ✅ u64 packing for k ≤ 32 shipped in Phase 3 (DENSE-01..03: `DashMap<u64, u32>` counting table, ~0.5× table memory measured, `.rkdb` v2 byte-identical, canonicalization parity proven); a minimizer/signature-partitioned or counting-quotient-filter structure (à la KMC) is v2.
 
@@ -72,7 +87,7 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 - **Dual surface**: changes must benefit (or at least not regress) both the CLI and `pyrustkmer`; the shared core is the delivery vehicle
 - **Memory**: human-genome-scale count/merge must fit within practical RAM; the concrete ceiling is set when the reference tool is pinned
 - **Benchmark**: real human-scale Illumina WGS data (CRR1936095, 150 bp PE, ~5.2 GB gzipped r1 across split parts) is available locally and is the primary target; the harness must be reproducible, run in CI as a regression gate, and degrade to slices/synthetic inputs where the full dataset is absent
-- **MSRV / Python policy inconsistency**: CLAUDE.md says Python 3.10+, `pyo3/pyproject.toml` says `>=3.11`, no enforced Rust MSRV — not blocking, but to be normalized as part of hardening
+- **Version policy (normalized 2026-11-11)**: Rust MSRV 1.80 enforced via `rust-version = "1.80"` in both `Cargo.toml` manifests; Python floor 3.11+ per `pyo3/pyproject.toml`. New code must use only APIs available at 1.80 (the `clippy::incompatible_msrv` gate is active under `-D warnings`)
 
 ## Key Decisions
 
@@ -89,6 +104,9 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 | BENCH-02 gap accepted as tech debt — ship v1.0 on the k=31 result; k=21 performance deferred to v2 | k=31 is faster AND leaner than jellyfish2; k=21 needs minimizer-class work (MINIM-01..03 staged) — an honest gap beats a tuned verdict | ⚠ Known gap, recorded in MILESTONES.md (user decision 2026-10-20) |
 | Dense `u64` width applies to the counting hot path only; merge accumulator / read path stays `u128`-wide (Phase 3, 03-06 D7) | DENSE-01 names counting memory; in-memory merge only runs when already under budget and its peak is charged honestly by the admission model | ✅ Phase 3 |
 | Prefix-cache mixed-canonical merge capability preserved as-is (Phase 3, WR-04 residual / AR-03-6) | Changing merge outcomes for existing callers is a user-visible break; the residual is documented and developer-triaged, not silently "fixed" | ✅ Phase 3 |
+| v2.0 scope: k=21 counting parity first; merge untouched this round | User decision 2026-11-11 — the measured BENCH-02 NO is the k=21 counting gap; merge is already bounded-memory and full-scale merge comparison defers to a later milestone | — Pending |
+| v2.0 acceptance: match or beat Jellyfish2 at human-scale k=21 | User decision 2026-11-11 — closes BENCH-02 outright; a ~5x gap implies architecture-level work (minimizer partitioning / disk-backed), not micro-optimization | — Pending |
+| v2.0 approach chosen from profiling evidence, not guesswork | User directive "需要认真调研" 2026-11-11 — deep research + root-cause profiling on the real workload precedes the architecture decision; Chorus3 shortcuts already researched and rejected | — Pending |
 
 ## Evolution
 
@@ -108,4 +126,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-20 after v1.0 (Performance) milestone*
+*Last updated: 2026-11-11 after v2.0 (k=21 Counting Parity) milestone start*
