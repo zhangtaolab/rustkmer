@@ -469,3 +469,19 @@ def test_merge_signature_exposes_the_cli_kwargs():
     assert "max_memory" in doc
     assert "merge_mode" in doc
     assert "streaming" in doc
+
+
+def test_merge_output_write_failure_is_runtime_error(two_dbs, tmp_path):
+    """WINDOWS #15: output write failure raises the folded-save RuntimeError."""
+    out = tmp_path / "nonexistent_dir" / "merged.rkdb"
+    # The parent must not exist: that is what makes this a final-output WRITE
+    # failure (write_to_file's bare File::create), not a prologue rejection.
+    assert not out.parent.exists()
+
+    with pytest.raises(RuntimeError, match="Merge operation failed") as excinfo:
+        pyrustkmer.PyDatabase.merge(two_dbs, str(out))
+
+    # 03-10 folded the save into the merge: the separate pre-03-10 save
+    # message must be gone, every failure under the single prefix above.
+    assert "Failed to save merged database" not in str(excinfo.value)
+    assert not out.exists()
