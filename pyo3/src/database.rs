@@ -1595,7 +1595,7 @@ impl PyDatabase {
 
                             exported_count += 1;
 
-                            if exported_count.is_multiple_of(1000) {
+                            if exported_count % 1000 == 0 {
                                 if let Some(ref callback) = progress_callback {
                                     pyo3::Python::with_gil(|py| {
                                         callback.call1(py, (exported_count, total_kmers)).ok();
@@ -1818,7 +1818,7 @@ impl PyDatabase {
 
                             exported_count += 1;
 
-                            if exported_count.is_multiple_of(1000) {
+                            if exported_count % 1000 == 0 {
                                 if let Some(ref callback) = progress_callback {
                                     pyo3::Python::with_gil(|py| {
                                         callback.call1(py, (exported_count, total_kmers)).ok();
@@ -1988,7 +1988,7 @@ impl PyDatabase {
 
                             exported_count += 1;
 
-                            if exported_count.is_multiple_of(1000) {
+                            if exported_count % 1000 == 0 {
                                 if let Some(ref callback) = progress_callback {
                                     pyo3::Python::with_gil(|py| {
                                         callback.call1(py, (exported_count, total_kmers)).ok();
