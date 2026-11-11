@@ -276,8 +276,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-20T11:50:31Z
-Stopped at: Phase 04 verification refresh complete — stale 04-VERIFICATION.md regenerated (passed 10/10, fresh digest v3:sha256:268ff74c) after covered-file drift (b417e3a); VALIDATION re-audited green (0 gaps), SECURITY created for Phase 04 (12/12 closed, threats_open: 0), code review re-run (0 critical / 8 warning / 6 info, all docs-level, disposition 18 open), regression gate green, phase.complete re-run. All 4 phases complete; next step: milestone close via /gsd-complete-milestone (triage BENCH-02 checkbox W2 + 18 open docs findings + ledger row 15 first; push dev for W1)
+Last session: 2026-11-11T11:25:10Z
+Stopped at: Session resumed via /gsd-resume-work. Reconciled the stale v1.0-close handoff against git: closing commits f7bc4d8..6a9342f and annotated tag v1.0 are confirmed pushed (local dev == origin/dev at 3ddd93b, working tree clean), so v1.0 is fully closed/archived/tagged/pushed. Cleared the one-shot HANDOFF.json + .continue-here.md (their only live thread, the push, is done). Next: user asked to research the memory-optimization Rust crate in /Users/forrest/GitHub/Chorus3 for relevance to rustkmer v2 (k=21 perf / memory, BENCH-02 gap). The 18 open Phase-04 review findings (milestones/v1.0-phases/04-benchmark-validation/04-REVIEW-DISPOSITION.md) remain queued for a /gsd-quick triage; most are docs/examples-level but IN-06/07/08/09 are harness/test code and CR-02 is already recorded fixed in MILESTONES.md.
 Resume file: None
 
 ## Operator Next Steps
