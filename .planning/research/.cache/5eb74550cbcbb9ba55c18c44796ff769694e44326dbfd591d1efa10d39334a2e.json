@@ -1,0 +1,1 @@
+{"content":"seahash 4.1.0, last release 2021-01-16 (dormant about 5 years), no MSRV declared. Slower than foldhash and ahash on integer keys per foldhash comparative benchmarks. Rejected for rustkmer: dormant maintenance plus no speed advantage.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-11-11T15:30:05.273Z","ttl":86400000,"kind":"docs"}

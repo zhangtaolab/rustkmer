@@ -1,0 +1,51 @@
+{
+  "platform": "Apple M4 Max, 16 logical cores (12P+4E), 128 GiB RAM, macOS 26.6.2 (25G83), 16KiB pages",
+  "binary": "fresh cargo build --release --locked + CARGO_PROFILE_RELEASE_DEBUG=1 (codegen unchanged), rustc nightly 1.101, git HEAD 397a1cf, built 2026-11-11 23:16",
+  "cache_state": "warm page cache (slice freshly written); no sudo cold-cache purge available (consistent with v1.0 PARTIALLY-satisfied cold-cache protocol)",
+  "slice": {
+    "source": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz, first 4M reads",
+    "reads": 4000000, "bases": 599294679, "N_bases": 5600, "pct_150bp": 95.0,
+    "raw_bytes": 1472481891, "gz_bytes": 320493542, "gz_sha256": "0c7626d8190190fc2db87af030cac44069fc9947a797fd679f817e431542b904",
+    "k21_instances": 519271168, "k21_distinct_canonical": 229694874, "k31_distinct_canonical": 261863892,
+    "note": "distinct/instance ratio 2.26 (k21) — far more repeat-rich than v1.0 CRR2044018 (ratio 7.3). Exact-dup read rate only 2.55%."
+  },
+  "matrix_wall_s": {
+    "rk21-gz-t16": 74.76, "rk31-gz-t16": 70.42, "jf21-gz-t16": 13.29, "jf31-gz-t16": 14.05,
+    "rk21-fq-t16": 64.81, "rk31-fq-t16": 72.87, "jf21-fq-t16": 14.10, "gzcat-only": 0.90,
+    "rk21-fq-t1": 70.12, "rk21-fq-t4": 74.39, "rk21-fq-t8": 69.92, "rk21-gz-t1": 65.42,
+    "rk21-fq-t16-nosort": 64.82, "rk21-fq-t16-size500M": 69.08, "jf21-fq-t1": 118.17
+  },
+  "matrix_count_phase_s": {
+    "rk21-gz-t16": 59.80, "rk31-gz-t16": 54.03, "rk21-fq-t16": 51.56, "rk31-fq-t16": 57.20,
+    "rk21-fq-t1": 57.48, "rk21-fq-t4": 61.27, "rk21-fq-t8": 56.66, "rk21-gz-t1": 52.64,
+    "rk21-fq-t16-nosort": 59.95, "rk21-fq-t16-size500M": 53.72
+  },
+  "matrix_output_phase_s": {
+    "rk21-gz-t16": 13.36, "rk21-fq-t16": 11.88, "rk21-fq-t16-nosort": 3.52, "rk21-fq-t16-size500M": 12.99
+  },
+  "matrix_peak_rss_gib": {
+    "rk21-gz-t16": 18.4, "rk31-gz-t16": 25.42, "jf21-gz-t16": 6.68, "jf31-gz-t16": 11.84,
+    "rk21-fq-t16": 15.39, "rk21-fq-t16-size500M": 29.28, "jf21-fq-t1": 6.68
+  },
+  "gap": {"k21": 5.63, "k31": 5.01, "note": "rustkmer wall is nearly k-independent (70-75s); jellyfish fast at both k (13-14s). v1.0 'k31 win' was jellyfish crippled by oversized 10G-slot hash (84 GiB RSS, memory-bound)."},
+  "parity": {"distinct": 229694874, "total": 519271168, "jellyfish_unique": 167905312, "jellyfish_max_count": 58609, "verdict": "PASS (gz and raw arms)"},
+  "profile_self_cpu_pct": {
+    "prof21-gz-t16": {"kernel_wait_spin": 59.47, "dashmap_increment": 36.25, "encode_canonical": 3.09, "output_sort_write": 0.68, "gzip_inflate_libz": 0.09, "fastq_parse": 0.02},
+    "prof21-fq-t16": {"kernel_wait_spin": 57.86, "dashmap_increment": 38.04, "encode_canonical": 2.97, "output_sort_write": 0.71, "gzip_inflate_libz": 0.0, "fastq_parse": 0.02},
+    "prof31-fq-t16": {"kernel_wait_spin": 60.48, "dashmap_increment": 34.72, "encode_canonical": 3.54, "output_sort_write": 0.79}
+  },
+  "microbench_ns_per_window_single_thread": {
+    "k21_200k_cache": {"A_production": 190.8, "B_rolling_bitrc_increment": 70.9, "C_increment_only": 75.8, "D_rolling_encode_only": 1.2, "E_production_encode_only": 31.7, "distinct": 16417180},
+    "k31_200k_cache": {"A_production": 211.0, "B_rolling_bitrc_increment": 74.6, "C_increment_only": 73.6, "D_rolling_encode_only": 1.3, "E_production_encode_only": 47.1, "distinct": 17362351},
+    "k21_1M_memory": {"B_rolling_bitrc_increment": 93.3, "C_increment_only": 97.3, "distinct": 66474653},
+    "k21_2M_memory": {"A_production": 249.6, "E_production_encode_only": 31.8, "distinct": 118831531}
+  },
+  "threads_bug": {"observed_os_threads_at_threads_1": 17, "expected": 2, "mechanism": "resolve_thread_count (count.rs:845) eagerly calls rayon::current_num_threads() as the fallback arg, which lazily initializes the global rayon pool with default num_cpus=16 BEFORE ThreadPoolBuilder::build_global() runs; build_global then fails silently (let _ =) so --threads is a no-op. Verified from rayon-core 1.13 source: current_num_threads -> Registry::current_num_threads -> global_registry() initializes default pool."},
+  "parallel_scaling": {
+    "jellyfish": {"t1_s": 118.17, "t16_s": 13.29, "speedup": 8.9, "efficiency_pct": 56},
+    "rustkmer": {"single_thread_est_s": 169, "t16_count_phase_s": 51.56, "speedup_approx": 3.3, "efficiency_pct_approx": 21, "note": "single-thread est from microbench 2M=249.6ns/window extrapolated to 229M-distinct DRAM regime; rustkmer t1==t16 because --threads broken (all arms 16 workers)"},
+    "in_vivo_increment_ns_per_window": 916, "single_thread_increment_ns_per_window_1GB": 97.3, "contention_multiplier": 9.4
+  },
+  "decomposition_of_5x_gap": {"single_thread_per_window_cost": "~1.4x (DashMap 13B/entry+ahash+shard lock vs jellyfish bit-packed ~5B/entry lock-free CAS)", "parallel_scaling_efficiency": "~3.5x (rustkmer ~16-21% vs jellyfish 56%)", "combined": "~4.9x ≈ observed 5x"},
+  "pyo3_findings": {"add_from_fastq": "fully sequential line-by-line loop, NO rayon (process_fastq_file_on_counter, counter.rs:763); GIL released but counting single-threaded", "semantic_divergence": "PyO3 filters non-ACGT bases BEFORE counting (concatenates flanks across N) vs CLI skips windows containing N — different counts on N-containing input", "save_database": "double-sorts (sort_by_key in save_database then again in from_kmer_pairs sorted=true)"}
+}

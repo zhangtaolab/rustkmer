@@ -1,0 +1,29 @@
+{
+ "rk21-gz-t16.rkdb vs jf21-gz-t16.jf": {
+  "rustkmer": {
+   "records": 229694874,
+   "sum_counts": 519271168
+  },
+  "jellyfish": {
+   "Distinct": 229694874,
+   "Total": 519271168,
+   "Unique": 167905312,
+   "Max_count": 58609
+  },
+  "parity": "PASS"
+ },
+ "rk21-fq-t16.rkdb vs jf21-fq-t16.jf": {
+  "rustkmer": {
+   "records": 229694874,
+   "sum_counts": 519271168
+  },
+  "jellyfish": {
+   "Distinct": 229694874,
+   "Total": 519271168,
+   "Unique": 167905312,
+   "Max_count": 58609
+  },
+  "parity": "PASS"
+ },
+ "note": "records from (rkdb_size-42)/20; sum_counts from KmerCounter total_kmers logged at count time; jellyfish via jellyfish stats. Full stats-JSON sweep aborted as redundant."
+}
