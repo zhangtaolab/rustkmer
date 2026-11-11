@@ -222,7 +222,7 @@ def main():
         f"      python3 simple_prefix_query.py test_data/databases/small_test.rkdb"
     )
     print(f"   2. 查看完整文档:")
-    print(f"      PYO3_PYTHON_BINDING_GUIDE.md")
+    print(f"      docs/guides/pyo3-binding-guide.md")
     print(f"   3. 运行完整演示:")
     print(f"      python3 demo_pyo3_binding.py")
 

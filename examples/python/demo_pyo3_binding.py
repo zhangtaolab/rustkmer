@@ -281,9 +281,9 @@ def main():
     print("=" * 60)
 
     print(f"\n📚 更多信息请参考:")
-    print(f"   • PYO3_PYTHON_BINDING_GUIDE.md - 完整使用指南")
+    print(f"   • docs/guides/pyo3-binding-guide.md - 完整使用指南")
     print(f"   • README.md - 项目总览")
-    print(f"   • PREFIX_QUERY_USAGE_GUIDE.md - 前缀查询指南")
+    print(f"   • docs/guides/prefix-query-guide.md - 前缀查询指南")
 
 
 if __name__ == "__main__":

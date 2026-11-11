@@ -118,10 +118,10 @@ try:
 
     # Calculate throughput from the actual database file size
     database_size_gb = Path(db_path).stat().st_size / (1024**3)
-    throughput_mbps = database_size_gb / avg_load_time if avg_load_time > 0 else 0
-    print(f"✅ Database throughput: {throughput_mbps:.1f} GB/s")
+    throughput_gbps = database_size_gb / avg_load_time if avg_load_time > 0 else 0
+    print(f"✅ Database throughput: {throughput_gbps:.1f} GB/s")
 
-    queries_per_second = len(query_times) / sum(query_times)
+    queries_per_second = len(query_times) / sum(query_times) if sum(query_times) > 0 else 0
     print(f"✅ Query throughput: {queries_per_second:.1f} queries/second")
 
     print(f"\n🎉 Performance Demo Completed!")
