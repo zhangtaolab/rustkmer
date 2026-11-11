@@ -53,7 +53,7 @@ from pyrustkmer import PyCounter, LoadMode
 
 counter = PyCounter(21, canonical=True)
 counter.add_from_fasta("genome.fa.gz")
-print(f"Total k-mers: {counter.get_stats().total_kmers)}")
+print(f"Total k-mers: {counter.get_stats().total_kmers}")
 ```
 
 ### Command Line

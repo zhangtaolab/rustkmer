@@ -130,7 +130,7 @@ db = PyDatabase("genome.rkdb", LoadMode.Preload)
 
 # 查询k-mer
 result = db.query_exact("ATGCGATGCTAGCGCTAGCTA")
-if result:
+if result.found:
     print(f"找到: {result.count}")
 ```
 

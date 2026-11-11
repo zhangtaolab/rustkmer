@@ -1,7 +1,7 @@
 site_name: RustKmer Python API Documentation
 site_description: High-performance k-mer analysis library for Python
-repo_name: rustkmer/rustkmer
-repo_url: https://github.com/rustkmer/rustkmer
+repo_name: zhangtaolab/rustkmer
+repo_url: https://github.com/zhangtaolab/rustkmer
 edit_uri: edit/main/docs/
 
 # Copyright
@@ -29,8 +29,6 @@ theme:
   font:
     text: Roboto
     code: Roboto Mono
-  logo: assets/logo.png
-  favicon: assets/favicon.png
   features:
     - navigation.instant
     - navigation.tracking
@@ -112,7 +110,7 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/zhangtaolab/rustkmer
     - icon: fontawesome/brands/python
-      link: https://pypi.org/project/rustkmer
+      link: https://pypi.org/project/pyrustkmer/
 
   # Version selector
   version:

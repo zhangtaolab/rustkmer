@@ -3,8 +3,8 @@ site_description: High-performance k-mer counting library and genomic analysis t
 site_author: RustKmer Team
 site_url: https://rustkmer.github.io
 
-repo_name: rustkmer/rustkmer
-repo_url: https://github.com/rustkmer/rustkmer
+repo_name: zhangtaolab/rustkmer
+repo_url: https://github.com/zhangtaolab/rustkmer
 
 theme:
   name: material
@@ -55,7 +55,7 @@ nav:
     - Performance Tips: user-guide/performance-tips.md
     - CLI: user-guide/cli.md
     - Examples: user-guide/examples.md
-    - Tutorials: user-guide/tutorials/index.md
+    - Tutorials: tutorials/index.md
   - API Reference:
     - api-reference/index.md
     - Python:
@@ -67,31 +67,16 @@ nav:
       - Exceptions: api-reference/exceptions.md
     - Rust:
       - api-reference/rust/index.md
-      - KmerCounter: api-reference/rust/counter.md
+      - KmerCounter: api-reference/rust/kmer_counter.md
       - Database: api-reference/rust/database.md
       - Fuzzy Query: api-reference/rust/fuzzy.md
-      - CLI: api-reference/rust/cli.md
+      - CLI: api-reference/rust/args.md
   - Tutorials:
     - tutorials/index.md
     - Basic Workflow: tutorials/basic-workflow.md
     - Large Genomes: tutorials/large-genomes.md
     - Batch Processing: tutorials/batch-processing.md
     - Integration: tutorials/integration.md
-  - Deployment:
-    - deployment/index.md
-    - Production: deployment/production.md
-    - Containers: deployment/containers.md
-    - CI/CD: deployment/ci-cd.md
-  - Background:
-    - background/index.md
-    - Algorithms: background/algorithms.md
-    - Performance: background/performance.md
-    - Comparison: background/comparison.md
-  - Appendix:
-    - appendix/index.md
-    - Troubleshooting: appendix/troubleshooting.md
-    - FAQ: appendix/faq.md
-    - Changelog: appendix/changelog.md
 
 markdown_extensions:
   - admonition
@@ -113,7 +98,7 @@ markdown_extensions:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/rustkmer/rustkmer
+      link: https://github.com/zhangtaolab/rustkmer
 
 extra_css:
   - stylesheets/extra.css

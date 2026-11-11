@@ -29,7 +29,7 @@ print("RustKmer imported successfully!")
 # Test basic functionality
 counter = PyCounter(7)
 counter.add_sequence("ATCGATCGATCGATCGATCGATC")
-print(f"Total k-mers: {counter.get_stats().total_kmers)}")
+print(f"Total k-mers: {counter.get_stats().total_kmers}")
 ```
 
 ## Platform-Specific Instructions
@@ -209,7 +209,7 @@ python --version
 
 If you encounter issues:
 
-1. Check the [GitHub Issues](https://github.com/rustkmer/rustkmer/issues)
+1. Check the [GitHub Issues](https://github.com/zhangtaolab/rustkmer/issues)
 2. Provide your system information:
    ```bash
    python --version
