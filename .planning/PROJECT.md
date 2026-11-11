@@ -13,11 +13,13 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 **Goal:** Match or beat Jellyfish2 on human-scale k=21 counting — closing the BENCH-02 gap outright — on both the CLI and Python surfaces, with the approach chosen from profiling evidence rather than guesswork.
 
 **Target features:**
-- Deep research + profiling: establish WHY k=21 is ~5x slower on the actual workload (hashing overhead, memory bandwidth, decompression, rayon scheduling) before committing to an approach
-- Architecture-level counting optimization: minimizer/signature partitioning (KMC-class) or equivalent; disk-backed exact counting if the evidence demands it (MINIM-01..03 staged)
-- KMC3 comparison as a second validation reference (BENCH-V2-01)
-- Exact-count contract preserved: 1-vs-N differentials + golden baselines prove optimized counts are byte-identical
-- Regression gate: existing bench harness + CI baselines, no performance regression
+- ✅ Deep research + profiling (done 2026-11-12): root cause measured — the gap is parallel-scaling efficiency (~3.5x), not decompression/encoding/data-structure; `--threads` is a silent no-op; evidence in `.planning/research/profiling/`
+- **Stage A (spine, in-memory parallelism):** fix `--threads` → thread-local counters + end reduction (kill per-window global atomics) → shared counting engine (`src/count/engine.rs`, persistent workers + disjoint partitioned tables + overlapped producer/consumer) → rolling encode + bit-parallel revcomp → parallel output sort. Targets jellyfish parity on both surfaces.
+- **D2 semantics unification:** one shared window-extraction function adopting CLI skip-N semantics (Python output changes on N-reads, user-accepted)
+- KMC3 comparison as a second validation reference (BENCH-V2-01, exact-count flags)
+- Exact-count contract preserved: 1-vs-N + old-vs-new differentials + golden baselines prove byte-identical counts; `.rkdb` v2 byte-identity
+- Regression gate: standing slice bench + parity gate + CI baselines, no performance regression
+- **Stage B (CONDITIONAL, D3):** hand-rolled minimizer/signature partitioning + disk-backed bins — the memory-ceiling/KMC3-RAM lever; gated on Stage A missing parity or a memory ceiling Stage A cannot meet
 
 ## Requirements
 
@@ -105,8 +107,11 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 | Dense `u64` width applies to the counting hot path only; merge accumulator / read path stays `u128`-wide (Phase 3, 03-06 D7) | DENSE-01 names counting memory; in-memory merge only runs when already under budget and its peak is charged honestly by the admission model | ✅ Phase 3 |
 | Prefix-cache mixed-canonical merge capability preserved as-is (Phase 3, WR-04 residual / AR-03-6) | Changing merge outcomes for existing callers is a user-visible break; the residual is documented and developer-triaged, not silently "fixed" | ✅ Phase 3 |
 | v2.0 scope: k=21 counting parity first; merge untouched this round | User decision 2026-11-11 — the measured BENCH-02 NO is the k=21 counting gap; merge is already bounded-memory and full-scale merge comparison defers to a later milestone | — Pending |
-| v2.0 acceptance: match or beat Jellyfish2 at human-scale k=21 | User decision 2026-11-11 — closes BENCH-02 outright; a ~5x gap implies architecture-level work (minimizer partitioning / disk-backed), not micro-optimization | — Pending |
-| v2.0 approach chosen from profiling evidence, not guesswork | User directive "需要认真调研" 2026-11-11 — deep research + root-cause profiling on the real workload precedes the architecture decision; Chorus3 shortcuts already researched and rejected | — Pending |
+| v2.0 acceptance: match or beat Jellyfish2 at human-scale k=21 | User decision 2026-11-11 — closes BENCH-02 outright; profiling later showed the gap is general (k=31 also ~5x under fair comparison), so the verdict covers both k | — Pending |
+| v2.0 approach chosen from profiling evidence, not guesswork | User directive "需要认真调研" 2026-11-11 — deep research + root-cause profiling on the real workload precedes the architecture decision; Chorus3 shortcuts already researched and rejected | ✅ Research done 2026-11-12 (empirical, HIGH confidence) |
+| D1: parallelism-first (Stage A) is the v2.0 spine; minimizer/disk-backed demoted to conditional Stage B | User-ratified 2026-11-12 on profiling evidence — the ~5x gap is ~3.5x parallel-scaling inefficiency (—threads no-op, 59% rayon spin-wait, per-window global atomics) × ~1.4x single-thread cost, NOT a data-structure problem; single-thread core already competitive with jellyfish | ✅ Ratified |
+| D2: unify CLI/Python N-read semantics on CLI skip-N | User-ratified 2026-11-12 — CLI skip-N is what the jellyfish parity gate validated; Python's strip-N+join-flanks creates chimeric k-mers. Explicitly accepts Python output changes on N-containing reads (no silent change, WR-04 precedent) | ✅ Ratified |
+| D3: BENCH-V2-01 (KMC3 comparison) stays in v2.0; minimizer architecture phase is conditional | User-ratified 2026-11-12 — minimizer/disk-backed is the memory-ceiling/KMC3-RAM lever, not the speed lever; gated on Stage A missing parity OR a memory ceiling Stage A cannot meet; descope/defer if Stage A hits parity and memory is acceptable | ✅ Ratified |
 
 ## Evolution
 
