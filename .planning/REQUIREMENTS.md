@@ -82,23 +82,37 @@ Committed scope. Each maps to exactly one roadmap phase. MINIM-* are CONDITIONAL
 
 ## Traceability
 
-Populated by the roadmapper. Each requirement maps to exactly one phase.
+Each requirement maps to exactly one phase. MINIM-* map to conditional Phase 11 (D3-gated).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROF-01..05 | TBD | Pending |
-| PAR-01..03 | TBD | Pending |
-| ENGINE-01..03 | TBD | Pending |
-| OUT-01..03 | TBD | Pending |
-| PY-01..02 | TBD | Pending |
-| BENCH-V2-01..02 | TBD | Pending |
-| MINIM-01..03 (conditional) | TBD | Pending |
+| PROF-01 | Phase 5 | Pending |
+| PROF-02 | Phase 5 | Pending |
+| PROF-03 | Phase 5 | Pending |
+| PROF-04 | Phase 5 | Pending |
+| PROF-05 | Phase 5 | Pending |
+| PAR-01 | Phase 6 | Pending |
+| PAR-02 | Phase 6 | Pending |
+| PAR-03 | Phase 6 | Pending |
+| ENGINE-01 | Phase 7 | Pending |
+| ENGINE-02 | Phase 7 | Pending |
+| ENGINE-03 | Phase 7 | Pending |
+| OUT-01 | Phase 8 | Pending |
+| OUT-02 | Phase 8 | Pending |
+| OUT-03 | Phase 8 | Pending |
+| PY-01 | Phase 9 | Pending |
+| PY-02 | Phase 9 | Pending |
+| BENCH-V2-01 | Phase 10 | Pending |
+| BENCH-V2-02 | Phase 10 | Pending |
+| MINIM-01 | Phase 11 (conditional — D3) | Pending (conditional) |
+| MINIM-02 | Phase 11 (conditional — D3) | Pending (conditional) |
+| MINIM-03 | Phase 11 (conditional — D3) | Pending (conditional) |
 
 **Coverage:**
 - v2.0 requirements: 21 total (18 committed + 3 conditional MINIM)
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 21 ⚠️
+- Mapped to phases: 21/21 (100%) — 18 committed → Phases 5-10; MINIM-01..03 → conditional Phase 11 (executes only if D3 triggers; otherwise descope/defer)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-11-12*
-*Last updated: 2026-11-12 after research synthesis + D1/D2/D3 ratification*
+*Last updated: 2026-11-12 after roadmap creation (Phases 5-11; traceability populated, 21/21 mapped)*
