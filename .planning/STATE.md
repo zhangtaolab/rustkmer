@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v1.0
 status: Awaiting next milestone
 stopped_at: context exhaustion at 75% (2026-11-11)
-last_updated: "2026-11-11T14:12:56.156Z"
+last_updated: "2026-11-11T14:15:07.448Z"
 last_activity: 2026-11-11
-last_activity_desc: "Completed quick task 261111-uju: fix 5 clippy incompatible_msrv failures for MSRV 1.80 (root clippy gate green)"
-state_head: 0872b7b502808b15c2bcfb38ef2bcdb7076bab88
+last_activity_desc: "Fixed pyo3 clippy incompatible_msrv residuals (gsd-fast, follow-up to 261111-uju) — both crates' CI clippy gates green under MSRV 1.80"
+state_head: 61778c9b7f53233d61a66d79a114e1bac7760870
 progress:
   total_phases: 4
   completed_phases: 4
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-20)
 Phase: Milestone v1.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-11 — Completed quick task 261111-uju: fix 5 clippy incompatible_msrv failures for MSRV 1.80 (root clippy gate green)
+Last activity: 2026-11-11 — Fixed pyo3 clippy incompatible_msrv residuals (gsd-fast, follow-up to 261111-uju) — both crates' CI clippy gates green under MSRV 1.80
 
 ## Performance Metrics
 
@@ -272,6 +272,7 @@ None yet.
 | 261111-sq1 | Clean up nightly-cargo unused_dependencies manifest warnings (root: chrono, inquire; pyo3: pyo3-build-config): FIRST verify actual usage — grep src/ for chrono and inquire use (CLAUDE.md lists chrono for metadata timestamps, inquire for interactive file selection) and pyo3/build.rs for pyo3-build-config. Remove a dependency only if genuinely unused; if used, keep it and record why the warning is a false positive. If any dep is removed, refresh the affected tracked Cargo.lock and verify cargo build + cargo test + cargo clippy --all-targets -- -D warnings (root) and cargo check --manifest-path pyo3/Cargo.toml. Scope: Cargo.toml manifests + Cargo.lock files; no source changes. | 2026-11-11 | a5eecad6d737cc1db45eb069af3c8b25955da2a0 | .planning/quick/261111-sq1-clean-up-nightly-cargo-unused-dependencies-manifest-warnings |
 | 261111-spz | Triage the 18 open v1.0 Phase-04 review findings in .planning/milestones/v1.0-phases/04-benchmark-validation/04-REVIEW-DISPOSITION.md (path per STATE.md — verify live): classify each as fix-now / defer / already-fixed / wont-fix with a one-line rationale; CR-02 is already recorded fixed in MILESTONES.md. Apply only trivial docs/examples-level corrections in place; for code-level findings (IN-06/07/08/09 harness/test code) record disposition + recommended follow-up without changing behavior. Update the disposition document to reflect the triage. Scope: .planning/ disposition docs + trivial docs/examples fixes only; no src/ behavior changes. | 2026-11-11 | e0de050ff5a58b68645c0541fd07556b06b5094a | .planning/quick/261111-spz-triage-the-18-open-v1-0-phase-04-review-findings-in-planning |
 | 261111-uju | Fix 5 clippy::incompatible_msrv failures surfaced by the rust-version=1.80 MSRV declaration (quick-batch 261111-spx follow-up, user-approved): rewrite is_multiple_of(n) to % n == 0 in src/cli/commands/dump.rs, src/database/index.rs, src/database/prefix_cache_merge.rs (2 sites), src/hash/overflow.rs. Root cargo clippy --all-targets -- -D warnings exit 0 (was 5 errors); cargo test 404 passed; MSRV 1.80 unchanged. Residual: 3 same-lint sites in pyo3/src/database.rs flagged as follow-up. | 2026-11-11 | 0872b7b | [261111-uju-fix-5-clippy-incompatible-msrv-failures-](./quick/261111-uju-fix-5-clippy-incompatible-msrv-failures-/) |
+| 9 | Fix 3 clippy::incompatible_msrv residuals in pyo3/src/database.rs (follow-up to quick 261111-uju, same user-approved CI-clippy restoration): rewrite exported_count.is_multiple_of(1000) to exported_count % 1000 == 0 at the 3 progress-callback sites (~1598/1821/1991); pyo3 cargo clippy --locked --all-targets -- -D warnings exit 0. Both crates' CI clippy gates now green under MSRV 1.80. | 2026-11-11 | 61778c9 | — |
 
 ## Deferred Items
 
@@ -289,5 +290,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Follow-up (from quick 261111-uju, same user-approved CI-clippy restoration intent): 3 remaining `is_multiple_of(1000)` sites in pyo3/src/database.rs (~lines 1598/1821/1991) fail clippy::incompatible_msrv under pyo3's rust-version=1.80 — same `% 1000 == 0` rewrite needed to restore the pyo3 CI clippy gate. Root-crate portion DONE (261111-uju, commit 0872b7b).
 - Start the next milestone with /gsd-new-milestone
