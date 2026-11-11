@@ -68,7 +68,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Build release binary
-        run: cargo build --release  # never time a debug build
+        run: cargo build --locked --release  # never time a debug build
       - name: Run synthetic benchmark
         run: python3 scripts/bench/bench.py --mode synthetic --out results.json
       # Uploaded BEFORE the gate step: a missing-baseline exit 2 (first run
