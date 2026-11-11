@@ -2,11 +2,11 @@
 gsd_state_version: "1.0"
 milestone: v1.0
 status: Awaiting next milestone
-stopped_at: Phase 04 complete — all phases complete
-last_updated: "2026-10-21T10:08:59.069Z"
-last_activity: 2026-10-21
-last_activity_desc: Completed quick task 261021-p0z: fix post-v1.0 CI failures (fastq display, TMP/TEMP probe, docs workflow)
-state_head: 6c2ebcbb65c9ee678525df7a4016448c89b3b0b6
+stopped_at: context exhaustion at 77% (2026-11-11)
+last_updated: "2026-11-11T12:12:13.581Z"
+last_activity: 2026-11-11
+last_activity_desc: "Completed quick task 261111-rf2: bump memmap2 to 0.9.11 security floor (RUSTSEC-2026-0186)"
+state_head: cb97c81834831bb5787e7b9cddad5daa9e12c9d5
 progress:
   total_phases: 4
   completed_phases: 4
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-20)
 Phase: Milestone v1.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-10-21 — Completed quick task 261021-p0z: fix post-v1.0 CI failures (fastq display, TMP/TEMP probe, docs workflow)
+Last activity: 2026-11-11 — Completed quick task 261111-rf2: bump memmap2 to 0.9.11 security floor (RUSTSEC-2026-0186)
 
 ## Performance Metrics
 
@@ -265,6 +265,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 261021-p0z | Fix post-v1.0 CI failures: fastq display() on Windows, TMP/TEMP probe on Windows, docs workflow repair (requirements, config relocation, dead steps) | 2026-10-21 | 6c2ebcb | [261021-p0z-fix-post-v1-0-ci-failures-fastq-path-dis](./quick/261021-p0z-fix-post-v1-0-ci-failures-fastq-path-dis/) |
+| 261111-rf2 | Bump memmap2 to >=0.9.11 security floor (RUSTSEC-2026-0186): change memmap2 = "0.9" to "0.9.11" in both Cargo.toml (root line 25) and pyo3/Cargo.toml (line 35), refresh both Cargo.lock files so memmap2 resolves >=0.9.11. Verify cargo build + cargo test + cargo clippy --all-targets -- -D warnings (root) and pyo3 cargo check. Security-hygiene dep bump only — no .rkdb format, public API, or performance changes. | 2026-11-11 | cb97c81 | [261111-rf2-bump-memmap2-to-0-9-11-security-floor-ru](./quick/261111-rf2-bump-memmap2-to-0-9-11-security-floor-ru/) |
 
 ## Deferred Items
 
@@ -276,8 +277,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-11T11:25:10Z
-Stopped at: Session resumed via /gsd-resume-work. Reconciled the stale v1.0-close handoff against git: closing commits f7bc4d8..6a9342f and annotated tag v1.0 are confirmed pushed (local dev == origin/dev at 3ddd93b, working tree clean), so v1.0 is fully closed/archived/tagged/pushed. Cleared the one-shot HANDOFF.json + .continue-here.md (their only live thread, the push, is done). Next: user asked to research the memory-optimization Rust crate in /Users/forrest/GitHub/Chorus3 for relevance to rustkmer v2 (k=21 perf / memory, BENCH-02 gap). The 18 open Phase-04 review findings (milestones/v1.0-phases/04-benchmark-validation/04-REVIEW-DISPOSITION.md) remain queued for a /gsd-quick triage; most are docs/examples-level but IN-06/07/08/09 are harness/test code and CR-02 is already recorded fixed in MILESTONES.md.
+Last session: 2026-11-11T11:40:51.114Z
+Stopped at: context exhaustion at 77% (2026-11-11)
 Resume file: None
 
 ## Operator Next Steps
