@@ -64,9 +64,6 @@ dashmap = "6.2.1"
 # Progress reporting
 indicatif = "0.17"
 
-# Interactive file selection
-inquire = "0.7"
-
 # Directory traversal
 walkdir = "2.4"
 
@@ -78,9 +75,6 @@ xz2 = "0.1"
 
 # Additional compression for database persistence
 sha2 = "0.10"
-
-# Date/time handling for metadata
-chrono = { version = "0.4", features = ["serde"] }
 
 # Logging
 log = "0.4"
