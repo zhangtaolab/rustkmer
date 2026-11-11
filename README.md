@@ -909,7 +909,7 @@ python -c "from pyrustkmer import PyDatabase, LoadMode; print('✅ 任意目录�
 **⚠️ 注意事项**:
 - **开发环境**: 适合需要修改 RustKmer 源码的场景
 - **维护成本**: 需要同时维护 Rust 和 Python 代码
-- **兼容性**: 仅在 Python 3.10+ 环境下测试过
+- **兼容性**: 仅在 Python 3.11+ 环境下测试过
 
 #### 方式三：PyO3 Rust 扩展（性能最高，功能最全）⚡
 
@@ -924,7 +924,7 @@ source ~/.cargo/env
 git clone https://github.com/your-username/rustkmer.git
 cd rustkmer
 
-# 3. 构建 PyO3 扩展（推荐 Python 3.10-3.12）
+# 3. 构建 PyO3 扩展（推荐 Python 3.11-3.12）
 cd pyo3
 pip install maturin
 maturin develop --release
@@ -940,7 +940,7 @@ python -c "from pyrustkmer import PyDatabase; print('✅ PyO3 扩展就绪!')"
 - **Python原生**: 返回Python对象，无格式转换开销
 
 **⚠️ 环境要求**:
-- **Python版本**: 推荐 3.10-3.12
+- **Python版本**: 推荐 3.11-3.12
 - **Rust工具链**: stable 1.80+
 - **编译环境**: 需要C/C++编译器
 - **内存**: 编译时需要额外内存
@@ -961,7 +961,7 @@ maturin build
 ```
 
 **✅ 兼容性状态**:
-- **Python 3.10**: ✅ 完全支持
+- **Python 3.10**: ❌ 不支持（`pyo3/pyproject.toml` 要求 `requires-python >= 3.11`）
 - **Python 3.11**: ✅ 完全支持
 - **Python 3.12**: ✅ 完全支持  
 - **Python 3.13**: ⚠️ 部分支持（PyO3版本相关）
@@ -986,8 +986,8 @@ print(f"Found {len(result)} matches")
 | 方式 | Python 兼容性 | 安装难度 | 性能 | 稳定性 | 内存效率 | 推荐场景 |
 |------|---------------|----------|------|--------|----------|----------|
 | **纯 Python Stubs** | ✅ 3.8-3.13 | ⭐ 简单 | ⭐⭐⭐ CLI级 | ⭐⭐⭐⭐⭐ 极高 | ⭐⭐⭐ 进程隔离 | 生产环境、广泛兼容 |
-| **可编辑开发安装** | ✅ 3.10+ | ⭐⭐⭐ 中等 | ⭐⭐⭐ CLI级 | ⭐⭐⭐⭐ 高 | ⭐⭐⭐ 进程隔离 | 开发调试、代码修改 |
-| **PyO3 扩展** | ✅ 3.10-3.12 | ⭐⭐⭐⭐ 较复杂 | ⭐⭐⭐⭐⭐ 本地Rust | ⭐⭐⭐⭐ 高 | ⭐⭐⭐⭐⭐ 直接内存 | 高性能计算、内存敏感 |
+| **可编辑开发安装** | ✅ 3.11+ | ⭐⭐⭐ 中等 | ⭐⭐⭐ CLI级 | ⭐⭐⭐⭐ 高 | ⭐⭐⭐ 进程隔离 | 开发调试、代码修改 |
+| **PyO3 扩展** | ✅ 3.11-3.12 | ⭐⭐⭐⭐ 较复杂 | ⭐⭐⭐⭐⭐ 本地Rust | ⭐⭐⭐⭐ 高 | ⭐⭐⭐⭐⭐ 直接内存 | 高性能计算、内存敏感 |
 
 ### PyO3 扩展特性
 
@@ -1376,7 +1376,7 @@ print(f"Found {len(result)} matches")
 # Python 3.13 用户建议使用 pyrustkmer
 pip install rustkmer
 
-# 或使用 Python 3.10-3.12 环境以获得完整功能
+# 或使用 Python 3.11-3.12 环境以获得完整功能
 conda create -n rustkmer-py311 python=3.11
 conda activate rustkmer-py311
 pip install rustkmer
@@ -1509,10 +1509,10 @@ def verify_rustkmer_installation():
     
     # 8. 性能建议
     print(f"\n💡 性能建议:")
-    if sys.version_info >= (3, 10):
+    if sys.version_info >= (3, 11):
         print("   ✅ Python 版本适合 PyO3 扩展")
     else:
-        print("   ⚠️ 建议升级到 Python 3.10+ 以获得最佳性能")
+        print("   ⚠️ 建议升级到 Python 3.11+ 以获得最佳性能")
     
     print("   ✅ 使用排序数据库获得最佳查询性能")
     print("   ✅ 对于小数据库使用预加载模式")
