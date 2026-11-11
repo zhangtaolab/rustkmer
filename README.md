@@ -270,7 +270,7 @@ cargo build --release
 
 ```bash
 # 创建排序数据库（推荐，获得最佳性能）
-rustkmer count -k 21 --threads 8 --sort -o genome.rkdb genome.fa
+rustkmer count -k 21 --threads 8 --sort -o genome.rkdb -i genome.fa
 
 # 单个查询
 rustkmer query genome.rkdb ATGCGATGCTAGCGCTAGCTA
@@ -296,13 +296,13 @@ rustkmer现在支持大k-mer（k=33到64），使用u128编码：
 
 ```bash
 # 使用k=33创建数据库
-rustkmer count -k 33 -o large_kmer.rkdb sequences.fa
+rustkmer count -k 33 -o large_kmer.rkdb -i sequences.fa
 
 # 查询大k-mer
 rustkmer query large_kmer.rkdb ACGTACGTACGTACGTACGTACGTACGTACGTG
 
 # k=64（最大支持）
-rustkmer count -k 64 -o k64_database.rkdb genome.fa
+rustkmer count -k 64 -o k64_database.rkdb -i genome.fa
 
 # Python API中使用大k-mer
 python3 -c "
@@ -430,7 +430,7 @@ rustkmer fuzzy-query-batch genome.rkdb -s patterns.txt -o results.csv -f csv
 
 ```bash
 # 计数参数
-rustkmer count -k 31 --threads 16 --size 100000000 -L 5 -U 1000 -C -o counts.rkdb reads.fastq
+rustkmer count -k 31 --threads 16 --size 100000000 -L 5 -U 1000 -C -o counts.rkdb -i reads.fastq
 
 # 查询多个k-mers
 rustkmer query counts.rkdb ATGCGATGCTAGCGCTAGCTA CGATCGATCGATCGATCGATCG
@@ -454,11 +454,11 @@ rustkmer query --interactive counts.rkdb
 #### `count` - k-mer计数
 
 ```bash
-rustkmer count -k <KMER_SIZE> -o <OUTPUT> [OPTIONS] <INPUT>
+rustkmer count [OPTIONS] -k <K> -i <INPUT>... -o <OUTPUT>
 ```
 
 **核心参数**:
-- `-k, --kmer-size <SIZE>`: k-mer大小 (推荐: 21)
+- `-k, --k <SIZE>`: k-mer大小 (推荐: 21)
 - `--threads <THREADS>`: 线程数 (默认: CPU核心数)
 - `-o, --output <FILE>`: 输出数据库文件 (可选；省略时不写出文件，仅输出计数统计)
 - `--sort`: 创建排序数据库 (强烈推荐)
@@ -468,13 +468,13 @@ rustkmer count -k <KMER_SIZE> -o <OUTPUT> [OPTIONS] <INPUT>
 **使用示例**:
 ```bash
 # 基本计数
-rustkmer count -k 21 -o genome.rkdb genome.fa
+rustkmer count -k 21 -o genome.rkdb -i genome.fa
 
 # 高性能排序数据库（推荐）
 rustkmer count -k 21 --threads 8 --sort -o genome_sorted.rkdb -i genome.fa
 
 # 规范化计数
-rustkmer count -k 21 -C --sort -o genome_canonical.rkdb genome.fa
+rustkmer count -k 21 -C --sort -o genome_canonical.rkdb -i genome.fa
 ```
 
 #### `query` - k-mer查询（高性能推荐）
@@ -553,7 +553,7 @@ rustkmer merge -i db1.rkdb db2.rkdb -o merged.rkdb --verbose
 
 1. **使用排序数据库**（最重要）:
    ```bash
-   rustkmer count -k 21 --sort -o sorted.rkdb input.fa
+   rustkmer count -k 21 --sort -o sorted.rkdb -i input.fa
    ```
 
 2. **批量查询而非单个查询**:

@@ -379,8 +379,8 @@ If you're migrating from the CLI, here's a quick reference:
 | `rustkmer query database.rkdb ATCG` | `PyDatabase("database.rkdb", LoadMode.Preload).query_exact("ATCG")` |
 | `rustkmer fuzzy-query database.rkdb ATCG --mutations 2` | `PyFuzzyQuery(db).query_fuzzy("ATCG", max_mutations=2)` |
 | `rustkmer stats database.rkdb` | `PyDatabase("database.rkdb", LoadMode.Preload).get_stats()` |
-| `rustkmer dump database.rkdb --limit 1000` | `PyDatabase("database.rkdb", LoadMode.Preload).dump(limit=1000)` |
-| `rustkmer merge ... -o merged.rkdb` | `PyDatabase.merge([...], "merged.rkdb")` |
+| `rustkmer dump database.rkdb` (pagination is Python-only) | `PyDatabase("database.rkdb", LoadMode.Preload).dump(limit=1000)` |
+| `rustkmer merge -i <DB1> <DB2> [...] -o merged.rkdb` | `PyDatabase.merge([...], "merged.rkdb")` |
 
 For detailed migration guides, see the [User Guide](../user-guide/).
 

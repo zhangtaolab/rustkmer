@@ -42,8 +42,9 @@ These are the exact gates CI runs on every pull request (workflow "CI", `.github
 | `cargo test` | Rust unit and integration tests (`src/` modules, `tests/`) |
 | `cd pyo3 && cargo clippy --all-targets -- -D warnings` | Bindings crate must be clippy-clean |
 | `cd pyo3 && maturin build` | The `pyrustkmer` sdist and wheel must build |
+| `cd pyo3 && pytest tests/ --cov=pyrustkmer --cov-report=term-missing --cov-fail-under=80` | `pyo3-pytest` job: Python binding tests with the 80% coverage gate (all three OSes) |
 
-CI does not run the Python test suite — `cd pyo3 && pytest` is a local pre-PR check, recommended before opening a PR that touches the bindings. The `pyo3/tests/` suite carries an 80% coverage gate enforced locally by the `--cov-fail-under=80` addopts in `pyo3/pyproject.toml`.
+CI runs the Python test suite: a `pyo3-pytest` job on all three operating systems builds the wheel (`maturin build`), installs it, and runs `pytest tests/ --cov=pyrustkmer --cov-report=term-missing --cov-fail-under=80` from `pyo3/` — the 80% coverage gate is passed on the command line there and lives only in CI. Local `pytest` in `pyo3/` runs plain with no forced coverage flags: the `pyo3/pyproject.toml` addopts are only `-v`. Running `cd pyo3 && pytest` locally before a PR that touches the bindings is still recommended.
 
 There is no `continue-on-error` on any CI job — a failing gate fails the PR.
 

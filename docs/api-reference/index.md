@@ -225,8 +225,8 @@ def batch_query_numpy(db_path, sequences):
 | `rustkmer query db.rkdb ATCG` | `PyDatabase("db.rkdb", LoadMode.Preload).query_exact("ATCG")` |
 | `rustkmer fuzzy-query db.rkdb ATCG --mutations 2` | `PyFuzzyQuery(db).query_fuzzy("ATCG", max_mutations=2)` |
 | `rustkmer stats db.rkdb` | `PyDatabase("db.rkdb", LoadMode.Preload).get_stats()` |
-| `rustkmer dump db.rkdb --limit 1000` | `PyDatabase("db.rkdb", LoadMode.Preload).dump(limit=1000)` |
-| `rustkmer merge a.rkdb b.rkdb -o merged.rkdb` | `PyDatabase.merge(["a.rkdb", "b.rkdb"], "merged.rkdb")` |
+| `rustkmer dump db.rkdb` (pagination is Python-only) | `PyDatabase("db.rkdb", LoadMode.Preload).dump(limit=1000)` |
+| `rustkmer merge -i a.rkdb b.rkdb -o merged.rkdb` | `PyDatabase.merge(["a.rkdb", "b.rkdb"], "merged.rkdb")` |
 
 ### Key Differences
 
