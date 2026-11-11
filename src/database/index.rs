@@ -103,7 +103,7 @@ impl DatabaseStats {
         // Calculate median
         let mut counts: Vec<u32> = entries.iter().map(|e| e.count).collect();
         counts.sort();
-        let median_count = if counts.len().is_multiple_of(2) {
+        let median_count = if counts.len() % 2 == 0 {
             (counts[counts.len() / 2 - 1] + counts[counts.len() / 2]) / 2
         } else {
             counts[counts.len() / 2]

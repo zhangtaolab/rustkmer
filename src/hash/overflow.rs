@@ -68,7 +68,7 @@ impl DiskOverflow {
             self.kmer_count += 1;
 
             // Check if we need a new file
-            if self.kmer_count.is_multiple_of(self.records_per_file as u64) {
+            if self.kmer_count % (self.records_per_file as u64) == 0 {
                 self.close_current_file()?;
                 self.current_file += 1;
             }

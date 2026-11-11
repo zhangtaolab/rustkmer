@@ -596,7 +596,7 @@ impl ExternalSortMerger {
                     );
                 }
 
-                if done.is_multiple_of(10) || done == non_empty_count {
+                if done % 10 == 0 || done == non_empty_count {
                     let elapsed = start_parallel.elapsed();
                     let eta = if done > 0 && elapsed.as_secs_f64() > 0.0 {
                         let per_prefix = elapsed.as_secs_f64() / done as f64;
@@ -1382,7 +1382,7 @@ impl ExternalSortMerger {
                     writer.write_all(&buffer[..n])?;
 
                     // Report progress every 1 million k-mers
-                    if processed_kmers.is_multiple_of(1_000_000)
+                    if processed_kmers % 1_000_000 == 0
                         || last_report.elapsed().as_secs() >= 5
                     {
                         if let Ok(mem_info) = sys_info::mem_info() {

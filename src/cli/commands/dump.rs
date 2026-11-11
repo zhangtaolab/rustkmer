@@ -166,7 +166,7 @@ fn dump_rkdb_database(path: &Path, output_path: Option<&str>) -> ProcessingResul
                 processed += 1;
 
                 // Progress reporting for large databases
-                if processed.is_multiple_of(100_000) {
+                if processed % 100_000 == 0 {
                     eprintln!("Processed {} k-mers...", processed);
                 }
             }
