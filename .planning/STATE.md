@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v1.0
 status: Awaiting next milestone
 stopped_at: context exhaustion at 75% (2026-11-11)
-last_updated: "2026-11-11T14:22:16Z"
+last_updated: "2026-11-11T14:59:55.014Z"
 last_activity: 2026-11-11
-last_activity_desc: "Fixed pyo3 clippy incompatible_msrv residuals (gsd-fast, follow-up to 261111-uju) — both crates' CI clippy gates green under MSRV 1.80"
-state_head: 61778c9b7f53233d61a66d79a114e1bac7760870
+last_activity_desc: "Completed quick task 261111-v69: closed WINDOWS #15 (merge write-failure test, 13/13 green, open_count 0 — /gsd-ship unblocked); W2 marked RESOLVED, W1 refreshed"
+state_head: 76ce9f343a7640087adb5317044fa03c0a17c69b
 progress:
   total_phases: 4
   completed_phases: 4
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-20)
 Phase: Milestone v1.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-11 — Fixed pyo3 clippy incompatible_msrv residuals (gsd-fast, follow-up to 261111-uju) — both crates' CI clippy gates green under MSRV 1.80
+Last activity: 2026-11-11 — Completed quick task 261111-v69: closed WINDOWS #15 (merge write-failure test, 13/13 green, open_count 0 — /gsd-ship unblocked); W2 marked RESOLVED, W1 refreshed
 
 ## Performance Metrics
 
@@ -251,8 +251,8 @@ None yet.
 
 [Issues that affect future work]
 
-- [Phase 04 verification refresh 2026-10-20, W1] Unpushed local dev commits lack CI validation: origin/dev is at `764f53f`; local HEAD is ahead including 4 code commits (815aad5/957c069 src/io/fastq.rs, b6ea0ee ci.yml, b417e3a covered merge test). Windows-latest clippy leg has not executed against b417e3a; local evidence (clippy 0, tests green, no cfg items changed) covers the interval. Push dev to resolve.
-- [Phase 04 verification refresh 2026-10-20, W2] REQUIREMENTS.md marks BENCH-02 `[x]` Complete (flipped by bookkeeping commit 51629b5) contradicting the committed report's measured NO verdict and the deliberate "left unchecked, escalated" decision in this file. The user's milestone-close acceptance decision is not on record — revert the checkbox or record the acceptance explicitly at /gsd-complete-milestone.
+- [Phase 04 verification refresh 2026-10-20, W1] Unpushed local dev commits lack remote CI validation: origin/dev is at `3ddd93b`; local dev is 24 commits ahead at HEAD `76ce9f3` (23 at the 2026-11-11 planning baseline `99dafd8`, +1 for quick-261111-v69's test commit). Unpushed code commits include cb97c81 (memmap2 0.9.11 security floor), 09d90bc (Cargo.lock tracking), 1662955 (CI --locked adoption), 1d639be (MSRV 1.80 declaration), a5eecad (unused-dep removal), and 0872b7b/61778c9 (clippy MSRV fixes). Push dev to resolve. Still OPEN.
+- [RESOLVED 2026-11-11 quick-261111-v69] W2 (BENCH-02 checkbox vs measured NO): resolved at milestone close 2026-10-20 by user decision. .planning/MILESTONES.md:11 records `override_closeout` — requirements 18/19 complete, BENCH-02 measured NO accepted as a known gap (user decision 2026-10-20); archived .planning/milestones/v1.0-REQUIREMENTS.md:43 keeps BENCH-02 `[ ]` unchecked with the acceptance note (k=21 performance deferred to v2, MINIM-01..03). The live .planning/REQUIREMENTS.md no longer exists (archived at milestone close), so there is no checkbox left to revert.
 - [Milestone close 2026-10-20] 18 open code-review findings in .planning/phases/04-benchmark-validation/04-REVIEW-DISPOSITION.md (0 critical; docs/examples-level: README positional-arg examples, --kmer-size, CONTRIBUTING CI claims, mkdocs nav 4 dead links — strict build will fail when they reach main, PyPI link 404, syntax-error snippet, invalid doc commands, stale guide references). Triage before/with /gsd-complete-milestone.
 
 - [RESOLVED 2026-10-19 quick-261019-d1y] pyo3 test executability: the maturin `python-source` key was dropped in dbb13ef, so `maturin develop` now works — the 2026-10-17 phase-03 re-verification rebuilt pyrustkmer from source and ran the full pyo3 suite green (125/0, incl. test_database_merge.py 12/12 for the first time), closing the carried MERGE-04 human-verification item. Formerly STILL OPEN, both fixed by quick-261019-d1y: (a) cov flags removed from pytest addopts (local runs plain, no `--no-cov` needed); (b) `.github/workflows/ci.yml` gained a 3-OS `pyo3-pytest` job carrying the 80% gate. The historical consequence for phase 03 (03-09/03-10 shipped without Python-level verification at the time) is now back-filled by the 2026-10-17 evidence.
@@ -273,6 +273,7 @@ None yet.
 | 261111-spz | Triage the 18 open v1.0 Phase-04 review findings in .planning/milestones/v1.0-phases/04-benchmark-validation/04-REVIEW-DISPOSITION.md (path per STATE.md — verify live): classify each as fix-now / defer / already-fixed / wont-fix with a one-line rationale; CR-02 is already recorded fixed in MILESTONES.md. Apply only trivial docs/examples-level corrections in place; for code-level findings (IN-06/07/08/09 harness/test code) record disposition + recommended follow-up without changing behavior. Update the disposition document to reflect the triage. Scope: .planning/ disposition docs + trivial docs/examples fixes only; no src/ behavior changes. | 2026-11-11 | e0de050ff5a58b68645c0541fd07556b06b5094a | .planning/quick/261111-spz-triage-the-18-open-v1-0-phase-04-review-findings-in-planning |
 | 261111-uju | Fix 5 clippy::incompatible_msrv failures surfaced by the rust-version=1.80 MSRV declaration (quick-batch 261111-spx follow-up, user-approved): rewrite is_multiple_of(n) to % n == 0 in src/cli/commands/dump.rs, src/database/index.rs, src/database/prefix_cache_merge.rs (2 sites), src/hash/overflow.rs. Root cargo clippy --all-targets -- -D warnings exit 0 (was 5 errors); cargo test 404 passed; MSRV 1.80 unchanged. Residual: 3 same-lint sites in pyo3/src/database.rs flagged as follow-up. | 2026-11-11 | 0872b7b | [261111-uju-fix-5-clippy-incompatible-msrv-failures-](./quick/261111-uju-fix-5-clippy-incompatible-msrv-failures-/) |
 | 9 | Fix 3 clippy::incompatible_msrv residuals in pyo3/src/database.rs (follow-up to quick 261111-uju, same user-approved CI-clippy restoration): rewrite exported_count.is_multiple_of(1000) to exported_count % 1000 == 0 at the 3 progress-callback sites (~1598/1821/1991); pyo3 cargo clippy --locked --all-targets -- -D warnings exit 0. Both crates' CI clippy gates now green under MSRV 1.80. | 2026-11-11 | 61778c9 | — |
+| 261111-v69 | Close WINDOWS ledger row #15 (sole /gsd-ship blocker): add test_merge_output_write_failure_is_runtime_error to pyo3/tests/test_database_merge.py driving PyDatabase.merge into a nonexistent output dir — pins RuntimeError 'Merge operation failed' prefix + absence of pre-03-10 'Failed to save merged database' message; extension rebuilt via maturin develop --release --locked (.venv313), suite 13/13 green; windows fixed 15 -> open_count 0. STATE.md: W2 marked RESOLVED (accepted at milestone close 2026-10-20), W1 refreshed (still OPEN, push dev for CI). | 2026-11-11 | 76ce9f3 | [261111-v69-close-windows-ledger-row-15-sole-gsd-shi](./quick/261111-v69-close-windows-ledger-row-15-sole-gsd-shi/) |
 
 ## Deferred Items
 
