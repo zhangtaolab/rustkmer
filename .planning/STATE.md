@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v1.0
 status: Awaiting next milestone
 stopped_at: context exhaustion at 77% (2026-11-11)
-last_updated: "2026-11-11T12:12:13.581Z"
+last_updated: "2026-11-11T12:35:15.601Z"
 last_activity: 2026-11-11
-last_activity_desc: "Completed quick task 261111-rf2: bump memmap2 to 0.9.11 security floor (RUSTSEC-2026-0186)"
-state_head: cb97c81834831bb5787e7b9cddad5daa9e12c9d5
+last_activity_desc: "Completed quick task 261111-s6h: start tracking Cargo.lock for reproducible builds"
+state_head: 09d90bca2081909461758571d65330248e612cd0
 progress:
   total_phases: 4
   completed_phases: 4
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-20)
 Phase: Milestone v1.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-11 — Completed quick task 261111-rf2: bump memmap2 to 0.9.11 security floor (RUSTSEC-2026-0186)
+Last activity: 2026-11-11 — Completed quick task 261111-s6h: start tracking Cargo.lock for reproducible builds
 
 ## Performance Metrics
 
@@ -266,6 +266,7 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 261021-p0z | Fix post-v1.0 CI failures: fastq display() on Windows, TMP/TEMP probe on Windows, docs workflow repair (requirements, config relocation, dead steps) | 2026-10-21 | 6c2ebcb | [261021-p0z-fix-post-v1-0-ci-failures-fastq-path-dis](./quick/261021-p0z-fix-post-v1-0-ci-failures-fastq-path-dis/) |
 | 261111-rf2 | Bump memmap2 to >=0.9.11 security floor (RUSTSEC-2026-0186): change memmap2 = "0.9" to "0.9.11" in both Cargo.toml (root line 25) and pyo3/Cargo.toml (line 35), refresh both Cargo.lock files so memmap2 resolves >=0.9.11. Verify cargo build + cargo test + cargo clippy --all-targets -- -D warnings (root) and pyo3 cargo check. Security-hygiene dep bump only — no .rkdb format, public API, or performance changes. | 2026-11-11 | cb97c81 | [261111-rf2-bump-memmap2-to-0-9-11-security-floor-ru](./quick/261111-rf2-bump-memmap2-to-0-9-11-security-floor-ru/) |
+| 261111-s6h | Start tracking Cargo.lock for reproducible builds: remove the Cargo.lock ignore entries from .gitignore (lines 6 and 122), track and commit both Cargo.lock and pyo3/Cargo.lock byte-identical to the tested memmap2 0.9.11 resolution. Verified cargo build --locked (root) and cargo check --locked (pyo3). Follow-up: CI workflows do not yet pass --locked. | 2026-11-11 | 09d90bc | [261111-s6h-start-tracking-cargo-lock-for-reproducib](./quick/261111-s6h-start-tracking-cargo-lock-for-reproducib/) |
 
 ## Deferred Items
 
