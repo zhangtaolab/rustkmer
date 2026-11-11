@@ -3,7 +3,6 @@ reference/
 
 # Rust build artifacts
 target/
-Cargo.lock
 **/*.rs.bk
 debug/
 release/
@@ -119,7 +118,6 @@ coverage.xml
 # Rust build artifacts
 /target/
 **/*.rs.bk
-Cargo.lock
 
 # Python cache and temp files
 __pycache__/
