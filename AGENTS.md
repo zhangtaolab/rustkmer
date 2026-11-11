@@ -4,7 +4,7 @@ Auto-generated from all feature plans. Last updated: 2025-12-20
 
 ## Active Technologies
 
-- Rust 1.80+ stable channel + Python 3.10+ via PyO3 0.22.6 (013-pyo3-fuzzy-query)
+- Rust 1.80+ stable channel + Python 3.11+ via PyO3 0.22.6 (013-pyo3-fuzzy-query)
 
 ## Project Structure
 
@@ -19,7 +19,7 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 
 ## Code Style
 
-Rust 1.80+ stable channel + Python 3.10+ via PyO3 0.22.6: Follow standard conventions
+Rust 1.80+ stable channel + Python 3.11+ via PyO3 0.22.6: Follow standard conventions
 
 ## Recent Changes
 
