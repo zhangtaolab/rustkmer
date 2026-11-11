@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "batch_id": "261111-spx",
+  "created_at": "2026-11-11T12:40:43.213Z",
+  "options": {},
+  "base_revision": "45205d3c9f0b38205e51921371c696692b2c0615",
+  "items": [
+    {
+      "quick_id": "261111-spy",
+      "client_id": null,
+      "description": "Adopt --locked in CI: add --locked to cargo build/test/clippy/check/run invocations against this repo's crates in .github/workflows/*.yml (root crate and pyo3 crate where present; NOT tool-install steps like cargo install), so lockfile/manifest consistency becomes a regression gate — both Cargo.lock files are tracked as of commit 09d90bc. Keep YAML valid; change nothing beyond adding --locked (no toolchain or action-version changes). Verify with grep proof that every in-repo cargo invocation carries --locked plus a YAML syntax check. Scope: .github/workflows/ only.",
+      "status": "complete",
+      "depends_on": [],
+      "planned_files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/benchmark.yml"
+      ],
+      "directory": null,
+      "worktree": null,
+      "dispatched_worktree": null,
+      "dispatched_branch": null,
+      "dispatched_base": null,
+      "wave": 0,
+      "commit": "16629552e8e7fca1623322ac9c04de1791f8f6f8",
+      "failure_reason": null
+    },
+    {
+      "quick_id": "261111-spz",
+      "client_id": null,
+      "description": "Triage the 18 open v1.0 Phase-04 review findings in .planning/milestones/v1.0-phases/04-benchmark-validation/04-REVIEW-DISPOSITION.md (path per STATE.md — verify live): classify each as fix-now / defer / already-fixed / wont-fix with a one-line rationale; CR-02 is already recorded fixed in MILESTONES.md. Apply only trivial docs/examples-level corrections in place; for code-level findings (IN-06/07/08/09 harness/test code) record disposition + recommended follow-up without changing behavior. Update the disposition document to reflect the triage. Scope: .planning/ disposition docs + trivial docs/examples fixes only; no src/ behavior changes.",
+      "status": "complete",
+      "depends_on": [
+        "261111-sq0"
+      ],
+      "planned_files": [
+        "README.md",
+        "CONTRIBUTING.md",
+        "docs/api-reference/index.md",
+        "docs/api-reference/overview.md",
+        "mkdocs.yml",
+        "mkdocs.docs.yml",
+        "docs/installation.md",
+        "docs/index.md",
+        "docs/README.md",
+        "examples/python/demo_pyo3_binding.py",
+        "examples/python/test_pyo3_api.py",
+        "examples/python/demo_performance.py",
+        ".planning/milestones/v1.0-phases/04-benchmark-validation/04-REVIEW-DISPOSITION.md"
+      ],
+      "directory": null,
+      "worktree": null,
+      "dispatched_worktree": null,
+      "dispatched_branch": null,
+      "dispatched_base": null,
+      "wave": 2,
+      "commit": "e0de050ff5a58b68645c0541fd07556b06b5094a",
+      "failure_reason": null
+    },
+    {
+      "quick_id": "261111-sq0",
+      "client_id": null,
+      "description": "Normalize the MSRV/Python version policy inconsistency flagged in .claude/CLAUDE.md: Python floor says 3.10+ in CLAUDE.md/docs but pyo3/pyproject.toml requires >=3.11 — align documentation to the binding >=3.11 constraint (do NOT lower pyproject.toml); add rust-version = \"1.80\" to [package] in both Cargo.toml and pyo3/Cargo.toml to enforce the documented Rust MSRV. Verify cargo build (root) and cargo check --manifest-path pyo3/Cargo.toml still pass. Scope: the two Cargo.toml manifests + version-policy statements in docs (CLAUDE.md, .claude/CLAUDE.md, README/INSTALL where they state a floor); no source changes.",
+      "status": "complete",
+      "depends_on": [],
+      "planned_files": [
+        "Cargo.toml",
+        "pyo3/Cargo.toml",
+        "README.md",
+        "CLAUDE.md",
+        "AGENTS.md",
+        "docs/dev-guide/claude.md",
+        "docs/dev-guide/agents.md"
+      ],
+      "directory": null,
+      "worktree": null,
+      "dispatched_worktree": null,
+      "dispatched_branch": null,
+      "dispatched_base": null,
+      "wave": 0,
+      "commit": "dd88eb3f12e5cf05a60b88a6e2360fa84b770c7f",
+      "failure_reason": null
+    },
+    {
+      "quick_id": "261111-sq1",
+      "client_id": null,
+      "description": "Clean up nightly-cargo unused_dependencies manifest warnings (root: chrono, inquire; pyo3: pyo3-build-config): FIRST verify actual usage — grep src/ for chrono and inquire use (CLAUDE.md lists chrono for metadata timestamps, inquire for interactive file selection) and pyo3/build.rs for pyo3-build-config. Remove a dependency only if genuinely unused; if used, keep it and record why the warning is a false positive. If any dep is removed, refresh the affected tracked Cargo.lock and verify cargo build + cargo test + cargo clippy --all-targets -- -D warnings (root) and cargo check --manifest-path pyo3/Cargo.toml. Scope: Cargo.toml manifests + Cargo.lock files; no source changes.",
+      "status": "complete",
+      "depends_on": [],
+      "planned_files": [
+        "Cargo.toml",
+        "pyo3/Cargo.toml",
+        "Cargo.lock",
+        "pyo3/Cargo.lock"
+      ],
+      "directory": null,
+      "worktree": null,
+      "dispatched_worktree": null,
+      "dispatched_branch": null,
+      "dispatched_base": null,
+      "wave": 1,
+      "commit": "a5eecad6d737cc1db45eb069af3c8b25955da2a0",
+      "failure_reason": null
+    }
+  ]
+}

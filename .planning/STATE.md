@@ -2,11 +2,11 @@
 gsd_state_version: "1.0"
 milestone: v1.0
 status: Awaiting next milestone
-stopped_at: context exhaustion at 77% (2026-11-11)
-last_updated: "2026-11-11T12:35:15.601Z"
+stopped_at: context exhaustion at 75% (2026-11-11)
+last_updated: "2026-11-11T13:06:18.142Z"
 last_activity: 2026-11-11
 last_activity_desc: "Completed quick task 261111-s6h: start tracking Cargo.lock for reproducible builds"
-state_head: 09d90bca2081909461758571d65330248e612cd0
+state_head: 45205d3c9f0b38205e51921371c696692b2c0615
 progress:
   total_phases: 4
   completed_phases: 4
@@ -267,6 +267,10 @@ None yet.
 | 261021-p0z | Fix post-v1.0 CI failures: fastq display() on Windows, TMP/TEMP probe on Windows, docs workflow repair (requirements, config relocation, dead steps) | 2026-10-21 | 6c2ebcb | [261021-p0z-fix-post-v1-0-ci-failures-fastq-path-dis](./quick/261021-p0z-fix-post-v1-0-ci-failures-fastq-path-dis/) |
 | 261111-rf2 | Bump memmap2 to >=0.9.11 security floor (RUSTSEC-2026-0186): change memmap2 = "0.9" to "0.9.11" in both Cargo.toml (root line 25) and pyo3/Cargo.toml (line 35), refresh both Cargo.lock files so memmap2 resolves >=0.9.11. Verify cargo build + cargo test + cargo clippy --all-targets -- -D warnings (root) and pyo3 cargo check. Security-hygiene dep bump only — no .rkdb format, public API, or performance changes. | 2026-11-11 | cb97c81 | [261111-rf2-bump-memmap2-to-0-9-11-security-floor-ru](./quick/261111-rf2-bump-memmap2-to-0-9-11-security-floor-ru/) |
 | 261111-s6h | Start tracking Cargo.lock for reproducible builds: remove the Cargo.lock ignore entries from .gitignore (lines 6 and 122), track and commit both Cargo.lock and pyo3/Cargo.lock byte-identical to the tested memmap2 0.9.11 resolution. Verified cargo build --locked (root) and cargo check --locked (pyo3). Follow-up: CI workflows do not yet pass --locked. | 2026-11-11 | 09d90bc | [261111-s6h-start-tracking-cargo-lock-for-reproducib](./quick/261111-s6h-start-tracking-cargo-lock-for-reproducib/) |
+| 261111-spy | Adopt --locked in CI: add --locked to cargo build/test/clippy/check/run invocations against this repo's crates in .github/workflows/*.yml (root crate and pyo3 crate where present; NOT tool-install steps like cargo install), so lockfile/manifest consistency becomes a regression gate — both Cargo.lock files are tracked as of commit 09d90bc. Keep YAML valid; change nothing beyond adding --locked (no toolchain or action-version changes). Verify with grep proof that every in-repo cargo invocation carries --locked plus a YAML syntax check. Scope: .github/workflows/ only. | 2026-11-11 | 16629552e8e7fca1623322ac9c04de1791f8f6f8 | .planning/quick/261111-spy-adopt-locked-in-ci-add-locked-to-cargo-build-test-clippy-che |
+| 261111-sq0 | Normalize the MSRV/Python version policy inconsistency flagged in .claude/CLAUDE.md: Python floor says 3.10+ in CLAUDE.md/docs but pyo3/pyproject.toml requires >=3.11 — align documentation to the binding >=3.11 constraint (do NOT lower pyproject.toml); add rust-version = "1.80" to [package] in both Cargo.toml and pyo3/Cargo.toml to enforce the documented Rust MSRV. Verify cargo build (root) and cargo check --manifest-path pyo3/Cargo.toml still pass. Scope: the two Cargo.toml manifests + version-policy statements in docs (CLAUDE.md, .claude/CLAUDE.md, README/INSTALL where they state a floor); no source changes. | 2026-11-11 | dd88eb3f12e5cf05a60b88a6e2360fa84b770c7f | .planning/quick/261111-sq0-normalize-the-msrv-python-version-policy-inconsistency-flagg |
+| 261111-sq1 | Clean up nightly-cargo unused_dependencies manifest warnings (root: chrono, inquire; pyo3: pyo3-build-config): FIRST verify actual usage — grep src/ for chrono and inquire use (CLAUDE.md lists chrono for metadata timestamps, inquire for interactive file selection) and pyo3/build.rs for pyo3-build-config. Remove a dependency only if genuinely unused; if used, keep it and record why the warning is a false positive. If any dep is removed, refresh the affected tracked Cargo.lock and verify cargo build + cargo test + cargo clippy --all-targets -- -D warnings (root) and cargo check --manifest-path pyo3/Cargo.toml. Scope: Cargo.toml manifests + Cargo.lock files; no source changes. | 2026-11-11 | a5eecad6d737cc1db45eb069af3c8b25955da2a0 | .planning/quick/261111-sq1-clean-up-nightly-cargo-unused-dependencies-manifest-warnings |
+| 261111-spz | Triage the 18 open v1.0 Phase-04 review findings in .planning/milestones/v1.0-phases/04-benchmark-validation/04-REVIEW-DISPOSITION.md (path per STATE.md — verify live): classify each as fix-now / defer / already-fixed / wont-fix with a one-line rationale; CR-02 is already recorded fixed in MILESTONES.md. Apply only trivial docs/examples-level corrections in place; for code-level findings (IN-06/07/08/09 harness/test code) record disposition + recommended follow-up without changing behavior. Update the disposition document to reflect the triage. Scope: .planning/ disposition docs + trivial docs/examples fixes only; no src/ behavior changes. | 2026-11-11 | e0de050ff5a58b68645c0541fd07556b06b5094a | .planning/quick/261111-spz-triage-the-18-open-v1-0-phase-04-review-findings-in-planning |
 
 ## Deferred Items
 
@@ -278,10 +282,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-11T11:40:51.114Z
-Stopped at: context exhaustion at 77% (2026-11-11)
+Last session: 2026-11-11T13:06:18.127Z
+Stopped at: context exhaustion at 75% (2026-11-11)
 Resume file: None
 
 ## Operator Next Steps
 
+- APPROVED follow-up (user decision 2026-11-11, quick-batch 261111-spx): fix 5 clippy::incompatible_msrv failures surfaced by sq0's rust-version=1.80 declaration — rewrite `is_multiple_of(n)` to `% n == 0` at src/cli/commands/dump.rs:169, src/database/index.rs:106, src/database/prefix_cache_merge.rs:599 and :1385, src/hash/overflow.rs:71; keep MSRV 1.80; re-run cargo clippy --all-targets -- -D warnings to restore the CI gate.
 - Start the next milestone with /gsd-new-milestone
