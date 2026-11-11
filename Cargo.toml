@@ -22,7 +22,7 @@ anyhow = "1.0"
 bio = "2.0"
 
 # Memory management
-memmap2 = "0.9"
+memmap2 = "0.9.11"
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
