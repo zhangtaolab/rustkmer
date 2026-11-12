@@ -5,16 +5,16 @@ milestone_name: k=21 Counting Parity
 current_phase: 05
 current_phase_name: Measurement & Regression Harness
 status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-11-12T08:15:35.944Z"
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-11-12T09:08:51.161Z"
 last_activity: 2026-11-12
 last_activity_desc: "Completed quick task 261112-jwl: Raise Rust MSRV 1.80 to 1.82"
-state_head: 1efb5c7dab185361c3be252090edf09438a26610
+state_head: 319b80782a1a60dc84475b14f68129b6ce1d650e
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 7
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 05 (Measurement & Regression Harness) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
 Last activity: 2026-11-12 - Completed quick task 261112-jwl: Raise Rust MSRV 1.80 to 1.82
 
@@ -75,6 +75,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0)
 | Phase 05 P01 | 37 min | 2 tasks | 4 files |
 | Phase 05 P02 | 18 min | 2 tasks | 3 files |
 | Phase 05 P03 | 17 min | 2 tasks | 6 files |
+| Phase 05 P04 | 45 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -97,6 +98,9 @@ Recent decisions affecting current work:
 - [Phase 05]: [05-03] verify_threads.py hardened: exit-2 paths write no JSON and no verdict line; exceptions exit 2 without traceback; --build-profile flag keeps Rust-test debug provenance honest (dev-host capture stays release)
 - [Phase 05]: [05-03] PROF-02 pool-size pair landed: characterization GREEN-now self-destructs when Phase 6 fixes --threads; standing gate ignored RED-now (observed 18/17/17 at requested 1/4/16, release sha256 8f64d442); WINDOWS skipped-test tracks the Phase-6 handoff
 - [Phase 05]: [05-03] Golden capture is read-only rehash + manifest equality (12 fixtures, golden test rc 0, manifest sha256 f010e42a); generator never run, fixtures byte-identical; Phase 8 OUT-02 still needs a real write-path differential
+- [Phase 05]: [05-04] Parity reference bound to the FULL random recipe (source_sha256 + seed + selection_manifest_sha256 + live-recomputed output_sha256); unbound/missing-identity/ambiguous/duplicate all exit 2; pinned head-4M constants (229694874/519271168) asserted on capture, never re-pinned; --hash-size 2G for real runs
+- [Phase 05]: [05-04] Real-data gates proven on CRR1936095 part_001 (source dae91042): head-4M 229694874/519271168 + 1M random seed 20261112 73578421/129801125, both gate-proof re-runs exit 0; random distinct/instance 1.76 vs head 2.26 confirms head repeat-rich
+- [Phase 05]: [05-04] Real-slice RED scaling baseline committed (t1/t4/t16 72.27/70.05/68.80s, speedup_t4 1.0318 / speedup_t16 1.0505, both <1.3) — standing Phase 6 PAR-01 target; freshness-bound capture, honest warm cache, no hot-path change
 
 ### Pending Todos
 
@@ -127,8 +131,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T08:15:35.929Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-11-12T09:08:24.297Z
+Stopped at: Completed 05-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
