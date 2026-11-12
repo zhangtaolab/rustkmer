@@ -5,16 +5,16 @@ milestone_name: k=21 Counting Parity
 current_phase: 05
 current_phase_name: Measurement & Regression Harness
 status: executing
-stopped_at: Completed quick 261112-jwl (Rust MSRV 1.82; WINDOWS 19/20 closed)
-last_updated: "2026-11-12T07:49:15.506Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-11-12T08:15:35.944Z"
 last_activity: 2026-11-12
-last_activity_desc: Completed quick task 261112-jwl: Raise Rust MSRV 1.80 to 1.82
-state_head: 69a82cf38ae01067a30de0476a643e20a812a6b8
+last_activity_desc: "Completed quick task 261112-jwl: Raise Rust MSRV 1.80 to 1.82"
+state_head: 1efb5c7dab185361c3be252090edf09438a26610
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 7
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 05 (Measurement & Regression Harness) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-11-12 - Completed quick task 261112-jwl: Raise Rust MSRV 1.80 to 1.82
 
@@ -74,6 +74,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0)
 |------|----------|-------|-------|
 | Phase 05 P01 | 37 min | 2 tasks | 4 files |
 | Phase 05 P02 | 18 min | 2 tasks | 3 files |
+| Phase 05 P03 | 17 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,9 @@ Recent decisions affecting current work:
 - [Phase 05]: [05-02] Preserve locked-dependency MSRV failures as blockers; no dependency bumps, lockfile edits, --ignore-rust-version, or warning suppression
 - [Quick 261112-jwl, user-approved 2026-11-12]: Raise Rust MSRV 1.80 to 1.82 for the existing locked graph; no dependency pin/update. Policy commit `69a82cf`; approved behavior-preserving clippy fix `23967d5`; all three 1.82.0 gates exited 0.
 - [Phase 05]: [05-02] Random slicer uses single-pass Algorithm R with O(N) memory, source-index-sorted records, and deterministic fingerprint/seed/index/output-sha256 manifests
+- [Phase 05]: [05-03] verify_threads.py hardened: exit-2 paths write no JSON and no verdict line; exceptions exit 2 without traceback; --build-profile flag keeps Rust-test debug provenance honest (dev-host capture stays release)
+- [Phase 05]: [05-03] PROF-02 pool-size pair landed: characterization GREEN-now self-destructs when Phase 6 fixes --threads; standing gate ignored RED-now (observed 18/17/17 at requested 1/4/16, release sha256 8f64d442); WINDOWS skipped-test tracks the Phase-6 handoff
+- [Phase 05]: [05-03] Golden capture is read-only rehash + manifest equality (12 fixtures, golden test rc 0, manifest sha256 f010e42a); generator never run, fixtures byte-identical; Phase 8 OUT-02 still needs a real write-path differential
 
 ### Pending Todos
 
@@ -123,8 +127,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T07:49:15.506Z
-Stopped at: Completed quick 261112-jwl (Rust MSRV 1.82; WINDOWS 19/20 closed)
+Last session: 2026-11-12T08:15:35.929Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
