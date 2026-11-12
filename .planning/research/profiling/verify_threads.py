@@ -1,49 +1,247 @@
 #!/usr/bin/env python3
-"""Verify whether --threads actually controls the rayon pool size.
+"""PROF-02 — observe whether `--threads` actually sizes the rayon pool.
 
-Runs rustkmer count --threads N on a small slice, samples the live process
-with macOS `sample` (no sudo), and counts the OS threads. Repeats for N=1,4.
+Runs `rustkmer count --threads N` in an INDEPENDENT subprocess per N (rayon's
+global pool is initialized once per process, so one child per requested N is
+the only honest observation), polls the live child until worker threads have
+spawned, and counts OS threads with a platform backend:
+
+  * macOS: `sample <pid> 1` (no sudo), keeping the Thread_ line regex and the
+    "written to file" redirect handling (sampler="sample");
+  * Linux: the entry count of /proc/<pid>/task (sampler="proc-task");
+  * anything else: exit 2 (sampler="unsupported") — never a false PASS.
+
+Exit contract (the 05-01 gate discipline):
+  0 — every record has observed == requested + 1 (workers + main);
+  1 — the MEASURED verdict: at least one mismatch (the current tree's
+      expected outcome — `--threads` is a no-op until Phase 6 fixes it);
+  2 — invalid input / unsupported platform / the child exited before a
+      successful observation / any infrastructure failure. Exit-2 paths
+      print NO verdict line and write NO JSON, so a crashed run can never
+      masquerade as the expected-RED observation.
+
+Stdout is machine-greppable: one `requested=<N> observed=<M>` line per N,
+then a final `THREAD REALITY verdict=RED|GREEN` line. The structured --json
+doc carries one record per N (requested, observed, pid, sampler, platform,
+child_returncode, provenance) plus the top-level verdict.
+
+Driven by tests/thread_pool_size_tests.rs (characterization + standing gate)
+and by the freshness-bound evidence capture in plan 05-03. Python 3.11+
+stdlib only.
 """
+
+import argparse
+import json
+import os
+import platform
 import re
 import subprocess
+import sys
+import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path("/tmp/rkmer-v2-prof")
-RK = "/Users/forrest/GitHub/rustkmer/target/release/rustkmer"
-SMALL = str(ROOT / "data/slice200k.fq")
+if __package__ in (None, ""):
+    # Executed as a script (python3 .planning/research/profiling/verify_threads.py):
+    # the repo root is not on sys.path yet. Insert it BEFORE importing so the
+    # harness package resolves to this checkout in one shot — some environments
+    # carry an unrelated `scripts` namespace package in site-packages that
+    # would otherwise win the first import (compare.py's fixup, replicated).
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from scripts.bench.bench import binary_provenance, fingerprint
+
+EXIT_GREEN = 0
+EXIT_RED = 1
+EXIT_INVALID = 2
+
+DEFAULT_THREADS = (1, 4, 16)
+DEFAULT_TIMEOUT_S = 30.0
+POLL_INTERVAL_S = 0.05
+THREAD_LINE_RE = re.compile(r"^\s*\d+ Thread_", re.M)
+SAMPLE_REDIRECT_RE = re.compile(r"written to file (\S+)")
 
 
-def check(n):
-    out = str(ROOT / "out" / f"threadcheck{n}.rkdb")
-    p = subprocess.Popen(
-        [RK, "count", "-k", "21", "-C", "--threads", str(n), "-i", SMALL, "-o", out],
+class ObservationError(Exception):
+    """The count child could not be observed (exited early / timed out)."""
+
+
+def sampler_for(system):
+    """Pure backend selection: explicit, and unsupported is never a PASS."""
+    if system == "Darwin":
+        return "sample"
+    if system == "Linux":
+        return "proc-task"
+    return "unsupported"
+
+
+def invalid(message):
+    """Print an input/infra problem and exit 2 — never a verdict."""
+    print(f"verify_threads.py: {message}", file=sys.stderr)
+    sys.exit(EXIT_INVALID)
+
+
+def _thread_count(pid, sampler):
+    """One observation attempt; None means 'not observable yet, retry'."""
+    if sampler == "proc-task":
+        try:
+            return len(os.listdir(f"/proc/{pid}/task"))
+        except OSError:
+            return None
+    # macOS `sample` (no sudo). A failed sample (e.g. the child just died)
+    # is a retry; the poll loop's proc.poll() check catches a dead child.
+    s = subprocess.run(["sample", str(pid), "1"], capture_output=True, text=True)
+    if s.returncode != 0:
+        return None
+    txt = s.stdout
+    # sample writes its analysis to a file when redirected; find and read it.
+    m = SAMPLE_REDIRECT_RE.search(txt)
+    if m:
+        try:
+            txt = Path(m.group(1)).read_text()
+        except OSError:
+            return None
+    return len(THREAD_LINE_RE.findall(txt))
+
+
+def observe(proc, timeout_s, sampler):
+    """Poll until the child's thread count exceeds 1 (workers spawned).
+
+    Replaces the old fixed 4-second sleep: a fast child must not be missed,
+    and a slow start must not be sampled before the pool exists. A child
+    that exits before a successful observation is a loud exit-2, never a
+    silently skipped record.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            raise ObservationError(
+                f"count process (pid {proc.pid}) exited rc={proc.returncode} "
+                "before a successful thread observation"
+            )
+        count = _thread_count(proc.pid, sampler)
+        if count is not None and count > 1:
+            return count
+        time.sleep(POLL_INTERVAL_S)
+    raise ObservationError(
+        f"no worker threads observed for pid {proc.pid} within {timeout_s}s"
+    )
+
+
+def run_one(binary, input_path, n, out_path, timeout_s, sampler):
+    """One independent count child for one requested N; always reaped."""
+    proc = subprocess.Popen(
+        [str(binary), "count", "-k", "21", "-C", "--threads", str(n),
+         "-i", str(input_path), "-o", str(out_path)],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
-    time.sleep(4)  # let it enter the counting phase
-    if p.poll() is not None:
-        print(f"--threads {n}: process already exited (too fast to sample)")
-        return
-    s = subprocess.run(["sample", str(p.pid), "1"], capture_output=True, text=True)
-    txt = s.stdout
-    # sample writes analysis to a file; find it
-    m = re.search(r"written to file (\S+)", txt)
-    if m:
-        txt = Path(m.group(1)).read_text()
-    threads = len(re.findall(r"^\s*\d+ Thread_", txt, re.M))
-    print(f"--threads {n}: OS threads observed = {threads} (expected ~{n + 1} incl. main)")
-    p.wait()
+    try:
+        observed = observe(proc, timeout_s, sampler)
+    finally:
+        # T-05-05: terminate/reap the child even when observation fails, so
+        # no orphan count process survives a failed run.
+        if proc.poll() is None:
+            proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+    return observed, proc.pid, proc.returncode
 
 
-def main():
-    # small slice: 200k reads
-    if not Path(SMALL).exists():
-        with open(SMALL, "wb") as out:
-            subprocess.run(["head", "-n", "800000", str(ROOT / "data/slice4M.fq")],
-                           stdout=out, check=True)
-    check(1)
-    check(4)
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Observe the ACTUAL rayon pool size of rustkmer count "
+                    "under --threads N (PROF-02).")
+    parser.add_argument("--binary", required=True,
+                        help="rustkmer executable to observe")
+    parser.add_argument("--input", required=True,
+                        help="FASTQ input large enough to keep counting alive")
+    parser.add_argument("--threads", type=int, nargs="+",
+                        default=list(DEFAULT_THREADS),
+                        help="requested thread counts (default: 1 4 16)")
+    parser.add_argument("--json", required=True,
+                        help="path for the structured observation records")
+    parser.add_argument("--timeout-s", type=float, default=DEFAULT_TIMEOUT_S,
+                        help="per-N observation deadline in seconds "
+                             "(default: 30)")
+    parser.add_argument("--build-profile", default="release",
+                        help="build profile of --binary for provenance "
+                             "(default: release; the Rust tests pass debug)")
+    args = parser.parse_args(argv)
+
+    if any(n < 1 for n in args.threads):
+        invalid(f"--threads values must be >= 1, got {args.threads}")
+    if args.timeout_s <= 0:
+        invalid(f"--timeout-s must be > 0, got {args.timeout_s}")
+    binary = Path(args.binary)
+    if not binary.is_file():
+        invalid(f"--binary not found: {args.binary}")
+    input_path = Path(args.input)
+    if not input_path.is_file():
+        invalid(f"--input not found: {args.input}")
+    system = platform.system()
+    sampler = sampler_for(system)
+    if sampler == "unsupported":
+        invalid(f"unsupported platform {system!r} (sampler=unsupported): "
+                "pool-size observation needs macOS sample or Linux /proc")
+
+    # Fail loud BEFORE any observation if the artifact cannot be attributed
+    # (T-05-02: a path string without a hash is not provenance).
+    provenance = binary_provenance(binary, args.build_profile)
+    plat = f"{sys.platform}-{platform.machine()}"
+
+    records = []
+    # T-05-05: process-unique temp dir for the count outputs — no predictable
+    # /tmp names; the partial .rkdb files of terminated children are cleaned
+    # up with the directory.
+    with tempfile.TemporaryDirectory(prefix="verify-threads-") as td:
+        for n in args.threads:
+            out_path = Path(td) / f"threadcheck{n}.rkdb"
+            observed, pid, child_rc = run_one(
+                binary, input_path, n, out_path, args.timeout_s, sampler)
+            records.append({
+                "requested": n,
+                "observed": observed,
+                "pid": pid,
+                "sampler": sampler,
+                "platform": plat,
+                "child_returncode": child_rc,
+                "provenance": provenance,
+            })
+            print(f"requested={n} observed={observed}", flush=True)
+
+    verdict = ("GREEN"
+               if all(r["observed"] == r["requested"] + 1 for r in records)
+               else "RED")
+    doc = {
+        "schema_version": 1,
+        "created": datetime.now(timezone.utc).isoformat(),
+        "verdict": verdict,
+        "input": fingerprint(input_path),
+        "records": records,
+    }
+    with open(args.json, "w") as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
+    print(f"THREAD REALITY verdict={verdict}", flush=True)
+    return EXIT_GREEN if verdict == "GREEN" else EXIT_RED
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        print("verify_threads.py: interrupted", file=sys.stderr)
+        sys.exit(EXIT_INVALID)
+    except Exception as exc:
+        # Infrastructure failures exit 2, never 1 (05-01 decision): an
+        # uncaught exception must never masquerade as the measured RED
+        # verdict. Short message, no traceback — the freshness-bound
+        # capture rejects tracebacks outright.
+        print(f"verify_threads.py: {type(exc).__name__}: {exc}", file=sys.stderr)
+        sys.exit(EXIT_INVALID)

@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "created": "2026-11-12T08:08:20.442869+00:00",
+  "verdict": "RED",
+  "input": {
+    "path": "scripts/bench/scratch/poolcheck.fq",
+    "size_bytes": 62800000,
+    "sha256": "d92f25848871d741ef465b0e35dc873c2054c840272f9c80937ad540177a3f79"
+  },
+  "records": [
+    {
+      "requested": 1,
+      "observed": 18,
+      "pid": 27468,
+      "sampler": "sample",
+      "platform": "darwin-arm64",
+      "child_returncode": -15,
+      "provenance": {
+        "binary": {
+          "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+          "size_bytes": 2959584,
+          "sha256": "8f64d442636871ee27173a4cc1c670a7e0d345ba6122a7582c08c13acf26c14f"
+        },
+        "git_commit": "dcb3679b9a3b53075f56ff506ab7fd668d6f022e",
+        "git_dirty": true,
+        "build_profile": "release",
+        "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+        "platform": "darwin-arm64",
+        "created": "2026-11-12T08:08:16.482773+00:00"
+      }
+    },
+    {
+      "requested": 4,
+      "observed": 17,
+      "pid": 27546,
+      "sampler": "sample",
+      "platform": "darwin-arm64",
+      "child_returncode": -15,
+      "provenance": {
+        "binary": {
+          "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+          "size_bytes": 2959584,
+          "sha256": "8f64d442636871ee27173a4cc1c670a7e0d345ba6122a7582c08c13acf26c14f"
+        },
+        "git_commit": "dcb3679b9a3b53075f56ff506ab7fd668d6f022e",
+        "git_dirty": true,
+        "build_profile": "release",
+        "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+        "platform": "darwin-arm64",
+        "created": "2026-11-12T08:08:16.482773+00:00"
+      }
+    },
+    {
+      "requested": 16,
+      "observed": 17,
+      "pid": 27550,
+      "sampler": "sample",
+      "platform": "darwin-arm64",
+      "child_returncode": -15,
+      "provenance": {
+        "binary": {
+          "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+          "size_bytes": 2959584,
+          "sha256": "8f64d442636871ee27173a4cc1c670a7e0d345ba6122a7582c08c13acf26c14f"
+        },
+        "git_commit": "dcb3679b9a3b53075f56ff506ab7fd668d6f022e",
+        "git_dirty": true,
+        "build_profile": "release",
+        "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+        "platform": "darwin-arm64",
+        "created": "2026-11-12T08:08:16.482773+00:00"
+      }
+    }
+  ]
+}
