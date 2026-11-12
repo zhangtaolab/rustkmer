@@ -13,6 +13,11 @@
 //! reverse-complement parity. Task 3 extends this file to the full k
 //! 1-through-64 edge matrix and the ignored release-build timing gate.
 
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
 use rustkmer::kmer::canonical::canonical_kmer_u128;
 use rustkmer::kmer::encoding::{
     encode_kmer_bytes_u128, reverse_complement_u128, reverse_complement_u64, RollingEncoder,
@@ -231,4 +236,151 @@ fn rolling_encoder_rejects_out_of_range_k() {
         u64::MAX,
         "k=32 must use the all-ones mask, never a 64-bit shift"
     );
+}
+
+// --- Task 2: CLI-facing local path -----------------------------------------
+
+/// Minimal RAII temp directory: removed on drop, even when an assertion fails.
+struct TempDir {
+    path: PathBuf,
+}
+
+impl TempDir {
+    fn new(tag: &str) -> Self {
+        let path =
+            std::env::temp_dir().join(format!("rustkmer-par03-{}-{}", std::process::id(), tag));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).expect("create temp dir");
+        Self { path }
+    }
+
+    fn join(&self, name: &str) -> PathBuf {
+        self.path.join(name)
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+/// Write four-line FASTQ records for the given sequences.
+fn write_fastq(path: &Path, sequences: &[&[u8]]) {
+    let mut body = String::new();
+    for (idx, sequence) in sequences.iter().enumerate() {
+        let sequence = std::str::from_utf8(sequence).expect("fixture is ASCII");
+        body.push_str(&format!("@read{}\n", idx));
+        body.push_str(sequence);
+        body.push_str("\n+\n");
+        body.push_str(&"I".repeat(sequence.len()));
+        body.push('\n');
+    }
+    fs::write(path, body).expect("write FASTQ fixture");
+}
+
+/// Run the real CLI binary (the production hot loop) and write a text table.
+fn run_cli_count(inputs: &[&Path], k: usize, canonical: bool, output: &Path) {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_rustkmer"));
+    command.arg("count").arg("-k").arg(k.to_string()).arg("-i");
+    for input in inputs {
+        command.arg(input);
+    }
+    if canonical {
+        command.arg("-C");
+    }
+    command
+        .arg("-o")
+        .arg(output)
+        .arg("--format")
+        .arg("text")
+        .arg("-q");
+
+    let result = command.output().expect("spawn rustkmer count");
+    assert!(
+        result.status.success(),
+        "rustkmer count failed: status={:?}\nstderr:\n{}",
+        result.status,
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
+/// Parse a `SEQ<TAB>COUNT` text count table.
+fn read_text_counts(path: &Path) -> BTreeMap<String, u32> {
+    let content = fs::read_to_string(path).expect("read text count table");
+    content
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let (sequence, count) = line
+                .split_once('\t')
+                .unwrap_or_else(|| panic!("malformed count line: {:?}", line));
+            (
+                sequence.to_string(),
+                count.parse::<u32>().expect("parse count"),
+            )
+        })
+        .collect()
+}
+
+/// The reference map, built with the unchanged per-window u128 encoder and
+/// decoded to k-mer strings (the CLI text output's key space).
+fn reference_text_counts(sequences: &[&[u8]], k: usize, canonical: bool) -> BTreeMap<String, u32> {
+    let mut counts = BTreeMap::new();
+    for sequence in sequences {
+        if sequence.len() < k {
+            continue;
+        }
+        for window in sequence.windows(k) {
+            let Ok(encoded) = encode_kmer_bytes_u128(window) else {
+                continue;
+            };
+            let value = if canonical {
+                canonical_kmer_u128(encoded, k).expect("valid window canonicalizes")
+            } else {
+                encoded
+            };
+            *counts
+                .entry(rustkmer::kmer::encoding::decode_kmer_u128(value, k))
+                .or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+/// **Task 2 end-to-end.** The real CLI hot loop (rolling encoder for k = 21/32,
+/// u128 fallback for k = 64) must reproduce the per-window reference count map
+/// exactly, in both canonical modes.
+#[test]
+fn cli_local_path_matches_reference_for_k_21_32_and_64() {
+    let fixture = acgt_fixture();
+    let sequences: Vec<&[u8]> = vec![
+        &fixture[..120],
+        &fixture[40..160],
+        &fixture[80..],
+        // A record shorter than k=64 must contribute nothing.
+        b"ACGTACGTACGT",
+    ];
+
+    let dir = TempDir::new("cli-parity");
+    let input = dir.join("par03.fastq");
+    write_fastq(&input, &sequences);
+
+    for k in [21usize, 32, 64] {
+        for canonical in [false, true] {
+            let output = dir.join(&format!("k{}-canonical-{}.tsv", k, canonical));
+            run_cli_count(&[&input], k, canonical, &output);
+
+            let got = read_text_counts(&output);
+            let want = reference_text_counts(&sequences, k, canonical);
+
+            assert_eq!(
+                got, want,
+                "CLI local path diverged from the per-window reference \
+                 (k={}, canonical={})",
+                k, canonical
+            );
+            assert!(!got.is_empty(), "fixture must produce k-mers (k={})", k);
+        }
+    }
 }

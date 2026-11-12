@@ -17,7 +17,7 @@ use crate::io::discovery::{DiscoveryConfig, FileDiscovery};
 use crate::io::fasta::{validate_fasta_file, FastaProcessor};
 use crate::io::fastq::{validate_fastq_file, FastqProcessor};
 use crate::kmer::canonical::canonical_kmer_u128;
-use crate::kmer::encoding::encode_kmer_bytes_u128;
+use crate::kmer::encoding::{encode_kmer_bytes_u128, RollingEncoder, MAX_KMER_SIZE_IN_U64};
 
 /// Bounded record-chunk size for the intra-file per-record rayon `par_iter`
 /// (D-01). The producer loop reads+decompresses sequentially (gzip stays
@@ -379,6 +379,11 @@ const SUBSLICE_RECORDS: usize = 64;
 /// accounting; the producer derives the per-chunk warning from the local
 /// skipped-total delta (WR-02: one `eprintln!` per chunk from the
 /// single-threaded producer, never from a rayon worker).
+///
+/// **PAR-03:** for k ≤ 32 the windows come from the rolling 2-bit encoder (one
+/// pass per record, O(1) per window). k 33..=64 keeps the per-window u128
+/// reference path unchanged. Both branches skip windows containing any
+/// non-ACGT byte and add exactly the same skipped-window count to the local.
 fn count_record_into(
     local: &mut LocalKmerCounts,
     seq: &[u8],
@@ -390,7 +395,25 @@ fn count_record_into(
         return Ok(());
     }
 
-    // Extract and count k-mers
+    if k <= MAX_KMER_SIZE_IN_U64 {
+        // PAR-03: rolling encoder. The failing branch is unreachable for the
+        // 1..=32 range routed here, but map it rather than unwrap (library
+        // code reachable from the CLI must not panic).
+        let encoder = RollingEncoder::new(k, canonical).map_err(|e| {
+            KmerError::ProcessingError(format!("Failed to build rolling encoder: {}", e))
+        })?;
+        let skipped = encoder.try_for_each(seq, |value| {
+            local.increment(value as u128).map_err(|e| {
+                KmerError::ProcessingError(format!("Failed to increment k-mer count: {}", e))
+            })
+        })?;
+        for _ in 0..skipped {
+            local.record_skipped();
+        }
+        return Ok(());
+    }
+
+    // k 33..=64: unchanged per-window u128 reference path.
     for i in 0..=(seq.len() - k) {
         let kmer_seq = &seq[i..i + k];
 

@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 use rustkmer::hash::KmerCounter as RustPyCounter;
 use rustkmer::hash::LocalKmerCounts;
 use rustkmer::kmer::canonical::canonical_kmer_u128;
-use rustkmer::kmer::encoding::encode_kmer_bytes_u128;
+use rustkmer::kmer::encoding::{encode_kmer_bytes_u128, RollingEncoder, MAX_KMER_SIZE_IN_U64};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -197,10 +197,13 @@ impl PyCounter {
             );
         }
 
-        let counter = RustPyCounter::new(kmer_length_usize, canonical, initial_capacity, resolved_threads)
-            .map_err(|e| {
-                PyErr::new::<PyValueError, _>(format!("Failed to create counter: {}", e))
-            })?;
+        let counter = RustPyCounter::new(
+            kmer_length_usize,
+            canonical,
+            initial_capacity,
+            resolved_threads,
+        )
+        .map_err(|e| PyErr::new::<PyValueError, _>(format!("Failed to create counter: {}", e)))?;
 
         Ok(Self {
             counter: Arc::new(counter),
@@ -650,6 +653,12 @@ impl PyCounter {
 /// public `add_kmer` / `add_sequence` methods deliberately keep using the
 /// shared `increment` path so their behavior is unchanged.
 ///
+/// **PAR-03:** for k ≤ 32 the windows come from the rolling 2-bit encoder;
+/// k 33..=64 keeps the per-window u128 path. The file callers filter non-ACGT
+/// bytes before this helper, so its observable behavior for N-containing reads
+/// is unchanged; the rolling skipped count is still propagated to the local for
+/// completeness.
+///
 /// Invalid bases (anything outside A/C/G/T after uppercasing) are skipped at
 /// the k-mer extraction step via `encode_kmer_bytes_u128` returning `Err`;
 /// canonical computation errors likewise `continue`. The overflow semantics
@@ -665,6 +674,26 @@ fn process_sequence_into_local(
         return Ok(());
     }
 
+    if k <= MAX_KMER_SIZE_IN_U64 {
+        // PAR-03: rolling encoder, O(1) per window.
+        let encoder = RollingEncoder::new(k, canonical).map_err(|e| {
+            rustkmer::ProcessingError::with_context("Failed to build rolling encoder", Box::new(e))
+        })?;
+        let skipped = encoder.try_for_each(seq_bytes, |value| {
+            local.increment(value as u128).map_err(|e| {
+                rustkmer::ProcessingError::with_context(
+                    "Failed to increment k-mer count",
+                    Box::new(e),
+                )
+            })
+        })?;
+        for _ in 0..skipped {
+            local.record_skipped();
+        }
+        return Ok(());
+    }
+
+    // k 33..=64: unchanged per-window u128 reference path.
     // Extract k-mers from sequence
     for i in 0..=(seq_bytes.len() - k) {
         let kmer = &seq_bytes[i..i + k];
@@ -718,10 +747,9 @@ fn process_fasta_file_on_counter(
     // the CLI path uses) so `.bz2` / `.xz` inputs are decompressed correctly.
     // Previously this branch detected only `.gz` inline and silently fell
     // through to raw-byte parsing for the other two formats.
-    let (file, _compression) =
-        DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
-            rustkmer::ProcessingError::with_context("Failed to open FASTA file", Box::new(e))
-        })?;
+    let (file, _compression) = DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
+        rustkmer::ProcessingError::with_context("Failed to open FASTA file", Box::new(e))
+    })?;
     let reader = BufReader::new(file);
 
     let k = counter.kmer_length();
@@ -788,10 +816,9 @@ fn process_fastq_file_on_counter(
     // the CLI path uses) so `.bz2` / `.xz` inputs are decompressed correctly.
     // Previously this branch detected only `.gz` inline and silently fell
     // through to raw-byte parsing for the other two formats.
-    let (file, _compression) =
-        DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
-            rustkmer::ProcessingError::with_context("Failed to open FASTQ file", Box::new(e))
-        })?;
+    let (file, _compression) = DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
+        rustkmer::ProcessingError::with_context("Failed to open FASTQ file", Box::new(e))
+    })?;
     let reader = BufReader::new(file);
 
     let k = counter.kmer_length();

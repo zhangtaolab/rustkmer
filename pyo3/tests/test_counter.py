@@ -1171,3 +1171,92 @@ class TestPyCounterLocalAccumulationParity:
         stats = counter.get_stats()
         assert stats.total_kmers == sum(expected.values())
         assert stats.unique_kmers == len(expected)
+
+
+class TestPyCounterRollingPathParity:
+    """PAR-03: for k <= 32, add_from_fastq now counts through the shared rolling
+    2-bit encoder; add_sequence keeps its per-window path. Both must still match
+    a pure-Python sliding-window reference exactly.
+
+    The fixture mixes lowercase with uppercase (both surfaces uppercase before
+    encoding) and includes an ``N`` (both surfaces filter non-ACGT bytes before
+    counting, so the reference applies the same filter). k=32 pins the all-ones
+    mask boundary in the Python surface; k=64 pins the unchanged u128 fallback.
+    """
+
+    SEQUENCES = [
+        "acgtACGTacgtACGTacgtACGTacgtACGTacgtACGTacgtACGTacgtACGTacgtACGT",
+        "TTTTttttTTTTttttTTTTttttTTTTttttTTTTttttTTTTttttTTTTttttTTTTtttt",
+        "GATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAG",
+        "AAAACCCCGGGGTTTTAAAACCCCGGGGTTTTAAAACCCCGGGGTTTTAAAACCCCGGGGTTTT",
+        "ACGTACGTACGTNACGTACGTACGTNACGTACGTACGTNACGTACGTACGTNACGTACGTACGT",
+    ]
+
+    @staticmethod
+    def _clean(sequence):
+        """Apply the same non-ACGT filter/uppercase the bindings use."""
+        return "".join(base for base in sequence.upper() if base in "ACGT")
+
+    @staticmethod
+    def _revcomp(sequence):
+        """Return the reverse complement of a pure-ACGT sequence."""
+        return sequence.translate(str.maketrans("ACGT", "TGCA"))[::-1]
+
+    @classmethod
+    def _reference_counts(cls, k, canonical):
+        """Pure-Python sliding-window reference count map."""
+        counts = {}
+        for raw_sequence in cls.SEQUENCES:
+            sequence = cls._clean(raw_sequence)
+            for i in range(len(sequence) - k + 1):
+                kmer = sequence[i : i + k]
+                if canonical:
+                    kmer = min(kmer, cls._revcomp(kmer))
+                counts[kmer] = counts.get(kmer, 0) + 1
+        return counts
+
+    @classmethod
+    def _write_fastq(cls, path):
+        """Write the fixture sequences as four-line FASTQ records."""
+        lines = []
+        for i, sequence in enumerate(cls.SEQUENCES):
+            lines.extend([f"@read{i}", sequence, "+", "I" * len(sequence)])
+        path.write_text("\n".join(lines) + "\n")
+
+    @pytest.mark.parametrize("k", [21, 32, 64])
+    @pytest.mark.parametrize("canonical", [False, True])
+    def test_add_from_fastq_matches_python_reference(self, tmp_path, k, canonical):
+        """The rolling file path must equal the reference map and stats."""
+        fastq_file = tmp_path / "par03.fastq"
+        self._write_fastq(fastq_file)
+        expected = self._reference_counts(k, canonical)
+
+        counter = pyrustkmer.PyCounter(k, canonical=canonical, threads=1)
+        counter.add_from_fastq(str(fastq_file))
+
+        assert counter.get_all_counts() == expected, (
+            f"PAR-03: add_from_fastq (rolling for k<=32) diverged from the "
+            f"Python reference (k={k}, canonical={canonical})"
+        )
+        stats = counter.get_stats()
+        assert stats.total_kmers == sum(expected.values())
+        assert stats.unique_kmers == len(expected)
+
+    @pytest.mark.parametrize("k", [21, 32, 64])
+    @pytest.mark.parametrize("canonical", [False, True])
+    def test_add_sequence_matches_python_reference(self, k, canonical):
+        """The unchanged per-window sequence path must match the same reference."""
+        expected = self._reference_counts(k, canonical)
+
+        counter = pyrustkmer.PyCounter(k, canonical=canonical, threads=1)
+        for sequence in self.SEQUENCES:
+            counter.add_sequence(sequence)
+
+        assert counter.get_all_counts() == expected, (
+            f"PAR-03: add_sequence diverged from the Python reference "
+            f"(k={k}, canonical={canonical})"
+        )
+        stats = counter.get_stats()
+        assert stats.total_kmers == sum(expected.values())
+        assert stats.unique_kmers == len(expected)
+
