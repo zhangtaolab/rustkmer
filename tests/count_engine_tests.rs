@@ -97,15 +97,84 @@ fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+/// Decode a reference map to the CLI text-output key space.
+fn reference_text_map(
+    encoded: &BTreeMap<u128, u32>,
+    k: usize,
+) -> BTreeMap<String, u32> {
+    encoded
+        .iter()
+        .map(|(key, count)| {
+            (
+                rustkmer::kmer::encoding::decode_kmer_u128(*key, k),
+                *count,
+            )
+        })
+        .collect()
+}
+
+/// Captured stderr as text.
+fn stderr_text(output: &Output) -> String {
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+/// Parse the numeric value of every stderr line containing `label`.
+fn stderr_values(output: &Output, label: &str) -> Vec<u64> {
+    stderr_text(output)
+        .lines()
+        .filter(|line| line.contains(label))
+        .map(|line| {
+            line.rsplit_once(':')
+                .map(|(_, value)| value.trim().parse::<u64>().expect("numeric stat"))
+                .unwrap_or_else(|| panic!("malformed stat line: {line:?}"))
+        })
+        .collect()
+}
+
+/// Parse the numeric key of every `.rkdb` v2 record (42-byte header, then
+/// 16-byte LE u128 + 4-byte LE u32 entries).
+fn read_rkdb_keys(path: &Path) -> Vec<u128> {
+    let bytes = fs::read(path).expect("read rkdb");
+    assert!(bytes.len() >= 42, "rkdb file must carry the v2 header");
+    assert_eq!(&bytes[0..4], b"RKDB", "frozen RKDB magic");
+    assert_eq!(
+        u16::from_le_bytes([bytes[4], bytes[5]]),
+        2,
+        "frozen RKDB version"
+    );
+    let mut keys = Vec::new();
+    let mut offset = 42;
+    while offset + 20 <= bytes.len() {
+        let mut key_bytes = [0u8; 16];
+        key_bytes.copy_from_slice(&bytes[offset..offset + 16]);
+        keys.push(u128::from_le_bytes(key_bytes));
+        offset += 20;
+    }
+    assert_eq!(offset, bytes.len(), "no trailing partial record");
+    keys
+}
+
 /// Run the real CLI `count` command with the given thread count and format.
 fn run_cli(input: &Path, k: usize, canonical: bool, threads: usize, format: &str, output: &Path) -> Output {
+    run_cli_with(&[input], k, canonical, threads, format, output, &["-q"])
+}
+
+/// Run the real CLI with multiple inputs and extra flags (warnings, filters,
+/// `--no-sort`), always writing to `output`.
+fn run_cli_with(
+    inputs: &[&Path],
+    k: usize,
+    canonical: bool,
+    threads: usize,
+    format: &str,
+    output: &Path,
+    extra_args: &[&str],
+) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_rustkmer"));
-    command
-        .arg("count")
-        .arg("-k")
-        .arg(k.to_string())
-        .arg("-i")
-        .arg(input);
+    command.arg("count").arg("-k").arg(k.to_string()).arg("-i");
+    for input in inputs {
+        command.arg(input);
+    }
     if canonical {
         command.arg("-C");
     }
@@ -115,8 +184,10 @@ fn run_cli(input: &Path, k: usize, canonical: bool, threads: usize, format: &str
         .arg("-o")
         .arg(output)
         .arg("--format")
-        .arg(format)
-        .arg("-q");
+        .arg(format);
+    for arg in extra_args {
+        command.arg(arg);
+    }
     command.output().expect("spawn rustkmer count")
 }
 
@@ -446,4 +517,335 @@ fn stats_and_filtering_match_counter_semantics() {
             }
         }
     }
+}
+
+// --- Task 3: CLI behavior preservation at the engine/legacy boundary --------
+
+/// Reads with an `N` at every position of a 64-base read, plus multi-`N` and
+/// pure-ACGT reads.
+fn n_position_sequences() -> Vec<Vec<u8>> {
+    let base = mixed_sequence(64);
+    let mut sequences = Vec::new();
+    for position in 0..base.len() {
+        let mut sequence = base.clone();
+        sequence[position] = b'N';
+        sequences.push(sequence);
+    }
+    sequences.push(
+        b"NNNNNNNNNACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT".to_vec(),
+    );
+    sequences.push(
+        b"ACGTACGTACGTACGTACGTNNNNNNNNNNACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTAC".to_vec(),
+    );
+    sequences.push(mixed_sequence(90));
+    sequences
+}
+
+/// Repeated reads (so count filters see counts well above 1) plus `N` variants
+/// whose windows are skipped.
+fn repeated_sequences() -> Vec<Vec<u8>> {
+    let base = mixed_sequence(80);
+    let mut sequences: Vec<Vec<u8>> = (0..20).map(|_| base.clone()).collect();
+    let mut single_n = base.clone();
+    single_n[10] = b'N';
+    sequences.push(single_n);
+    let mut double_n = base.clone();
+    double_n[40] = b'N';
+    double_n[41] = b'N';
+    sequences.push(double_n);
+    sequences.push(b"NNNNNACGTACGTACGTACGTACGTACGTACGTACGT".to_vec());
+    sequences
+}
+
+/// N-containing reads must produce exactly the skip-N reference map on both
+/// the engine (`--threads 1`) and legacy (`--threads 4`) paths.
+#[test]
+fn n_containing_reads_match_skip_n_reference() {
+    let sequences = n_position_sequences();
+    let dir = tempfile::tempdir().expect("tempdir for N-read fixture");
+    let input = dir.path().join("n_reads.fastq");
+    write_fastq(&input, &sequences);
+    let borrowed: Vec<&[u8]> = sequences.iter().map(Vec::as_slice).collect();
+
+    for k in [21usize, 64] {
+        for canonical in [false, true] {
+            let text_t1 = dir.path().join(format!("n-k{k}-c{canonical}-t1.tsv"));
+            let text_t4 = dir.path().join(format!("n-k{k}-c{canonical}-t4.tsv"));
+            let t1 = run_cli(&input, k, canonical, 1, "text", &text_t1);
+            let t4 = run_cli(&input, k, canonical, 4, "text", &text_t4);
+            assert_cli_success(&t1, "N-reads t1");
+            assert_cli_success(&t4, "N-reads t4");
+
+            let want = reference_text_map(&reference_map(&borrowed, k, canonical), k);
+            assert!(
+                !want.is_empty(),
+                "the fixture must emit at least one valid window (k={k})"
+            );
+            assert_eq!(
+                read_text_counts(&text_t1),
+                want,
+                "--threads 1 engine map must match the skip-N reference \
+                 (k={k}, canonical={canonical})"
+            );
+            assert_eq!(
+                read_text_counts(&text_t4),
+                want,
+                "--threads 4 legacy map must match the skip-N reference \
+                 (k={k}, canonical={canonical})"
+            );
+            assert_eq!(
+                read_text_counts(&text_t1),
+                read_text_counts(&text_t4),
+                "both paths must agree on the N-containing reads"
+            );
+        }
+    }
+}
+
+/// Multi-file cumulative statistics and the one-warning-per-4096-record-batch
+/// behavior must be preserved, with the pinned warning wording.
+#[test]
+fn multi_file_stats_and_warnings_are_preserved() {
+    let dir = tempfile::tempdir().expect("tempdir for multi-file fixture");
+
+    // File A: 4097 poly-A records, with an N in the first AND last records so
+    // both the full 4096-record batch and the trailing partial batch warn.
+    let mut file_a_sequences = Vec::new();
+    for index in 0..4097 {
+        let mut sequence = vec![b'A'; 150];
+        if index == 0 || index == 4096 {
+            sequence[7] = b'N';
+        }
+        file_a_sequences.push(sequence);
+    }
+    let file_a = dir.path().join("a.fastq");
+    write_fastq(&file_a, &file_a_sequences);
+
+    // File B: poly-C, so its key set is disjoint from file A's and the
+    // cumulative unique count is the sum of the separate-run uniques.
+    let file_b_sequences: Vec<Vec<u8>> = (0..10).map(|_| vec![b'C'; 150]).collect();
+    let file_b = dir.path().join("b.fastq");
+    write_fastq(&file_b, &file_b_sequences);
+
+    let combined_output = dir.path().join("combined.tsv");
+    let combined = run_cli_with(
+        &[&file_a, &file_b],
+        21,
+        false,
+        1,
+        "text",
+        &combined_output,
+        &["--show-warnings"],
+    );
+    assert_cli_success(&combined, "combined t1");
+
+    let combined_stderr = stderr_text(&combined);
+    let warning_count = combined_stderr
+        .lines()
+        .filter(|line| line.contains("Warning: Skipped"))
+        .count();
+    assert_eq!(
+        warning_count, 2,
+        "one warning per 4096-record batch with skips (full batch + trailing partial); \
+         stderr:\n{combined_stderr}"
+    );
+    assert!(
+        combined_stderr.contains("with invalid characters in chunk"),
+        "the warning wording is pinned; stderr:\n{combined_stderr}"
+    );
+
+    let cumulative_totals = stderr_values(&combined, "Total k-mers processed");
+    let cumulative_uniques = stderr_values(&combined, "Unique k-mers found");
+    assert_eq!(cumulative_totals.len(), 2, "one cumulative stat line per file");
+    assert_eq!(cumulative_uniques.len(), 2, "one cumulative stat line per file");
+    assert!(
+        cumulative_totals[1] >= cumulative_totals[0],
+        "cumulative totals must be monotone"
+    );
+    assert!(
+        cumulative_uniques[1] >= cumulative_uniques[0],
+        "cumulative uniques must be monotone"
+    );
+
+    // Separate single-file runs: the elementwise sum must equal the cumulative
+    // multi-file values, and the disjoint key sets make uniques additive.
+    let only_a_output = dir.path().join("a.tsv");
+    let only_a = run_cli_with(&[&file_a], 21, false, 1, "text", &only_a_output, &[]);
+    assert_cli_success(&only_a, "file A alone");
+    let only_b_output = dir.path().join("b.tsv");
+    let only_b = run_cli_with(&[&file_b], 21, false, 1, "text", &only_b_output, &[]);
+    assert_cli_success(&only_b, "file B alone");
+
+    let a_totals = stderr_values(&only_a, "Total k-mers processed");
+    let b_totals = stderr_values(&only_b, "Total k-mers processed");
+    let a_uniques = stderr_values(&only_a, "Unique k-mers found");
+    let b_uniques = stderr_values(&only_b, "Unique k-mers found");
+    assert_eq!(a_totals.len(), 1);
+    assert_eq!(b_totals.len(), 1);
+    assert_eq!(a_uniques.len(), 1);
+    assert_eq!(b_uniques.len(), 1);
+
+    assert_eq!(cumulative_totals[0], a_totals[0]);
+    assert_eq!(cumulative_totals[1], a_totals[0] + b_totals[0]);
+    assert_eq!(cumulative_uniques[0], a_uniques[0]);
+    assert_eq!(cumulative_uniques[1], a_uniques[0] + b_uniques[0]);
+    assert_eq!(a_uniques[0], 1, "poly-A has one distinct k-mer");
+    assert_eq!(b_uniques[0], 1, "poly-C has one distinct k-mer");
+
+    let mut summed_map = read_text_counts(&only_a_output);
+    for (key, count) in read_text_counts(&only_b_output) {
+        *summed_map.entry(key).or_insert(0) += count;
+    }
+    assert_eq!(
+        read_text_counts(&combined_output),
+        summed_map,
+        "multi-file output must be the elementwise sum of the separate runs"
+    );
+}
+
+/// Text output is sorted by decoded k-mer, binary records are sorted by the
+/// numeric key, and the `.rkdb` bytes match the legacy path.
+#[test]
+fn text_and_binary_output_order_is_unchanged() {
+    let sequences = n_position_sequences();
+    let dir = tempfile::tempdir().expect("tempdir for ordering fixture");
+    let input = dir.path().join("ordering.fastq");
+    write_fastq(&input, &sequences);
+
+    let text_t1 = dir.path().join("order-t1.tsv");
+    let text_t4 = dir.path().join("order-t4.tsv");
+    let t1_text = run_cli(&input, 21, true, 1, "text", &text_t1);
+    let t4_text = run_cli(&input, 21, true, 4, "text", &text_t4);
+    assert_cli_success(&t1_text, "ordering text t1");
+    assert_cli_success(&t4_text, "ordering text t4");
+    assert_eq!(read_text_counts(&text_t1), read_text_counts(&text_t4));
+
+    let content = fs::read_to_string(&text_t1).expect("read sorted text output");
+    let sequences_in_file: Vec<&str> = content
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| line.split_once('\t').expect("tab-separated").0)
+        .collect();
+    let mut sorted_sequences = sequences_in_file.clone();
+    sorted_sequences.sort_unstable();
+    assert_eq!(
+        sequences_in_file, sorted_sequences,
+        "text output must be sorted by decoded k-mer"
+    );
+
+    let rkdb_t1 = dir.path().join("order-t1.rkdb");
+    let rkdb_t4 = dir.path().join("order-t4.rkdb");
+    let t1_bin = run_cli(&input, 21, true, 1, "binary", &rkdb_t1);
+    let t4_bin = run_cli(&input, 21, true, 4, "binary", &rkdb_t4);
+    assert_cli_success(&t1_bin, "ordering binary t1");
+    assert_cli_success(&t4_bin, "ordering binary t4");
+
+    let keys = read_rkdb_keys(&rkdb_t1);
+    assert!(
+        keys.windows(2).all(|pair| pair[0] < pair[1]),
+        "binary records must be sorted by numeric key (unique keys ascend strictly)"
+    );
+    assert_eq!(
+        sha256_hex(&fs::read(&rkdb_t1).expect("read t1 rkdb")),
+        sha256_hex(&fs::read(&rkdb_t4).expect("read t4 rkdb")),
+        "sorted .rkdb bytes must be identical across the engine and legacy paths"
+    );
+}
+
+/// `-L`/`-U` combinations must keep the same keys and report the same
+/// filtering statistics on both paths.
+#[test]
+fn count_filters_are_unchanged() {
+    let sequences = repeated_sequences();
+    let dir = tempfile::tempdir().expect("tempdir for filter fixture");
+    let input = dir.path().join("filters.fastq");
+    write_fastq(&input, &sequences);
+    let borrowed: Vec<&[u8]> = sequences.iter().map(Vec::as_slice).collect();
+
+    let cases: Vec<(Vec<&str>, CountFilter)> = vec![
+        (vec!["-L", "2"], CountFilter::new(Some(2), None)),
+        (vec!["-U", "3"], CountFilter::new(None, Some(3))),
+        (
+            vec!["-L", "2", "-U", "3"],
+            CountFilter::new(Some(2), Some(3)),
+        ),
+    ];
+
+    for (case_index, (extra, filter)) in cases.into_iter().enumerate() {
+        let text_t1 = dir.path().join(format!("filter-{case_index}-t1.tsv"));
+        let text_t4 = dir.path().join(format!("filter-{case_index}-t4.tsv"));
+        let t1 = run_cli_with(&[&input], 21, false, 1, "text", &text_t1, &extra);
+        let t4 = run_cli_with(&[&input], 21, false, 4, "text", &text_t4, &extra);
+        assert_cli_success(&t1, "filter t1");
+        assert_cli_success(&t4, "filter t4");
+
+        let t1_map = read_text_counts(&text_t1);
+        let t4_map = read_text_counts(&text_t4);
+        assert_eq!(
+            t1_map, t4_map,
+            "filter {extra:?} must keep identical keys on both paths"
+        );
+
+        let want: BTreeMap<String, u32> = reference_text_map(
+            &reference_map(&borrowed, 21, false),
+            21,
+        )
+        .into_iter()
+        .filter(|(_, count)| filter.passes(*count as u64))
+        .collect();
+        assert_eq!(t1_map, want, "filter {extra:?} must match the reference");
+
+        let t1_stats = stderr_text(&t1);
+        let t4_stats = stderr_text(&t4);
+        for label in [
+            "K-mers kept after filtering",
+            "K-mers filtered out",
+            "Filtering retention",
+        ] {
+            let t1_lines: Vec<&str> = t1_stats.lines().filter(|line| line.contains(label)).collect();
+            let t4_lines: Vec<&str> = t4_stats.lines().filter(|line| line.contains(label)).collect();
+            assert_eq!(
+                t1_lines, t4_lines,
+                "filtering statistic {label:?} must be identical on both paths"
+            );
+            assert!(!t1_lines.is_empty(), "filtering statistic {label:?} must be reported");
+        }
+
+        let kept = stderr_values(&t1, "K-mers kept after filtering");
+        assert_eq!(kept.len(), 1);
+        assert_eq!(
+            kept[0], want.len() as u64,
+            "reported kept-after count must equal the reference-filtered key count"
+        );
+    }
+}
+
+/// `--no-sort` must write the same multiset of pairs as the sorted run.
+#[test]
+fn no_sort_still_writes_the_same_set() {
+    let sequences = repeated_sequences();
+    let dir = tempfile::tempdir().expect("tempdir for no-sort fixture");
+    let input = dir.path().join("no_sort.fastq");
+    write_fastq(&input, &sequences);
+
+    let sorted_output = dir.path().join("sorted.tsv");
+    let unsorted_output = dir.path().join("unsorted.tsv");
+    let sorted = run_cli(&input, 21, false, 1, "text", &sorted_output);
+    let unsorted = run_cli_with(
+        &[&input],
+        21,
+        false,
+        1,
+        "text",
+        &unsorted_output,
+        &["--no-sort", "-q"],
+    );
+    assert_cli_success(&sorted, "sorted run");
+    assert_cli_success(&unsorted, "no-sort run");
+
+    assert_eq!(
+        read_text_counts(&sorted_output),
+        read_text_counts(&unsorted_output),
+        "--no-sort must write the same set of pairs (byte order may differ)"
+    );
 }
