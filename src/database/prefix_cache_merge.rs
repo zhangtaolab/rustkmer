@@ -375,11 +375,11 @@ impl ExternalSortMerger {
                 }
             }
 
-            for prefix in 0..self.num_buckets {
-                if !bucket_buffers[prefix].is_empty() {
+            for (prefix, buffer) in bucket_buffers.iter_mut().enumerate().take(self.num_buckets) {
+                if !buffer.is_empty() {
                     let temp_file_path = &temp_files[file_idx][prefix];
-                    Self::write_buffer_sync(temp_file_path, &bucket_buffers[prefix])?;
-                    bucket_buffers[prefix].clear();
+                    Self::write_buffer_sync(temp_file_path, buffer)?;
+                    buffer.clear();
                 }
             }
 
