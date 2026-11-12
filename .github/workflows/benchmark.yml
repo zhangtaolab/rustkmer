@@ -5,13 +5,28 @@ name: Benchmark
 # runs on any runner) and gates against the committed per-platform baseline
 # via scripts/bench/compare.py.
 #
-# Gate semantics live ONLY in compare.py's exit codes (0 within / 1
-# regression / 2 invalid input). This workflow never softens, skips, or
-# re-derives a decision: every step fails loudly — no error-swallowing
-# flags, no exit-code laundering, no conditional skips on any step (the
-# ci.yml gate rule — the deleted performance-regression.yml died of exactly
-# those diseases). A red gate stays red until a human changes code or
-# baseline.
+# Gate semantics live ONLY in script exit codes (compare.py 0 within / 1
+# regression / 2 invalid input; thread_scaling.py 0 GREEN / 1 RED / 2
+# invalid; unittest 0/1). This workflow never softens, skips, or re-derives
+# a decision: every measurement and gate step fails loudly — no
+# error-swallowing flags, no exit-code laundering, no conditional skips on
+# any measurement or gate step (the ci.yml gate rule — the deleted
+# performance-regression.yml died of exactly those diseases). A red gate
+# stays red until a human changes code or baseline.
+#
+# Evidence-retention rule (the one deliberate exception to "no conditions"):
+# the artifact-upload steps carry `always()` plus an `if-no-files-found`
+# warning level so a FAILED measurement step still leaves whatever evidence
+# it produced — a python_bench exit 2 or a scaling measure-only exit 2 must
+# not lose the artifact. An upload never runs a gate and never changes the
+# job verdict: the failed measurement/gate step still fails the job. The
+# upload is therefore not error softening; it is evidence retention.
+#
+# PROF-02 (thread scaling) is INTENTIONALLY RED until Phase 6 (PAR-01):
+# `--threads` is a silent no-op on the current tree (17 OS threads observed
+# at `--threads 1`), so t1 ~ t4 ~ t16 and the scaling verdict exits 1. That
+# red is the standing gate correctly observing a real bug — not a
+# regression, and never to be silenced or baseline-recaptured away.
 #
 # 2026-10-17: the wall axis is advisory (--wall-advisory), activating the
 # README "Threshold rationale" contingency. Three consecutive zero-change
@@ -69,19 +84,67 @@ jobs:
           python-version: '3.11'
       - name: Build release binary
         run: cargo build --locked --release  # never time a debug build
+      # Stdlib unittest suite (scripts/bench/tests). Placed after the build
+      # because the real-run schema tests exercise the release binary.
+      - name: Harness unit tests
+        run: python3 -m unittest discover -s scripts/bench/tests -t .
       - name: Run synthetic benchmark
         run: python3 scripts/bench/bench.py --mode synthetic --out results.json
       # Uploaded BEFORE the gate step: a missing-baseline exit 2 (first run
       # on a new platform) must still leave the artifact for the bootstrap
       # procedure. Name contract: bench-results-<runner OS> (Linux/macOS).
       - name: Upload results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bench-results-${{ runner.os }}
           path: results.json
+          if-no-files-found: warn
       - name: Gate against committed baseline
         run: |
           python3 scripts/bench/compare.py \
             --baseline scripts/bench/baselines/bench_baseline.${{ matrix.flavor }}.json \
             --current results.json \
             --wall-threshold 0.25 --rss-threshold 0.15 --wall-advisory
+      # --- Python-surface benchmark (PROF-04) -----------------------------
+      # Deliberately NO compare gate: no CI-class Python baseline exists
+      # yet, and comparing CI numbers against the committed dev-host
+      # baseline would violate the per-runner-class rule. The artifact is
+      # the bootstrap input for Phase 10's CI-class baseline (see README).
+      - name: Install maturin (same pin as ci.yml)
+        run: pip install 'maturin>=1.0,<2.0' numpy
+      - name: Build PyO3 extension wheel
+        run: maturin build --release -m pyo3/Cargo.toml
+      - name: Install PyO3 extension wheel
+        run: pip install pyo3/target/wheels/*.whl
+      - name: Run Python benchmark
+        run: python3 scripts/bench/python_bench.py --python python3 --mode synthetic --reads 200000 --reps 2 --out python_bench.json
+      # Name contract: python-bench-results-<runner OS>.
+      - name: Upload Python benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-bench-results-${{ runner.os }}
+          path: python_bench.json
+          if-no-files-found: warn
+      # --- PROF-02 thread-scaling gate (measure -> upload -> verdict) -----
+      # Two-step on purpose: the measure-only run writes the doc and exits 0
+      # (schema + provenance valid), the upload preserves that evidence, and
+      # only the final verdict step carries the intentional RED. The
+      # measure/upload steps never alter the verdict.
+      - name: Measure thread scaling
+        run: python3 scripts/bench/thread_scaling.py --mode synthetic --reads 200000 --reps 2 --measure-only --out thread_scaling.json
+      # Name contract: thread-scaling-<runner OS>.
+      - name: Upload thread-scaling results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: thread-scaling-${{ runner.os }}
+          path: thread_scaling.json
+          if-no-files-found: warn
+      # Standing PROF-02 gate — INTENTIONALLY RED on the current tree.
+      # `--threads` is a silent no-op, so t1/t4/t16 measure the same wall
+      # time and this exits 1. Phase 6 (PAR-01) turns it GREEN. The red is
+      # never softened, skipped, or recaptured away.
+      - name: Thread-scaling verdict (PROF-02, expected RED until Phase 6)
+        run: python3 scripts/bench/thread_scaling.py --current thread_scaling.json
