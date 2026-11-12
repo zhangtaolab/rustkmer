@@ -4,17 +4,17 @@ milestone: v2.0
 milestone_name: k=21 Counting Parity
 current_phase: 05
 current_phase_name: Measurement & Regression Harness
-status: executing
-stopped_at: Completed 05-06-PLAN.md
-last_updated: "2026-11-12T10:15:38.094Z"
+status: verifying
+stopped_at: Completed 05-07-PLAN.md
+last_updated: "2026-11-12T10:20:12.293Z"
 last_activity: 2026-11-12
 last_activity_desc: "Completed quick task 261112-jwl: Raise Rust MSRV 1.80 to 1.82"
-state_head: 6c43145963f238cafccadef281b11a69ddbde235
+state_head: 1800263e2046fac7f67fdcc15c4159c35d0d3080
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 
 Phase: 05 (Measurement & Regression Harness) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-12 - Completed quick task 261112-jwl: Raise Rust MSRV 1.80 to 1.82
 
 Progress: [░░░░░░░░░░] 0% (v2.0)
@@ -78,6 +78,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0)
 | Phase 05 P04 | 45 min | 2 tasks | 5 files |
 | Phase 05 P05 | 31 min | 2 tasks | 6 files |
 | Phase 05 P06 | 21 min | 2 tasks | 6 files |
+| Phase 05 P07 | 4 min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -109,6 +110,9 @@ Recent decisions affecting current work:
 - [Phase 05]: [Phase 05]: [05-06] N-free control is the committed Python comparison basis: deterministic drop-records-with-N filter of the 1M random subslice (seed 20261112), live CLI-vs-Python parity on the same bytes BEFORE timing, exact counts pinned across reps — invariant under Phase 9's D2 skip-N change; real-N arm labeled timing-only-real-N-pre-D2
 - [Phase 05]: [Phase 05]: [05-06] Fresh-worker Python measurement + module provenance: every rep is a new interpreter process under /usr/bin/time (never an in-process clock); worker resolves maturin 1.11's editable-shim inner native .so so the fingerprint (c7701806) covers the measured bytes; stale/shadowed/zero-count/rep-disagreement runs exit 2, never skip
 - [Phase 05]: [Phase 05]: [05-06] N-read differential recorded D2 evidence only: control exactly equal; 33 Python-only chimeric k-mers in n_at_window_end/n_at_window_start/multiple_n/lowercase_n; 0 CLI-only; --expect-unified reserved for Phase 9; neither surface's semantics changed
+- [Phase 05]: [05-07] CI gains standing gates: harness unit suite + Python-surface benchmark + PROF-02 measure→upload→verdict; no Python compare gate because no CI-class baseline exists (Phase 10 owns it)
+- [Phase 05]: [05-07] Evidence retention exception: all three artifact uploads use always() + if-no-files-found: warn so failed measurement steps leave evidence; measurement/gate steps stay unconditional and the job verdict is never altered
+- [Phase 05]: [05-07] PROF-02 red is intentional and documented in the workflow and README with a Phase 6 (PAR-01) handoff checklist; prohibited silencing constructs named in the README (continue-on-error, || true, conditional gates, baseline recapture)
 
 ### Pending Todos
 
@@ -139,8 +143,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T10:15:38.078Z
-Stopped at: Completed 05-06-PLAN.md
+Last session: 2026-11-12T10:20:12.277Z
+Stopped at: Completed 05-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

@@ -13,10 +13,10 @@ Committed scope. Each maps to exactly one roadmap phase. MINIM-* are CONDITIONAL
 
 ### Profiling & Regression Harness (PROF)
 
-- [ ] **PROF-01**: A reproducible slice benchmark gates every optimized path with a count-parity check (pinned Distinct/Total against jellyfish on the measured input) and binary provenance (sha256 + commit + build profile) on every artifact; subslices are random-record, not head-of-file.
-- [ ] **PROF-02**: A `--threads` correctness test asserts the ACTUAL rayon pool size matches the requested thread count, and a thread-scaling gate proves wall-clock differs across t1/t4/t16 (the v1.0 1-vs-N count differential passed while the flag was a no-op).
+- [x] **PROF-01**: A reproducible slice benchmark gates every optimized path with a count-parity check (pinned Distinct/Total against jellyfish on the measured input) and binary provenance (sha256 + commit + build profile) on every artifact; subslices are random-record, not head-of-file.
+- [x] **PROF-02**: A `--threads` correctness test asserts the ACTUAL rayon pool size matches the requested thread count, and a thread-scaling gate proves wall-clock differs across t1/t4/t16 (the v1.0 1-vs-N count differential passed while the flag was a no-op).
 - [x] **PROF-03**: A multi-thread contention microbench isolates the global-atomics vs memory-bandwidth share of the in-vivo increment multiplier, producing evidence that tunes the engine design.
-- [ ] **PROF-04**: A Python-surface counting benchmark with a committed baseline exists (the sequential PyO3 pipeline is measured, so Phase PY can prove a win, not assert it).
+- [x] **PROF-04**: A Python-surface counting benchmark with a committed baseline exists (the sequential PyO3 pipeline is measured, so Phase PY can prove a win, not assert it).
 - [x] **PROF-05**: A CLI-vs-Python N-read differential is run and recorded, quantifying the chimeric-k-mer divergence that D2 resolves.
 
 ### Parallel Scaling & Hot Path (PAR)
@@ -86,10 +86,10 @@ Each requirement maps to exactly one phase. MINIM-* map to conditional Phase 11 
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROF-01 | Phase 5 | Pending |
-| PROF-02 | Phase 5 | Pending |
+| PROF-01 | Phase 5 | Complete |
+| PROF-02 | Phase 5 | Complete |
 | PROF-03 | Phase 5 | Complete |
-| PROF-04 | Phase 5 | Pending |
+| PROF-04 | Phase 5 | Complete |
 | PROF-05 | Phase 5 | Complete |
 | PAR-01 | Phase 6 | Pending |
 | PAR-02 | Phase 6 | Pending |
