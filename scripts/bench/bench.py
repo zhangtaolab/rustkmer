@@ -576,6 +576,58 @@ def provision_slice(resolved_inputs, slice_reads, scratch, merge_input=None):
     return slices
 
 
+def provision_random_slice(resolved_inputs, slice_reads, scratch, seed,
+                           merge_input=None):
+    """Provision seeded random-record subslices + sidecar manifests (05-04).
+
+    Mirrors provision_slice's source arrangement (first two resolved sources;
+    a single source is sampled once and measured twice; --merge-input samples
+    slice B from the second gz), but each distinct source is sampled with
+    random_slice.reservoir_slice instead of first-N truncation. The selection
+    manifest is written beside each slice.
+
+    Returns (slices, selections): slices is the list of slice Paths (aligned
+    with provision_slice's output); selections is the parallel list of
+    {"slice", "manifest_path", "manifest"} dicts for the distinct sources.
+    """
+    if not resolved_inputs:
+        raise RuntimeError("slice mode requires a resolved input")
+    if __package__ in (None, ""):
+        # Direct script execution: make the scripts package importable so the
+        # lazy reservoir_slice import resolves to this checkout (random_slice
+        # uses the same fixup). Lazy import avoids the bench<->random_slice
+        # import cycle (random_slice imports fingerprint/validate_path here).
+        sys.path.insert(0, str(REPO_ROOT))
+    from scripts.bench.random_slice import reservoir_slice
+
+    scratch = Path(scratch)
+    scratch.mkdir(parents=True, exist_ok=True)
+    if merge_input is not None:
+        srcs = [resolved_inputs[0], Path(merge_input)]
+    elif len(resolved_inputs) >= 2:
+        srcs = resolved_inputs[:2]
+    else:
+        srcs = [resolved_inputs[0], resolved_inputs[0]]
+    slices = []
+    selections = []
+    extracted = {}
+    for i, src in enumerate(srcs):
+        if src in extracted:
+            dst, info = extracted[src]
+            slices.append(dst)
+            selections.append(info)
+            continue
+        dst = scratch / f"slice-random-{i}.fq"
+        manifest_path = scratch / f"slice-random-{i}.manifest.json"
+        manifest = reservoir_slice(src, slice_reads, seed, dst, manifest_path)
+        info = {"slice": str(dst), "manifest_path": str(manifest_path),
+                "manifest": manifest}
+        extracted[src] = (dst, info)
+        slices.append(dst)
+        selections.append(info)
+    return slices, selections
+
+
 def provision_full(resolved_inputs):
     """Measure the resolved inputs directly (first two; a single input is
     measured twice — an honest repeated measurement, not a fabrication)."""
@@ -592,6 +644,19 @@ def provision_full(resolved_inputs):
 PARITY_MISMATCH_EXIT = 1
 JELLYFISH_MISSING_EXIT = 2
 PARITY_SMOKE_HASH_SIZE = "1G"  # smoke-scale -s; real runs use the 10G default
+
+# --- PROF-01 fingerprint-bound parity reference (05-04) ----------------------
+# Pinned head-4M counts copied from .planning/research/profiling/evidence.json
+# (slice.k21_distinct_canonical / slice.k21_instances) and parity_report.json —
+# the single source for the historical reference. NEVER applied to a random
+# sample; a changed dataset is a loud methodology finding, not a re-pin.
+PARITY_PINNED_HEAD4M = {"distinct": 229694874, "total": 519271168}
+HEAD4M_READS = 4000000
+DEFAULT_SLICE_SEED = 20261112
+HEAD4M_SLICE_KIND = "head-4M-profiling-reference"
+RANDOM_SLICE_KIND = "random-record"
+PARITY_REFERENCE_TOOL = "jellyfish 2.3.1"
+PARITY_REF_INVALID_EXIT = 2
 
 
 def require_jellyfish():
@@ -701,8 +766,279 @@ def run_parity(input_path, k, threads, rustkmer, scratch,
     sys.exit(PARITY_MISMATCH_EXIT)
 
 
-def run_parity_cli(args):
-    """--parity-only: provision one input via the ladder, then run_parity."""
+def _parity_ref_invalid(message):
+    """Print a reference-gate input problem and exit 2 — never a silent
+    fallback (an unbound/ambiguous reference is not a gate)."""
+    print(f"bench.py: {message}", file=sys.stderr)
+    sys.exit(PARITY_REF_INVALID_EXIT)
+
+
+def slice_kind_for(selection, slice_reads):
+    """Reference slice_kind for a slice recipe (05-04).
+
+    head selection + 4000000 reads -> the pinned profiling reference kind;
+    random selection -> random-record. Head selections of other sizes have
+    NO reference recipe (None) — the gate/capture flow rejects them loudly
+    rather than mislabeling a head prefix as a random sample.
+    """
+    if selection == "random":
+        return RANDOM_SLICE_KIND
+    if selection == "head" and slice_reads == HEAD4M_READS:
+        return HEAD4M_SLICE_KIND
+    return None
+
+
+def _validate_reference_record(rec):
+    """Raise ValueError unless rec is a complete, well-formed reference.
+
+    Every record must be bound to a source fingerprint and carry positive
+    expected counts plus full provenance (an unattributable reference must
+    never gate — T-05-02). Random records additionally carry the FULL
+    selection identity: seed + selection_manifest_sha256 + output_sha256,
+    cross-checked against the embedded selection manifest.
+    """
+    if not isinstance(rec, dict):
+        raise ValueError("reference record must be a dict")
+    sha = rec.get("source_sha256")
+    if not isinstance(sha, str) or not SHA256_HEX_RE.match(sha):
+        raise ValueError("reference record missing/invalid source_sha256 — "
+                         "an unbound record can never gate")
+    kind = rec.get("slice_kind")
+    if kind not in (HEAD4M_SLICE_KIND, RANDOM_SLICE_KIND):
+        raise ValueError(f"reference record has unknown slice_kind {kind!r}")
+    reads = rec.get("reads")
+    if not isinstance(reads, int) or isinstance(reads, bool) or reads < 1:
+        raise ValueError("reference record reads must be a positive integer")
+    k = rec.get("k")
+    if not isinstance(k, int) or isinstance(k, bool) or not 1 <= k <= 64:
+        raise ValueError("reference record k must be an integer in 1..64")
+    if not isinstance(rec.get("canonical"), bool):
+        raise ValueError("reference record canonical must be a bool")
+    tool = rec.get("reference_tool")
+    if not isinstance(tool, str) or not tool.strip():
+        raise ValueError("reference record missing reference_tool")
+    expected = rec.get("expected")
+    if not isinstance(expected, dict):
+        raise ValueError("reference record missing expected counts")
+    for key in ("distinct", "total"):
+        v = expected.get(key)
+        if not isinstance(v, int) or isinstance(v, bool) or v <= 0:
+            raise ValueError(f"reference record expected.{key} must be a "
+                             f"positive integer")
+    validate_provenance(rec)
+    if kind == RANDOM_SLICE_KIND:
+        seed = rec.get("seed")
+        if not isinstance(seed, int) or isinstance(seed, bool):
+            raise ValueError("random reference record missing/invalid seed "
+                             "identity")
+        for key in ("selection_manifest_sha256", "output_sha256"):
+            v = rec.get(key)
+            if not isinstance(v, str) or not SHA256_HEX_RE.match(v):
+                raise ValueError(f"random reference record missing/invalid "
+                                 f"{key} identity")
+        manifest = rec.get("selection_manifest")
+        if not isinstance(manifest, dict):
+            raise ValueError("random reference record missing "
+                             "selection_manifest")
+        if (manifest.get("seed") != seed
+                or manifest.get("output_sha256") != rec["output_sha256"]):
+            raise ValueError("random reference selection_manifest disagrees "
+                             "with its identity fields")
+
+
+def _reference_full_key(rec):
+    """The exact-match key: source + recipe, plus the full random selection
+    identity for random records (validated records only)."""
+    key = (rec["source_sha256"], rec["slice_kind"], rec["reads"], rec["k"],
+           rec["canonical"])
+    if rec["slice_kind"] == RANDOM_SLICE_KIND:
+        key += (rec["seed"], rec["selection_manifest_sha256"],
+                rec["output_sha256"])
+    return key
+
+
+def _load_reference_doc(path):
+    """Load and strictly validate every record in a reference file, or exit 2."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except FileNotFoundError:
+        _parity_ref_invalid(f"parity reference file not found: {path}")
+    except OSError as exc:
+        _parity_ref_invalid(f"parity reference file unreadable: {path} ({exc})")
+    except json.JSONDecodeError as exc:
+        _parity_ref_invalid(f"parity reference file is not parseable JSON: "
+                            f"{path} ({exc})")
+    if not isinstance(doc, dict) or not isinstance(doc.get("records"), list):
+        _parity_ref_invalid(f"parity reference file must hold a records "
+                            f"list: {path}")
+    for i, rec in enumerate(doc["records"]):
+        try:
+            _validate_reference_record(rec)
+        except ValueError as exc:
+            _parity_ref_invalid(f"parity reference record[{i}] invalid: {exc}")
+    return doc
+
+
+def load_parity_reference(path, source_sha256, slice_kind, reads, k, canonical,
+                          selection=None):
+    """Return the exactly-matching parity reference record, or exit 2.
+
+    The match key is (source_sha256, slice_kind, reads, k, canonical); for
+    slice_kind "random-record" the caller MUST pass selection = {seed,
+    selection_manifest_sha256, output_sha256} (computed at gate time from the
+    LIVE provisioned slice bytes + sidecar manifest) and ALL three identity
+    fields must equal the record's stored values. No matching record, a
+    record missing any identity field, a missing selection argument, or more
+    than one full-key match are all invalid (exit 2) — never a silent
+    fallback, never first-match-wins.
+    """
+    doc = _load_reference_doc(path)
+    if slice_kind == RANDOM_SLICE_KIND:
+        if not isinstance(selection, dict):
+            _parity_ref_invalid("random-record reference gate requires a "
+                                "selection identity {seed, "
+                                "selection_manifest_sha256, output_sha256}")
+        seed = selection.get("seed")
+        if not isinstance(seed, int) or isinstance(seed, bool):
+            _parity_ref_invalid("selection identity missing/invalid seed")
+        for key in ("selection_manifest_sha256", "output_sha256"):
+            v = selection.get(key)
+            if not isinstance(v, str) or not SHA256_HEX_RE.match(v):
+                _parity_ref_invalid(f"selection identity missing/invalid "
+                                    f"{key}")
+        want = (source_sha256, slice_kind, reads, k, canonical, seed,
+                selection["selection_manifest_sha256"],
+                selection["output_sha256"])
+    else:
+        want = (source_sha256, slice_kind, reads, k, canonical)
+    matches = [r for r in doc["records"] if _reference_full_key(r) == want]
+    if not matches:
+        _parity_ref_invalid(f"no parity reference record for this "
+                            f"fingerprint/recipe (source={source_sha256[:12]}"
+                            f"… kind={slice_kind} reads={reads} k={k} "
+                            f"canonical={canonical}) — never a silent "
+                            f"fallback")
+    if len(matches) > 1:
+        _parity_ref_invalid(f"ambiguous parity reference: {len(matches)} "
+                            f"records match the FULL key — ambiguity is "
+                            f"invalid, never first-match-wins")
+    return matches[0]
+
+
+def gate_parity_reference(counts, path, source_sha256, slice_kind, reads, k,
+                          canonical, selection=None):
+    """Gate live parity counts against the bound reference (after a live pass).
+
+    Reference recipe/fingerprint mismatch exits 2 (via load_parity_reference);
+    reference counts != live counts exits 1 printing both sides — a
+    methodology finding, never a silent pass. Returns the matching record.
+    """
+    rec = load_parity_reference(path, source_sha256, slice_kind, reads, k,
+                                canonical, selection=selection)
+    expected = rec["expected"]
+    if (expected["distinct"] != counts["distinct"]
+            or expected["total"] != counts["total"]):
+        print(f"PARITY REFERENCE MISMATCH: reference "
+              f"distinct={expected['distinct']} total={expected['total']} "
+              f"vs live distinct={counts['distinct']} "
+              f"total={counts['total']} — methodology finding, not a pass",
+              file=sys.stderr)
+        sys.exit(PARITY_MISMATCH_EXIT)
+    print(f"PARITY REFERENCE OK distinct={counts['distinct']} "
+          f"total={counts['total']} (bound to source {source_sha256[:12]}… "
+          f"kind={slice_kind})")
+    return rec
+
+
+def selection_identity_from(slice_path, manifest_path, seed):
+    """Compute the gate-time random selection identity from LIVE bytes.
+
+    Recomputes the slice output sha256 from the provisioned slice bytes and
+    cross-checks it against the sidecar manifest's own output_sha256; the
+    manifest's seed must equal the requested seed. Any mismatch exits 2
+    (tampered or mismatched slice/manifest can never gate). Returns
+    {seed, selection_manifest_sha256 (hash of the manifest FILE bytes),
+    output_sha256 (the live slice hash)}.
+    """
+    live_out = fingerprint(slice_path)["sha256"]
+    try:
+        manifest_bytes = Path(manifest_path).read_bytes()
+    except OSError as exc:
+        _parity_ref_invalid(f"selection manifest unreadable: {manifest_path} "
+                            f"({exc})")
+    try:
+        manifest = json.loads(manifest_bytes)
+    except json.JSONDecodeError as exc:
+        _parity_ref_invalid(f"selection manifest is not parseable JSON: "
+                            f"{manifest_path} ({exc})")
+    if not isinstance(manifest, dict):
+        _parity_ref_invalid(f"selection manifest must be a dict: "
+                            f"{manifest_path}")
+    if manifest.get("output_sha256") != live_out:
+        _parity_ref_invalid(f"slice output hash {live_out[:12]}… differs "
+                            f"from the sidecar manifest's output_sha256 — "
+                            f"tampered or mismatched slice bytes")
+    if manifest.get("seed") != seed:
+        _parity_ref_invalid(f"sidecar manifest seed {manifest.get('seed')!r} "
+                            f"!= requested seed {seed!r}")
+    return {
+        "seed": seed,
+        "selection_manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        "output_sha256": live_out,
+    }
+
+
+def capture_parity_reference(path, record):
+    """Append a verified reference record to the baseline file (create if
+    absent) — only ever called AFTER a live parity pass.
+
+    The head-4M recipe additionally asserts the pinned constants before
+    writing: changed live counts are a loud methodology finding (exit 1),
+    never a re-pinned constant. A record for an already-referenced EXACT
+    recipe is rejected (exit 2) rather than creating a duplicate full-key
+    record that would brick the gate.
+    """
+    try:
+        _validate_reference_record(record)
+    except ValueError as exc:
+        _parity_ref_invalid(f"cannot capture invalid parity reference "
+                            f"record: {exc}")
+    if (record["slice_kind"] == HEAD4M_SLICE_KIND
+            and record["expected"] != PARITY_PINNED_HEAD4M):
+        print(f"PINNED PARITY MISMATCH: head-4M live counts "
+              f"distinct={record['expected']['distinct']} "
+              f"total={record['expected']['total']} != pinned "
+              f"{PARITY_PINNED_HEAD4M} — the measured dataset changed; this "
+              f"is a loud methodology finding, never a re-pinned constant",
+              file=sys.stderr)
+        sys.exit(PARITY_MISMATCH_EXIT)
+    path = Path(path)
+    if path.exists():
+        doc = _load_reference_doc(path)
+        key = _reference_full_key(record)
+        if any(_reference_full_key(r) == key for r in doc["records"]):
+            _parity_ref_invalid("a reference record for this EXACT recipe "
+                                "already exists — delete it explicitly to "
+                                "re-capture; refusing to create a duplicate "
+                                "full-key record")
+        records = doc["records"] + [record]
+    else:
+        records = [record]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump({"schema_version": SCHEMA_VERSION, "records": records},
+                  fh, indent=2)
+        fh.write("\n")
+    print(f"parity reference captured: kind={record['slice_kind']} "
+          f"reads={record['reads']} distinct={record['expected']['distinct']} "
+          f"total={record['expected']['total']} -> {path}")
+
+
+def run_parity_cli(args, out_explicit=False):
+    """--parity-only: provision via the ladder, run_parity, then optionally
+    gate against / capture a fingerprint-bound reference and emit a
+    provenance-bearing parity record to --out (when explicitly given)."""
     mode, resolved_inputs = resolve_mode(args.mode, args.input, os.environ)
     # Validation only — run_parity measures inputs[0]; a --merge-input given
     # alongside --parity-only must still be a legal slice-mode value rather
@@ -710,13 +1046,113 @@ def run_parity_cli(args):
     merge_input_for(mode, args.merge_input)
     scratch = Path(args.out).parent
     scratch.mkdir(parents=True, exist_ok=True)
+    if args.slice_selection == "random" and mode != "slice":
+        _parity_ref_invalid("--slice-selection random requires slice mode "
+                            f"(resolved mode is {mode!r})")
+    selection_info = None
     if mode == "synthetic":
         inputs = provision_synthetic(args.reads, scratch)
     elif mode == "slice":
-        inputs = provision_slice(resolved_inputs, args.slice_reads, scratch)
+        if args.slice_selection == "random":
+            inputs, selections = provision_random_slice(
+                resolved_inputs, args.slice_reads, scratch, args.slice_seed)
+            selection_info = selections[0]
+        else:
+            inputs = provision_slice(resolved_inputs, args.slice_reads, scratch)
     else:
         inputs = provision_full(resolved_inputs)
-    run_parity(inputs[0], args.k, args.threads, args.rustkmer, scratch)
+
+    # Real runs need a generous -s (the 1G smoke default silently penalizes
+    # the 229M-distinct real slice); --hash-size is threaded into run_parity.
+    counts = run_parity(inputs[0], args.k, args.threads, args.rustkmer,
+                        scratch, hash_size=args.hash_size)
+
+    source_sha256 = None
+    kind = slice_kind_for(args.slice_selection, args.slice_reads) \
+        if mode == "slice" else None
+    selection = None
+    if args.parity_reference or args.capture_parity_reference:
+        if mode != "slice":
+            _parity_ref_invalid("parity references are slice-mode recipes "
+                                "(head-4M pinned or random-record); resolved "
+                                f"mode is {mode!r}")
+        if kind is None:
+            _parity_ref_invalid(f"no parity reference recipe for head "
+                                f"selection with {args.slice_reads} reads "
+                                f"(the pinned recipe is head {HEAD4M_READS}; "
+                                f"use --slice-selection random for other "
+                                f"sizes)")
+        source_sha256 = fingerprint(resolved_inputs[0])["sha256"]
+        if args.slice_selection == "random":
+            selection = selection_identity_from(
+                inputs[0], selection_info["manifest_path"], args.slice_seed)
+            if selection_info["manifest"]["source"]["sha256"] != source_sha256:
+                _parity_ref_invalid("selection manifest source fingerprint "
+                                    "differs from the live source fingerprint")
+        if args.parity_reference:
+            gate_parity_reference(counts, args.parity_reference,
+                                  source_sha256, kind, args.slice_reads,
+                                  args.k, True, selection=selection)
+        else:
+            record = {
+                "slice_kind": kind,
+                "source_sha256": source_sha256,
+                "reads": args.slice_reads,
+                "k": args.k,
+                "canonical": True,
+                "reference_tool": PARITY_REFERENCE_TOOL,
+                "expected": dict(counts),
+                "provenance": binary_provenance(args.rustkmer, "release"),
+            }
+            if selection is not None:
+                # Verify the manifest's slice-output hash against a LIVE
+                # fingerprint of the slice before writing the reference.
+                live_out = fingerprint(inputs[0])["sha256"]
+                if selection_info["manifest"]["output_sha256"] != live_out:
+                    _parity_ref_invalid("slice output hash differs from the "
+                                        "selection manifest before capture")
+                record.update({
+                    "seed": args.slice_seed,
+                    "selection_manifest": selection_info["manifest"],
+                    "selection_manifest_sha256":
+                        selection["selection_manifest_sha256"],
+                    "output_sha256": live_out,
+                })
+            capture_parity_reference(args.capture_parity_reference, record)
+
+    if out_explicit:
+        recipe = {"mode": mode, "k": args.k, "canonical": True,
+                  "threads": args.threads, "hash_size": args.hash_size}
+        if mode == "slice":
+            if source_sha256 is None:
+                source_sha256 = fingerprint(resolved_inputs[0])["sha256"]
+            recipe.update({"slice_selection": args.slice_selection,
+                           "slice_reads": args.slice_reads,
+                           "slice_kind": kind,
+                           "source_sha256": source_sha256})
+            if args.slice_selection == "random":
+                recipe["slice_seed"] = args.slice_seed
+        elif mode == "synthetic":
+            recipe["reads"] = args.reads
+        doc = {
+            "schema_version": SCHEMA_VERSION,
+            "kind": "parity-record",
+            "mode": mode,
+            "distinct": counts["distinct"],
+            "total": counts["total"],
+            "input_fingerprint": [fingerprint(inputs[0])],
+            "slice_recipe": recipe,
+            "created": datetime.now(timezone.utc).isoformat(),
+            "provenance": binary_provenance(args.rustkmer, "release"),
+        }
+        if selection_info is not None:
+            doc["selection_manifest"] = selection_info["manifest"]
+        validate_provenance(doc)
+        out_path = Path(args.out)
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, indent=2)
+            fh.write("\n")
+        print(f"parity record written to {out_path}")
 
 
 # --- BENCH-02 measurement protocol (04-02) ------------------------------------
@@ -909,12 +1345,18 @@ def run_bench(args):
     if mode == "full":
         check_disk_floor(scratch, args.disk_floor_gb)
 
+    selections = None
     if mode == "synthetic":
         inputs = provision_synthetic(args.reads, scratch)
     elif mode == "slice":
         merge_src = merge_input_for(mode, args.merge_input)
-        inputs = provision_slice(resolved_inputs, args.slice_reads, scratch,
-                                 merge_input=merge_src)
+        if args.slice_selection == "random":
+            inputs, selections = provision_random_slice(
+                resolved_inputs, args.slice_reads, scratch, args.slice_seed,
+                merge_input=merge_src)
+        else:
+            inputs = provision_slice(resolved_inputs, args.slice_reads, scratch,
+                                     merge_input=merge_src)
     else:
         if args.merge_input is not None:
             # Fail loudly rather than silently ignoring the r2 input.
@@ -1023,6 +1465,11 @@ def run_bench(args):
         "threads": args.threads,
         "rustkmer": str(args.rustkmer),
     }
+    if mode == "slice":
+        params["slice_selection"] = args.slice_selection
+        if args.slice_selection == "random":
+            params["slice_seed"] = args.slice_seed
+            params["selection_manifests"] = selections
     if comparison:
         params.update({
             "hash_size": args.hash_size,
@@ -1525,8 +1972,10 @@ def main():
     parser.add_argument("--input", default=None,
                         help="input file, glob, or directory (.fq.gz scan) "
                              "for slice/full modes")
-    parser.add_argument("--out", default=str(DEFAULT_SCRATCH / "results.json"),
-                        help="results.json output path")
+    parser.add_argument("--out", default=None,
+                        help="results.json output path (with --parity-only, an "
+                             "explicit --out also emits a provenance-bearing "
+                             "parity record there)")
     parser.add_argument("--self-check", action="store_true",
                         help="assert exact k-mer counts (synthetic mode)")
     parser.add_argument("--k", type=int, default=31, help="k-mer size")
@@ -1537,6 +1986,25 @@ def main():
     parser.add_argument("--slice-reads", type=int, default=1000000,
                         help="reads per slice in slice mode (deterministic "
                              "first-N extraction)")
+    parser.add_argument("--slice-selection", choices=["head", "random"],
+                        default="head",
+                        help="slice provisioning policy: head = historical "
+                             "first-N extraction (default, byte-compatible); "
+                             "random = seeded reservoir random-record subslice "
+                             "with a sidecar selection manifest (05-04)")
+    parser.add_argument("--slice-seed", type=int, default=DEFAULT_SLICE_SEED,
+                        help=f"RNG seed for --slice-selection random "
+                             f"(default {DEFAULT_SLICE_SEED})")
+    parser.add_argument("--parity-reference", default=None,
+                        help="after a live parity pass, gate against the "
+                             "fingerprint-bound reference record at this path "
+                             "(count mismatch exit 1; unbound/ambiguous/"
+                             "missing recipe exit 2). Requires --parity-only.")
+    parser.add_argument("--capture-parity-reference", default=None,
+                        help="after a live parity pass, append a reference "
+                             "record to this path (the head-4M recipe asserts "
+                             "the pinned constants first). Requires "
+                             "--parity-only.")
     parser.add_argument("--reps", type=int, default=1,
                         help="repetitions per arm; N >= 2 engages the "
                              "fair-comparison protocol (jellyfish arms, "
@@ -1580,6 +2048,12 @@ def main():
                         help="path to the rustkmer RELEASE binary")
     args = parser.parse_args()
 
+    # --out keeps its historical default; an EXPLICIT --out additionally
+    # enables parity-record emission under --parity-only (05-04).
+    out_explicit = args.out is not None
+    if args.out is None:
+        args.out = str(DEFAULT_SCRATCH / "results.json")
+
     if args.k < 1 or args.k > 64:
         parser.error("--k must be in 1..64")
     if args.reps < 1:
@@ -1595,6 +2069,13 @@ def main():
         parser.error("--cooldown-s must be >= 0")
     if args.disk_floor_gb < 0:
         parser.error("--disk-floor-gb must be >= 0")
+    if args.parity_reference and args.capture_parity_reference:
+        parser.error("--parity-reference and --capture-parity-reference are "
+                     "mutually exclusive")
+    if ((args.parity_reference or args.capture_parity_reference)
+            and not args.parity_only):
+        parser.error("--parity-reference / --capture-parity-reference "
+                     "require --parity-only")
 
     if args.render_report:
         if not args.results:
@@ -1604,7 +2085,7 @@ def main():
         return
 
     if args.parity_only:
-        run_parity_cli(args)
+        run_parity_cli(args, out_explicit)
         return
 
     run_bench(args)
