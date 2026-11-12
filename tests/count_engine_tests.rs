@@ -15,7 +15,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use rustkmer::count::{CountEngine, CountResult, EngineConfig, SequenceKind};
+use rustkmer::count::{
+    CountEngine, CountResult, EngineConfig, PartitionLayout, SequenceKind,
+};
 use rustkmer::hash::filtering::CountFilter;
 use rustkmer::hash::table::KmerCounter;
 use rustkmer::kmer::canonical::canonical_kmer_u128;
@@ -847,5 +849,214 @@ fn no_sort_still_writes_the_same_set() {
         read_text_counts(&sorted_output),
         read_text_counts(&unsorted_output),
         "--no-sort must write the same set of pairs (byte order may differ)"
+    );
+}
+
+// --- 07-02 Task 1: persistent worker pipeline -------------------------------
+
+/// Collect a [`CountResult`] into a `BTreeMap` without consuming it.
+fn collect_result_map(result: &CountResult) -> BTreeMap<u128, u32> {
+    let mut map = BTreeMap::new();
+    result.for_each_count(|key, count| {
+        assert!(
+            map.insert(key, count).is_none(),
+            "for_each_count visited a key twice: {key}"
+        );
+    });
+    map
+}
+
+/// The direct engine must produce identical maps, totals, uniques, and skip
+/// counts on the sequential path (t1) and the persistent worker pipeline
+/// (t4/t16) for the same multi-record fixture.
+#[test]
+fn engine_worker_pipeline_is_exact_at_t1_t4_and_t16() {
+    let sequences = fixture_sequences();
+    let dir = tempfile::tempdir().expect("tempdir for worker exactness fixture");
+    let input = dir.path().join("worker_exact.fastq");
+    write_fastq(&input, &sequences);
+    let borrowed: Vec<&[u8]> = sequences.iter().map(Vec::as_slice).collect();
+
+    for k in [21usize, 64] {
+        for canonical in [false, true] {
+            let want = reference_map(&borrowed, k, canonical);
+            let mut reference: Option<(BTreeMap<u128, u32>, rustkmer::count::EngineStats)> = None;
+
+            for threads in [1usize, 4, 16] {
+                let mut engine = CountEngine::new(EngineConfig::new(k, canonical, threads, 1024))
+                    .expect("valid k must construct the engine");
+                let file_stats = engine
+                    .count_file(&input, SequenceKind::Fastq)
+                    .expect("every thread count must count the fixture");
+                let result = engine.finish().expect("finish must succeed");
+
+                assert_eq!(
+                    collect_result_map(&result),
+                    want,
+                    "engine map diverged from the reference at threads={threads} \
+                     (k={k}, canonical={canonical})"
+                );
+                assert!(
+                    file_stats.stats.skipped_windows > 0,
+                    "the fixture must exercise skipped windows (k={k})"
+                );
+
+                match &reference {
+                    None => {
+                        reference = Some((collect_result_map(&result), result.stats()));
+                    }
+                    Some((reference_map, reference_stats)) => {
+                        assert_eq!(
+                            collect_result_map(&result),
+                            *reference_map,
+                            "the map must not depend on the thread count \
+                             (threads={threads}, k={k}, canonical={canonical})"
+                        );
+                        assert_eq!(
+                            result.stats(),
+                            *reference_stats,
+                            "totals/uniques/skips must not depend on the thread count \
+                             (threads={threads}, k={k}, canonical={canonical})"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The engine must report the real pipeline shape: no worker on the sequential
+/// path, exactly the requested count on the parallel path.
+#[test]
+fn engine_worker_count_matches_requested_threads() {
+    for (threads, expected) in [(1usize, 0usize), (3, 3), (4, 4), (5, 5), (16, 16)] {
+        let engine = CountEngine::new(EngineConfig::new(21, false, threads, 64))
+            .expect("valid k must construct the engine");
+        assert_eq!(
+            engine.worker_count(),
+            expected,
+            "worker_count must be 0 for the sequential path and the requested count otherwise \
+             (threads={threads})"
+        );
+    }
+}
+
+/// Non-divisible worker counts must still give every partition exactly one
+/// owner while the engine spawns exactly the requested worker count.
+#[test]
+fn engine_layout_handles_non_divisible_worker_counts() {
+    for workers in [3usize, 5] {
+        let layout = PartitionLayout::new(workers);
+        assert_eq!(
+            layout.partitions(),
+            64,
+            "the fixed partition count must stay 64 below 64 workers"
+        );
+
+        let mut owners = vec![0usize; layout.partitions()];
+        let mut previous_end = 0usize;
+        for worker in 0..workers {
+            let range = layout.worker_range(worker);
+            assert_eq!(
+                range.start, previous_end,
+                "worker ranges must be contiguous (workers={workers})"
+            );
+            previous_end = range.end;
+            for partition in range {
+                owners[partition] += 1;
+            }
+        }
+        assert_eq!(previous_end, layout.partitions());
+        for (partition, seen) in owners.iter().enumerate() {
+            assert_eq!(
+                *seen, 1,
+                "partition {partition} must have exactly one owner (workers={workers})"
+            );
+            let owner = layout.owner_of(partition);
+            assert!(
+                layout.worker_range(owner).contains(&partition),
+                "owner_of must agree with worker_range (workers={workers}, partition={partition})"
+            );
+        }
+
+        let engine = CountEngine::new(EngineConfig::new(21, false, workers, 64))
+            .expect("valid k must construct the engine");
+        assert_eq!(
+            engine.worker_count(),
+            workers,
+            "the pipeline must spawn exactly the requested workers"
+        );
+    }
+}
+
+/// Two files counted through one worker pipeline must be exact: the cumulative
+/// map is the elementwise sum of the separate runs, and the cumulative totals
+/// are additive (the fixtures have disjoint key sets).
+#[test]
+fn engine_multi_file_cumulative_is_exact_with_workers() {
+    let dir = tempfile::tempdir().expect("tempdir for multi-file worker fixture");
+
+    let file_a_sequences = fixture_sequences();
+    let file_a = dir.path().join("worker_a.fastq");
+    write_fastq(&file_a, &file_a_sequences);
+
+    // Disjoint from the mixed-sequence fixture, so uniques are additive too.
+    let file_b_sequences: Vec<Vec<u8>> = (0..10).map(|_| vec![b'C'; 150]).collect();
+    let file_b = dir.path().join("worker_b.fastq");
+    write_fastq(&file_b, &file_b_sequences);
+
+    let borrowed_a: Vec<&[u8]> = file_a_sequences.iter().map(Vec::as_slice).collect();
+    let borrowed_b: Vec<&[u8]> = file_b_sequences.iter().map(Vec::as_slice).collect();
+    let want_a = reference_map(&borrowed_a, 21, false);
+    let want_b = reference_map(&borrowed_b, 21, false);
+    let want_total_a: u64 = want_a.values().map(|count| *count as u64).sum();
+    let want_total_b: u64 = want_b.values().map(|count| *count as u64).sum();
+    let mut want = want_a.clone();
+    for (key, count) in &want_b {
+        *want.entry(*key).or_insert(0) += *count;
+    }
+
+    for threads in [1usize, 4] {
+        let mut engine = CountEngine::new(EngineConfig::new(21, false, threads, 1024))
+            .expect("valid k must construct the engine");
+        let stats_a = engine
+            .count_file(&file_a, SequenceKind::Fastq)
+            .expect("file A must count");
+        let stats_b = engine
+            .count_file(&file_b, SequenceKind::Fastq)
+            .expect("file B must count");
+        let result = engine.finish().expect("finish must succeed");
+
+        assert_eq!(
+            stats_a.stats.total_kmers, want_total_a,
+            "file-A cumulative total must be exact (threads={threads})"
+        );
+        assert_eq!(
+            stats_b.stats.total_kmers,
+            want_total_a + want_total_b,
+            "file-B cumulative total must be the elementwise sum (threads={threads})"
+        );
+        assert_eq!(
+            stats_b.stats.unique_kmers,
+            want.len() as u64,
+            "cumulative unique count must be exact (threads={threads})"
+        );
+        assert_eq!(
+            collect_result_map(&result),
+            want,
+            "the multi-file map must be the elementwise sum of the separate runs \
+             (threads={threads})"
+        );
+        assert_eq!(
+            result.stats().total_kmers,
+            want_total_a + want_total_b,
+            "the final total must be the elementwise sum (threads={threads})"
+        );
+    }
+
+    // Explicit disjointness so the additive-unique assertion above is honest.
+    assert!(
+        want_a.keys().all(|key| !want_b.contains_key(key)),
+        "the two fixtures must be key-disjoint for uniques to be additive"
     );
 }
