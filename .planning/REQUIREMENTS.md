@@ -28,7 +28,7 @@ Committed scope. Each maps to exactly one roadmap phase. MINIM-* are CONDITIONAL
 ### Shared Counting Engine (ENGINE)
 
 - [x] **ENGINE-01**: ONE counting entry point (`src/count/engine.rs`) is consumed by both `execute_count` (CLI) and `PyCounter::add_from_*` (Python): a fixed rayon pool, a producer streaming records into a bounded queue, and N persistent workers counting into disjoint hash-range-partitioned thread-local tables with overlapped decompression (no per-chunk fork-join barrier).
-- [ ] **ENGINE-02**: The thread-scaling gate (PROF-02) is green after the engine — rustkmer's parallel-scaling efficiency materially improves toward jellyfish's and the slice wall-clock drops measurably (the ~3.5x lever).
+- [x] **ENGINE-02**: The thread-scaling gate (PROF-02) is green after the engine — rustkmer's parallel-scaling efficiency materially improves toward jellyfish's and the slice wall-clock drops measurably (the ~3.5x lever).
 - [x] **ENGINE-03**: ONE window-extraction function in the core implements the D2 skip-N semantics for both surfaces; the MultiGzDecoder multi-member gzip regression (v1.0 8102985) stays green.
 
 ### Output & `.rkdb` Parity (OUT)
@@ -95,7 +95,7 @@ Each requirement maps to exactly one phase. MINIM-* map to conditional Phase 11 
 | PAR-02 | Phase 6 | Complete |
 | PAR-03 | Phase 6 | Complete |
 | ENGINE-01 | Phase 7 | Complete |
-| ENGINE-02 | Phase 7 | Pending |
+| ENGINE-02 | Phase 7 | Complete |
 | ENGINE-03 | Phase 7 | Complete |
 | OUT-01 | Phase 8 | Pending |
 | OUT-02 | Phase 8 | Pending |

@@ -4,18 +4,18 @@ milestone: v2.0
 milestone_name: k=21 Counting Parity
 current_phase: 7
 current_phase_name: Shared Counting Engine
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-11-12T15:07:25.332Z"
+stopped_at: Completed 07-02-PLAN.md
+last_updated: "2026-11-12T15:23:13.194Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 06 complete, transitioned to Phase 7
-state_head: 623af47bec189cdec09e24b3a4f897f44595dc1f
+state_head: 18fe504b64412d1c80ac6a6fa54ff73ba5980f62
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 16
-  completed_plans: 13
+  completed_plans: 14
   percent: 29
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 7 — Shared Counting Engine
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 4
 Status: Ready to execute
 Last activity: 2026-11-12 — Phase 06 complete, transitioned to Phase 7
@@ -89,6 +89,7 @@ Progress: [███░░░░░░░] 29% (v2.0)
 | Phase 06 P04 | 27 min | 3 tasks | 8 files |
 | Phase 06 P05 | 3 min | 2 tasks | 2 files |
 | Phase 7 P01 | 8min | 3 tasks | 10 files |
+| Phase 07 P02 | 13 | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -143,6 +144,11 @@ Recent decisions affecting current work:
 - [Phase 7]: Partition layout P = min(256, max(64, threads)) with splitmix64 + multiply-shift routing, independent of thread count
 - [Phase 7]: CountResult::merge_into reuses KmerCounter::merge_local_counts; all new u64 aggregate sums are checked with verbatim fail-loud messages
 - [Phase 7]: The --threads 1 path uses a true sequential engine path (no worker threads); --threads > 1 keeps the Phase 6 legacy path until 07-02
+- [Phase 07]: Engine shape (07-02): caller-thread producer + N named persistent OS workers over bounded per-worker sync_channel queues; workers own disjoint partition tables with no shared writes
+- [Phase 07]: threads == 1 remains the true sequential path (0 workers, no queue); worker_count() reports 0 vs N so the t1 baseline stays honest
+- [Phase 07]: Every send/recv/worker failure joins all workers first and prefers the worker-returned error, so seeded overflows surface verbatim instead of as a disconnect
+- [Phase 07]: CLI counts through CountEngine at every thread count and consumes CountResult directly; the legacy per-chunk path, CountOutput, and CHUNK_SIZE are deleted
+- [Phase 07]: PROF-02 asserts exact equality (2 at N=1, 2N+1 otherwise) with polling to the expected total; exit 2 is reserved for unobservable/infra outcomes and the pre-engine N+1 model is proven RED end-to-end
 
 ### Pending Todos
 
@@ -173,8 +179,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T15:07:25.131Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-11-12T15:23:12.985Z
+Stopped at: Completed 07-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
