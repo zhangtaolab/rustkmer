@@ -289,7 +289,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
 
                 match format.as_str() {
                     "text" => {
-                        output_text_format(&count_result, output_path, *quiet, should_sort, &filter)?;
+                        output_text_format(count_result, output_path, *quiet, should_sort, &filter)?;
                     }
                     _ => {
                         output_binary_format(
@@ -359,9 +359,16 @@ fn sort_pairs_ascending(pairs: &mut [(u128, u32)]) {
     pairs.par_sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
 }
 
-/// Output results in text format
+/// Output results in text format.
+///
+/// Consumes the count result: pairs are collected once and, when requested,
+/// sorted by the numeric encoded key — the exact historical decoded order,
+/// because the two-bit code maps A<C<G<T to 0<1<2<3 in order of
+/// significance, so ascending numeric key equals lexicographic order of the
+/// fixed-length decoded sequence. This removes two heap allocations per
+/// comparison (the old comparator decoded both keys).
 fn output_text_format(
-    count_result: &CountResult,
+    count_result: CountResult,
     output_path: &Path,
     quiet: bool,
     sort: bool,
@@ -369,6 +376,7 @@ fn output_text_format(
 ) -> ProcessingResult<()> {
     use std::io::Write;
 
+    let kmer_length = count_result.kmer_length();
     let file = std::fs::File::create(output_path)
         .map_err(|e| KmerError::FileWriteError(format!("Failed to create output file: {}", e)))?;
     let mut writer = std::io::BufWriter::new(file);
@@ -378,25 +386,19 @@ fn output_text_format(
     }
 
     // Get k-mers from the engine result (filtered if applicable).
-    let kmer_length = count_result.kmer_length();
-    let mut kmers = count_result.filtered_pairs(filter);
+    let mut kmers = count_result.into_filtered_pairs(filter);
     let total = kmers.len();
 
-    // Sort k-mers if requested
+    // Sort k-mers if requested — numeric key order, no per-comparison decode.
     if sort {
         if !quiet {
             eprintln!("Sorting {} k-mers...", total);
         }
-        kmers.sort_by(|(a, _), (b, _)| {
-            // Decode both k-mers and compare sequences
-            let seq_a = decode_kmer(*a, kmer_length);
-            let seq_b = decode_kmer(*b, kmer_length);
-            seq_a.cmp(&seq_b)
-        });
+        sort_pairs_ascending(&mut kmers);
     }
 
-    for (idx, (kmer, count)) in kmers.into_iter().enumerate() {
-        // Decode k-mer back to sequence
+    for (idx, &(kmer, count)) in kmers.iter().enumerate() {
+        // Decode k-mer back to sequence (one decode per emitted line).
         let sequence = decode_kmer(kmer, kmer_length);
         writeln!(writer, "{}\t{}", sequence, count).map_err(|e| {
             KmerError::FileWriteError(format!("Failed to write k-mer {}: {}", idx, e))
@@ -406,6 +408,11 @@ fn output_text_format(
             eprintln!("Written {}/{} k-mers", idx + 1, total);
         }
     }
+
+    // Explicit flush: a failed final write must never be silent (T-08-04).
+    writer.flush().map_err(|e| {
+        KmerError::FileWriteError(format!("Failed to flush output file: {}", e))
+    })?;
 
     if !quiet {
         eprintln!("Completed writing {} k-mers", total);
@@ -664,5 +671,30 @@ mod tests {
             1,
             "num_cpus=0 (unsupported platform) must clamp to 1"
         );
+    }
+
+    /// The shared in-place sort orders unique numeric keys strictly ascending
+    /// and is idempotent (Phase 8 OUT-01: the sort is the pdqsort family, so
+    /// re-running it on an ordered slice must not change the order).
+    #[test]
+    fn sort_pairs_ascending_orders_numeric_keys_and_is_deterministic() {
+        let mut pairs = vec![
+            (9u128, 1u32),
+            (3, 2),
+            (17, 3),
+            (1, 4),
+            (0, 5),
+            (u128::MAX, 6),
+        ];
+        sort_pairs_ascending(&mut pairs);
+        let keys: Vec<u128> = pairs.iter().map(|(key, _)| *key).collect();
+        assert_eq!(keys, vec![0, 1, 3, 9, 17, u128::MAX]);
+        assert!(
+            keys.windows(2).all(|pair| pair[0] < pair[1]),
+            "unique numeric keys must ascend strictly"
+        );
+        let once = pairs.clone();
+        sort_pairs_ascending(&mut pairs);
+        assert_eq!(pairs, once, "re-sorting an ordered slice is idempotent");
     }
 }

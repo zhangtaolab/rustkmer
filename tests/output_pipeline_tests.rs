@@ -18,10 +18,12 @@
 //! `env!("CARGO_BIN_EXE_rustkmer")`, i.e. the real release-path executable
 //! under test.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use rustkmer::kmer::encoding::{decode_kmer_u128, encode_kmer_bytes_u128};
 use sha2::{Digest, Sha256};
 
 /// The fixed golden input — MUST match `tests/golden_generate.rs::GOLDEN_INPUT`
@@ -63,10 +65,12 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 /// Run the real CLI `count` command against `input`.
+///
+/// Every output-pipeline proof is canonical (`-C`), so the flag is fixed here
+/// rather than threaded through as another parameter.
 fn run_count(
     input: &Path,
     k: usize,
-    canonical: bool,
     threads: usize,
     format: &str,
     out: &Path,
@@ -80,15 +84,13 @@ fn run_count(
         .arg(k.to_string())
         .arg("-i")
         .arg(input)
+        .arg("-C")
         .arg("--threads")
         .arg(threads.to_string())
         .arg("-o")
         .arg(out)
         .arg("--format")
         .arg(format);
-    if canonical {
-        command.arg("-C");
-    }
     if quiet {
         command.arg("-q");
     }
@@ -170,7 +172,7 @@ fn sorted_rkdb_output_reproduces_the_committed_k21_canon_golden() {
     let input = golden_fasta(dir.path());
     let out = dir.path().join("golden-k21-canon-sorted.rkdb");
 
-    let output = run_count(&input, 21, true, 4, "binary", &out, true, &[]);
+    let output = run_count(&input, 21, 4, "binary", &out, true, &[]);
     assert_success(&output, "golden k21 canonical sorted");
 
     let bytes = fs::read(&out).expect("read sorted golden output");
@@ -197,7 +199,7 @@ fn sorted_rkdb_records_are_strictly_ascending() {
     );
     let out = dir.path().join("repeats.rkdb");
 
-    let output = run_count(&input, 21, true, 4, "binary", &out, true, &[]);
+    let output = run_count(&input, 21, 4, "binary", &out, true, &[]);
     assert_success(&output, "strictly-ascending fixture");
 
     let (_header_count, records) = read_rkdb(&out);
@@ -217,7 +219,7 @@ fn header_record_count_equals_the_number_of_records_on_disk() {
     let out = dir.path().join("header-count.rkdb");
 
     // No `-q`: the reported total is printed on stderr.
-    let output = run_count(&input, 21, true, 4, "binary", &out, false, &[]);
+    let output = run_count(&input, 21, 4, "binary", &out, false, &[]);
     assert_success(&output, "header record count");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -251,14 +253,201 @@ fn sorted_output_is_byte_identical_across_thread_counts() {
     let out_t1 = dir.path().join("sorted-t1.rkdb");
     let out_t4 = dir.path().join("sorted-t4.rkdb");
 
-    let t1 = run_count(&input, 21, true, 1, "binary", &out_t1, true, &[]);
+    let t1 = run_count(&input, 21, 1, "binary", &out_t1, true, &[]);
     assert_success(&t1, "sorted t1");
-    let t4 = run_count(&input, 21, true, 4, "binary", &out_t4, true, &[]);
+    let t4 = run_count(&input, 21, 4, "binary", &out_t4, true, &[]);
     assert_success(&t4, "sorted t4");
 
     assert_eq!(
         fs::read(&out_t1).expect("read t1 output"),
         fs::read(&out_t4).expect("read t4 output"),
         "sorted .rkdb bytes must be identical across thread counts"
+    );
+}
+
+// --- Task 3: numeric-key text order and the order-equivalence proof ---------
+
+/// Parse a `SEQ<TAB>COUNT` text count table; asserts no duplicate sequences.
+fn read_text_map(path: &Path) -> BTreeMap<String, u32> {
+    let content = fs::read_to_string(path).expect("read text output");
+    let mut map = BTreeMap::new();
+    for line in content.lines().filter(|line| !line.is_empty()) {
+        let (sequence, count) = line
+            .split_once('\t')
+            .unwrap_or_else(|| panic!("malformed count line: {line:?}"));
+        let previous = map.insert(
+            sequence.to_string(),
+            count.parse::<u32>().expect("numeric count"),
+        );
+        assert!(
+            previous.is_none(),
+            "text output repeats the sequence {sequence:?}"
+        );
+    }
+    map
+}
+
+/// Re-encode a decoded ACGT sequence to its numeric key.
+fn numeric_key(sequence: &str) -> u128 {
+    encode_kmer_bytes_u128(sequence.as_bytes()).expect("decoded output is ACGT only")
+}
+
+/// The ordering predicate shared by the property test and its control.
+fn sequences_are_non_decreasing(sequences: &[String]) -> bool {
+    sequences.windows(2).all(|pair| pair[0] <= pair[1])
+}
+
+/// Text output is ordered by the numeric encoded key (which equals the
+/// lexicographic order of the decoded sequences) for a repeat-rich fixture
+/// that also contains an N-bearing record.
+#[test]
+fn text_output_is_sorted_by_numeric_key() {
+    let dir = tempfile::tempdir().expect("tempdir for text order");
+    let input = dir.path().join("text-order.fa");
+    write_fasta(
+        &input,
+        &[
+            "ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT",
+            "AAAACCCCGGGGTTTTAAAACCCCGGGGTTTTAAAACCCCGGGGTTTTAAAA",
+            "ACGTACGTACGTNACGTACGTACGTACGTACGTACGTACGTACGTACGTA",
+            "GATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAG",
+            "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+        ],
+    );
+    let out = dir.path().join("text-order.tsv");
+
+    let output = run_count(&input, 21, 4, "text", &out, true, &[]);
+    assert_success(&output, "text numeric order");
+
+    let content = fs::read_to_string(&out).expect("read text output");
+    let sequences: Vec<&str> = content
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            line.split_once('\t')
+                .unwrap_or_else(|| panic!("malformed count line: {line:?}"))
+                .0
+        })
+        .collect();
+    assert!(!sequences.is_empty(), "fixture must produce k-mers");
+    assert!(
+        sequences.windows(2).all(|pair| pair[0] <= pair[1]),
+        "text output must be lexicographically ascending"
+    );
+    let numeric: Vec<u128> = sequences.iter().map(|seq| numeric_key(seq)).collect();
+    assert!(
+        numeric.windows(2).all(|pair| pair[0] < pair[1]),
+        "text output must be strictly ascending by numeric key (unique keys)"
+    );
+}
+
+/// `--threads 1` and `--threads 4` produce byte-identical text output.
+#[test]
+fn text_output_is_byte_identical_across_thread_counts() {
+    let dir = tempfile::tempdir().expect("tempdir for text identity");
+    let input = golden_fasta(dir.path());
+    let out_t1 = dir.path().join("text-t1.tsv");
+    let out_t4 = dir.path().join("text-t4.tsv");
+
+    let t1 = run_count(&input, 21, 1, "text", &out_t1, true, &[]);
+    assert_success(&t1, "text t1");
+    let t4 = run_count(&input, 21, 4, "text", &out_t4, true, &[]);
+    assert_success(&t4, "text t4");
+
+    assert_eq!(
+        fs::read(&out_t1).expect("read t1 text"),
+        fs::read(&out_t4).expect("read t4 text"),
+        "text output bytes must be identical across thread counts"
+    );
+}
+
+/// The text and binary outputs describe the same sequence -> count map.
+#[test]
+fn text_and_binary_maps_agree() {
+    let dir = tempfile::tempdir().expect("tempdir for map agreement");
+    let input = golden_fasta(dir.path());
+    let text_out = dir.path().join("maps.tsv");
+    let binary_out = dir.path().join("maps.rkdb");
+
+    let text_run = run_count(&input, 21, 4, "text", &text_out, true, &[]);
+    assert_success(&text_run, "text map");
+    let binary_run = run_count(&input, 21, 4, "binary", &binary_out, true, &[]);
+    assert_success(&binary_run, "binary map");
+
+    let text_map = read_text_map(&text_out);
+    let (_header_count, records) = read_rkdb(&binary_out);
+    let binary_map: BTreeMap<String, u32> = records
+        .into_iter()
+        .map(|(key, count)| (decode_kmer_u128(key, 21), count))
+        .collect();
+
+    assert_eq!(
+        text_map, binary_map,
+        "text and .rkdb outputs must carry the same sequence -> count map"
+    );
+}
+
+/// Sorting numerically then decoding yields non-decreasing sequences, and the
+/// numeric order is the SAME permutation as sorting the decoded strings, for
+/// every supported k in 1..=64 (deterministic seeded key sets).
+#[test]
+fn numeric_order_equals_decoded_order_for_every_k() {
+    for k in 1..=64usize {
+        let mask = if k == 64 {
+            u128::MAX
+        } else {
+            (1u128 << (2 * k)) - 1
+        };
+        let mut state: u64 = 0x9E37_79B9_7F4A_7C15 ^ (k as u64);
+        let mut keys: Vec<u128> = Vec::new();
+        for _ in 0..256 {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            let high = (state as u128) << 64;
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            keys.push((high | state as u128) & mask);
+        }
+        keys.sort_unstable();
+        keys.dedup();
+        assert!(
+            keys.len() >= 2,
+            "k={k}: the seeded generator must produce at least two distinct keys"
+        );
+
+        let decoded: Vec<String> = keys.iter().map(|&key| decode_kmer_u128(key, k)).collect();
+        assert!(
+            sequences_are_non_decreasing(&decoded),
+            "k={k}: numeric key order diverged from decoded-sequence order"
+        );
+
+        let mut by_string: Vec<(String, u128)> =
+            decoded.into_iter().zip(keys.iter().copied()).collect();
+        by_string.sort_by(|a, b| a.0.cmp(&b.0));
+        let string_order: Vec<u128> = by_string.into_iter().map(|(_, key)| key).collect();
+        assert_eq!(
+            string_order, keys,
+            "k={k}: decoded-string order is a different permutation than numeric order"
+        );
+    }
+}
+
+/// Control: the ordering predicate must be FALSE for a deliberately reversed
+/// order, so `numeric_order_equals_decoded_order_for_every_k` cannot pass
+/// vacuously. The wrong order is constructed here, never in production code.
+#[test]
+fn inverted_order_control_fails() {
+    let keys: Vec<u128> = (0u128..16).collect();
+    let mut decoded: Vec<String> = keys.iter().map(|&key| decode_kmer_u128(key, 4)).collect();
+    assert!(
+        sequences_are_non_decreasing(&decoded),
+        "the forward (numeric) order must satisfy the predicate"
+    );
+    decoded.reverse();
+    assert!(
+        !sequences_are_non_decreasing(&decoded),
+        "the predicate must reject a reversed order"
     );
 }
