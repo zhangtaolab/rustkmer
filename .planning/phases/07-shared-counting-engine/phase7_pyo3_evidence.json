@@ -1,0 +1,106 @@
+{
+  "msrv_clippy": {
+    "root_command": "cargo +1.82.0 clippy --locked --all-targets -- -D warnings",
+    "pyo3_command": "cargo +1.82.0 clippy --locked --all-targets --manifest-path pyo3/Cargo.toml -- -D warnings",
+    "toolchain": "1.82.0",
+    "result": "pass"
+  },
+  "release_build": {
+    "command": "cargo build --release --locked",
+    "result": "pass"
+  },
+  "full_test_suite": {
+    "command": "cargo test --locked",
+    "result": "pass",
+    "failures": 0
+  },
+  "bench_harness_unittests": {
+    "command": "python3 -m unittest discover -s scripts/bench/tests -t .",
+    "summary": "Ran 316 tests in 11.796s; OK (skipped=1)",
+    "result": "pass"
+  },
+  "one_extractor_greps": {
+    "rolling_encoder": {
+      "command": "grep -n RollingEncoder:: src/cli/commands/count.rs src/count/engine.rs pyo3/src/counter.rs",
+      "result": "no_match"
+    },
+    "indexed_window_loop": {
+      "command": "grep -n for i in 0..=( src/cli/commands/count.rs src/count/engine.rs pyo3/src/counter.rs",
+      "result": "no_match"
+    }
+  },
+  "one_extractor_call_sites": {
+    "command": "grep -n for_each_window( src/count/engine.rs src/cli/commands/count.rs pyo3/src/counter.rs",
+    "matches": [
+      "src/count/engine.rs:815",
+      "src/count/engine.rs:832",
+      "pyo3/src/counter.rs:309",
+      "pyo3/src/counter.rs:677"
+    ],
+    "note": "engine.rs lines are the sequential and parallel engine paths; counter.rs lines are add_sequence and process_sequence_into_local. src/cli/commands/count.rs delegates to the engine, so it has no direct extractor call."
+  },
+  "module_path": "/Users/forrest/GitHub/rustkmer/.venv311/lib/python3.11/site-packages/pyrustkmer/__init__.py",
+  "pytest_summary": "======================= 158 passed, 63 skipped in 0.12s ========================",
+  "manifest_freeze": true,
+  "manifest_freeze_proof": {
+    "command": "git diff --stat -- Cargo.toml pyo3/Cargo.toml Cargo.lock pyo3/Cargo.lock",
+    "output": "",
+    "result": "no_changes"
+  },
+  "n_read_parity": {
+    "fixture": "five reads: N first base, N last base, internal NN, internal NNNN, lowercase n with lowercase bases; all pre-filtered sequences >= 64 bases",
+    "k": [
+      21,
+      64
+    ],
+    "canonical": [
+      false,
+      true
+    ],
+    "pre_filter_vs_skip_n_maps_distinct": true,
+    "measured": [
+      {
+        "k": 21,
+        "canonical": false,
+        "pre_filter_total": 304,
+        "pre_filter_unique": 28,
+        "skip_n_total": 244,
+        "skip_n_unique": 8,
+        "maps_distinct": true
+      },
+      {
+        "k": 21,
+        "canonical": true,
+        "pre_filter_total": 304,
+        "pre_filter_unique": 24,
+        "skip_n_total": 244,
+        "skip_n_unique": 4,
+        "maps_distinct": true
+      },
+      {
+        "k": 64,
+        "canonical": false,
+        "pre_filter_total": 89,
+        "pre_filter_unique": 41,
+        "skip_n_total": 34,
+        "skip_n_unique": 4,
+        "maps_distinct": true
+      },
+      {
+        "k": 64,
+        "canonical": true,
+        "pre_filter_total": 89,
+        "pre_filter_unique": 40,
+        "skip_n_total": 34,
+        "skip_n_unique": 3,
+        "maps_distinct": true
+      }
+    ],
+    "note": "The pre-filter maps match the Python suite assertions; the skip-N maps differ for every k/canonical cell, so the new parity tests fail if the extractor cutover leaks CLI skip-N semantics into Python."
+  },
+  "notes": [
+    "Clippy gates are pinned to Rust 1.82.0 with --locked; the release build and cargo test use the active default toolchain.",
+    "The default (nightly) toolchain emits a pre-existing deprecation warning for AtomicU64::fetch_update in src/hash/table.rs:483; the file is untouched by this plan and the 1.82.0 clippy gates are warning-free.",
+    "D2's skip-N semantic change remains owned by Phase 9; Phase 7 intentionally retains Python's non-ACGT pre-filter."
+  ]
+}
