@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "mode": "synthetic",
+  "params": {
+    "k": 21,
+    "canonical": true,
+    "thread_counts": [
+      1,
+      4,
+      16
+    ],
+    "reps": 3,
+    "cooldown_s": 5,
+    "min_speedup": 1.3,
+    "rustkmer": "target/release/rustkmer",
+    "reads": 500000
+  },
+  "platform": {
+    "system": "Darwin",
+    "release": "25.6.0",
+    "machine": "arm64",
+    "python": "3.13.11"
+  },
+  "created": "2026-11-12T15:35:44.237878+00:00",
+  "input_fingerprint": [
+    {
+      "path": ".planning/phases/07-shared-counting-engine/inputA.fq",
+      "size_bytes": 157000000,
+      "sha256": "bd64b2c110decad996ff62e5da41e767f046817dafef3f7c453934849993771d"
+    }
+  ],
+  "arms": [
+    {
+      "name": "rk21-t1",
+      "tool": "rustkmer",
+      "threads": 1,
+      "reps": [
+        {
+          "wall_s": 6.65,
+          "peak_rss_bytes": 6629851136,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 6.41,
+          "peak_rss_bytes": 6631014400,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 2
+        },
+        {
+          "wall_s": 6.42,
+          "peak_rss_bytes": 6630948864,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 1
+        }
+      ],
+      "medians": {
+        "wall_s": 6.42,
+        "peak_rss_bytes": 6630948864,
+        "cv_wall_pct": 2.090904707845619,
+        "cv_warning": false
+      },
+      "unique_kmers": 64999000,
+      "total_kmers": 65000000
+    },
+    {
+      "name": "rk21-t4",
+      "tool": "rustkmer",
+      "threads": 4,
+      "reps": [
+        {
+          "wall_s": 4.21,
+          "peak_rss_bytes": 6641909760,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 4.09,
+          "peak_rss_bytes": 6645334016,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 3.94,
+          "peak_rss_bytes": 6639730688,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 2
+        }
+      ],
+      "medians": {
+        "wall_s": 4.09,
+        "peak_rss_bytes": 6641909760,
+        "cv_wall_pct": 3.3156248182521284,
+        "cv_warning": false
+      },
+      "unique_kmers": 64999000,
+      "total_kmers": 65000000
+    },
+    {
+      "name": "rk21-t16",
+      "tool": "rustkmer",
+      "threads": 16,
+      "reps": [
+        {
+          "wall_s": 4.03,
+          "peak_rss_bytes": 6646759424,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 2
+        },
+        {
+          "wall_s": 4.0,
+          "peak_rss_bytes": 6653460480,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 3.78,
+          "peak_rss_bytes": 6650052608,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 0
+        }
+      ],
+      "medians": {
+        "wall_s": 4.0,
+        "peak_rss_bytes": 6650052608,
+        "cv_wall_pct": 3.4675013089658417,
+        "cv_warning": false
+      },
+      "unique_kmers": 64999000,
+      "total_kmers": 65000000
+    }
+  ],
+  "schedule": {
+    "policy": "round-robin-rotation",
+    "warmup_order": [
+      "rk21-t1",
+      "rk21-t4",
+      "rk21-t16"
+    ],
+    "rounds": [
+      [
+        "rk21-t1",
+        "rk21-t4",
+        "rk21-t16"
+      ],
+      [
+        "rk21-t4",
+        "rk21-t16",
+        "rk21-t1"
+      ],
+      [
+        "rk21-t16",
+        "rk21-t1",
+        "rk21-t4"
+      ]
+    ]
+  },
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 2965056,
+      "sha256": "d107d17e7bc60846dbf886727ed656500d189ec32102fa7704f283068a3e35cf"
+    },
+    "git_commit": "aeabb4b526dff0ef0fbfe6eedb20fb9919d79f29",
+    "git_dirty": true,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-12T15:35:44.358507+00:00"
+  },
+  "verdict": {
+    "result": "GREEN",
+    "speedup_t4": 1.569682151589242,
+    "speedup_t16": 1.605,
+    "min_speedup": 1.3
+  }
+}
