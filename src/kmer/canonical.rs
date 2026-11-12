@@ -6,6 +6,11 @@ use crate::error::ProcessingResult;
 use crate::kmer::encoding::{decode_kmer, reverse_complement_u128};
 use crate::kmer::operations::reverse_complement_bits;
 
+// PAR-03: the rolling encoder maintains forward and reverse-complement state
+// together, so it lives in `encoding.rs`; re-export it here so canonical-aware
+// call sites can reach it through the canonical module.
+pub use crate::kmer::encoding::RollingEncoder;
+
 /// Get the canonical representation of a k-mer
 ///
 /// The canonical k-mer is the lexicographically smaller of the forward k-mer

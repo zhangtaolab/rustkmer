@@ -349,6 +349,306 @@ pub fn reverse_complement_u128(encoded: u128, length: usize) -> u128 {
     rc
 }
 
+// ========== ROLLING 2-BIT ENCODER (PAR-03) ==========
+
+/// Bit-parallel reverse complement of a right-aligned 2-bit-packed `u64` k-mer.
+///
+/// Valid for `length` in `1..=32`. The input is the right-aligned value the
+/// encoders in this module produce (bits `0..2*length` significant, upper bits
+/// ignored); the result is right-aligned in the same way and equals
+/// [`reverse_complement_u128`] narrowed to `u64` for every `k` in `1..=32`.
+///
+/// The implementation complements every 2-bit pair (which turns base `b` into
+/// `3 - b`), swaps adjacent 2-bit groups, swaps 4-bit groups, then reverses the
+/// byte order. The final right shift discards the complement of the unused high
+/// bits and right-aligns the k-mer.
+///
+/// This helper is the parity-tested primitive: the rolling hot path updates its
+/// reverse-complement state incrementally instead of calling it per window.
+///
+/// # Arguments
+/// * `encoded` - Right-aligned 2-bit-packed k-mer
+/// * `length` - K-mer length (`1..=32`)
+///
+/// # Returns
+/// The right-aligned 2-bit-packed reverse complement, or `0` when `length` is
+/// outside `1..=32` (the shift below would otherwise be undefined).
+///
+/// # Examples
+/// ```
+/// use rustkmer::kmer::encoding::{encode_kmer, reverse_complement_u64};
+///
+/// let forward = encode_kmer("ATGC").unwrap();
+/// assert_eq!(
+///     reverse_complement_u64(forward, 4),
+///     encode_kmer("GCAT").unwrap()
+/// );
+/// ```
+#[inline]
+pub fn reverse_complement_u64(encoded: u64, length: usize) -> u64 {
+    if length == 0 || length > MAX_KMER_SIZE_IN_U64 {
+        return 0;
+    }
+
+    let mut v = !encoded;
+    v = ((v & 0x3333_3333_3333_3333) << 2) | ((v >> 2) & 0x3333_3333_3333_3333);
+    v = ((v & 0x0F0F_0F0F_0F0F_0F0F) << 4) | ((v >> 4) & 0x0F0F_0F0F_0F0F_0F0F);
+    v = v.swap_bytes();
+    v >> (64 - 2 * length)
+}
+
+/// Rolling 2-bit encoder for k-mers of length 1 through 32 (PAR-03).
+///
+/// One pass over the sequence maintains a forward value and an incrementally
+/// updated reverse-complement value; each emitted window costs O(1) instead of
+/// the per-window O(k) encoder's re-scan.
+///
+/// # Value contract
+///
+/// For every emitted window the value equals the low `2*k` bits of
+/// [`encode_kmer_bytes_u128`] over that window in forward mode, or the minimum
+/// of that value and its [`reverse_complement_u128`] in canonical mode. Lowercase
+/// bases are accepted (ASCII uppercase); k values of zero and above 32 are
+/// rejected — callers must keep using the per-window u128 path there.
+///
+/// # Reset contract (T-06-11)
+///
+/// Any byte outside `A`, `C`, `G`, `T` (case-insensitive) resets the forward
+/// value, the reverse-complement value, and the valid-run length. Each call to
+/// [`Self::for_each`] / [`Self::try_for_each`] starts from a fresh state, so
+/// invoking it once per record means no window can span an `N` or a record
+/// boundary.
+///
+/// # Mask contract (T-06-07)
+///
+/// The forward value is masked to exactly `2*k` bits. `k = 32` uses
+/// `u64::MAX` rather than computing `1 << 64`, which would overflow.
+///
+/// # Examples
+/// ```
+/// use rustkmer::kmer::encoding::{
+///     encode_kmer_u128, reverse_complement_u128, RollingEncoder,
+/// };
+///
+/// let encoder = RollingEncoder::new(4, true).unwrap();
+/// let mut emitted = Vec::new();
+/// let skipped = encoder.for_each(b"ATGC", |value| emitted.push(value));
+///
+/// assert_eq!(skipped, 0);
+/// assert_eq!(emitted.len(), 1);
+/// let forward = encode_kmer_u128("ATGC").unwrap();
+/// let reverse = reverse_complement_u128(forward, 4);
+/// assert_eq!(emitted[0], forward.min(reverse) as u64);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RollingEncoder {
+    /// K-mer length, validated to `1..=32` at construction.
+    k: usize,
+    /// Left shift that places the newest base's complement in the reverse value.
+    shift: u32,
+    /// Low `2*k`-bit mask (all ones for k = 32).
+    mask: u64,
+    /// Whether emitted windows are canonicalized.
+    canonical: bool,
+}
+
+impl RollingEncoder {
+    /// Build a rolling encoder for `k` in `1..=32`.
+    ///
+    /// # Arguments
+    /// * `k` - K-mer length (`1..=32`)
+    /// * `canonical` - Emit the canonical (minimum of forward and reverse
+    ///   complement) value instead of the forward value
+    ///
+    /// # Returns
+    /// A reusable encoder. Its [`Self::for_each`] / [`Self::try_for_each`]
+    /// methods are stateless across calls, so one encoder can serve every
+    /// record of a file.
+    ///
+    /// # Errors
+    /// Returns [`KmerError::InvalidKmerSize`] when `k` is zero or greater than
+    /// [`MAX_KMER_SIZE_IN_U64`]; those k values must use the per-window u128
+    /// path.
+    ///
+    /// # Examples
+    /// ```
+    /// use rustkmer::kmer::encoding::RollingEncoder;
+    ///
+    /// assert!(RollingEncoder::new(0, false).is_err());
+    /// assert!(RollingEncoder::new(33, false).is_err());
+    /// assert!(RollingEncoder::new(32, true).is_ok());
+    /// ```
+    pub fn new(k: usize, canonical: bool) -> Result<Self, KmerError> {
+        if k == 0 || k > MAX_KMER_SIZE_IN_U64 {
+            return Err(KmerError::InvalidKmerSize(k as u32));
+        }
+
+        // Avoid the `1u64 << 64` overflow at the k = 32 boundary (T-06-07).
+        let mask = if k == MAX_KMER_SIZE_IN_U64 {
+            u64::MAX
+        } else {
+            (1u64 << (2 * k)) - 1
+        };
+
+        Ok(Self {
+            k,
+            shift: 2 * (k as u32 - 1),
+            mask,
+            canonical,
+        })
+    }
+
+    /// K-mer length this encoder emits.
+    pub fn k(&self) -> usize {
+        self.k
+    }
+
+    /// Whether emitted windows are canonicalized.
+    pub fn canonical_mode(&self) -> bool {
+        self.canonical
+    }
+
+    /// The low `2*k`-bit mask applied to the forward value.
+    ///
+    /// Exposed for the differential suite's k = 32 all-ones assertion.
+    pub fn mask(&self) -> u64 {
+        self.mask
+    }
+
+    /// Emit every valid window of `seq`, ignoring emit errors (none possible).
+    ///
+    /// See [`Self::try_for_each`] for the fallible form and the shared
+    /// semantics.
+    ///
+    /// # Returns
+    /// The number of windows skipped because they contained a non-ACGT byte.
+    ///
+    /// # Examples
+    /// ```
+    /// use rustkmer::kmer::encoding::RollingEncoder;
+    ///
+    /// let encoder = RollingEncoder::new(3, false).unwrap();
+    /// let mut values = Vec::new();
+    /// let skipped = encoder.for_each(b"ACGTNACG", |value| values.push(value));
+    ///
+    /// // Length 8, k = 3 -> 6 windows: ACG, CGT, GTN, TNA, NAC, ACG.
+    /// // The three windows containing the N are skipped.
+    /// assert_eq!(values.len(), 3);
+    /// assert_eq!(skipped, 3);
+    /// ```
+    pub fn for_each<F>(&self, seq: &[u8], mut emit: F) -> u64
+    where
+        F: FnMut(u64),
+    {
+        match self.emit_windows(seq, |value| -> Result<(), core::convert::Infallible> {
+            emit(value);
+            Ok(())
+        }) {
+            Ok(skipped) => skipped,
+            Err(never) => match never {},
+        }
+    }
+
+    /// Emit every valid window of `seq` into a fallible sink.
+    ///
+    /// A window is emitted only after `k` consecutive valid bases have been
+    /// seen. Any other byte resets the forward value, the reverse value, and the
+    /// valid-run length first.
+    ///
+    /// # Arguments
+    /// * `seq` - Raw sequence bytes; uppercase and lowercase ACGT are accepted
+    /// * `emit` - Called once per valid window, in left-to-right order
+    ///
+    /// # Returns
+    /// `Ok(skipped)` where `skipped` is the number of length-`k` windows that
+    /// contained at least one non-ACGT byte: `(len - k + 1) - emitted`, or `0`
+    /// when the sequence is shorter than `k`.
+    ///
+    /// # Errors
+    /// Propagates the first error returned by `emit` and stops the pass.
+    ///
+    /// # Examples
+    /// ```
+    /// use rustkmer::kmer::encoding::RollingEncoder;
+    ///
+    /// let encoder = RollingEncoder::new(3, false).unwrap();
+    /// let mut values = Vec::new();
+    /// let skipped: Result<u64, ()> = encoder.try_for_each(b"ACGTNACG", |value| {
+    ///     values.push(value);
+    ///     Ok(())
+    /// });
+    ///
+    /// // Length 8, k = 3 -> 6 windows; 3 contain the N -> 3 emitted.
+    /// assert_eq!(values.len(), 3);
+    /// assert_eq!(skipped.unwrap(), 3);
+    /// ```
+    #[inline]
+    pub fn try_for_each<E, F>(&self, seq: &[u8], emit: F) -> Result<u64, E>
+    where
+        F: FnMut(u64) -> Result<(), E>,
+    {
+        self.emit_windows(seq, emit)
+    }
+
+    /// Shared rolling pass: returns the skipped-window count or the sink's error.
+    #[inline]
+    fn emit_windows<E, F>(&self, seq: &[u8], mut emit: F) -> Result<u64, E>
+    where
+        F: FnMut(u64) -> Result<(), E>,
+    {
+        let k = self.k;
+        let mask = self.mask;
+        let shift = self.shift;
+
+        let mut forward: u64 = 0;
+        let mut reverse: u64 = 0;
+        let mut valid: usize = 0;
+        let mut emitted: u64 = 0;
+
+        for &byte in seq {
+            let base = match byte.to_ascii_uppercase() {
+                b'A' => 0u64,
+                b'C' => 1u64,
+                b'G' => 2u64,
+                b'T' => 3u64,
+                _ => {
+                    // T-06-11: never let a window span an invalid byte.
+                    forward = 0;
+                    reverse = 0;
+                    valid = 0;
+                    continue;
+                }
+            };
+
+            forward = ((forward << 2) | base) & mask;
+            reverse = (reverse >> 2) | ((3 - base) << shift);
+
+            // Saturate at k: once a full valid run exists every further valid
+            // base completes another window, and `valid` can never overflow.
+            if valid < k {
+                valid += 1;
+            }
+            if valid == k {
+                let value = if self.canonical {
+                    forward.min(reverse)
+                } else {
+                    forward
+                };
+                emit(value)?;
+                emitted += 1;
+            }
+        }
+
+        let total_windows = if seq.len() >= k {
+            (seq.len() - k + 1) as u64
+        } else {
+            0
+        };
+        debug_assert!(emitted <= total_windows);
+        Ok(total_windows - emitted)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
