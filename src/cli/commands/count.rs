@@ -795,7 +795,8 @@ fn decode_kmer(kmer: u128, k: usize) -> String {
 /// * `args_threads` - value of the `--threads` CLI flag (`None` if unset).
 /// * `rustkmer_threads` - parsed value of `RUSTKMER_THREADS`, if present and `>= 1`.
 /// * `rayon_num_threads` - parsed value of `RAYON_NUM_THREADS`, if present and `>= 1`.
-/// * `num_cpus` - the all-cores fallback (`num_cpus::get()` / `rayon::current_num_threads()`).
+/// * `num_cpus` - the all-cores fallback, computed lazily by the caller from
+///   `std::thread::available_parallelism()` (never a rayon pool query).
 ///
 /// # Returns
 /// The resolved thread count (`>= 1`).
@@ -829,10 +830,12 @@ pub fn resolve_thread_count_from(
 /// (the `filter` inside the pure resolver drops `< 1`) and fall through to
 /// the next tier rather than panicking — this is the T-02-01 mitigation.
 ///
-/// NOTE: `num_cpus` is a transitive dep via rayon (RESEARCH Assumption A1).
-/// We use `rayon::current_num_threads()` for the fallback because it is
-/// always reachable without a direct `num_cpus` dep and stays consistent
-/// with whatever pool rayon actually built.
+/// The all-cores fallback is computed LAZILY with
+/// `std::thread::available_parallelism()`. It must never query rayon for the
+/// current pool size: any rayon query eagerly initializes the default global
+/// pool, after which `build_global` returns `Err` and `--threads` silently
+/// does nothing (the v2.0 root cause this function exists to fix). Falling
+/// back to 1 on error keeps the pool well-formed on unsupported platforms.
 fn resolve_thread_count(args_threads: Option<usize>) -> usize {
     resolve_thread_count_from(
         args_threads,
@@ -842,7 +845,9 @@ fn resolve_thread_count(args_threads: Option<usize>) -> usize {
         std::env::var("RAYON_NUM_THREADS")
             .ok()
             .and_then(|v| v.parse::<usize>().ok()),
-        rayon::current_num_threads(),
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1),
     )
 }
 

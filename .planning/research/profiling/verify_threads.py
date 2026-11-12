@@ -59,7 +59,12 @@ EXIT_INVALID = 2
 DEFAULT_THREADS = (1, 4, 16)
 DEFAULT_TIMEOUT_S = 30.0
 POLL_INTERVAL_S = 0.05
-THREAD_LINE_RE = re.compile(r"^\s*\d+ Thread_", re.M)
+# `sample` can print the SAME thread id twice: once as a
+# ``Thread_<tid>: Main Thread`` call-graph summary header (seen when the
+# process is sampled during dyld startup) and once as the regular
+# ``Thread_<tid> ...`` per-thread section header. Match the id and count
+# UNIQUE ids so one OS thread is never double-counted.
+THREAD_ID_RE = re.compile(r"^\s*\d+\s+Thread_(\d+)", re.M)
 SAMPLE_REDIRECT_RE = re.compile(r"written to file (\S+)")
 
 
@@ -82,6 +87,18 @@ def invalid(message):
     sys.exit(EXIT_INVALID)
 
 
+def parse_thread_count(text):
+    """Count UNIQUE thread ids in a `sample` call-graph report.
+
+    `sample` sometimes emits the main thread twice (a
+    ``Thread_<tid>: Main Thread`` summary header plus the regular
+    ``Thread_<tid> ...`` section header), so counting matching lines would
+    over-report by one. Deduplicating by thread id makes the observed count
+    equal the real OS thread count.
+    """
+    return len(set(THREAD_ID_RE.findall(text)))
+
+
 def _thread_count(pid, sampler):
     """One observation attempt; None means 'not observable yet, retry'."""
     if sampler == "proc-task":
@@ -102,7 +119,7 @@ def _thread_count(pid, sampler):
             txt = Path(m.group(1)).read_text()
         except OSError:
             return None
-    return len(THREAD_LINE_RE.findall(txt))
+    return parse_thread_count(txt)
 
 
 def observe(proc, timeout_s, sampler):

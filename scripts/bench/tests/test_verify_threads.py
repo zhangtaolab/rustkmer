@@ -111,5 +111,34 @@ class TestSamplerSelection(unittest.TestCase):
         self.assertEqual(mod.sampler_for("Windows"), "unsupported")
 
 
+class TestThreadCountParsing(unittest.TestCase):
+    """`sample` output parsing counts OS threads, never text lines."""
+
+    def test_duplicate_main_thread_header_is_counted_once(self):
+        """A `Thread_<tid>: Main Thread` summary plus its section header is one thread."""
+        mod = load_helper_module()
+        text = (
+            "Call graph:\n"
+            "    136 Thread_18895681: Main Thread\n"
+            "    + 133 _dyld_start  (in dyld) + 0\n"
+            "    618 Thread_18895681   DispatchQueue_1: com.apple.main-thread  (serial)\n"
+            "    + 618 start  (in dyld) + 6992\n"
+            "    617 Thread_18895775\n"
+        )
+        self.assertEqual(mod.parse_thread_count(text), 2)
+
+    def test_distinct_threads_are_counted(self):
+        """One section header per thread yields the thread count."""
+        mod = load_helper_module()
+        text = (
+            "Call graph:\n"
+            "    618 Thread_100   DispatchQueue_1: com.apple.main-thread  (serial)\n"
+            "    617 Thread_101\n"
+            "    616 Thread_102\n"
+            "    615 Thread_103\n"
+        )
+        self.assertEqual(mod.parse_thread_count(text), 4)
+
+
 if __name__ == "__main__":
     unittest.main()
