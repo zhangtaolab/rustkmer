@@ -1,7 +1,7 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": null,
+  "milestone": "v2.0 — k=21 Counting Parity",
   "phases": [
     {
       "number": "1",
@@ -22,12 +22,47 @@
       "number": "4",
       "name": "Benchmark & Validation",
       "status": "complete"
+    },
+    {
+      "number": "5",
+      "name": "Measurement & Regression Harness",
+      "status": "in_progress"
+    },
+    {
+      "number": "6",
+      "name": "Parallelism Correctness & Hot Path",
+      "status": "pending"
+    },
+    {
+      "number": "7",
+      "name": "Shared Counting Engine",
+      "status": "pending"
+    },
+    {
+      "number": "8",
+      "name": "Output Pipeline & .rkdb v2 Parity",
+      "status": "pending"
+    },
+    {
+      "number": "9",
+      "name": "Python Parity",
+      "status": "pending"
+    },
+    {
+      "number": "10",
+      "name": "Benchmark Verdict",
+      "status": "pending"
+    },
+    {
+      "number": "11",
+      "name": "Minimizer Partitioning & Memory Ceiling",
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd-progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd-progress --next",
+    "label": "Advance to the next step",
+    "reason": "Phase 1 of 7 · 0% · executing"
   },
-  "updated_at": "2026-10-20T12:50:44.789Z"
+  "updated_at": "2026-11-12T02:11:21.819Z"
 }

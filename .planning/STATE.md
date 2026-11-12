@@ -2,14 +2,19 @@
 gsd_state_version: "1.0"
 milestone: v2.0
 milestone_name: k=21 Counting Parity
-status: planning
-last_updated: "2026-11-11T16:32:49.000Z"
+current_phase: 05
+current_phase_name: Measurement & Regression Harness
+status: executing
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-11-12T02:11:51.779Z"
 last_activity: 2026-11-12
+last_activity_desc: Phase 05 execution started
+state_head: 7b537effe0592a8786abe48c79aba2eb5a0e9af4
 progress:
   total_phases: 7
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 7
+  completed_plans: 1
   percent: 0
 ---
 
@@ -20,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-11)
 
 **Core value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools (KMC / Jellyfish class), from both the CLI and Python.
-**Current focus:** v2.0 k=21 Counting Parity — Phase 5 (Measurement & Regression Harness), ready to plan
+**Current focus:** Phase 05 — Measurement & Regression Harness
 
 ## Current Position
 
-Phase: 5 of 11 (Measurement & Regression Harness) — v2.0 spans Phases 5-11; Phase 11 conditional on D3
-Plan: — (not yet planned)
-Status: Ready to plan
-Last activity: 2026-11-12 — v2.0 roadmap created: 7 phases, 21/21 requirements mapped (18 committed + 3 conditional MINIM)
+Phase: 05 (Measurement & Regression Harness) — EXECUTING
+Plan: 2 of 7
+Status: Ready to execute
+Last activity: 2026-11-12 — Phase 05 execution started
 
 Progress: [░░░░░░░░░░] 0% (v2.0)
 
@@ -63,6 +68,11 @@ Progress: [░░░░░░░░░░] 0% (v2.0)
 - Trend: -
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 05 P01 | 37 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -76,6 +86,9 @@ Recent decisions affecting current work:
 - [v2.0 D2, ratified 2026-11-12]: unify N-read semantics on CLI skip-N; Python output changes on N-containing reads (user-accepted, never silent — WR-04 precedent)
 - [v2.0 D3, ratified 2026-11-12]: BENCH-V2-01 (KMC3 comparison) stays in v2.0; Phase 11 (MINIM-01..03) executes only if Stage A misses parity OR a memory ceiling Stage A cannot meet; otherwise descope/defer
 - [v2.0 roadmap, 2026-11-12]: Phases 5-11 continue v1.0 numbering; research flags on Phases 7/10/(11 if triggered); Phases 6+7 may merge at planning, 8/9 may overlap; never run Phase 10 before 8/9; goldens captured in Phase 5 before any hot-path refactor
+- [Phase 05]: [05-01] PROF-02 scaling gate reserves exit 1 for the measured RED verdict; infra failures exit 2 (__main__ guard), so an uncaught exception can never masquerade as expected-RED
+- [Phase 05]: [05-01] Shared binary_provenance/validate_provenance in bench.py: actual-bytes sha256 + git HEAD + dirty + profile; SCHEMA_VERSION stays 1, validate_schema untouched (v1 baselines load)
+- [Phase 05]: [05-01] Expected-RED verified twice freshness-bound: speedup_t4 1.005/0.977, speedup_t16 1.056/1.055 (<1.3), t1~t4~t16~13s on 500k synthetic reads; gate stays RED until Phase 6 PAR-01
 
 ### Pending Todos
 
@@ -99,8 +112,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12 (roadmapper)
-Stopped at: v2.0 ROADMAP.md + STATE.md written; REQUIREMENTS.md traceability populated (21/21); awaiting orchestrator presentation + user approval
+Last session: 2026-11-12T02:11:51.764Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
