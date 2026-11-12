@@ -2,7 +2,7 @@
 name = "rustkmer-pyo3"
 version = "0.5.0"
 edition = "2021"
-rust-version = "1.80"
+rust-version = "1.82"
 authors = ["RustKmer Team <team@rustkmer.org>"]
 description = "High-performance PyO3 Python bindings for rustkmer k-mer library"
 license = "MIT"

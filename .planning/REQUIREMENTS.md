@@ -5,7 +5,7 @@
 
 **Milestone goal:** Match or beat Jellyfish2 on human-scale counting (k=21, and k=31 under fair comparison) on BOTH the CLI and Python surfaces, closing the BENCH-02 gap. Approach ratified from empirical profiling (D1): the gap is parallel-scaling efficiency, not data structures — Stage A in-memory parallelism is the spine; minimizer/disk-backed (Stage B) is conditional (D3). N-read semantics unified on CLI skip-N (D2).
 
-**Evidence base:** `.planning/research/SUMMARY.md` + `.planning/research/profiling/` (HIGH-confidence measured root cause). Guardrails: exact u32 counts (fail-loud overflow), `.rkdb` v2 byte-identity, public CLI/Python APIs frozen, MSRV 1.80, Python ≥3.11, dual surface, benchmark honesty (parity before timing).
+**Evidence base:** `.planning/research/SUMMARY.md` + `.planning/research/profiling/` (HIGH-confidence measured root cause). Guardrails: exact u32 counts (fail-loud overflow), `.rkdb` v2 byte-identity, public CLI/Python APIs frozen, MSRV 1.82, Python ≥3.11, dual surface, benchmark honesty (parity before timing).
 
 ## v2.0 Requirements
 

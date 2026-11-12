@@ -40,7 +40,7 @@ Full detail: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md) · Summary
 **Guardrails (bind every phase's success criteria):**
 - Exact u32 counts; fail-loud overflow at `u32::MAX` with the verbatim contract-pinned message; checked arithmetic in every new summation — never saturating/wrapping.
 - `.rkdb` v2 byte-identity (sorted mode); single `format.rs` writer; frozen header literals (IN-03 total_kmers meanings preserved); public CLI/Python APIs unchanged — any break is a surfaced user decision only.
-- MSRV 1.80 / Python ≥3.11: the 1.80 toolchain must be installed (absent locally — Phase 5) and MSRV-aware clippy run on BOTH crates; audit new deps for edition-2024/MSRV/global-allocator traps.
+- MSRV 1.82 / Python ≥3.11: the 1.82 toolchain must be installed and MSRV-aware clippy run on BOTH crates; audit new deps for edition-2024/MSRV/global-allocator traps.
 - PyO3: `py.detach` + owned Send captures around all parallel/blocking work; no global allocator reachable from the core rlib/cdylib; rebuild (`maturin develop --release`) + module version-assert before every pytest.
 - Benchmark honesty: parity before timing; true per-rep cache_state; medians of counterbalanced reps; CI baselines only from the CI runner class; binary/module provenance (sha256 + commit + build profile) on every artifact.
 
@@ -64,7 +64,7 @@ Plans:
 - [ ] 05-06-PLAN.md — Python counting baseline + N-read differential (D2 evidence)
 - [ ] 05-07-PLAN.md — Standing CI gates + README procedures / Phase 6 handoff
 **Research flag**: none — standard patterns; the harness and profiling scripts already exist (`scripts/bench/`, `.planning/research/profiling/`); this is extension, not discovery.
-**Note**: Install the Rust 1.80 toolchain here (absent locally) so MSRV-aware clippy on both crates gates every later phase. Capture pre-refactor golden `.rkdb` sha256 baselines here (consumed by OUT-02 in Phase 8) — goldens must exist BEFORE any Phase 6/7 hot-path change lands; never regenerate them to make a diff green.
+**Note**: Install the Rust 1.82 toolchain here so MSRV-aware clippy on both crates gates every later phase. Capture pre-refactor golden `.rkdb` sha256 baselines here (consumed by OUT-02 in Phase 8) — goldens must exist BEFORE any Phase 6/7 hot-path change lands; never regenerate them to make a diff green.
 
 ### Phase 6: Parallelism Correctness & Hot Path
 **Goal**: Thread control actually works and the single-thread hot path is measurably faster while counts stay exactly equal — establishing the true t1 baseline and contention-free accumulation before the engine restructure.
@@ -133,7 +133,7 @@ Plans:
 **Conditional**: D3 (user-ratified 2026-11-12) — executes ONLY if Stage A misses the parity gate OR the user sets a memory ceiling Stage A cannot meet (e.g. beating KMC3 on RAM). If Stage A hits parity and memory is acceptable, MINIM-01..03 descope/defer to a later milestone. No new persistence engine; MSRV-clean hand-roll (no edition-2024 minimizer crates).
 **Requirements**: MINIM-01, MINIM-02, MINIM-03 (conditional)
 **Success Criteria** (what must be TRUE):
-  1. Hand-rolled canonical minimizer/signature extraction (KMC2 exclusion rules: AAA*/ACA*/internal AA) + super-mer runs passes a strand-invariance proptest (canonical minimizer = min(m-mer, revcomp(m-mer)), tie-breaks matching `canonical_kmer_u128`), MSRV 1.80-clean.
+  1. Hand-rolled canonical minimizer/signature extraction (KMC2 exclusion rules: AAA*/ACA*/internal AA) + super-mer runs passes a strand-invariance proptest (canonical minimizer = min(m-mer, revcomp(m-mer)), tie-breaks matching `canonical_kmer_u128`), MSRV 1.82-clean.
   2. Bins are skew-controlled: an adversarial poly-A input produces a bounded max/mean bucket ratio via adaptive re-partition (bucket histogram recorded); `--max-memory` counting admission accounts bytes honestly; the temp lifecycle uses a counting prefix paired with the prefix-based TTL sweep selector (`DiskOverflow` not reused).
   3. Disk-backed bucket spill reads via BufReader (never mmap under an RSS budget), and a bounded-RAM proof is measured as a max(rss, phys_footprint) red/green gate; the KMC3 memory comparison is recorded.
   4. Exact counts and `.rkdb` v2 byte-identity survive the disk-backed path: the differential matrix, golden sha256, and both-consumer sortedness proofs stay green; overflow fails loud with the verbatim message.

@@ -260,7 +260,7 @@ cargo build --release
 ### 系统要求
 
 - Python 3.8+
-- Rust 1.80+ (推荐使用stable版本)
+- Rust 1.82+ (推荐使用stable版本)
 - 足够的内存处理大型数据集
 - 对于大型基因组文件，建议使用SSD存储
 
@@ -941,7 +941,7 @@ python -c "from pyrustkmer import PyDatabase; print('✅ PyO3 扩展就绪!')"
 
 **⚠️ 环境要求**:
 - **Python版本**: 推荐 3.11-3.12
-- **Rust工具链**: stable 1.80+
+- **Rust工具链**: stable 1.82+
 - **编译环境**: 需要C/C++编译器
 - **内存**: 编译时需要额外内存
 
@@ -1180,7 +1180,7 @@ source ~/.zshrc
 **问题5: PyO3 扩展编译失败**
 ```bash
 # 检查 Rust 工具链
-rustc --version  # 需要 1.80+
+rustc --version  # 需要 1.82+
 
 # 检查 Python 开发头文件
 python3 -c "import sysconfig; print(sysconfig.get_path('include'))"

@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.80.0
+          toolchain: 1.82.0
           components: clippy
       - uses: actions/cache@v4
         with:
@@ -61,11 +61,11 @@ jobs:
           # key means whichever job finishes last overwrites the other's
           # partial-compile artifacts, racing cargo's own single-writer
           # invariant for `target/`. The job-name segment gives each job its
-          # own writable cache slot. The msrv180 restore prefix is also
+          # own writable cache slot. The msrv182 restore prefix is also
           # toolchain-specific: stable test artifacts never restore into or
-          # overwrite the Rust 1.80 clippy cache.
-          key: ${{ runner.os }}-cargo-clippy-msrv180-${{ hashFiles('Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-clippy-msrv180-
+          # overwrite the Rust 1.82 clippy cache.
+          key: ${{ runner.os }}-cargo-clippy-msrv182-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-clippy-msrv182-
       - run: cargo clippy --locked --all-targets -- -D warnings
 
   test-root:
@@ -87,7 +87,7 @@ jobs:
             target
           # Distinct cache namespace per job (CR-04) — see clippy-root for
           # the rationale. test-root gets its own writable cache key and
-          # stable-only restore prefix, separate from clippy-root's msrv180
+          # stable-only restore prefix, separate from clippy-root's msrv182
           # namespace so artifacts built by different toolchains never mix.
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-root-
@@ -105,7 +105,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.80.0
+          toolchain: 1.82.0
           components: clippy
       - uses: actions/setup-python@v5
         with:
@@ -118,8 +118,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             pyo3/target
-          key: ${{ runner.os }}-cargo-pyo3-msrv180-${{ hashFiles('pyo3/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-pyo3-msrv180-
+          key: ${{ runner.os }}-cargo-pyo3-msrv182-${{ hashFiles('pyo3/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-pyo3-msrv182-
       - name: clippy (pyo3)
         working-directory: pyo3
         run: cargo clippy --locked --all-targets -- -D warnings
@@ -162,8 +162,8 @@ jobs:
           # rationale): pyo3-pytest runs in parallel with pyo3-build against
           # the same pyo3/target dir, so it must not write pyo3-build's key.
           # The shared restore-keys prefix warm-restores stable pytest
-          # artifacts only; pyo3-build uses a separate msrv180 prefix so its
-          # Rust 1.80 artifacts cannot enter this stable job's cache.
+          # artifacts only; pyo3-build uses a separate msrv182 prefix so its
+          # Rust 1.82 artifacts cannot enter this stable job's cache.
           key: ${{ runner.os }}-cargo-pyo3-test-${{ hashFiles('pyo3/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-pyo3-
       - name: maturin build (wheel)

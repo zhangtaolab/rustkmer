@@ -84,12 +84,12 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 
 ## Constraints
 
-- **Tech stack**: Rust 1.80+ stable, PyO3 0.27.2, existing dependency set (rayon, memmap2, hashbrown, bio, byteorder, parking_lot, flate2/bzip2/xz2) — work within the established stack rather than introducing a new persistence engine
+- **Tech stack**: Rust 1.82+ stable, PyO3 0.27.2, existing dependency set (rayon, memmap2, hashbrown, bio, byteorder, parking_lot, flate2/bzip2/xz2) — work within the established stack rather than introducing a new persistence engine
 - **Compatibility**: preserve the `.rkdb` v2 on-disk format and the public CLI / Python APIs unless a specific perf win justifies a breaking change — and then only after surfacing the tradeoff explicitly
 - **Dual surface**: changes must benefit (or at least not regress) both the CLI and `pyrustkmer`; the shared core is the delivery vehicle
 - **Memory**: human-genome-scale count/merge must fit within practical RAM; the concrete ceiling is set when the reference tool is pinned
 - **Benchmark**: real human-scale Illumina WGS data (CRR1936095, 150 bp PE, ~5.2 GB gzipped r1 across split parts) is available locally and is the primary target; the harness must be reproducible, run in CI as a regression gate, and degrade to slices/synthetic inputs where the full dataset is absent
-- **Version policy (normalized 2026-11-11)**: Rust MSRV 1.80 enforced via `rust-version = "1.80"` in both `Cargo.toml` manifests; Python floor 3.11+ per `pyo3/pyproject.toml`. New code must use only APIs available at 1.80 (the `clippy::incompatible_msrv` gate is active under `-D warnings`)
+- **Version policy (normalized 2026-11-11; MSRV raise user-approved 2026-11-12)**: Rust MSRV 1.82 enforced via `rust-version = "1.82"` in both `Cargo.toml` manifests; Python floor 3.11+ per `pyo3/pyproject.toml`. New code must use only APIs available at 1.82 (the `clippy::incompatible_msrv` gate is active under `-D warnings`)
 
 ## Key Decisions
 
