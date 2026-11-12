@@ -1,35 +1,20 @@
 //! Count command implementation
 //!
-//! Implements the k-mer counting functionality.
+//! Implements the k-mer counting functionality. Every resolved thread count
+//! counts through the shared [`CountEngine`]: `--threads 1` takes its
+//! sequential path and `--threads > 1` its persistent worker pipeline.
 
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Instant;
-
-use rayon::prelude::*;
 
 use crate::cli::args::Args;
 use crate::count::{CountEngine, CountResult, EngineConfig, SequenceKind};
 use crate::database::format::{DatabaseHeader, KmerEntry, DATABASE_MAGIC, DATABASE_VERSION};
 use crate::error::{KmerError, ProcessingResult};
-use crate::hash::filtering::{CountFilter, FilteringResult};
-use crate::hash::local::LocalKmerCounts;
-use crate::hash::table::KmerCounter;
+use crate::hash::filtering::CountFilter;
 use crate::io::discovery::{DiscoveryConfig, FileDiscovery};
-use crate::io::fasta::{validate_fasta_file, FastaProcessor};
+use crate::io::fasta::validate_fasta_file;
 use crate::io::fastq::{validate_fastq_file, FastqProcessor};
-use crate::kmer::extract::{for_each_window, WindowError};
-
-/// Bounded record-chunk size for the intra-file per-record rayon `par_iter`
-/// (D-01). The producer loop reads+decompresses sequentially (gzip stays
-/// single-threaded, D-02) and buffers up to `CHUNK_SIZE` records before
-/// handing the chunk to rayon workers; the chunk is drained (`clear()`'d)
-/// after each `par_iter`, bounding the additional memory to one chunk on top
-/// of the DashMap. 4096 is the RESEARCH-recommended starting point (D-
-/// discretion); Phase 4's benchmark will sweep this. Keeping it bounded (not
-/// buffer-all) is critical because the u128 HashMap is already memory-heavy
-/// (CONCERNS.md).
-const CHUNK_SIZE: usize = 4096;
 
 /// Detect a sequence file's format from its (compression-aware) extension.
 ///
@@ -89,63 +74,6 @@ fn detect_sequence_kind(path: &Path) -> ProcessingResult<SequenceKind> {
                 Ok(SequenceKind::Fastq)
             } else {
                 Ok(SequenceKind::Fasta)
-            }
-        }
-    }
-}
-
-/// Counting source presented to the frozen output writers.
-///
-/// Phase 7 routes `--threads 1` through the engine and keeps `--threads > 1`
-/// on the legacy [`KmerCounter`]; both must write byte-identical output, so
-/// the output functions consume this adapter instead of either concrete type.
-enum CountOutput<'a> {
-    /// Legacy shared counter (the `--threads > 1` path in this plan).
-    Counter(&'a KmerCounter),
-    /// Shared engine result.
-    Engine(&'a CountResult),
-}
-
-impl CountOutput<'_> {
-    /// K-mer length of the underlying source.
-    fn kmer_length(&self) -> usize {
-        match self {
-            Self::Counter(counter) => counter.get_kmer_length(),
-            Self::Engine(result) => result.kmer_length(),
-        }
-    }
-
-    /// Canonical mode of the underlying source.
-    fn canonical_mode(&self) -> bool {
-        match self {
-            Self::Counter(counter) => counter.canonical_mode(),
-            Self::Engine(result) => result.canonical_mode(),
-        }
-    }
-
-    /// Apply the optional count filter, with `KmerCounter` semantics.
-    fn filtered_pairs(&self, filter: &Option<CountFilter>) -> Vec<(u128, u32)> {
-        match self {
-            Self::Counter(counter) => counter.get_filtered_kmers(filter),
-            Self::Engine(result) => result.filtered_pairs(filter),
-        }
-    }
-
-    /// Filtering statistics, with `KmerCounter` semantics.
-    fn filtering_stats(&self, filter: &Option<CountFilter>) -> FilteringResult {
-        match self {
-            Self::Counter(counter) => counter.get_filtering_stats(filter),
-            Self::Engine(result) => result.filtering_stats(filter),
-        }
-    }
-
-    /// `(total_kmers, unique_kmers)` with the IN-03 meanings.
-    fn total_and_unique(&self) -> (u64, u64) {
-        match self {
-            Self::Counter(counter) => (counter.total_kmers(), counter.unique_kmers()),
-            Self::Engine(result) => {
-                let stats = result.stats();
-                (stats.total_kmers, stats.unique_kmers)
             }
         }
     }
@@ -254,14 +182,26 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 input.iter().map(|s| Path::new(s).to_path_buf()).collect()
             };
 
+            // Phase 7: every resolved thread count counts through the shared
+            // engine. `--threads 1` uses its sequential path and `--threads > 1`
+            // its persistent worker pipeline; the engine is constructed once so
+            // multi-file statistics stay cumulative and workers persist across
+            // files.
+            let mut engine =
+                CountEngine::new(EngineConfig::new(*k, *canonical, resolved_threads, *size))?;
+
             if *verbose {
                 eprintln!("rustkmer count starting...");
                 eprintln!("K-mer size: {}", k);
                 eprintln!("Canonical mode: {}", canonical);
-                eprintln!(
-                    "Processing mode: parallel ({} rayon workers, {} records/chunk)",
-                    resolved_threads, CHUNK_SIZE
-                );
+                if engine.worker_count() == 0 {
+                    eprintln!("Processing mode: sequential engine (caller thread, no workers)");
+                } else {
+                    eprintln!(
+                        "Processing mode: parallel engine ({} persistent counting workers)",
+                        engine.worker_count()
+                    );
+                }
                 eprintln!("Hash table size: {}", size);
                 eprintln!("Threads: {}", resolved_threads);
 
@@ -282,195 +222,57 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             let start_time = Instant::now();
             let filter = args.command.create_count_filter();
 
-            // Phase 7: `--threads 1` runs through the shared counting engine's
-            // true sequential path (no producer thread, no worker threads), so
-            // the t1 baseline stays an honest single-thread measurement.
-            // `--threads > 1` keeps the Phase 6 legacy per-chunk rayon path
-            // until 07-02 lands the persistent worker pipeline.
-            let shared_counter: Option<Arc<KmerCounter>>;
-            let engine_result: Option<CountResult>;
+            for (file_idx, file_path_obj) in files_to_process.iter().enumerate() {
+                if !*quiet {
+                    eprintln!(
+                        "Processing file {}/{}: {}",
+                        file_idx + 1,
+                        files_to_process.len(),
+                        file_path_obj.display()
+                    );
+                }
 
-            if resolved_threads == 1 {
-                let mut engine =
-                    CountEngine::new(EngineConfig::new(*k, *canonical, resolved_threads, *size))?;
-                for (file_idx, file_path_obj) in files_to_process.iter().enumerate() {
-                    if !*quiet {
+                let kind = detect_sequence_kind(file_path_obj)?;
+                if *verbose && kind == SequenceKind::Fastq {
+                    // Mirror the legacy per-file compression note.
+                    let processor = FastqProcessor::new(file_path_obj);
+                    eprintln!(
+                        "  FASTQ file detected (compression: {})",
+                        processor.compression_type().name()
+                    );
+                }
+
+                let file_stats = engine.count_file(file_path_obj, kind).map_err(|e| {
+                    KmerError::ProcessingError(format!(
+                        "Failed to process file {}: {}",
+                        file_path_obj.display(),
+                        e
+                    ))
+                })?;
+
+                // One warning per 4096-record batch that contained skipped
+                // windows, with the legacy wording.
+                if *show_warnings {
+                    for skip_count in &file_stats.skipped_batches {
                         eprintln!(
-                            "Processing file {}/{}: {}",
-                            file_idx + 1,
-                            files_to_process.len(),
-                            file_path_obj.display()
+                            "Warning: Skipped {} k-mer{} with invalid characters in chunk",
+                            skip_count,
+                            if *skip_count == 1 { "" } else { "s" },
                         );
-                    }
-
-                    let kind = detect_sequence_kind(file_path_obj)?;
-                    let file_stats = engine.count_file(file_path_obj, kind).map_err(|e| {
-                        KmerError::ProcessingError(format!(
-                            "Failed to process file {}: {}",
-                            file_path_obj.display(),
-                            e
-                        ))
-                    })?;
-
-                    // One warning per 4096-record batch that contained skipped
-                    // windows, with the legacy wording.
-                    if *show_warnings {
-                        for skip_count in &file_stats.skipped_batches {
-                            eprintln!(
-                                "Warning: Skipped {} k-mer{} with invalid characters in chunk",
-                                skip_count,
-                                if *skip_count == 1 { "" } else { "s" },
-                            );
-                        }
-                    }
-
-                    if !*quiet {
-                        let elapsed = start_time.elapsed().as_secs_f64();
-                        eprintln!("  Total k-mers processed: {}", file_stats.stats.total_kmers);
-                        eprintln!("  Unique k-mers found: {}", file_stats.stats.unique_kmers);
-                        eprintln!("  Elapsed time: {:.2} seconds", elapsed);
                     }
                 }
 
-                engine_result = Some(engine.finish().map_err(|e| {
-                    KmerError::ProcessingError(format!("Failed to finalize counting: {}", e))
-                })?);
-                shared_counter = None;
-            } else {
-                // Create k-mer counter. The 4th param is a stats/reporting slot
-                // (table.rs `_num_threads`); the real pool config is the
-                // build_global call above (per PATTERNS.md note on table.rs:44).
-                let counter = Arc::new(KmerCounter::new(
-                    *k,
-                    *canonical,
-                    *size,
-                    resolved_threads,
-                )?);
-
-                // Process each file
-                for (file_idx, file_path_obj) in files_to_process.iter().enumerate() {
-                    if !*quiet {
-                        eprintln!(
-                            "Processing file {}/{}: {}",
-                            file_idx + 1,
-                            files_to_process.len(),
-                            file_path_obj.display()
-                        );
-                    }
-
-                    // Determine file format and process
-                    let result = match detect_file_type(file_path_obj) {
-                        Some("fasta") => {
-                            // Validate FASTA file
-                            validate_fasta_file(file_path_obj)?;
-
-                            // Process FASTA file
-                            let processor = FastaProcessor::new(file_path_obj);
-                            process_fasta_file(
-                                &processor,
-                                &counter,
-                                *k,
-                                *canonical,
-                                *quiet,
-                                *verbose,
-                                *show_warnings,
-                            )
-                        }
-                        Some("fastq") => {
-                            // Validate FASTQ file
-                            validate_fastq_file(file_path_obj)?;
-
-                            // Process FASTQ file
-                            let processor = FastqProcessor::new(file_path_obj);
-                            if *verbose {
-                                eprintln!(
-                                    "  FASTQ file detected (compression: {})",
-                                    processor.compression_type().name()
-                                );
-                            }
-                            process_fastq_file(
-                                &processor,
-                                &counter,
-                                *k,
-                                *canonical,
-                                *quiet,
-                                *verbose,
-                                *show_warnings,
-                            )
-                        }
-                        _ => {
-                            // Try to auto-detect format
-                            let file_path_str = file_path_obj.to_string_lossy();
-                            if file_path_str.to_ascii_lowercase().contains("fastq")
-                                || file_path_str.to_ascii_lowercase().contains("fq")
-                            {
-                                let processor = FastqProcessor::new(file_path_obj);
-                                process_fastq_file(
-                                    &processor,
-                                    &counter,
-                                    *k,
-                                    *canonical,
-                                    *quiet,
-                                    *verbose,
-                                    *show_warnings,
-                                )
-                            } else {
-                                // Default to FASTA
-                                let processor = FastaProcessor::new(file_path_obj);
-                                process_fasta_file(
-                                    &processor,
-                                    &counter,
-                                    *k,
-                                    *canonical,
-                                    *quiet,
-                                    *verbose,
-                                    *show_warnings,
-                                )
-                            }
-                        }
-                    };
-
-                    if let Err(e) = result {
-                        return Err(KmerError::ProcessingError(format!(
-                            "Failed to process file {}: {}",
-                            file_path_obj.display(),
-                            e
-                        ))
-                        .into());
-                    }
-
-                    // PAR-02: reduce THIS file's per-worker locals into the
-                    // shared table before its statistics are printed. Doing it
-                    // per file (not once at process end) keeps multi-file
-                    // statistics correct, releases each worker's table memory
-                    // before the next file, and advances the registry
-                    // generation so a drained local can never be reused (which
-                    // would double-count file 1 into file 2).
-                    counter.reduce_local_counts()?;
-
-                    if !*quiet {
-                        let elapsed = start_time.elapsed().as_secs_f64();
-                        let stats = counter.get_stats();
-                        eprintln!("  Total k-mers processed: {}", stats.total_kmers);
-                        eprintln!("  Unique k-mers found: {}", stats.unique_kmers);
-                        eprintln!("  Elapsed time: {:.2} seconds", elapsed);
-                    }
+                if !*quiet {
+                    let elapsed = start_time.elapsed().as_secs_f64();
+                    eprintln!("  Total k-mers processed: {}", file_stats.stats.total_kmers);
+                    eprintln!("  Unique k-mers found: {}", file_stats.stats.unique_kmers);
+                    eprintln!("  Elapsed time: {:.2} seconds", elapsed);
                 }
-
-                shared_counter = Some(counter);
-                engine_result = None;
             }
 
-            let count_output = match (shared_counter.as_ref(), engine_result.as_ref()) {
-                (Some(counter), _) => CountOutput::Counter(counter.as_ref()),
-                (_, Some(result)) => CountOutput::Engine(result),
-                _ => {
-                    return Err(KmerError::ProcessingError(
-                        "Counting produced no output source".to_string(),
-                    )
-                    .into())
-                }
-            };
+            let count_result = engine.finish().map_err(|e| {
+                KmerError::ProcessingError(format!("Failed to finalize counting: {}", e))
+            })?;
 
             // Generate output
             if let Some(output_file) = output {
@@ -478,17 +280,11 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
 
                 match format.as_str() {
                     "text" => {
-                        output_text_format(
-                            &count_output,
-                            output_path,
-                            *quiet,
-                            should_sort,
-                            &filter,
-                        )?;
+                        output_text_format(&count_result, output_path, *quiet, should_sort, &filter)?;
                     }
                     _ => {
                         output_binary_format(
-                            &count_output,
+                            &count_result,
                             output_path,
                             *quiet,
                             should_sort,
@@ -499,8 +295,9 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             }
 
             let total_time = start_time.elapsed();
-            let (total_kmers, unique_kmers) = count_output.total_and_unique();
-            let filtering_stats = count_output.filtering_stats(&filter);
+            let stats = count_result.stats();
+            let (total_kmers, unique_kmers) = (stats.total_kmers, stats.unique_kmers);
+            let filtering_stats = count_result.filtering_stats(&filter);
 
             if !*quiet {
                 eprintln!("Counting completed successfully!");
@@ -540,282 +337,9 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
     }
 }
 
-/// Number of records handed to one rayon task in the local-accumulation hot
-/// loop. Each task locks its worker's local accumulator once per sub-slice
-/// (never per k-mer window); 64 records is roughly 8-10k windows for typical
-/// 150 bp reads, large enough to amortize the lock and small enough to keep
-/// work-stealing fine-grained.
-const SUBSLICE_RECORDS: usize = 64;
-
-/// Per-record window-extraction → local-increment body, shared by the FASTA
-/// and FASTQ parallel paths.
-///
-/// **ENGINE-03:** delegates to the ONE shared extractor
-/// [`for_each_window`], which owns the skip-N/record-boundary semantics for
-/// k 1..=64 (rolling encoder for k <= 32, per-window u128 reference for
-/// 33..=64). There is no second encode loop here, so the legacy per-chunk
-/// path and the engine cannot drift on `N` handling.
-///
-/// **PAR-02:** counts go into the worker's [`LocalKmerCounts`], not the shared
-/// `KmerCounter`, so the hot loop performs no shared `increment` and no atomic
-/// fetch-add. `local.record_skipped()` preserves the pre-PAR-02 skipped-window
-/// accounting; the producer derives the per-chunk warning from the local
-/// skipped-total delta (WR-02: one `eprintln!` per chunk from the
-/// single-threaded producer, never from a rayon worker).
-fn count_record_into(
-    local: &mut LocalKmerCounts,
-    seq: &[u8],
-    k: usize,
-    canonical: bool,
-) -> ProcessingResult<()> {
-    let summary = for_each_window(seq, k, canonical, |value| {
-        local.increment(value).map_err(|e| {
-            KmerError::ProcessingError(format!("Failed to increment k-mer count: {}", e))
-        })
-    })
-    .map_err(|error| match error {
-        WindowError::InvalidK(invalid) => {
-            KmerError::ProcessingError(format!("Invalid k-mer size: {}", invalid))
-        }
-        WindowError::Emit(error) => error,
-    })?;
-
-    for _ in 0..summary.skipped {
-        local.record_skipped();
-    }
-
-    Ok(())
-}
-
-/// Count a chunk of records into the per-worker locals.
-///
-/// `par_chunks` + `try_for_each_init` gives every rayon task the calling
-/// worker's reusable accumulator (a lock-free TLS fast path) and locks it once
-/// per record sub-slice. Errors short-circuit the chunk, mirroring the old
-/// `try_fold`/`try_reduce` behavior.
-fn count_chunk_into_locals<R, F>(
-    records: &[R],
-    seq_of: F,
-    counter: &Arc<KmerCounter>,
-    k: usize,
-    canonical: bool,
-) -> ProcessingResult<()>
-where
-    R: Sync,
-    F: Fn(&R) -> &[u8] + Sync,
-{
-    records.par_chunks(SUBSLICE_RECORDS).try_for_each_init(
-        || counter.local_handle(),
-        |handle, sub_slice| -> ProcessingResult<()> {
-            let mut local = handle
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            for record in sub_slice {
-                count_record_into(&mut local, seq_of(record), k, canonical)?;
-            }
-            Ok(())
-        },
-    )
-}
-
-/// Process a FASTA file and count k-mers.
-///
-/// **Parallelization (D-01):** the producer reads records sequentially (gzip
-/// decompression stays single-threaded, D-02 — `bio`'s reader is sequential)
-/// into a bounded `Vec<Record>` of size [`CHUNK_SIZE`], then hands the chunk
-/// to rayon via `chunk.par_iter().try_for_each(..)`. After each chunk the Vec
-/// is `clear()`'d, bounding memory to one chunk on top of the DashMap.
-///
-/// **Why bypass `FastaProcessor::process_file` (W-3 / known integration
-/// issue):** `process_file` takes a `FnMut(&Record) -> ProcessingResult<()>`
-/// callback where `&Record` is borrowed for the lifetime of the reader's
-/// iterator — there is no way to move those borrowed records into a `Vec`
-/// that outlives the call so it can be `par_iter`'d. Instead we read records
-/// directly via `bio::io::fasta::Reader::new(..).records()` (which yields
-/// owned `Record`s) into our own chunk buffer, then `par_iter` the buffer.
-/// The processor is still used for path handling and compression detection
-/// upstream; only the per-record callback path is bypassed here.
-fn process_fasta_file(
-    processor: &FastaProcessor,
-    counter: &Arc<KmerCounter>,
-    k: usize,
-    canonical: bool,
-    _quiet: bool,
-    _verbose: bool,
-    show_warnings: bool,
-) -> ProcessingResult<()> {
-    use crate::error::ProcessingError;
-    use crate::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
-
-    // WR-01: route the FASTA path through the same compression-aware opener
-    // the FASTQ sibling path uses (`DefaultCompressedFileReader::open_compressed`
-    // transparently handles gzip/bzip2/xz, and for an uncompressed file just
-    // returns a plain BufReader). Previously this branch opened the file via
-    // plain `File::open` + `BufReader`, so a `.fa.gz` / `.fasta.gz` /
-    // `.fna.gz` / `.ffn.gz` input would be parsed as raw deflate bytes by
-    // `bio`'s reader — silently producing garbage sequences and 0 counted
-    // k-mers, or erroring out on the first "record". The CLI file-type
-    // router already dispatches those extensions to this branch, so the
-    // silent-wrong-results bug was reachable from a normal `rustkmer count
-    // input.fa.gz` invocation. (`CompressedFileReader` lives in `src/io/
-    // fastq.rs` but the implementation is format-agnostic; consider
-    // relocating/renaming during a future hardening pass.)
-    let (reader, _compression) = DefaultCompressedFileReader::open_compressed(
-        processor.file_path().as_ref(),
-    )
-    .map_err(|e| {
-        ProcessingError::with_context(
-            format!("Failed to open FASTA file: {}", processor.file_path()),
-            e,
-        )
-    })?;
-    let reader = bio::io::fasta::Reader::new(reader);
-
-    let mut chunk: Vec<bio::io::fasta::Record> = Vec::with_capacity(CHUNK_SIZE);
-
-    for record_result in reader.records() {
-        let record = record_result.map_err(|e| {
-            ProcessingError::with_context(
-                format!(
-                    "Error reading FASTA record from file: {}",
-                    processor.file_path()
-                ),
-                e,
-            )
-        })?;
-
-        chunk.push(record);
-
-        if chunk.len() == CHUNK_SIZE {
-            // PAR-02: hand the chunk to rayon workers, which accumulate into
-            // their own local tables. The per-chunk skipped count is the delta
-            // of the summed local skip counters before/after the chunk, so the
-            // one-warning-per-chunk behavior and wording are preserved without
-            // any shared per-window state.
-            let skipped_before = counter.local_skipped();
-            count_chunk_into_locals(&chunk, |record| record.seq(), counter, k, canonical)?;
-            let chunk_skips = counter.local_skipped().saturating_sub(skipped_before);
-            if show_warnings && chunk_skips > 0 {
-                eprintln!(
-                    "Warning: Skipped {} k-mer{} with invalid characters in chunk",
-                    chunk_skips,
-                    if chunk_skips == 1 { "" } else { "s" },
-                );
-            }
-            chunk.clear();
-        }
-    }
-
-    // Drain the remainder (last partial chunk).
-    if !chunk.is_empty() {
-        let skipped_before = counter.local_skipped();
-        count_chunk_into_locals(&chunk, |record| record.seq(), counter, k, canonical)?;
-        let chunk_skips = counter.local_skipped().saturating_sub(skipped_before);
-        if show_warnings && chunk_skips > 0 {
-            eprintln!(
-                "Warning: Skipped {} k-mer{} with invalid characters in chunk",
-                chunk_skips,
-                if chunk_skips == 1 { "" } else { "s" },
-            );
-        }
-    }
-
-    Ok(())
-}
-
-/// Process a FASTQ file and count k-mers.
-///
-/// **Parallelization (D-01):** identical chunked-`par_iter` strategy to
-/// [`process_fasta_file`] — see that function's doc comment for the full
-/// rationale (gzip stays single-threaded per D-02; only the encode/canonicalize/
-/// increment work per record is parallelized).
-///
-/// **Why bypass `FastqProcessor::process_file` (W-3):** same as FASTA — the
-/// callback receives `&Record` tied to the reader; we read owned records
-/// directly via the compression-aware reader so they can be buffered into a
-/// `Vec` and `par_iter`'d.
-fn process_fastq_file(
-    processor: &FastqProcessor,
-    counter: &Arc<KmerCounter>,
-    k: usize,
-    canonical: bool,
-    _quiet: bool,
-    _verbose: bool,
-    show_warnings: bool,
-) -> ProcessingResult<()> {
-    use crate::error::ProcessingError;
-    use crate::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
-
-    // Mirror FastqProcessor::process_file's reader setup exactly so behavior
-    // (compression detection, header/record error messages) is byte-identical.
-    let (reader, compression_type) =
-        DefaultCompressedFileReader::open_compressed(std::path::Path::new(processor.file_path()))
-            .map_err(|e| {
-            ProcessingError::with_context(
-                format!(
-                    "Failed to open FASTQ file: {} ({})",
-                    processor.file_path(),
-                    processor.compression_type().name()
-                ),
-                e,
-            )
-        })?;
-    let reader = bio::io::fastq::Reader::new(reader);
-
-    let mut chunk: Vec<bio::io::fastq::Record> = Vec::with_capacity(CHUNK_SIZE);
-
-    for record_result in reader.records() {
-        let record = record_result.map_err(|e| {
-            ProcessingError::with_context(
-                format!(
-                    "Error reading FASTQ record from file: {} ({})",
-                    processor.file_path(),
-                    compression_type.name()
-                ),
-                e,
-            )
-        })?;
-
-        chunk.push(record);
-
-        if chunk.len() == CHUNK_SIZE {
-            // PAR-02: same local-accumulation path as the FASTA sibling; the
-            // chunk skips come from the local skip-counter delta so one
-            // warning fires per chunk from this single-threaded producer.
-            let skipped_before = counter.local_skipped();
-            count_chunk_into_locals(&chunk, |record| record.seq(), counter, k, canonical)?;
-            let chunk_skips = counter.local_skipped().saturating_sub(skipped_before);
-            if show_warnings && chunk_skips > 0 {
-                eprintln!(
-                    "Warning: Skipped {} k-mer{} with invalid characters in chunk",
-                    chunk_skips,
-                    if chunk_skips == 1 { "" } else { "s" },
-                );
-            }
-            chunk.clear();
-        }
-    }
-
-    // Drain the remainder (last partial chunk).
-    if !chunk.is_empty() {
-        let skipped_before = counter.local_skipped();
-        count_chunk_into_locals(&chunk, |record| record.seq(), counter, k, canonical)?;
-        let chunk_skips = counter.local_skipped().saturating_sub(skipped_before);
-        if show_warnings && chunk_skips > 0 {
-            eprintln!(
-                "Warning: Skipped {} k-mer{} with invalid characters in chunk",
-                chunk_skips,
-                if chunk_skips == 1 { "" } else { "s" },
-            );
-        }
-    }
-
-    Ok(())
-}
-
 /// Output results in text format
 fn output_text_format(
-    count_output: &CountOutput<'_>,
+    count_result: &CountResult,
     output_path: &Path,
     quiet: bool,
     sort: bool,
@@ -831,9 +355,9 @@ fn output_text_format(
         eprintln!("Writing results in text format...");
     }
 
-    // Get k-mers from the source (filtered if applicable)
-    let kmer_length = count_output.kmer_length();
-    let mut kmers = count_output.filtered_pairs(filter);
+    // Get k-mers from the engine result (filtered if applicable).
+    let kmer_length = count_result.kmer_length();
+    let mut kmers = count_result.filtered_pairs(filter);
     let total = kmers.len();
 
     // Sort k-mers if requested
@@ -870,7 +394,7 @@ fn output_text_format(
 
 /// Output results in RKDB format
 fn output_binary_format(
-    count_output: &CountOutput<'_>,
+    count_result: &CountResult,
     output_path: &Path,
     quiet: bool,
     sort: bool,
@@ -880,8 +404,8 @@ fn output_binary_format(
         eprintln!("Writing results in RKDB database format...");
     }
 
-    let kmer_length = count_output.kmer_length();
-    let mut kmers = count_output.filtered_pairs(filter);
+    let kmer_length = count_result.kmer_length();
+    let mut kmers = count_result.filtered_pairs(filter);
     let kmer_count = kmers.len();
 
     // Sort k-mers if requested (required for binary search)
@@ -913,7 +437,7 @@ fn output_binary_format(
         sorted: sort,
         data_offset: 42, // Fixed header size for RKDB format
         index_offset: 0,
-        canonical: count_output.canonical_mode(),
+        canonical: count_result.canonical_mode(),
         unique_kmers: kmer_count as u64, // Same as total_kmers for now
         file_size: 0, // In-memory only; not serialized (matches canonical writer)
     };

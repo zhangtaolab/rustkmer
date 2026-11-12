@@ -1,24 +1,36 @@
 #!/usr/bin/env python3
-"""PROF-02 — observe whether `--threads` actually sizes the rayon pool.
+"""PROF-02 — observe whether `--threads` sizes BOTH counting pools.
 
-Runs `rustkmer count --threads N` in an INDEPENDENT subprocess per N (rayon's
-global pool is initialized once per process, so one child per requested N is
-the only honest observation), polls the live child until worker threads have
-spawned, and counts OS threads with a platform backend:
+Runs `rustkmer count --threads N` in an INDEPENDENT subprocess per N (the
+global rayon pool is initialized once per process, so one child per requested
+N is the only honest observation), polls the live child until the expected
+total OS thread count is reached, and counts OS threads with a platform
+backend:
 
   * macOS: `sample <pid> 1` (no sudo), keeping the Thread_ line regex and the
     "written to file" redirect handling (sampler="sample");
   * Linux: the entry count of /proc/<pid>/task (sampler="proc-task");
   * anything else: exit 2 (sampler="unsupported") — never a false PASS.
 
+The engine's exact thread model is `expected_total(n)`: `2` for n == 1 (main +
+the single rayon worker; the sequential engine spawns no counting thread) and
+`2 * n + 1` for n > 1 (main/producer + n persistent engine workers + n rayon
+workers). The observer polls until the observed count EQUALS the expectation
+(returning immediately, GREEN) or EXCEEDS it (a measured over-count, recorded
+as RED); it keeps polling while the count is below the expectation, because
+the child legitimately passes through the rayon-only `n + 1` intermediate
+state before the engine workers spawn.
+
 Exit contract (the 05-01 gate discipline):
-  0 — every record has observed == requested + 1 (workers + main);
-  1 — the MEASURED verdict: at least one mismatch (the current tree's
-      expected outcome — `--threads` is a no-op until Phase 6 fixes it);
-  2 — invalid input / unsupported platform / the child exited before a
-      successful observation / any infrastructure failure. Exit-2 paths
-      print NO verdict line and write NO JSON, so a crashed run can never
-      masquerade as the expected-RED observation.
+  0 — every record has observed == expected_total(requested);
+  1 — the MEASURED verdict: at least one mismatch, including a child that
+      exits after at least one successful observation while still below the
+      expected total (its last observed count is measured RED);
+  2 — invalid input / unsupported platform / the child exited before ANY
+      successful observation / the polling window timed out with the child
+      still alive / any infrastructure failure. Exit-2 paths print NO verdict
+      line and write NO JSON, so a crashed run can never masquerade as the
+      expected-RED observation. A timeout is never a PASS.
 
 Stdout is machine-greppable: one `requested=<N> observed=<M>` line per N,
 then a final `THREAD REALITY verdict=RED|GREEN` line. The structured --json
@@ -26,8 +38,7 @@ doc carries one record per N (requested, observed, pid, sampler, platform,
 child_returncode, provenance) plus the top-level verdict.
 
 Driven by tests/thread_pool_size_tests.rs (characterization + standing gate)
-and by the freshness-bound evidence capture in plan 05-03. Python 3.11+
-stdlib only.
+and scripts/bench/tests/test_verify_threads.py. Python 3.11+ stdlib only.
 """
 
 import argparse
@@ -70,6 +81,20 @@ SAMPLE_REDIRECT_RE = re.compile(r"written to file (\S+)")
 
 class ObservationError(Exception):
     """The count child could not be observed (exited early / timed out)."""
+
+
+def expected_total(n):
+    """Exact OS thread total for a `--threads n` counting child.
+
+    `n == 1` is `2`: the main thread plus the single rayon worker; the
+    engine's sequential path spawns no counting thread. `n > 1` is
+    `2 * n + 1`: the main/producer thread, n persistent engine workers, and
+    n rayon workers. This is a hard equality — never a range, never a
+    self-report.
+    """
+    if n < 1:
+        raise ValueError(f"requested thread count must be >= 1, got {n}")
+    return 2 if n == 1 else 2 * n + 1
 
 
 def sampler_for(system):
@@ -122,27 +147,54 @@ def _thread_count(pid, sampler):
     return parse_thread_count(txt)
 
 
-def observe(proc, timeout_s, sampler):
-    """Poll until the child's thread count exceeds 1 (workers spawned).
+def observe(proc, timeout_s, sampler, expected):
+    """Poll the live child until its OS thread count reaches `expected`.
 
-    Replaces the old fixed 4-second sleep: a fast child must not be missed,
-    and a slow start must not be sampled before the pool exists. A child
-    that exits before a successful observation is a loud exit-2, never a
-    silently skipped record.
+    Returns immediately when the observed unique-thread count EQUALS the
+    expectation (GREEN) or EXCEEDS it (a measured over-count the caller must
+    record as RED). Keeps polling while the count is below the expectation:
+    the child legitimately passes through the rayon-only `n + 1` intermediate
+    state before the engine workers spawn, so an early sample is never
+    accepted as the answer.
+
+    A child that exits after at least one successful observation returns the
+    LAST observed count, so a below-expected run is recorded as a measured
+    RED mismatch (exit 1) rather than an unobservable exit 2.
+    `ObservationError` is raised ONLY when the child was never successfully
+    observed (it exited before the first sample) or the deadline expires
+    with the child still alive; both are unobservable/infrastructure, never a
+    PASS.
     """
     deadline = time.monotonic() + timeout_s
+    last_observed = None
     while time.monotonic() < deadline:
+        count = _thread_count(proc.pid, sampler)
+        if count is not None:
+            last_observed = count
+            if count >= expected:
+                return count
         if proc.poll() is not None:
+            if last_observed is not None:
+                return last_observed
             raise ObservationError(
                 f"count process (pid {proc.pid}) exited rc={proc.returncode} "
                 "before a successful thread observation"
             )
-        count = _thread_count(proc.pid, sampler)
-        if count is not None and count > 1:
-            return count
         time.sleep(POLL_INTERVAL_S)
+    if last_observed is not None and proc.poll() is not None:
+        return last_observed
     raise ObservationError(
-        f"no worker threads observed for pid {proc.pid} within {timeout_s}s"
+        f"pid {proc.pid} did not reach expected={expected} threads within "
+        f"{timeout_s}s (last observed={last_observed})"
+    )
+
+
+def verdict_for_records(records):
+    """Pure GREEN/RED decision: every record must match the exact formula."""
+    return (
+        "GREEN"
+        if all(r["observed"] == expected_total(r["requested"]) for r in records)
+        else "RED"
     )
 
 
@@ -154,7 +206,7 @@ def run_one(binary, input_path, n, out_path, timeout_s, sampler):
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     try:
-        observed = observe(proc, timeout_s, sampler)
+        observed = observe(proc, timeout_s, sampler, expected_total(n))
     finally:
         # T-05-05: terminate/reap the child even when observation fails, so
         # no orphan count process survives a failed run.
@@ -170,8 +222,9 @@ def run_one(binary, input_path, n, out_path, timeout_s, sampler):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Observe the ACTUAL rayon pool size of rustkmer count "
-                    "under --threads N (PROF-02).")
+        description="Observe the ACTUAL OS thread total (engine counting "
+                    "workers + rayon workers + main) of rustkmer count under "
+                    "--threads N (PROF-02).")
     parser.add_argument("--binary", required=True,
                         help="rustkmer executable to observe")
     parser.add_argument("--input", required=True,
@@ -230,9 +283,7 @@ def main(argv=None):
             })
             print(f"requested={n} observed={observed}", flush=True)
 
-    verdict = ("GREEN"
-               if all(r["observed"] == r["requested"] + 1 for r in records)
-               else "RED")
+    verdict = verdict_for_records(records)
     doc = {
         "schema_version": 1,
         "created": datetime.now(timezone.utc).isoformat(),

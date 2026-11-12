@@ -1,10 +1,11 @@
-//! PROF-02 — live rayon pool-size observation tests (plan 05-03, Phase 6 PAR-01).
+//! PROF-02 — live counting-pool observation tests (plan 05-03, Phase 6 PAR-01;
+//! updated by Phase 7 ENGINE-01 / plan 07-02).
 //!
 //! # Why subprocess observation is the only honest evidence
 //!
 //! rayon's global pool is initialized ONCE per process (`build_global`
 //! returns `Err` on a second call — see the constraint comment in
-//! `tests/parallel_count_tests.rs`), so no in-test call can observe the pool
+//! `tests/parallel_count_tests.rs`), so no in-test call can observe the pools
 //! the CLI actually builds. The v1.0 1-vs-N count differential passed for a
 //! year while `--threads` did nothing: count commutativity is NOT pool-size
 //! evidence, and neither is the pure precedence helper tested by
@@ -17,15 +18,14 @@
 //!
 //! [`pool_size_matches_requested_threads`] runs in the default suite and is
 //! the standing gate: one fresh CLI child per N in {1, 4, 16} must observe
-//! exactly requested + 1 OS threads (rayon workers + main). It was RED in
-//! Phase 5 while `--threads` was a silent no-op; Phase 6 (PAR-01) fixed the
-//! resolver, so it now pins the fixed behavior.
+//! EXACTLY the engine's thread total — `2` at `--threads 1` (main + one rayon
+//! worker; the sequential engine spawns no counting thread) and `2N + 1` at
+//! `--threads 4` (9) / `16` (33) (main/producer + N persistent engine workers
+//! + N rayon workers). The exactness is the point: no `>=`, no override, no
+//! self-reported pool size.
 //!
 //! [`pool_size_characterization_records_requested_pool`] pins the same
-//! contract for a single `--threads 1` child in the default suite. On a
-//! single-core host the fixed one-worker pool and the old all-cores default
-//! coincide, so the comparison is skipped there (the standing gate still
-//! runs).
+//! contract for a single `--threads 1` child in the default suite.
 //!
 //! Every pool-size assertion message embeds the literal pattern
 //! `requested=<N> observed=<M>` so a failure is mechanically distinguishable
@@ -39,6 +39,19 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+
+/// The engine's exact OS thread total for `requested` counting threads.
+///
+/// `--threads 1` takes the sequential path (no counting thread), so the total
+/// is just main + the single rayon worker. `--threads N > 1` adds N persistent
+/// engine workers on top of main + N rayon workers.
+fn expected_total(requested: u64) -> u64 {
+    if requested == 1 {
+        2
+    } else {
+        2 * requested + 1
+    }
+}
 
 /// The hardened cross-platform thread observer (05-03), located relative to
 /// the crate root so the test works from any checkout path.
@@ -122,10 +135,10 @@ fn read_records(json_path: &Path, out: &Output) -> Vec<serde_json::Value> {
 }
 
 /// Characterization of the fixed behavior (default suite): a fresh
-/// `--threads 1` child on a multi-core host observes exactly requested + 1
-/// OS threads — one rayon worker plus the main thread. Single-core hosts
-/// skip the comparison because the fixed one-worker pool and the old
-/// all-cores default coincide there (the standing gate still runs).
+/// `--threads 1` child must observe EXACTLY 2 OS threads — the main thread plus
+/// the single rayon worker. The sequential engine path spawns no counting
+/// thread, so the formula applies on every host (including single-core hosts,
+/// where a one-worker rayon pool is still one worker).
 #[test]
 fn pool_size_characterization_records_requested_pool() {
     if cfg!(windows) {
@@ -162,33 +175,25 @@ fn pool_size_characterization_records_requested_pool() {
          {code:?}\nhelper stderr:\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let cores = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1);
-    if cores > 1 {
-        assert_eq!(
-            observed,
-            requested + 1,
-            "PROF-02 pool-size mismatch: requested={requested} observed={observed} — \
-             --threads must size the pool to requested workers plus the main thread"
-        );
-        eprintln!(
-            "PROF-02 characterization: requested={requested} observed={observed} on a \
-             {cores}-core host — --threads sizes the pool"
-        );
-    } else {
-        eprintln!(
-            "PROF-02: single-core host — the fixed and default pools coincide \
-             (requested={requested} observed={observed}); comparison skipped"
-        );
-    }
+    assert_eq!(
+        observed,
+        expected_total(requested),
+        "PROF-02 pool-size mismatch: requested={requested} observed={observed} — \
+         --threads 1 must observe main + one rayon worker (the sequential engine spawns no \
+         counting thread)"
+    );
+    eprintln!(
+        "PROF-02 characterization: requested={requested} observed={observed} — the \
+         sequential engine and the one-worker rayon pool are both sized"
+    );
 }
 
-/// Standing gate: the observed OS thread count must equal requested + 1
-/// (workers + main) for each of N = 1, 4, 16, each observed in an
-/// independent subprocess because rayon's global pool is once-per-process.
-/// Per-N assertions run BEFORE the exit-code assertion so a failure log
-/// always carries the machine-greppable `requested=<N> observed=<M>` pattern.
+/// Standing gate: the observed OS thread count must equal the engine formula
+/// exactly — `2` for N = 1 and `2N + 1` for N = 4 (9) and 16 (33), each
+/// observed in an independent subprocess because rayon's global pool is
+/// once-per-process. Per-N assertions run BEFORE the exit-code assertion so a
+/// failure log always carries the machine-greppable `requested=<N>
+/// observed=<M>` pattern.
 #[test]
 fn pool_size_matches_requested_threads() {
     if cfg!(windows) {
@@ -217,8 +222,9 @@ fn pool_size_matches_requested_threads() {
             .expect("record.observed must be an integer");
         assert_eq!(
             observed,
-            requested + 1,
-            "PROF-02 pool-size mismatch: requested={requested} observed={observed}"
+            expected_total(requested),
+            "PROF-02 pool-size mismatch: requested={requested} observed={observed} — \
+             the engine formula is 2 at N=1 and 2N+1 for N>1"
         );
     }
     assert_eq!(

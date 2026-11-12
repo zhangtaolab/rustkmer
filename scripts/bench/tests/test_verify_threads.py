@@ -1,32 +1,41 @@
-"""Unit tests for the hardened PROF-02 thread observer (05-03).
+"""Unit and negative-control tests for the PROF-02 thread observer (05-03/07-02).
 
 Pins the fail-loud exit contract of
 `.planning/research/profiling/verify_threads.py` WITHOUT needing a live
-rustkmer binary or an OS sampler:
+rustkmer binary or an OS sampler for the unit-level cases:
 
+  * `expected_total(n)` is the exact engine formula: 2 at N=1, 2N+1 for N>1;
+  * `verdict_for_records` turns RED on the pre-engine `observed = requested+1`
+    model and GREEN on the exact 2N+1 records;
+  * `observe` polls THROUGH the rayon-only N+1 intermediate state to the
+    expected total, returns an over-count immediately (measured RED), returns
+    the last observation when the child exits below the expectation (measured
+    RED, not exit 2), and raises `ObservationError` only when the child was
+    never observed or the window expires with the child alive;
   * invalid inputs (nonexistent --binary/--input, zero --threads,
     nonpositive --timeout-s) must exit 2 and print NO `THREAD REALITY`
-    verdict line — an invalid run is never a verdict, and an uncaught
-    exception must never masquerade as the expected-RED observation
-    (the 05-01 exit-code discipline: 0 = measured GREEN, 1 = measured
-    RED, 2 = invalid/infra);
+    verdict line — an invalid run is never a verdict;
   * the platform backend selection is explicit: macOS `sample`, Linux
-    `proc-task`, anything else `unsupported` (exit 2, never a false PASS).
+    `proc-task`, anything else `unsupported` (exit 2, never a false PASS);
+  * end-to-end negative controls run the real helper against small stub
+    binaries: a stub that holds N+1 OS threads must produce a measured RED
+    (exit 1, observed=5, requested=4, child_returncode=0), and a stub that
+    exits immediately before any sample must produce exit 2 with no verdict
+    and no JSON.
 
-The live observation path (exit 0/1 + structured records + per-N
-`requested=<N> observed=<M>` stdout lines) is covered by
-`tests/thread_pool_size_tests.rs` and the freshness-bound evidence
-capture in 05-03-PLAN.md — not re-tested here.
-
-Stdlib unittest only — no pytest, no conftest, no sleeps.
+Stdlib unittest only — no pytest, no conftest.
 """
 
 import importlib.util
+import json
+import platform
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 HELPER = REPO_ROOT / ".planning" / "research" / "profiling" / "verify_threads.py"
@@ -38,6 +47,107 @@ def load_helper_module():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+class FakeProc:
+    """Minimal subprocess stand-in: `poll()` is None while alive."""
+
+    def __init__(self, pid=4242, returncode=None):
+        self.pid = pid
+        self.returncode = returncode
+
+    def poll(self):
+        return self.returncode
+
+
+class TestExpectedTotal(unittest.TestCase):
+    """The engine's exact OS thread formula — hard equality, never a range."""
+
+    def test_expected_total_is_exact(self):
+        mod = load_helper_module()
+        self.assertEqual(mod.expected_total(1), 2)
+        self.assertEqual(mod.expected_total(4), 9)
+        self.assertEqual(mod.expected_total(16), 33)
+
+    def test_expected_total_rejects_zero(self):
+        mod = load_helper_module()
+        with self.assertRaises(ValueError):
+            mod.expected_total(0)
+
+
+class TestVerdict(unittest.TestCase):
+    """GREEN only when every record matches the exact 2N+1 / 2 formula."""
+
+    def test_exact_engine_records_are_green(self):
+        mod = load_helper_module()
+        records = [
+            {"requested": 1, "observed": 2},
+            {"requested": 4, "observed": 9},
+            {"requested": 16, "observed": 33},
+        ]
+        self.assertEqual(mod.verdict_for_records(records), "GREEN")
+
+    def test_pre_engine_n_plus_one_records_are_red(self):
+        mod = load_helper_module()
+        records = [{"requested": 4, "observed": 5}]
+        self.assertEqual(mod.verdict_for_records(records), "RED")
+
+    def test_any_mismatch_is_red(self):
+        mod = load_helper_module()
+        records = [
+            {"requested": 1, "observed": 2},
+            {"requested": 4, "observed": 8},
+        ]
+        self.assertEqual(mod.verdict_for_records(records), "RED")
+
+
+class TestObservePolling(unittest.TestCase):
+    """The sampler must poll through the intermediate N+1 state."""
+
+    def test_intermediate_sample_is_never_accepted(self):
+        mod = load_helper_module()
+        proc = FakeProc()
+        with mock.patch.object(mod, "_thread_count", side_effect=[5, 9]) as counter:
+            observed = mod.observe(proc, 5.0, "proc-task", 9)
+        self.assertEqual(observed, 9)
+        self.assertEqual(counter.call_count, 2, "the 5-thread sample must not be returned")
+
+    def test_over_count_is_returned_immediately_as_measured(self):
+        mod = load_helper_module()
+        proc = FakeProc()
+        with mock.patch.object(mod, "_thread_count", return_value=10):
+            observed = mod.observe(proc, 5.0, "proc-task", 9)
+        self.assertEqual(observed, 10, "an over-count must become a measured mismatch")
+
+    def test_below_expected_child_exit_returns_last_observation(self):
+        mod = load_helper_module()
+        proc = FakeProc(returncode=0)
+        with mock.patch.object(mod, "_thread_count", return_value=5):
+            observed = mod.observe(proc, 5.0, "proc-task", 9)
+        self.assertEqual(
+            observed,
+            5,
+            "a child that exits below the expectation after a sample is a measured RED, "
+            "not an unobservable exit 2",
+        )
+
+
+class TestObserveTerminal(unittest.TestCase):
+    """Exit-2 boundaries: never observed, or timeout with a live child."""
+
+    def test_child_exiting_before_any_sample_is_observation_error(self):
+        mod = load_helper_module()
+        proc = FakeProc(returncode=0)
+        with mock.patch.object(mod, "_thread_count", return_value=None):
+            with self.assertRaises(mod.ObservationError):
+                mod.observe(proc, 5.0, "proc-task", 9)
+
+    def test_timeout_with_live_child_is_observation_error(self):
+        mod = load_helper_module()
+        proc = FakeProc(returncode=None)
+        with mock.patch.object(mod, "_thread_count", return_value=5):
+            with self.assertRaises(mod.ObservationError):
+                mod.observe(proc, 0.2, "proc-task", 9)
 
 
 class TestExitContract(unittest.TestCase):
@@ -138,6 +248,140 @@ class TestThreadCountParsing(unittest.TestCase):
             "    615 Thread_103\n"
         )
         self.assertEqual(mod.parse_thread_count(text), 4)
+
+
+# --- End-to-end negative controls against real child processes --------------
+
+# Holds the PRE-ENGINE thread model (main + N sleeping threads = N+1) and
+# exits 0 on its own after a bounded interval well inside the helper timeout.
+# `os._exit` terminates the process without Python's interpreter shutdown, so
+# there is no teardown window in which daemon threads disappear while the main
+# thread still runs — the last successful sample is the honest 5-thread state.
+PRE_ENGINE_STUB = """#!/usr/bin/env python3
+import os
+import sys
+import threading
+import time
+
+
+def requested(argv):
+    for index, arg in enumerate(argv):
+        if arg == "--threads" and index + 1 < len(argv):
+            return int(argv[index + 1])
+    return 1
+
+
+count = requested(sys.argv)
+
+
+def hold():
+    # Outlive the main thread so the N+1 thread state is stable until the
+    # abrupt `os._exit`; daemon threads die with the process.
+    time.sleep(30)
+
+
+for _ in range(count):
+    threading.Thread(target=hold, daemon=True).start()
+
+time.sleep(6.0)
+os._exit(0)
+"""
+
+
+@unittest.skipUnless(
+    platform.system() in ("Darwin", "Linux"),
+    "thread observation needs macOS sample or Linux /proc",
+)
+class TestNegativeControls(unittest.TestCase):
+    """The gate must still turn RED on the pre-engine thread model."""
+
+    def run_helper(self, stub, dummy, json_path, threads):
+        return subprocess.run(
+            [
+                sys.executable,
+                str(HELPER),
+                "--binary",
+                str(stub),
+                "--input",
+                str(dummy),
+                "--threads",
+                str(threads),
+                "--json",
+                str(json_path),
+                "--timeout-s",
+                "30",
+                "--build-profile",
+                "debug",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+    def test_pre_engine_n_plus_one_stub_is_measured_red(self):
+        """A real child holding N+1=5 threads must be a measured RED, exit 1."""
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            stub = td_path / "pre_engine_stub.py"
+            stub.write_text(PRE_ENGINE_STUB)
+            stub.chmod(0o755)
+            dummy = td_path / "dummy.fastq"
+            dummy.write_text("@r\nACGT\n+\nIIII\n")
+            json_path = td_path / "records.json"
+
+            proc = self.run_helper(stub, dummy, json_path, 4)
+
+            self.assertEqual(
+                proc.returncode,
+                1,
+                "the pre-engine 5-thread child against expected=9 must be a measured RED "
+                f"(exit 1), got {proc.returncode}\n"
+                f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}",
+            )
+            self.assertIn("requested=4 observed=5", proc.stdout)
+            self.assertIn("THREAD REALITY verdict=RED", proc.stdout)
+            doc = json.loads(json_path.read_text())
+            self.assertEqual(doc["verdict"], "RED")
+            record = doc["records"][0]
+            self.assertEqual(record["requested"], 4)
+            self.assertEqual(record["observed"], 5)
+            self.assertEqual(
+                record["child_returncode"],
+                0,
+                "the stub must exit on its own well inside the timeout",
+            )
+
+    def test_child_exiting_before_any_sample_is_exit_2(self):
+        """A child that exits before the first sample is unobservable: exit 2."""
+        false_binary = shutil.which("false")
+        if false_binary is None:
+            self.skipTest("no `false` binary available for the instant-exit stub")
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            # A real executable that exits instantly: by the time the observer
+            # spawns `sample`, the pid is gone (or a zombie), so there is no
+            # successful first observation and no verdict is emitted.
+            stub = td_path / "instant_exit_stub"
+            shutil.copyfile(false_binary, stub)
+            stub.chmod(0o755)
+            dummy = td_path / "dummy.fastq"
+            dummy.write_text("@r\nACGT\n+\nIIII\n")
+            json_path = td_path / "records.json"
+
+            proc = self.run_helper(stub, dummy, json_path, 4)
+
+            self.assertEqual(
+                proc.returncode,
+                2,
+                "a child that exits before any successful observation must be exit 2 "
+                f"(never a verdict), got {proc.returncode}\n"
+                f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}",
+            )
+            self.assertNotIn("THREAD REALITY", proc.stdout)
+            self.assertFalse(
+                json_path.exists(),
+                "exit-2 paths must not write a JSON verdict document",
+            )
 
 
 if __name__ == "__main__":
