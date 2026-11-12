@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "mode": "output_stage",
+  "params": {
+    "k": 21,
+    "canonical": true,
+    "threads": 4,
+    "reps": 3,
+    "cooldown_s": 5,
+    "slice_reads": 4000000,
+    "input": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split",
+    "rustkmer": "target/release/rustkmer",
+    "arms": [
+      "sorted",
+      "unsorted"
+    ]
+  },
+  "platform": {
+    "system": "Darwin",
+    "release": "25.6.0",
+    "machine": "arm64",
+    "python": "3.13.11"
+  },
+  "created": "2026-11-12T17:06:08.359315+00:00",
+  "input_fingerprint": [
+    {
+      "path": ".planning/phases/08-output-pipeline-rkdb-v2-parity/pre/slice-0.fq",
+      "size_bytes": 1472481891,
+      "sha256": "71c6264bc4c2b24a2d8d7a4a5ff4b18ec602b64141de745fd210336501b92937"
+    }
+  ],
+  "arms": [
+    {
+      "name": "sorted",
+      "tool": "rustkmer",
+      "threads": 4,
+      "reps": [
+        {
+          "wall_s": 18.18,
+          "peak_rss_bytes": 17967218688,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 0,
+          "sha256": "0976f29c5edeaa5eb49218e2c2fd5ff84f09109c3f2aac9d83bc8cf8c8668014"
+        },
+        {
+          "wall_s": 18.73,
+          "peak_rss_bytes": 17966235648,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 1,
+          "sha256": "0976f29c5edeaa5eb49218e2c2fd5ff84f09109c3f2aac9d83bc8cf8c8668014"
+        },
+        {
+          "wall_s": 22.42,
+          "peak_rss_bytes": 17967087616,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 0,
+          "sha256": "0976f29c5edeaa5eb49218e2c2fd5ff84f09109c3f2aac9d83bc8cf8c8668014"
+        }
+      ],
+      "medians": {
+        "wall_s": 18.73,
+        "peak_rss_bytes": 17967087616,
+        "cv_wall_pct": 11.658448379584666,
+        "cv_warning": true
+      },
+      "unique_kmers": 229694874,
+      "total_kmers": 519271168,
+      "sorted_rkdb_sha256": "0976f29c5edeaa5eb49218e2c2fd5ff84f09109c3f2aac9d83bc8cf8c8668014"
+    },
+    {
+      "name": "unsorted",
+      "tool": "rustkmer",
+      "threads": 4,
+      "reps": [
+        {
+          "wall_s": 10.05,
+          "peak_rss_bytes": 14292107264,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 9.69,
+          "peak_rss_bytes": 14319452160,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 9.82,
+          "peak_rss_bytes": 14295744512,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 1
+        }
+      ],
+      "medians": {
+        "wall_s": 9.82,
+        "peak_rss_bytes": 14295744512,
+        "cv_wall_pct": 1.8501365242050556,
+        "cv_warning": false
+      },
+      "unique_kmers": 229694874,
+      "total_kmers": 519271168
+    }
+  ],
+  "schedule": {
+    "policy": "round-robin-rotation",
+    "warmup_order": [
+      "sorted",
+      "unsorted"
+    ],
+    "rounds": [
+      [
+        "sorted",
+        "unsorted"
+      ],
+      [
+        "unsorted",
+        "sorted"
+      ],
+      [
+        "sorted",
+        "unsorted"
+      ]
+    ]
+  },
+  "sort_delta_s": 8.91,
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 2965056,
+      "sha256": "d107d17e7bc60846dbf886727ed656500d189ec32102fa7704f283068a3e35cf"
+    },
+    "git_commit": "4d53102a66befe15317b538b9bc66a3a8da22dae",
+    "git_dirty": true,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-12T17:06:08.359024+00:00"
+  }
+}
