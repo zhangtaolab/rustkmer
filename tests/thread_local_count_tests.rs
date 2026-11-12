@@ -95,19 +95,16 @@ fn count_reference_path(
             continue;
         }
         for window in seq.windows(k) {
-            match encode_kmer_bytes_u128(window) {
-                Ok(encoded) => {
-                    let final_kmer = if canonical {
-                        match canonical_kmer_u128(encoded, k) {
-                            Ok(canonical_kmer) => canonical_kmer,
-                            Err(_) => continue,
-                        }
-                    } else {
-                        encoded
-                    };
-                    counter.increment(final_kmer)?;
-                }
-                Err(_) => {}
+            if let Ok(encoded) = encode_kmer_bytes_u128(window) {
+                let final_kmer = if canonical {
+                    match canonical_kmer_u128(encoded, k) {
+                        Ok(canonical_kmer) => canonical_kmer,
+                        Err(_) => continue,
+                    }
+                } else {
+                    encoded
+                };
+                counter.increment(final_kmer)?;
             }
         }
     }

@@ -56,13 +56,18 @@ const LOCAL_INITIAL_CAPACITY: usize = 8192;
 /// Next unique counter id handed to a [`LocalHandleRegistry`].
 static NEXT_COUNTER_ID: AtomicU64 = AtomicU64::new(1);
 
+/// One worker's cached handle for a counter: `(generation, local accumulator)`.
+type WorkerLocalHandle = (u64, Arc<Mutex<LocalKmerCounts>>);
+
+/// The thread-local cache: counter id -> that counter's per-worker handle.
+type WorkerLocalMap = HashMap<u64, WorkerLocalHandle>;
+
 // Thread-local map: counter id -> (generation, this worker's local).
 //
 // The key is the counter's unique id rather than its address because a
 // dropped counter's address can be reused; the id never repeats.
 thread_local! {
-    static WORKER_LOCALS: RefCell<HashMap<u64, (u64, Arc<Mutex<LocalKmerCounts>>)>> =
-        RefCell::new(HashMap::new());
+    static WORKER_LOCALS: RefCell<WorkerLocalMap> = RefCell::new(WorkerLocalMap::new());
 }
 
 /// A single worker's private k-mer count table.
