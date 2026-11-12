@@ -18,11 +18,11 @@
 //!
 //! [`pool_size_matches_requested_threads`] runs in the default suite and is
 //! the standing gate: one fresh CLI child per N in {1, 4, 16} must observe
-//! EXACTLY the engine's thread total — `2` at `--threads 1` (main + one rayon
-//! worker; the sequential engine spawns no counting thread) and `2N + 1` at
-//! `--threads 4` (9) / `16` (33) (main/producer + N persistent engine workers
-//! + N rayon workers). The exactness is the point: no `>=`, no override, no
-//! self-reported pool size.
+//! EXACTLY the engine's thread total — `2` at `--threads 1` (main plus one
+//! rayon worker; the sequential engine spawns no counting thread) and
+//! `2N + 1` at `--threads 4` (9) / `16` (33), meaning the main/producer, the
+//! N persistent engine workers, and the N rayon workers. The exactness is the
+//! point: no `>=`, no override, no self-reported pool size.
 //!
 //! [`pool_size_characterization_records_requested_pool`] pins the same
 //! contract for a single `--threads 1` child in the default suite.
