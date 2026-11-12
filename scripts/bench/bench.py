@@ -276,6 +276,113 @@ def fingerprint(path):
             "sha256": h.hexdigest()}
 
 
+# --- PROF-01 shared binary provenance (05-01) ---------------------------------
+# Every Phase 5 results/evidence artifact records WHICH executable bytes
+# produced it (threat T-05-02: a path string without a hash is not provenance).
+# SCHEMA_VERSION stays 1 and validate_schema is untouched — it tolerates extra
+# keys, so committed v1 baselines stay loadable; validate_provenance is the
+# SEPARATE strict gate for new provenance-bearing artifacts.
+
+PROVENANCE_KEYS = ("binary", "git_commit", "git_dirty", "build_profile",
+                   "rust_toolchain", "platform", "created")
+SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+GIT_COMMIT_HEX_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _provenance_tool_output(argv):
+    """Run a provenance query (LIST form, no shell) from the repo root.
+
+    Non-zero child exits raise RuntimeError with the trailing stderr — the
+    fail-loud subprocess stance of measure(): an unattributable artifact must
+    never gate, so a failed git/rustc query aborts instead of recording
+    'unknown'.
+    """
+    proc = subprocess.run(argv, capture_output=True, text=True,
+                          cwd=str(REPO_ROOT))
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"provenance query failed rc={proc.returncode}: {argv}\n"
+            f"trailing stderr:\n{proc.stderr[-500:]}")
+    return proc.stdout
+
+
+def binary_provenance(executable, build_profile):
+    """Shared provenance builder for every results/evidence artifact.
+
+    Hashes the ACTUAL executable bytes (never the command-line string), and
+    records the repo HEAD (not the last commit touching this file — the
+    artifact must attribute the tree the binary was built from), the dirty
+    flag, the caller-supplied build profile, the Rust toolchain, and the
+    platform. Raises on a missing executable or a failed git/rustc query.
+    """
+    if not isinstance(build_profile, str) or not build_profile.strip():
+        raise ValueError("provenance: build_profile must be a non-empty string")
+    exe = Path(executable)
+    if not exe.is_file():
+        found = shutil.which(str(executable))
+        if found is None:
+            raise RuntimeError(
+                f"provenance: executable not found: {executable}")
+        exe = Path(found)
+    exe = exe.resolve()
+    return {
+        "binary": fingerprint(exe),
+        "git_commit": _provenance_tool_output(
+            ["git", "rev-parse", "HEAD"]).strip(),
+        "git_dirty": bool(_provenance_tool_output(
+            ["git", "status", "--porcelain"]).strip()),
+        "build_profile": build_profile,
+        "rust_toolchain": _provenance_tool_output(
+            ["rustc", "--version"]).strip(),
+        "platform": f"{sys.platform}-{platform.machine()}",
+        "created": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def validate_provenance(doc):
+    """Strict validator for provenance-bearing artifacts (PROF-01).
+
+    SEPARATE from validate_schema by design: v1 baselines carry no provenance
+    and must stay valid under validate_schema, while every NEW artifact must
+    carry a complete, well-formed provenance block or it cannot gate
+    (T-05-02). Raises ValueError naming the missing/bad field.
+    """
+    if not isinstance(doc, dict):
+        raise ValueError("provenance: results must be a dict")
+    prov = doc.get("provenance")
+    if not isinstance(prov, dict):
+        raise ValueError("provenance: missing provenance block")
+    for key in PROVENANCE_KEYS:
+        if key not in prov:
+            raise ValueError(f"provenance: missing field {key!r}")
+    binary = prov["binary"]
+    if not isinstance(binary, dict):
+        raise ValueError(
+            "provenance: binary must be a dict (path/size_bytes/sha256)")
+    for key in ("path", "size_bytes", "sha256"):
+        if key not in binary:
+            raise ValueError(f"provenance: binary missing field {key!r}")
+    if not isinstance(binary["path"], str) or not binary["path"].strip():
+        raise ValueError("provenance: binary.path must be a non-empty string")
+    if (not isinstance(binary["size_bytes"], int)
+            or isinstance(binary["size_bytes"], bool)
+            or binary["size_bytes"] <= 0):
+        raise ValueError(
+            "provenance: binary.size_bytes must be a positive integer")
+    if (not isinstance(binary["sha256"], str)
+            or not SHA256_HEX_RE.match(binary["sha256"])):
+        raise ValueError(
+            "provenance: binary.sha256 must be 64-char lowercase hex")
+    if (not isinstance(prov["git_commit"], str)
+            or not GIT_COMMIT_HEX_RE.match(prov["git_commit"])):
+        raise ValueError("provenance: git_commit must be 40-char hex")
+    if not isinstance(prov["git_dirty"], bool):
+        raise ValueError("provenance: git_dirty must be a bool")
+    for key in ("build_profile", "rust_toolchain", "platform", "created"):
+        if not isinstance(prov[key], str) or not prov[key].strip():
+            raise ValueError(f"provenance: {key} must be a non-empty string")
+
+
 def validate_schema(results):
     """Raise ValueError unless `results` matches schema_version 1 shape.
 
@@ -939,8 +1046,10 @@ def run_bench(args):
         "created": datetime.now(timezone.utc).isoformat(),
         "params": params,
         "arms": arms,
+        "provenance": binary_provenance(args.rustkmer, "release"),
     }
     validate_schema(results)
+    validate_provenance(results)
     with open(out_path, "w") as fh:
         json.dump(results, fh, indent=2)
         fh.write("\n")
