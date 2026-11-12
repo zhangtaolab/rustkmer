@@ -26,7 +26,7 @@
     {
       "number": "5",
       "name": "Measurement & Regression Harness",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "6",
@@ -61,8 +61,8 @@
   ],
   "next": {
     "command": "/gsd-progress --next",
-    "label": "Advance to the next step (verify)",
-    "reason": "Phase 1 of 7 · 0% · ready to verify"
+    "label": "Advance to the next step (plan phase 6)",
+    "reason": "Phase 2 of 7 — needs a plan"
   },
-  "updated_at": "2026-11-12T10:20:05.390Z"
+  "updated_at": "2026-11-12T10:26:33.286Z"
 }

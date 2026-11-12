@@ -23,7 +23,7 @@ Full detail: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md) · Summary
 
 **Milestone Goal:** Match or beat Jellyfish2 on human-scale k=21 counting (and k=31 under fair, matched-hash comparison) on BOTH the CLI and Python surfaces, closing the BENCH-02 gap outright. Approach ratified from empirical profiling (D1): the ~5x gap is ~3.5x parallel-scaling inefficiency × ~1.4x single-thread cost — not a data-structure problem. Stage A in-memory parallelism (Phases 5-10) is the spine; Stage B minimizer/disk-backed (Phase 11) is conditional on D3.
 
-- [ ] **Phase 5: Measurement & Regression Harness** - Standing slice bench + parity gate, --threads reality tests, contention microbench, Python baseline, N-read differential
+- [x] **Phase 5: Measurement & Regression Harness** - Standing slice bench + parity gate, --threads reality tests, contention microbench, Python baseline, N-read differential (completed 2026-11-12)
 - [ ] **Phase 6: Parallelism Correctness & Hot Path** - Working --threads, thread-local counters with end reduction (no per-window atomics), rolling encode + bit-parallel revcomp
 - [ ] **Phase 7: Shared Counting Engine** - One src/count/engine.rs entry point: persistent workers, disjoint partitioned tables, overlapped producer/consumer (the ~3.5x lever)
 - [ ] **Phase 8: Output Pipeline & .rkdb v2 Parity** - Unstable/parallel sort + streaming write; golden byte-identity, both-consumer sortedness, full differential matrix
@@ -54,7 +54,7 @@ Full detail: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md) · Summary
   3. A multi-thread contention microbench produces a recorded split of the ~9.4x in-vivo increment multiplier into global-atomics vs memory-bandwidth shares, persisted as evidence that tunes Phase 7's engine design.
   4. A Python-surface counting benchmark runs and its sequential-pipeline baseline is committed, so Phase 9 can prove a win by measurement rather than assertion.
   5. A CLI-vs-Python N-read differential is executed and recorded, quantifying the chimeric-k-mer divergence that the D2 skip-N unification resolves.
-**Plans**: 7/7 plans executed
+**Plans**: 7/7 plans complete
 Plans:
 - [x] 05-01-PLAN.md — Provenance builder + thread-scaling gate (tracer; expected RED on current tree)
 - [x] 05-02-PLAN.md — Rust 1.80 MSRV toolchain + CI clippy pins + random-record slicer
@@ -151,7 +151,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → (11 only i
 | 2. Parallel Counting | v1.0 | 5/5 | Complete | 2026-07-01 |
 | 3. Memory Safety | v1.0 | 17/17 | Complete | 2026-10-09 |
 | 4. Benchmark & Validation | v1.0 | 5/5 | Complete | 2026-10-18 |
-| 5. Measurement & Regression Harness | v2.0 | 7/7 | In Progress | - |
+| 5. Measurement & Regression Harness | v2.0 | 7/7 | Complete    | 2026-11-12 |
 | 6. Parallelism Correctness & Hot Path | v2.0 | 0/TBD | Not started | - |
 | 7. Shared Counting Engine | v2.0 | 0/TBD | Not started | - |
 | 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 0/TBD | Not started | - |

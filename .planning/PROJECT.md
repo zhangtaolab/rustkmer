@@ -112,6 +112,8 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 | D1: parallelism-first (Stage A) is the v2.0 spine; minimizer/disk-backed demoted to conditional Stage B | User-ratified 2026-11-12 on profiling evidence — the ~5x gap is ~3.5x parallel-scaling inefficiency (—threads no-op, 59% rayon spin-wait, per-window global atomics) × ~1.4x single-thread cost, NOT a data-structure problem; single-thread core already competitive with jellyfish | ✅ Ratified |
 | D2: unify CLI/Python N-read semantics on CLI skip-N | User-ratified 2026-11-12 — CLI skip-N is what the jellyfish parity gate validated; Python's strip-N+join-flanks creates chimeric k-mers. Explicitly accepts Python output changes on N-containing reads (no silent change, WR-04 precedent) | ✅ Ratified |
 | D3: BENCH-V2-01 (KMC3 comparison) stays in v2.0; minimizer architecture phase is conditional | User-ratified 2026-11-12 — minimizer/disk-backed is the memory-ceiling/KMC3-RAM lever, not the speed lever; gated on Stage A missing parity OR a memory ceiling Stage A cannot meet; descope/defer if Stage A hits parity and memory is acceptable | ✅ Ratified |
+| MSRV raised 1.80 → 1.82 (Phase 5, 2026-11-12) | User-ratified — the locked dependency graph requires rustc 1.81/1.82 (half@2.7.1, indexmap@2.13.0, proptest@1.9.0), so the 1.80 floor was unsatisfiable; raising the floor (not pinning deps) keeps the graph intact. One behavior-preserving clippy `needless_range_loop` fix (prefix_cache_merge.rs) accompanied it | ✅ Ratified (both crates clippy green under 1.82; WINDOWS 19/20 closed) |
+| Phase 5 harness: atomics dominate contention (contention_evidence, 18M-distinct subslice) | Measured global-atomics attribution 120.22 ns (~115% of the shared-vs-local gap); bandwidth inconclusive at this scale (honest, not clamped). Confirms per-window global atomics as the Phase 7 engine target | ✅ Measured (re-measure at DRAM scale if decision-critical) |
 
 ## Evolution
 
@@ -131,4 +133,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-11 after v2.0 (k=21 Counting Parity) milestone start*
+*Last updated: 2026-11-12 after Phase 5 (Measurement & Regression Harness)*

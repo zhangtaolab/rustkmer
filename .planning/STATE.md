@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v2.0
 milestone_name: k=21 Counting Parity
-current_phase: 05
-current_phase_name: Measurement & Regression Harness
-status: verifying
-stopped_at: Completed 05-07-PLAN.md
-last_updated: "2026-11-12T10:20:12.293Z"
+current_phase: 6
+current_phase_name: Parallelism Correctness & Hot Path
+status: planning
+stopped_at: Phase 05 complete, ready to plan Phase 6
+last_updated: "2026-11-12T10:26:33.272Z"
 last_activity: 2026-11-12
-last_activity_desc: "Completed quick task 261112-jwl: Raise Rust MSRV 1.80 to 1.82"
-state_head: 1800263e2046fac7f67fdcc15c4159c35d0d3080
+last_activity_desc: Phase 05 complete, transitioned to Phase 6
+state_head: dc5f52afb9dcab2b1744128d81f0880492bda871
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 7
   completed_plans: 7
-  percent: 0
+  percent: 14
 ---
 
 # Project State
@@ -29,18 +29,18 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 
 ## Current Position
 
-Phase: 05 (Measurement & Regression Harness) — EXECUTING
-Plan: 7 of 7
-Status: Phase complete — ready for verification
-Last activity: 2026-11-12 - Completed quick task 261112-jwl: Raise Rust MSRV 1.80 to 1.82
+Phase: 6 — Parallelism Correctness & Hot Path
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-12 — Phase 05 complete, transitioned to Phase 6
 
-Progress: [░░░░░░░░░░] 0% (v2.0)
+Progress: [█░░░░░░░░░] 14% (v2.0)
 
 ## Performance Metrics
 
 **Velocity (v2.0):**
 
-- Total plans completed: 0
+- Total plans completed: 7
 - Average duration: - min
 - Total execution time: 0.0 hours
 - v1.0 history: 31 plans / 4 phases (per-plan metrics archived in milestones/v1.0-phases/)
@@ -61,6 +61,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0)
 | 9. Python Parity | 0/TBD | - | - |
 | 10. Benchmark Verdict | 0/TBD | - | - |
 | 11. Minimizer & Memory Ceiling (conditional) | 0/TBD | - | - |
+| 05 | 7 | - | - |
 
 **Recent Trend:**
 
@@ -144,7 +145,7 @@ Items acknowledged and carried forward, most recent first:
 ## Session Continuity
 
 Last session: 2026-11-12T10:20:12.277Z
-Stopped at: Completed 05-07-PLAN.md
+Stopped at: Phase 05 complete, ready to plan Phase 6
 Resume file: None
 
 ## Operator Next Steps
