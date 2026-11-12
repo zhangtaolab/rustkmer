@@ -751,35 +751,35 @@ pub fn merge_into(&self, counter: &KmerCounter) -> ProcessingResult<()> {
 
 ## Open Questions
 
-1. **Should Phase 7 add the PyCounter bridge or leave it to Phase 9?**
+1. **Should Phase 7 add the PyCounter bridge or leave it to Phase 9?** — **RESOLVED**
+   - Resolution (07-CONTEXT.md "Dual surface"): Phase 7 wires the CLI and exposes `CountResult::merge_into(&KmerCounter)` as the Phase 9 bridge; PyO3 routing stays in Phase 9 (07-03 only routes extraction through `for_each_window`, behavior-preserving). Never change Python N semantics before Phase 9.
    - What we know: ENGINE-01 names both consumers; the roadmap Note assigns the dual-surface completion (D2 proof and documentation) to Phase 9 (PY-01/PY-02).
-   - What's unclear: whether the Phase 7 verifier will treat ENGINE-01's "consumed by both" as a Phase 7 deliverable.
-   - Recommendation: build the `CountResult::merge_into` API and wire the CLI in Phase 7. If budget allows, add the behavior-preserving PyCounter bridge (keep the N pre-filter; no semantic change) as a secondary task. Never change Python N semantics before Phase 9.
+   - Recommendation kept for the record: build the `CountResult::merge_into` API and wire the CLI in Phase 7; a behavior-preserving PyCounter bridge may be added later if the verifier requires it.
 
-2. **What is the exact producer/worker split in the real engine?**
+2. **What is the exact producer/worker split in the real engine?** — **RESOLVED**
+   - Resolution (07-CONTEXT.md "Overlapped I/O"; 07-04 Task 2): measure it with the feature-gated `EngineDiagnostics`/`WorkerDiagnostics` probe (producer wall, per-worker batch counts/busy time, wall); no pre-optimization. If the producer exceeds ~70% of the t16 count wall, the documented next lever is parallel extraction or file-level producers.
    - What we know: probe components are 1.9 s decompress+parse, 3.6 s extraction+routing, and ~19-21 s single-thread increment work (directionally).
-   - What's unclear: queue/lock/flush overhead and the actual t16 worker throughput on the partitioned tables.
-   - Recommendation: first measurement task records producer wall, worker batch counts/times, and per-file flush time; if the producer exceeds ~70% of the t16 count wall, add parallel extraction or file-level producers.
+   - Recommendation kept for the record: first measurement task records producer wall, worker batch counts/times, and per-file flush time.
 
-3. **What is the dynamic-stealing trigger threshold?**
+3. **What is the dynamic-stealing trigger threshold?** — **RESOLVED**
+   - Resolution (07-CONTEXT.md Claude's Discretion + Deferred Ideas): dynamic stealing is not built in Phase 7. The trigger stays "slowest worker > 0.8x producer time, or a worker-bound RED gate"; 07-04 records the per-worker diagnostics that would expose it, and the fallback remains deferred.
    - What we know: static ownership is sufficient under the measured budget.
-   - What's unclear: the exact E-core ratio on other hosts and at human scale.
-   - Recommendation: trigger if the slowest worker's processing time > 0.8 x producer time or if the scaling gate is RED for a worker-bound reason; implement dynamic stealing only then.
+   - Recommendation kept for the record: implement dynamic stealing only on that measured trigger.
 
-4. **Do per-file warnings need to be emitted during the file, or is after-file equivalent?**
+4. **Do per-file warnings need to be emitted during the file, or is after-file equivalent?** — **RESOLVED**
+   - Resolution (07-CONTEXT.md Claude's Discretion): after-file via `FileStats.skipped_batches`; 07-01/07-02 pin the existing wording and one-warning-per-4096-record-batch frequency. No test requires interleaving.
    - What we know: the current CLI prints one warning per 4096-record chunk from the producer thread; the wording is pinned.
-   - What's unclear: whether any test asserts timing/interleaving (none found).
-   - Recommendation: return `skipped_batches` in `FileStats` and print after the file; if a test requires interleaving, add a producer-thread callback.
+   - Recommendation kept for the record: if a test later requires interleaving, add a producer-thread callback.
 
-5. **Is the 4x partition granularity optimal?**
+5. **Is the 4x partition granularity optimal?** — **RESOLVED**
+   - Resolution (07-CONTEXT.md "Partition scheme"): start with `P = min(256, max(64, threads))` (64 on the target machine); the partition unit tests pin determinism/uniformity and 07-04 measures the real engine. Further tuning is measurement-driven, not speculative.
    - What we know: 16 and 64 partitions have the same routing cost (~3.6 s); 64 gives max/mean 1.00 on distinct keys.
-   - What's unclear: the best P for non-power-of-two thread counts and for Phase 8's parallel sort.
-   - Recommendation: start with `P = min(256, max(64, threads))` (64 on the target machine); measure routing, skew, and memory; tune within the plan.
+   - Recommendation kept for the record: measure routing, skew, and memory; tune within the plan.
 
-6. **Does the existing CI runner class handle 2N+1 threads at t16?**
-   - What we know: the gate already oversubscribes 16 rayon threads on 2-4 core runners.
-   - What's unclear: whether 33 threads (16 engine + 16 rayon + main) cause enough context switching to regress the t16 wall on CI.
-   - Recommendation: run the updated gate on the CI runner class; if t16 oversubscription is a problem, consider not building the global rayon pool while the engine runs (but do not weaken the pool-size observation) or cap the engine's worker count at `available_parallelism` while still honoring an explicit `--threads`.
+6. **Does the existing CI runner class handle 2N+1 threads at t16?** — **RESOLVED IN DESIGN**
+   - Resolution (07-CONTEXT.md "CRITICAL gate update"): keep the exact 2N+1 / 2 formula and run the full gate battery in 07-04 Task 3; if CI oversubscription regresses the t16 wall, fix placement/fixture or cap worker count at `available_parallelism` while honoring an explicit `--threads` — never weaken the pool-size observation.
+   - What we know: the gate already oversubscribes 16 rayon threads on 2-4 core runners; the unmeasured part is only whether 33 threads (16 engine + 16 rayon + main) cause enough context switching to regress the t16 wall on CI.
+
 
 ## Runtime State Inventory
 
