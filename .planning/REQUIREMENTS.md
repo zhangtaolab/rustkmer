@@ -22,7 +22,7 @@ Committed scope. Each maps to exactly one roadmap phase. MINIM-* are CONDITIONAL
 ### Parallel Scaling & Hot Path (PAR)
 
 - [ ] **PAR-01**: `--threads` actually sizes the rayon pool (lazy fallback via `available_parallelism`; `build_global` before any rayon query); the `--threads > RUSTKMER_THREADS > RAYON_NUM_THREADS > num_cpus` precedence chain and Python `threads=` / IN-04 warn semantics are preserved.
-- [ ] **PAR-02**: Counting uses thread-local counters with end-of-run reduction; per-window global atomics (`total_kmers`/`unique_kmers` fetch_add) are removed from the hot path; the reduction uses checked arithmetic with the verbatim fail-loud overflow error (a new overflow site, never saturating).
+- [x] **PAR-02**: Counting uses thread-local counters with end-of-run reduction; per-window global atomics (`total_kmers`/`unique_kmers` fetch_add) are removed from the hot path; the reduction uses checked arithmetic with the verbatim fail-loud overflow error (a new overflow site, never saturating).
 - [ ] **PAR-03**: A rolling 2-bit encoder + bit-parallel reverse-complement (u64 for k≤32) replaces per-window O(L·k) encoding; it masks to 2k bits and resets the valid run at every N and record boundary; differential-tested against the per-window encoder on the edge matrix (N at every position, lowercase, record boundaries, k ∈ {1..64}); the u128 path is retained for k>32 and API stability.
 
 ### Shared Counting Engine (ENGINE)
@@ -92,7 +92,7 @@ Each requirement maps to exactly one phase. MINIM-* map to conditional Phase 11 
 | PROF-04 | Phase 5 | Complete |
 | PROF-05 | Phase 5 | Complete |
 | PAR-01 | Phase 6 | Pending |
-| PAR-02 | Phase 6 | Pending |
+| PAR-02 | Phase 6 | Complete |
 | PAR-03 | Phase 6 | Pending |
 | ENGINE-01 | Phase 7 | Pending |
 | ENGINE-02 | Phase 7 | Pending |

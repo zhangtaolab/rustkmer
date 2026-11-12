@@ -4,18 +4,18 @@ milestone: v2.0
 milestone_name: k=21 Counting Parity
 current_phase: 6
 current_phase_name: Parallelism Correctness & Hot Path
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-11-12T12:08:00.209Z"
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-11-12T12:23:58.809Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 05 complete, transitioned to Phase 6
-state_head: f85003500b827fb58c0d87c8e7639238e02582b0
+state_head: 532133a4f1fafe8317927117f7dcf724d7e4bf5c
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 11
-  completed_plans: 8
+  completed_plans: 9
   percent: 14
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 6 — Parallelism Correctness & Hot Path
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 4
 Status: Ready to execute
 Last activity: 2026-11-12 — Completed 06-01 (working --threads, green pool gates, t1 baselines)
@@ -83,6 +83,7 @@ Progress: [█░░░░░░░░░] 14% (v2.0)
 | Phase 05 P06 | 21 min | 2 tasks | 6 files |
 | Phase 05 P07 | 4 min | 2 tasks | 2 files |
 | Phase 06 P01 | 31 min | 3 tasks | 7 files |
+| Phase 06 P02 | 10 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,9 @@ Recent decisions affecting current work:
 - [Phase 06]: PAR-01 gates: pool-size standing gate un-ignored and characterization inverted; thread-scaling GREEN (speedup_t4 1.8118, speedup_t16 1.4372)
 - [Phase 06]: PAR-01 baselines: synthetic t1 18.77 s; real 4M slice t1 142.54 s (229,694,874/519,271,168, slice sha256 71c6264b); Phase 5 RED baseline byte-identical
 - [Phase 06]: verify_threads.py counts unique thread ids: macOS sample emits the main thread as both a summary header and a section header after a rebuild
+- [Phase 06]: [06-02] PAR-02: per-worker LocalKmerCounts keyed by a unique counter id + generation; drain bumps the generation so a drained local can never be reused (multi-file exactness)
+- [Phase 06]: [06-02] PAR-02: reduction uses checked_add per u32 key and for the shared u64 total; partial-merge atomics follow merge's WR-02 poison-consistency contract; overflow returns the verbatim message
+- [Phase 06]: [06-02] Dual surface: PyO3 file methods use one local per call + one merge under py.detach; add_kmer/add_sequence stay on the shared increment path
 
 ### Pending Todos
 
@@ -151,8 +155,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T12:07:33.046Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-11-12T12:23:58.696Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
