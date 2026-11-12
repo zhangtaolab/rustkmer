@@ -21,6 +21,8 @@
 pub mod cli;
 pub mod config;
 pub mod core;
+/// Phase 7: the shared counting engine (CLI + PyO3 counting entry point).
+pub mod count;
 pub mod database;
 pub mod error;
 pub mod fuzzy;

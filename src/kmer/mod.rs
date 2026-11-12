@@ -8,6 +8,8 @@
 
 pub mod canonical;
 pub mod encoding;
+/// ENGINE-03: the one shared skip-N window extractor.
+pub mod extract;
 pub mod operations;
 
 /// u128 encoding validation module

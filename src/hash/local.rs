@@ -238,6 +238,34 @@ impl LocalKmerCounts {
         }
     }
 
+    /// Look up one encoded k-mer's count in this local table.
+    ///
+    /// Additive accessor (Phase 7): [`crate::count::CountResult::get_count`]
+    /// routes a key to its single owning partition and reads it back through
+    /// the width-correct arm. The dense arm looks up the narrowed `u64` the
+    /// same way [`Self::increment`] stores it; the wide arm looks up the
+    /// `u128` directly. No behavior change to increment or reduction.
+    ///
+    /// # Arguments
+    /// * `kmer_encoded` - Encoded k-mer at the public `u128` width
+    ///
+    /// # Returns
+    /// `Some(count)` when this table holds the key, `None` otherwise.
+    pub fn get_count(&self, kmer_encoded: u128) -> Option<u32> {
+        match &self.table {
+            LocalTable::Dense(map) => {
+                debug_assert!(
+                    kmer_encoded <= u64::MAX as u128,
+                    "LocalKmerCounts selected the dense u64 width for k={} but the \
+                     looked-up value has bits set above bit 64",
+                    self.kmer_length
+                );
+                map.get(&(kmer_encoded as u64)).copied()
+            }
+            LocalTable::Wide(map) => map.get(&kmer_encoded).copied(),
+        }
+    }
+
     /// K-mer length this accumulator was built for.
     pub fn kmer_length(&self) -> usize {
         self.kmer_length
