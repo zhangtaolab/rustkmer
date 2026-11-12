@@ -371,8 +371,13 @@ impl KmerCounter {
     /// atomics are published to match that partial content.
     ///
     /// # Thread safety
-    /// Do not run this concurrently with counting on the same counter; the same
-    /// caveat as [`KmerCounter::merge`] applies.
+    /// Concurrent `merge_local_counts` calls are a supported configuration:
+    /// [`KmerCounter::reduce_local_counts`] merges drained locals in parallel,
+    /// relying on it. Each per-key checked sum is serialized by the `DashMap`
+    /// shard lock, and the aggregate total is published with an atomic
+    /// compare-exchange loop, so concurrent merges cannot lose updates. Running
+    /// this concurrently with counting ([`KmerCounter::increment`]) on the same
+    /// counter remains unsupported, the same caveat as [`KmerCounter::merge`].
     pub fn merge_local_counts(&self, local: &LocalKmerCounts) -> ProcessingResult<()> {
         if local.kmer_length() != self.kmer_length {
             return Err(ProcessingError::new(format!(
@@ -466,19 +471,30 @@ impl KmerCounter {
         // The shared total is also a new summation site: checked, never
         // wrapping. Total > u64::MAX is unreachable in practice, but the
         // fail-loud rule applies to every new summation (PAR-02).
-        let current_total = self.total_kmers.load(std::sync::atomic::Ordering::Relaxed);
-        let new_total = match current_total.checked_add(merged_total) {
-            Some(total) => total,
-            None => {
-                self.unique_kmers
-                    .fetch_add(merged_unique, std::sync::atomic::Ordering::Relaxed);
-                return Err(ProcessingError::new(
-                    "Total k-mer count overflow during local reduction",
-                ));
-            }
-        };
-        self.total_kmers
-            .store(new_total, std::sync::atomic::Ordering::Relaxed);
+        //
+        // Publish with an atomic read-modify-write, not a load + store:
+        // concurrent `merge_local_counts` calls are a supported configuration
+        // (`reduce_local_counts` merges locals in parallel), so a plain store
+        // would let callers overwrite each other's deltas. `fetch_update`
+        // retries the closure with the freshly observed value on concurrent
+        // modification — i.e. a compare-exchange loop — so concurrent deltas
+        // compose. A bare `fetch_add` is deliberately NOT used: it would
+        // silently wrap past u64::MAX instead of failing loud.
+        let published = self.total_kmers.fetch_update(
+            std::sync::atomic::Ordering::Relaxed,
+            std::sync::atomic::Ordering::Relaxed,
+            |current| current.checked_add(merged_total),
+        );
+        if published.is_err() {
+            // The checked sum would exceed u64::MAX: publish the partial
+            // atomics exactly like the mid-loop poison paths (WR-02) and fail
+            // loud. No new total is stored and nothing wraps.
+            self.unique_kmers
+                .fetch_add(merged_unique, std::sync::atomic::Ordering::Relaxed);
+            return Err(ProcessingError::new(
+                "Total k-mer count overflow during local reduction",
+            ));
+        }
         self.unique_kmers
             .fetch_add(merged_unique, std::sync::atomic::Ordering::Relaxed);
 
@@ -495,9 +511,11 @@ impl KmerCounter {
     ///
     /// **Parallel reduction (06-04 scaling fix).** With more than one local the
     /// reductions run concurrently: each one only mutates the shared table
-    /// through [`KmerCounter::merge_local_counts`]'s per-key shard lock, so
-    /// every per-key checked sum is still atomic and `unique_kmers` /
-    /// `total_kmers` still advance by exactly the successfully merged deltas.
+    /// through [`KmerCounter::merge_local_counts`]'s per-key shard lock plus an
+    /// atomic compare-exchange publication of the aggregate total, so every
+    /// per-key checked sum is still atomic, `unique_kmers` advances by exactly
+    /// the successfully merged unique deltas, and `total_kmers` cannot lose an
+    /// update under concurrent merges (06-05 gap closure).
     /// A serial reduction of N locals is a fixed N-way tail that dominated the
     /// post-hot-path t4/t16 wall time (the 500k-read synthetic gate measured
     /// only 1.20x/1.25x against a 1.3 threshold); merging the locals in
@@ -1198,6 +1216,58 @@ mod tests {
 
         // The overflow target must NOT have advanced past the ceiling.
         assert_eq!(counter1.get_count(0x1), Some(u32::MAX));
+    }
+
+    /// **Aggregate-total overflow is fail-loud and never wraps (06-05).**
+    ///
+    /// [`KmerCounter::merge_local_counts`] publishes the shared `u64` total with
+    /// an atomic checked read-modify-write (`fetch_update` + `checked_add`). A
+    /// merge whose delta would push the total past `u64::MAX` must return the
+    /// verbatim error, leave the published total untouched (no wrap), and still
+    /// publish `unique_kmers` so the poisoned counter's atomics match its
+    /// partial table (the WR-02 poison contract).
+    #[test]
+    fn local_reduction_total_overflow_is_fail_loud_and_never_wraps() {
+        let counter = KmerCounter::new(21, false, 16, 1).unwrap();
+        counter
+            .total_kmers
+            .store(u64::MAX - 1, std::sync::atomic::Ordering::Relaxed);
+
+        let key: u128 = 0x42;
+        let mut local = counter.new_local_counts();
+        local.increment(key).unwrap();
+        local.increment(key).unwrap(); // merged_total = 2: u64::MAX - 1 + 2 overflows
+
+        let err = counter
+            .merge_local_counts(&local)
+            .expect_err("aggregate-total overflow must fail loudly, not wrap");
+        let message = format!("{}", err);
+        assert!(
+            message.contains("Total k-mer count overflow during local reduction"),
+            "verbatim aggregate-overflow message missing from {:?}",
+            message
+        );
+        assert_eq!(
+            counter.total_kmers(),
+            u64::MAX - 1,
+            "a failed aggregate publication must leave the total unwrapped"
+        );
+        assert_eq!(
+            counter.get_count(key),
+            Some(2),
+            "the merged key must still be present with its exact count"
+        );
+        let stored_sum: u64 = counter
+            .get_all_counts()
+            .iter()
+            .map(|(_, count)| *count as u64)
+            .sum();
+        assert_eq!(stored_sum, 2, "the stored-count sum must be exactly 2");
+        assert_eq!(
+            counter.unique_kmers(),
+            1,
+            "unique_kmers must be published to match the poisoned partial table"
+        );
     }
 
     #[test]
