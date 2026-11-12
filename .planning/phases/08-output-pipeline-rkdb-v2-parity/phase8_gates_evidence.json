@@ -1,0 +1,120 @@
+{
+  "msrv_clippy": {
+    "root_command": "cargo +1.82.0 clippy --locked --all-targets -- -D warnings",
+    "pyo3_command": "cargo +1.82.0 clippy --locked --all-targets --manifest-path pyo3/Cargo.toml -- -D warnings",
+    "result": "pass"
+  },
+  "release_build": "pass",
+  "full_test_suite": {
+    "command": "cargo test --locked",
+    "test_result_summaries": [
+      "test result: ok. 260 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.96s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+      "test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s",
+      "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s",
+      "test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+      "test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s",
+      "test result: ok. 9 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.57s",
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.41s",
+      "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s",
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+      "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+      "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+      "test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s",
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s",
+      "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+      "test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s",
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+      "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s",
+      "test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+      "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.62s",
+      "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
+      "test result: ok. 17 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 6.96s"
+    ]
+  },
+  "golden_tests": {
+    "command": "cargo test --locked --test golden_sha256_tests --test golden_tests",
+    "test_result_summaries": [
+      "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s"
+    ]
+  },
+  "bench_harness_unittests": {
+    "command": "python3 -m unittest discover -s scripts/bench/tests -t .",
+    "summary": "Ran 361 tests in 10.763s; OK (skipped=1)"
+  },
+  "pyo3": {
+    "module_path": "/Users/forrest/GitHub/rustkmer/.venv311/lib/python3.11/site-packages/pyrustkmer/__init__.py",
+    "pytest_summary": "======================= 158 passed, 63 skipped in 0.11s ========================"
+  },
+  "frozen_contract": {
+    "blob_hashes": {
+      "src/database/format.rs": "eb0d5bf29330301930d98d801480cf73d1cf826a",
+      "Cargo.toml": "fb5c839564f2ae90e2a3c5ca4c26d86426bf09a5",
+      "Cargo.lock": "7f24f3f3e789b6f35849699659168b023fac8a63",
+      "pyo3/Cargo.toml": "5b01979cf69e512a414791bcf66516f44f98d718",
+      "pyo3/Cargo.lock": "6da3805fccdb15d6f7dd139c12492f7c29d577ab"
+    },
+    "format_rs_blob_expected": "eb0d5bf29330301930d98d801480cf73d1cf826a",
+    "single_writer": "count path uses only the format.rs header/entry writers",
+    "record_count_meaning": "IN-03 record count preserved"
+  },
+  "golden_manifest_sha256": "f010e42a213de6786ac67e2a6f9227485320e7ddfca4c6521cf019880786f25f",
+  "manifest_freeze": true,
+  "anti_softening": {
+    "current_tree": {
+      ".github/workflows/benchmark.yml": {
+        "silencing_constructs": 0,
+        "expected_failure_wording": 0
+      },
+      "scripts/bench/README.md": {
+        "silencing_constructs": 2,
+        "expected_failure_wording": 0
+      },
+      "scripts/bench/thread_scaling.py": {
+        "silencing_constructs": 2,
+        "expected_failure_wording": 0
+      }
+    },
+    "head_baseline": {
+      ".github/workflows/benchmark.yml": {
+        "silencing_constructs": 0,
+        "expected_failure_wording": 0
+      },
+      "scripts/bench/README.md": {
+        "silencing_constructs": 2,
+        "expected_failure_wording": 0
+      },
+      "scripts/bench/thread_scaling.py": {
+        "silencing_constructs": 2,
+        "expected_failure_wording": 0
+      }
+    },
+    "silencing_baseline": {
+      ".github/workflows/benchmark.yml": 0,
+      "scripts/bench/README.md": 2,
+      "scripts/bench/thread_scaling.py": 2
+    },
+    "semantics": "workflow zero matches; README.md and thread_scaling.py current==HEAD==pinned Phase 7 baseline (quoted doctrine); expected-failure wording zero everywhere"
+  },
+  "mutation_evidence_verdict": {
+    "result": "GREEN"
+  },
+  "output_stage_verdict": {
+    "result": "GREEN",
+    "sorted_wall_s": 10.41,
+    "sort_delta_s": 1.6999999999999993,
+    "sha256_match": true,
+    "score": "ok"
+  },
+  "baselines_unchanged": true
+}
