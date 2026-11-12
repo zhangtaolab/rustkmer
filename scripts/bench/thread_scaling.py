@@ -7,11 +7,10 @@ and speedup_t16 likewise must BOTH reach --min-speedup (default 1.3).
 t4-vs-t16 is deliberately unconstrained — CI runners have 2-4 cores and t16
 oversubscription must not keep the gate red after Phase 6 fixes --threads.
 
-EXPECTED RED on the current tree: --threads is a silent no-op (17 OS threads
-at --threads 1, profiling evidence 2026-11-12), so t1 ~ t4 ~ t16 and both
-speedups sit near 1.0. The harness task is DONE when this gate correctly
-OBSERVES that bug — Phase 6 (PAR-01) turns it green. Never soften the exit
-code, never `|| true`, never continue-on-error.
+STANDING GATE: `--threads` sizes the rayon pool (Phase 6 PAR-01 fixed the
+silent no-op), so t1/t4/t16 measure real scaling and both speedups must
+reach --min-speedup for GREEN. Never soften the exit code, never `|| true`,
+never continue-on-error.
 
 Exit codes are a contract (compare.py semantics):
   0 — GREEN: both speedups >= --min-speedup (inclusive boundary).
@@ -423,7 +422,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         description="PROF-02 thread-scaling gate: t1/t4/t16 count arms, "
                     "counterbalanced rounds, exit 0 GREEN / 1 RED / 2 "
-                    "invalid. Expected RED while --threads is a no-op.")
+                    "invalid. Both speedups must reach --min-speedup for "
+                    "GREEN.")
     parser.add_argument("--mode", choices=["synthetic", "slice"],
                         default="synthetic",
                         help="input provisioning mode (default synthetic; "
@@ -487,6 +487,6 @@ if __name__ == "__main__":
     except Exception as exc:  # noqa: BLE001 — fail loudly, no traceback noise
         # Infrastructure failures are INVALID (exit 2), never exit 1: the
         # RED exit code is reserved for the measured verdict, so an uncaught
-        # exception can never masquerade as the expected-RED observation.
+        # exception can never masquerade as a measured RED observation.
         print(f"thread_scaling.py: {exc}", file=sys.stderr)
         sys.exit(EXIT_INVALID)

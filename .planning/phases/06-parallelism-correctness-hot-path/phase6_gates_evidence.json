@@ -1,0 +1,40 @@
+{
+  "msrv_clippy": "pass",
+  "root_clippy": "pass",
+  "pyo3_clippy": "pass",
+  "release_build": "pass",
+  "full_test_suite": "pass",
+  "pool_size_gate": "pass",
+  "pyo3_pytest": "pass",
+  "softening_grep": "pass",
+  "command_lines": {
+    "root_clippy": "cargo +1.82.0 clippy --locked --all-targets -- -D warnings",
+    "pyo3_clippy": "cargo +1.82.0 clippy --locked --all-targets --manifest-path pyo3/Cargo.toml -- -D warnings",
+    "release_build": "cargo build --release --locked",
+    "full_test_suite": "cargo test --locked",
+    "pool_size_gate": "cargo test --locked --test thread_pool_size_tests",
+    "pyo3_build": "env -u CONDA_PREFIX VIRTUAL_ENV=.venv311 PATH=.venv311/bin:$PATH maturin develop --release --manifest-path pyo3/Cargo.toml",
+    "pyo3_pytest": ".venv311/bin/python -m pytest pyo3/tests -q"
+  },
+  "python_module": "/Users/forrest/GitHub/rustkmer/.venv311/lib/python3.11/site-packages/pyrustkmer/__init__.py",
+  "native_module": {
+    "path": "/Users/forrest/GitHub/rustkmer/.venv311/lib/python3.11/site-packages/pyrustkmer/pyrustkmer.cpython-311-darwin.so",
+    "sha256": "086233bb56fb4b0b3d37098251034c79749412c201ae48e69ff01da544908767"
+  },
+  "full_suite_summary": {
+    "suites": 26,
+    "passed": 430,
+    "failed": 0,
+    "ignored": 4
+  },
+  "pytest_summary": "146 passed, 63 skipped",
+  "workflow_wording": {
+    "standing_gate": "yes",
+    "forbidden_grep": "none",
+    "softening_constructs": "none"
+  },
+  "readme_wording": {
+    "standing_gate": "yes (already updated by 06-01; no further edit required)",
+    "forbidden_grep": "none"
+  }
+}

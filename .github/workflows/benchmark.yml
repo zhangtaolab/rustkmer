@@ -22,11 +22,11 @@ name: Benchmark
 # job verdict: the failed measurement/gate step still fails the job. The
 # upload is therefore not error softening; it is evidence retention.
 #
-# PROF-02 (thread scaling) is INTENTIONALLY RED until Phase 6 (PAR-01):
-# `--threads` is a silent no-op on the current tree (17 OS threads observed
-# at `--threads 1`), so t1 ~ t4 ~ t16 and the scaling verdict exits 1. That
-# red is the standing gate correctly observing a real bug — not a
-# regression, and never to be silenced or baseline-recaptured away.
+# PROF-02 (thread scaling) is a STANDING GATE: `--threads` sizes the rayon
+# pool (Phase 6 PAR-01 fixed the silent no-op), so t1/t4/t16 measure real
+# scaling and the verdict step exits 0 only when both speedups reach 1.3.
+# A red verdict is a measured regression — never to be silenced or
+# baseline-recaptured away.
 #
 # 2026-10-17: the wall axis is advisory (--wall-advisory), activating the
 # README "Threshold rationale" contingency. Three consecutive zero-change
@@ -130,7 +130,7 @@ jobs:
       # --- PROF-02 thread-scaling gate (measure -> upload -> verdict) -----
       # Two-step on purpose: the measure-only run writes the doc and exits 0
       # (schema + provenance valid), the upload preserves that evidence, and
-      # only the final verdict step carries the intentional RED. The
+      # only the final verdict step carries the gate verdict. The
       # measure/upload steps never alter the verdict.
       - name: Measure thread scaling
         run: python3 scripts/bench/thread_scaling.py --mode synthetic --reads 200000 --reps 2 --measure-only --out thread_scaling.json
@@ -142,9 +142,9 @@ jobs:
           name: thread-scaling-${{ runner.os }}
           path: thread_scaling.json
           if-no-files-found: warn
-      # Standing PROF-02 gate — INTENTIONALLY RED on the current tree.
-      # `--threads` is a silent no-op, so t1/t4/t16 measure the same wall
-      # time and this exits 1. Phase 6 (PAR-01) turns it GREEN. The red is
-      # never softened, skipped, or recaptured away.
-      - name: Thread-scaling verdict (PROF-02, expected RED until Phase 6)
+      # Standing PROF-02 gate — must stay GREEN. `--threads` sizes the rayon
+      # pool (Phase 6 PAR-01), so t1/t4/t16 measure real scaling; this exits 1
+      # on a measured no-op/regression. The verdict is never softened,
+      # skipped, or recaptured away.
+      - name: Thread-scaling verdict (PROF-02, standing gate)
         run: python3 scripts/bench/thread_scaling.py --current thread_scaling.json
