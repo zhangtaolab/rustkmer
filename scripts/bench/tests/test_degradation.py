@@ -6,6 +6,9 @@ silently. Stdlib unittest only — no pytest, no conftest. The tiny .gz fixture
 is built with the system `gzip` CLI (gzip is not a Python import).
 """
 
+import gzip
+import hashlib
+import json
 import subprocess
 import sys
 import tempfile
@@ -16,6 +19,7 @@ from scripts.bench.bench import gather_inputs, resolve_mode
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MAKE_SLICE = REPO_ROOT / "scripts" / "bench" / "make_slice.sh"
+RANDOM_SLICE = REPO_ROOT / "scripts" / "bench" / "random_slice.py"
 
 EMPTY_ENV = {}
 
@@ -224,6 +228,142 @@ class TestMakeSliceDeterminism(unittest.TestCase):
              "10", str(self.root / "bad.fq")],
             capture_output=True, text=True)
         self.assertNotEqual(proc.returncode, 0)
+
+
+class TestRandomSlice(unittest.TestCase):
+    """Seeded reservoir slices select whole records, never a head prefix."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.gz_path, self.plain_bytes = build_gz_fixture(self.root, 64)
+
+    def run_random(self, output_name="slice.fq", reads=10, seed=42,
+                   input_path=None, manifest_name=None):
+        """Invoke the random-slice CLI without asserting its exit status."""
+        out = self.root / output_name
+        manifest = self.root / (manifest_name or output_name + ".json")
+        proc = subprocess.run(
+            [sys.executable, str(RANDOM_SLICE),
+             "--input", str(input_path or self.gz_path),
+             "--reads", str(reads), "--seed", str(seed),
+             "--out", str(out), "--manifest", str(manifest)],
+            capture_output=True, text=True)
+        return proc, out, manifest
+
+    def assert_invalid(self, proc, out, manifest):
+        """Invalid input fails loudly with the CLI's invalid-exit contract."""
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertTrue(proc.stderr.strip(), "failure must be loud")
+        self.assertFalse(out.exists(), "invalid input must not emit a slice")
+        self.assertFalse(manifest.exists(),
+                         "invalid input must not emit a manifest")
+
+    def test_same_seed_is_byte_deterministic(self):
+        """Identical inputs and seeds produce identical bytes and manifests."""
+        proc_a, out_a, manifest_a = self.run_random(
+            "a.fq", manifest_name="a.json")
+        proc_b, out_b, manifest_b = self.run_random(
+            "b.fq", manifest_name="b.json")
+        self.assertEqual(proc_a.returncode, 0, proc_a.stderr)
+        self.assertEqual(proc_b.returncode, 0, proc_b.stderr)
+        self.assertEqual(hashlib.sha256(out_a.read_bytes()).hexdigest(),
+                         hashlib.sha256(out_b.read_bytes()).hexdigest())
+        self.assertEqual(
+            hashlib.sha256(manifest_a.read_bytes()).hexdigest(),
+            hashlib.sha256(manifest_b.read_bytes()).hexdigest())
+
+    def test_different_seeds_select_different_records(self):
+        """Changing only the seed changes selected source indices."""
+        proc_a, out_a, manifest_a = self.run_random("a.fq", seed=42)
+        proc_b, out_b, manifest_b = self.run_random("b.fq", seed=1337)
+        self.assertEqual(proc_a.returncode, 0, proc_a.stderr)
+        self.assertEqual(proc_b.returncode, 0, proc_b.stderr)
+        doc_a = json.loads(manifest_a.read_text())
+        doc_b = json.loads(manifest_b.read_text())
+        self.assertNotEqual(doc_a["selected_indices"],
+                            doc_b["selected_indices"])
+        self.assertNotEqual(out_a.read_bytes(), out_b.read_bytes())
+
+    def test_output_is_complete_records_in_source_order(self):
+        """Every emitted record is the original four lines at its index."""
+        proc, out, manifest = self.run_random(reads=12)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        lines = out.read_bytes().splitlines(keepends=True)
+        self.assertEqual(len(lines), 12 * 4)
+        source_records = [self.plain_bytes.splitlines(keepends=True)[i:i + 4]
+                          for i in range(0, 64 * 4, 4)]
+        doc = json.loads(manifest.read_text())
+        expected = b"".join(b"".join(source_records[i])
+                            for i in doc["selected_indices"])
+        self.assertEqual(out.read_bytes(), expected)
+        self.assertEqual(doc["selected_reads"], 12)
+        self.assertEqual(doc["record_lines"], 4)
+        self.assertEqual(doc["output_sha256"],
+                         hashlib.sha256(out.read_bytes()).hexdigest())
+
+    def test_selected_indices_are_sorted_and_in_range(self):
+        """Manifest indices are unique, ascending, and source-bounded."""
+        proc, _, manifest = self.run_random(reads=16)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        doc = json.loads(manifest.read_text())
+        indices = doc["selected_indices"]
+        self.assertEqual(indices, sorted(set(indices)))
+        self.assertEqual(len(indices), doc["requested_reads"])
+        self.assertTrue(all(0 <= index < 64 for index in indices))
+        self.assertEqual(doc["source"]["path"], str(self.gz_path))
+        self.assertEqual(doc["source"]["size_bytes"], self.gz_path.stat().st_size)
+        self.assertEqual(len(doc["source"]["sha256"]), 64)
+        self.assertEqual(doc["seed"], 42)
+
+    def test_selection_is_not_head_of_file(self):
+        """A seeded sample over more than N records is not range(N)."""
+        proc, _, manifest = self.run_random(reads=10)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        indices = json.loads(manifest.read_text())["selected_indices"]
+        self.assertNotEqual(indices, list(range(10)))
+
+    def test_request_larger_than_source_exits_2(self):
+        """Oversized requests fail rather than silently truncating."""
+        proc, out, manifest = self.run_random("too-large.fq", reads=65)
+        self.assert_invalid(proc, out, manifest)
+        self.assertIn("64", proc.stderr)
+
+    def test_empty_input_exits_2(self):
+        """A valid gzip containing zero records is invalid benchmark input."""
+        empty = self.root / "empty.fq.gz"
+        with gzip.open(empty, "wb"):
+            pass
+        proc, out, manifest = self.run_random(
+            "empty.fq", input_path=empty)
+        self.assert_invalid(proc, out, manifest)
+
+    def test_malformed_fastq_exits_2(self):
+        """A partial fifth line group is rejected as malformed FASTQ."""
+        malformed = self.root / "malformed.fq.gz"
+        with gzip.open(malformed, "wb") as fh:
+            fh.write(b"@R1\nACGT\n+\nIIII\n@R2\nACGT\n+\n")
+        proc, out, manifest = self.run_random(
+            "malformed.fq", input_path=malformed)
+        self.assert_invalid(proc, out, manifest)
+        self.assertIn("multiple of 4", proc.stderr)
+
+    def test_zero_reads_exits_2(self):
+        """Zero requested reads is an argparse usage error."""
+        proc, out, manifest = self.run_random("zero.fq", reads=0)
+        self.assert_invalid(proc, out, manifest)
+
+    def test_nonnumeric_reads_exits_2(self):
+        """Nonnumeric requested reads is an argparse usage error."""
+        proc, out, manifest = self.run_random("nonnumeric.fq", reads="ten")
+        self.assert_invalid(proc, out, manifest)
+
+    def test_missing_input_exits_2(self):
+        """A missing source file is invalid, never an empty successful slice."""
+        proc, out, manifest = self.run_random(
+            "missing.fq", input_path=self.root / "missing.fq.gz")
+        self.assert_invalid(proc, out, manifest)
 
 
 if __name__ == "__main__":
