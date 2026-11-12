@@ -1582,4 +1582,75 @@ mod tests {
             "the saving must be exactly the 8-byte per-key key shrink"
         );
     }
+
+    /// PAR-02 / T-06-04 (unit-level): a failed local reduction must return
+    /// `Err` and must not silently drop the successful keys merged before the
+    /// failing one. The atomics must stay consistent with the partial table —
+    /// the WR-02 poison-consistent contract, transplanted to the local merge.
+    ///
+    /// Setup: the shared table is seeded at `u32::MAX`, a fresh-key local is
+    /// merged successfully, then a local that overflows the saturated key is
+    /// merged. The successful key must survive, the failing key must not
+    /// advance, and `total_kmers` / `unique_kmers` must equal the table's
+    /// actual contents.
+    #[test]
+    fn failed_local_merge_reports_error_and_keeps_partial_atomics_consistent() {
+        let counter = KmerCounter::new(31, false, 1000, 1).unwrap();
+
+        // Seed the saturated key WITHOUT four billion increments, and keep the
+        // atomics in sync with the seeded table so a later consistency check is
+        // meaningful.
+        seed_saturated(&counter, 0x1, 31);
+        counter
+            .total_kmers
+            .store(u32::MAX as u64, std::sync::atomic::Ordering::Relaxed);
+        counter
+            .unique_kmers
+            .store(1, std::sync::atomic::Ordering::Relaxed);
+
+        // A successful local first: a fresh key observed twice.
+        let mut good = counter.new_local_counts();
+        good.increment(0x2).unwrap();
+        good.increment(0x2).unwrap();
+        counter.merge_local_counts(&good).unwrap();
+        assert_eq!(counter.get_count(0x2), Some(2));
+
+        // Then a local that would push the saturated key past the ceiling.
+        let mut bad = counter.new_local_counts();
+        bad.increment(0x1).unwrap();
+        let err = counter
+            .merge_local_counts(&bad)
+            .expect_err("a per-key sum above u32::MAX must return Err");
+        let message = format!("{}", err);
+        assert!(
+            message.contains("K-mer count overflow reached maximum value"),
+            "verbatim overflow prefix missing from {:?}",
+            message
+        );
+
+        // The successful preceding merge is retained...
+        assert_eq!(
+            counter.get_count(0x2),
+            Some(2),
+            "a failed merge must not discard keys merged before the failure"
+        );
+        // ...the failing key did not advance past the ceiling...
+        assert_eq!(counter.get_count(0x1), Some(u32::MAX));
+        // ...and the atomics agree with the partial table (WR-02).
+        let table_total: u64 = counter
+            .get_all_counts()
+            .iter()
+            .map(|(_, count)| *count as u64)
+            .sum();
+        assert_eq!(
+            counter.total_kmers(),
+            table_total,
+            "after a poisoned local merge, total_kmers must match the table"
+        );
+        assert_eq!(
+            counter.unique_kmers(),
+            counter.get_all_counts().len() as u64,
+            "after a poisoned local merge, unique_kmers must match the table"
+        );
+    }
 }

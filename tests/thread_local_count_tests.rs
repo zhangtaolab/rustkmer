@@ -426,3 +426,254 @@ fn multi_file_local_reduction_matches_per_file_sum() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+// --- Task 2: exactness, overflow, unique, and conservation ------------------
+
+/// The full D-13-style matrix: k in {21, 32, 64} (dense, dense boundary, wide)
+/// times canonical on/off.
+const MATRIX_KS: [usize; 3] = [21, 32, 64];
+
+/// **1-vs-N differential through the local path.**
+///
+/// Integer addition is commutative and associative, so the same input counted
+/// with one rayon worker and with four must produce identical decoded maps. Any
+/// divergence is a lost update, a double count, or a per-worker local that was
+/// merged twice.
+#[test]
+fn one_vs_n_local_maps_are_identical_across_the_matrix() -> anyhow::Result<()> {
+    let sequences = input_sequences();
+    for &k in MATRIX_KS.iter() {
+        for &canonical in &[true, false] {
+            let (_, single) = count_local_path(&sequences, k, canonical, 1)?;
+            let (_, multi) = count_local_path(&sequences, k, canonical, 4)?;
+            assert_eq!(
+                decode_map(&single, k),
+                decode_map(&multi, k),
+                "PAR-02: 1-vs-N divergence through the local path \
+                 (k={}, canonical={})",
+                k,
+                canonical
+            );
+        }
+    }
+    Ok(())
+}
+
+/// **Old-vs-new differential across the matrix.**
+///
+/// The local path must produce exactly the count map the pre-change per-window
+/// shared-increment path produced, for every k x canonical cell.
+#[test]
+fn old_vs_new_maps_are_identical_across_the_matrix() -> anyhow::Result<()> {
+    let sequences = input_sequences();
+    for &k in MATRIX_KS.iter() {
+        for &canonical in &[true, false] {
+            let (counter, local_map) = count_local_path(&sequences, k, canonical, 4)?;
+            let reference_map = count_reference_path(&sequences, k, canonical)?;
+
+            assert_eq!(
+                decode_map(&local_map, k),
+                decode_map(&reference_map, k),
+                "PAR-02: old-vs-new map divergence (k={}, canonical={})",
+                k,
+                canonical
+            );
+
+            let expected_total: u64 = reference_map.values().map(|c| *c as u64).sum();
+            assert_eq!(
+                counter.total_kmers(),
+                expected_total,
+                "reduced shared total must equal the reference total (k={}, canonical={})",
+                k,
+                canonical
+            );
+            assert_eq!(
+                counter.unique_kmers(),
+                reference_map.len() as u64,
+                "reduced shared unique must equal the reference unique (k={}, canonical={})",
+                k,
+                canonical
+            );
+        }
+    }
+    Ok(())
+}
+
+/// **Fail-loud local increment at the ceiling (T-06-04).**
+///
+/// A local increment on a key already at `u32::MAX` must return the verbatim
+/// contract error, leave the stored count at the ceiling, and not advance the
+/// local total — the WR-03 rule, carried into the local accumulator. Exercised
+/// on both storage widths.
+#[test]
+fn local_increment_at_u32_ceiling_is_verbatim_and_does_not_advance_total() {
+    let cells: [(usize, u128); 2] = [(21, 0x1234_5678), (64, u128::MAX - 12345)];
+
+    for (k, key) in cells {
+        let mut local = LocalKmerCounts::new(k, false);
+        local.seed_count(key, u32::MAX);
+        let total_before = local.total_kmers();
+        assert_eq!(
+            total_before,
+            u32::MAX as u64,
+            "seed_count must keep the local total consistent (k={})",
+            k
+        );
+
+        let err = local
+            .increment(key)
+            .expect_err("an increment at u32::MAX must fail loudly, not wrap");
+        let message = format!("{}", err);
+        assert!(
+            message.contains("K-mer count overflow reached maximum value"),
+            "k={}: verbatim overflow prefix missing from {:?}",
+            k,
+            message
+        );
+        assert!(
+            message.contains(&u32::MAX.to_string()),
+            "k={}: overflow message must name the max value; got {:?}",
+            k,
+            message
+        );
+
+        assert_eq!(
+            local.total_kmers(),
+            total_before,
+            "k={}: a failed increment must not advance the local total (WR-03)",
+            k
+        );
+        assert_eq!(
+            local.iter().find(|(encoded, _)| *encoded == key).map(|(_, c)| c),
+            Some(u32::MAX),
+            "k={}: the saturated key must remain at the ceiling (no wrap)",
+            k
+        );
+    }
+}
+
+/// **Fail-loud reduction overflow (T-06-04).**
+///
+/// Merging a local whose per-key sum would exceed `u32::MAX` must return the
+/// verbatim error and leave the stored count at or below the ceiling — never a
+/// silent wrap and never a silent saturation. The shared statistics must stay
+/// consistent with the partial table (the WR-02 poison contract).
+#[test]
+fn merge_overflow_is_verbatim_and_never_wraps_or_saturates() -> anyhow::Result<()> {
+    let cells: [(usize, u128); 2] = [(21, 0x00C0_FFEE), (64, u128::MAX - 777)];
+
+    for (k, key) in cells {
+        let counter = KmerCounter::new(k, false, 16, 1)?;
+        let near_ceiling = u32::MAX - 1;
+
+        let mut seeded = counter.new_local_counts();
+        seeded.seed_count(key, near_ceiling);
+        counter.merge_local_counts(&seeded)?;
+        assert_eq!(counter.get_count(key), Some(near_ceiling), "k={}", k);
+
+        // Two increments => adding 2 to u32::MAX - 1 overflows.
+        let mut overflow = counter.new_local_counts();
+        overflow.increment(key)?;
+        overflow.increment(key)?;
+
+        let err = counter
+            .merge_local_counts(&overflow)
+            .expect_err("a per-key sum above u32::MAX must fail loudly");
+        let message = format!("{}", err);
+        assert!(
+            message.contains("K-mer count overflow reached maximum value"),
+            "k={}: verbatim overflow prefix missing from {:?}",
+            k,
+            message
+        );
+        assert!(
+            message.contains(&u32::MAX.to_string()),
+            "k={}: overflow message must name the max value; got {:?}",
+            k,
+            message
+        );
+
+        assert_eq!(
+            counter.get_count(key),
+            Some(near_ceiling),
+            "k={}: a failed merge must not wrap or saturate the stored count",
+            k
+        );
+
+        let table_total: u64 = counter
+            .get_all_counts()
+            .iter()
+            .map(|(_, count)| *count as u64)
+            .sum();
+        assert_eq!(
+            counter.total_kmers(),
+            table_total,
+            "k={}: after a poisoned merge the total must match the partial table (WR-02)",
+            k
+        );
+        assert_eq!(
+            counter.unique_kmers(),
+            counter.get_all_counts().len() as u64,
+            "k={}: after a poisoned merge unique must match the partial table (WR-02)",
+            k
+        );
+    }
+    Ok(())
+}
+
+/// **Unique and conservation semantics.**
+///
+/// Two locals that contain the same key contribute it exactly once to the
+/// shared unique count while their totals sum; the shared total equals the sum
+/// of the successfully merged local totals and the sum of stored counts.
+#[test]
+fn overlapping_locals_count_a_shared_key_once_and_totals_conserve() -> anyhow::Result<()> {
+    let counter = KmerCounter::new(21, false, 16, 1)?;
+    let shared_key: u128 = 0xAAAA;
+    let other_key: u128 = 0xBBBB;
+
+    let mut first = counter.new_local_counts();
+    first.increment(shared_key)?;
+    first.increment(shared_key)?; // shared key: two observations
+
+    let mut second = counter.new_local_counts();
+    second.increment(shared_key)?; // shared key: one more observation
+    second.increment(other_key)?; // file-unique key
+
+    let first_total = first.total_kmers();
+    let second_total = second.total_kmers();
+    assert_eq!(first_total, 2);
+    assert_eq!(second_total, 2);
+
+    counter.merge_local_counts(&first)?;
+    counter.merge_local_counts(&second)?;
+
+    assert_eq!(
+        counter.get_count(shared_key),
+        Some(3),
+        "shared key counts must sum across locals"
+    );
+    assert_eq!(counter.get_count(other_key), Some(1));
+    assert_eq!(
+        counter.unique_kmers(),
+        2,
+        "the shared key must contribute exactly one unique entry"
+    );
+    assert_eq!(
+        counter.total_kmers(),
+        first_total + second_total,
+        "shared total must equal the sum of successfully merged local totals"
+    );
+
+    let table_total: u64 = counter
+        .get_all_counts()
+        .iter()
+        .map(|(_, count)| *count as u64)
+        .sum();
+    assert_eq!(
+        counter.total_kmers(),
+        table_total,
+        "shared total must equal the sum of stored counts"
+    );
+    Ok(())
+}
