@@ -5,16 +5,16 @@ milestone_name: k=21 Counting Parity
 current_phase: 05
 current_phase_name: Measurement & Regression Harness
 status: executing
-stopped_at: Completed 05-05-PLAN.md
-last_updated: "2026-11-12T09:49:57.065Z"
+stopped_at: Completed 05-06-PLAN.md
+last_updated: "2026-11-12T10:15:38.094Z"
 last_activity: 2026-11-12
 last_activity_desc: "Completed quick task 261112-jwl: Raise Rust MSRV 1.80 to 1.82"
-state_head: 1045f619d6170a28020cb33dc1b3f738ef53ab3b
+state_head: 6c43145963f238cafccadef281b11a69ddbde235
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 05 (Measurement & Regression Harness) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-11-12 - Completed quick task 261112-jwl: Raise Rust MSRV 1.80 to 1.82
 
@@ -77,6 +77,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0)
 | Phase 05 P03 | 17 min | 2 tasks | 6 files |
 | Phase 05 P04 | 45 min | 2 tasks | 5 files |
 | Phase 05 P05 | 31 min | 2 tasks | 6 files |
+| Phase 05 P06 | 21 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,9 @@ Recent decisions affecting current work:
 - [Phase 05]: [05-05] Microbench manifest declares rust-version 1.82 (plan literal 1.80 superseded by user-approved MSRV raise 69a82cf); standalone crate builds --locked from committed audited microbench_Cargo.lock whose measured-mechanism closure (dashmap 6.2.1/hashbrown 0.14.5/ahash 0.8.12 + padding/lock/zerocopy/libc deps) is aligned to the production lock; sha256 eabd946a recorded in evidence
 - [Phase 05]: [05-05] Attribution-v1 at t16 on real 200k subslice (18M distinct): global-atomics share 120.22 ns/window = 115.2% of shared-vs-local gap; bandwidth share -15.82 ns recorded with inconclusive note (never clamped); t16/t1 multiplier 1.877 vs research 9.4x in-vivo (DRAM-regime + rayon spin-wait absent here) — Phase 7 reads atomics-dominant, bandwidth unproven at 18M distinct
 - [Phase 05]: [05-05] Conservation recomputed from raw counts (flag never trusted): any failure exits 1 and the microbench aborts without JSON (mutation-proven); child exit 1 maps to controller exit 1, other child failures exit 2; negative/near-zero (<1% of gap) shares get honest inconclusive notes
+- [Phase 05]: [Phase 05]: [05-06] N-free control is the committed Python comparison basis: deterministic drop-records-with-N filter of the 1M random subslice (seed 20261112), live CLI-vs-Python parity on the same bytes BEFORE timing, exact counts pinned across reps — invariant under Phase 9's D2 skip-N change; real-N arm labeled timing-only-real-N-pre-D2
+- [Phase 05]: [Phase 05]: [05-06] Fresh-worker Python measurement + module provenance: every rep is a new interpreter process under /usr/bin/time (never an in-process clock); worker resolves maturin 1.11's editable-shim inner native .so so the fingerprint (c7701806) covers the measured bytes; stale/shadowed/zero-count/rep-disagreement runs exit 2, never skip
+- [Phase 05]: [Phase 05]: [05-06] N-read differential recorded D2 evidence only: control exactly equal; 33 Python-only chimeric k-mers in n_at_window_end/n_at_window_start/multiple_n/lowercase_n; 0 CLI-only; --expect-unified reserved for Phase 9; neither surface's semantics changed
 
 ### Pending Todos
 
@@ -135,8 +139,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T09:49:57.047Z
-Stopped at: Completed 05-05-PLAN.md
+Last session: 2026-11-12T10:15:38.078Z
+Stopped at: Completed 05-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
