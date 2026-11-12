@@ -4,6 +4,7 @@
 //! with minimal contention and efficient memory usage.
 
 use dashmap::DashMap;
+use rayon::prelude::*;
 
 use super::filtering::{CountFilter, FilteringResult};
 use super::local::{lock_local, LocalHandleRegistry, LocalKmerCounts};
@@ -491,17 +492,51 @@ impl KmerCounter {
     /// released. After this returns, [`KmerCounter::local_handle`] hands out
     /// new, empty locals: the registry generation has advanced, so a stale TLS
     /// handle can never be reused (which would double-count a previous file).
+    ///
+    /// **Parallel reduction (06-04 scaling fix).** With more than one local the
+    /// reductions run concurrently: each one only mutates the shared table
+    /// through [`KmerCounter::merge_local_counts`]'s per-key shard lock, so
+    /// every per-key checked sum is still atomic and `unique_kmers` /
+    /// `total_kmers` still advance by exactly the successfully merged deltas.
+    /// A serial reduction of N locals is a fixed N-way tail that dominated the
+    /// post-hot-path t4/t16 wall time (the 500k-read synthetic gate measured
+    /// only 1.20x/1.25x against a 1.3 threshold); merging the locals in
+    /// parallel keeps the standing thread-scaling gate honest without changing
+    /// any count, the overflow contract, or the public API. The single-local
+    /// case (the t1 path) stays sequential so the measured single-thread work
+    /// is unchanged.
     pub fn reduce_local_counts(&self) -> ProcessingResult<()> {
         let locals = self.local_registry.drain();
-        let mut outcome: ProcessingResult<()> = Ok(());
-        for handle in locals {
-            let mut local = lock_local(&handle);
-            if outcome.is_ok() {
-                outcome = self.merge_local_counts(&local);
+        if locals.len() <= 1 {
+            let mut outcome: ProcessingResult<()> = Ok(());
+            for handle in locals {
+                let mut local = lock_local(&handle);
+                if outcome.is_ok() {
+                    outcome = self.merge_local_counts(&local);
+                }
+                // Release the table's memory even when a merge failed: the failure
+                // is already being returned, and callers abort without output.
+                local.release();
             }
-            // Release the table's memory even when a merge failed: the failure
-            // is already being returned, and callers abort without output.
+            return outcome;
+        }
+
+        let outcome = locals.par_iter().try_for_each(|handle| {
+            let mut local = lock_local(handle);
+            let merged = self.merge_local_counts(&local);
+            // Release the table's memory even when this merge failed; the
+            // caller aborts without output on the returned error.
             local.release();
+            merged
+        });
+        if outcome.is_err() {
+            // `try_for_each` short-circuits: the remaining locals were never
+            // visited. Release them too so a failed reduction does not keep
+            // every drained worker table resident (06-02's memory contract).
+            // All rayon tasks are joined by now, so no local is in use.
+            for handle in &locals {
+                lock_local(handle).release();
+            }
         }
         outcome
     }
