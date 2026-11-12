@@ -4,18 +4,18 @@ milestone: v2.0
 milestone_name: k=21 Counting Parity
 current_phase: 8
 current_phase_name: Output Pipeline & .rkdb v2 Parity
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-11-12T17:24:41.971Z"
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-11-12T17:33:28.707Z"
 last_activity: 2026-11-13
 last_activity_desc: Phase 07 complete, transitioned to Phase 8
-state_head: b6109a8461b7d90fe93297f6b8297f89d4f36a28
+state_head: eeefcc24ddc04c5ba5fdd6d823bf1dff73b77657
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 20
-  completed_plans: 17
+  completed_plans: 18
   percent: 43
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 8 — Output Pipeline & .rkdb v2 Parity
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 4
 Status: Ready to execute
 Last activity: 2026-11-13 — Completed 08-01-PLAN.md (1 of 4 plans in Phase 8)
@@ -94,6 +94,7 @@ Progress: [████░░░░░░] 43% (v2.0)
 | Phase 07 P03 | 6min | 2 tasks | 3 files |
 | Phase 7 P04 | 23min | 3 tasks | 10 files |
 | Phase 08 P01 | 27 | 3 tasks | 7 files |
+| Phase 08 P02 | 8min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -164,6 +165,9 @@ Recent decisions affecting current work:
 - [Phase 08]: The pair buffer is the single sort buffer; each partition table is dropped as it drains, so post sorted RSS is 12.04 GB vs 17.97 GB pre-change
 - [Phase 08]: Text output sorts by the numeric encoded key, proven equal to the decoded lexicographic order for every k in 1..=64
 - [Phase 08]: Post-change compare measured GREEN on the same slice: sort delta 8.91 s -> 1.71 s (0.192x), sorted .rkdb sha256 unchanged at 0976f29c
+- [Phase 08]: Four-arm .rkdb v2 differential green on all six sorted cells: new CLI (t1/t4) == committed pre-refactor fixture == frozen RKDatabase::from_kmer_pairs writer (whole-file sha256) and == hand-built 16+4 LE record bytes (data section)
+- [Phase 08]: Fixture integrity is enforced in-test: manifest sha256 f010e42a pinned, all 12 fixtures re-hashed, and every write helper refuses a tests/fixtures/ path (goldens are never regenerated)
+- [Phase 08]: Sortedness proven by answers: DatabaseQuery disk+preloaded binary search (500 oracle keys, 500 reverse complements, 200 absent) and extract_prefix_optimized exact contiguous block bounds on eight prefix cases; unsorted disk binary search refuses with a named error while preloaded linear search answers
 
 ### Pending Todos
 
@@ -194,8 +198,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T17:23:47.060Z
-Stopped at: Completed 08-01-PLAN.md
+Last session: 2026-11-12T17:33:28.440Z
+Stopped at: Completed 08-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
