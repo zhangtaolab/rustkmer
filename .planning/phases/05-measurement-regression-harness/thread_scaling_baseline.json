@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "mode": "slice",
+  "params": {
+    "k": 21,
+    "canonical": true,
+    "thread_counts": [
+      1,
+      4,
+      16
+    ],
+    "reps": 2,
+    "cooldown_s": 5,
+    "min_speedup": 1.3,
+    "rustkmer": "target/release/rustkmer",
+    "slice_reads": 4000000,
+    "input": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz"
+  },
+  "platform": {
+    "system": "Darwin",
+    "release": "25.6.0",
+    "machine": "arm64",
+    "python": "3.13.11"
+  },
+  "created": "2026-11-12T09:02:42.171408+00:00",
+  "input_fingerprint": [
+    {
+      "path": ".planning/phases/05-measurement-regression-harness/slice-0.fq",
+      "size_bytes": 1472481891,
+      "sha256": "71c6264bc4c2b24a2d8d7a4a5ff4b18ec602b64141de745fd210336501b92937"
+    }
+  ],
+  "arms": [
+    {
+      "name": "rk21-t1",
+      "tool": "rustkmer",
+      "threads": 1,
+      "reps": [
+        {
+          "wall_s": 72.25,
+          "peak_rss_bytes": 16379183104,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 72.29,
+          "peak_rss_bytes": 16932536320,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 2
+        }
+      ],
+      "medians": {
+        "wall_s": 72.27000000000001,
+        "peak_rss_bytes": 16655859712.0,
+        "cv_wall_pct": 0.03913694651648861,
+        "cv_warning": false
+      },
+      "unique_kmers": 229694874,
+      "total_kmers": 519271168
+    },
+    {
+      "name": "rk21-t4",
+      "tool": "rustkmer",
+      "threads": 4,
+      "reps": [
+        {
+          "wall_s": 73.71,
+          "peak_rss_bytes": 16394485760,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 66.38,
+          "peak_rss_bytes": 16502603776,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 0
+        }
+      ],
+      "medians": {
+        "wall_s": 70.04499999999999,
+        "peak_rss_bytes": 16448544768.0,
+        "cv_wall_pct": 7.39966122649353,
+        "cv_warning": false
+      },
+      "unique_kmers": 229694874,
+      "total_kmers": 519271168
+    },
+    {
+      "name": "rk21-t16",
+      "tool": "rustkmer",
+      "threads": 16,
+      "reps": [
+        {
+          "wall_s": 72.98,
+          "peak_rss_bytes": 16400138240,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 2
+        },
+        {
+          "wall_s": 64.61,
+          "peak_rss_bytes": 16501506048,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 1
+        }
+      ],
+      "medians": {
+        "wall_s": 68.795,
+        "peak_rss_bytes": 16450822144.0,
+        "cv_wall_pct": 8.603072546742359,
+        "cv_warning": false
+      },
+      "unique_kmers": 229694874,
+      "total_kmers": 519271168
+    }
+  ],
+  "schedule": {
+    "policy": "round-robin-rotation",
+    "warmup_order": [
+      "rk21-t1",
+      "rk21-t4",
+      "rk21-t16"
+    ],
+    "rounds": [
+      [
+        "rk21-t1",
+        "rk21-t4",
+        "rk21-t16"
+      ],
+      [
+        "rk21-t4",
+        "rk21-t16",
+        "rk21-t1"
+      ]
+    ]
+  },
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 2959584,
+      "sha256": "8f64d442636871ee27173a4cc1c670a7e0d345ba6122a7582c08c13acf26c14f"
+    },
+    "git_commit": "227cffd571aaf1bdfcccdbbad2c22d5f0254a844",
+    "git_dirty": true,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-12T09:02:42.711573+00:00"
+  },
+  "verdict": {
+    "result": "RED",
+    "speedup_t4": 1.031765293739739,
+    "speedup_t16": 1.0505123918889456,
+    "min_speedup": 1.3
+  }
+}
