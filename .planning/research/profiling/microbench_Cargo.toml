@@ -2,9 +2,21 @@
 name = "rk-microbench"
 version = "0.1.0"
 edition = "2021"
+# MSRV 1.82: the plan text said 1.80, but the user-approved MSRV raise
+# (quick 261112-jwl, commit 69a82cf) landed after planning — the rustkmer
+# path dependency and the locked graph (indexmap/proptest) require 1.82.
+rust-version = "1.82"
 
 [dependencies]
-rustkmer = { path = "/Users/forrest/GitHub/rustkmer" }
+# Template placeholder: the controller (scripts/bench/contention_bench.py)
+# substitutes the repo root resolved from its own __file__ at materialization.
+# An absolute checkout pin would measure the wrong tree under worktree isolation.
+rustkmer = { path = "@REPO_ROOT@" }
+# Microbench-only direct deps — both already exist in the production lockfiles
+# (no new external packages). This manifest is NOT permission to add
+# dependencies to the production crates.
+dashmap = "=6.2.1"
+serde_json = "1.0"
 
 [profile.release]
 lto = true
