@@ -6,8 +6,10 @@
 use dashmap::DashMap;
 
 use super::filtering::{CountFilter, FilteringResult};
+use super::local::{lock_local, LocalHandleRegistry, LocalKmerCounts};
 use crate::error::{KmerError, ProcessingError, ProcessingResult};
 use crate::kmer::encoding::MAX_KMER_SIZE_IN_U64;
+use std::sync::{Arc, Mutex};
 
 /// Modelled per-entry hash/shard overhead in [`KmerCounter::memory_usage`].
 ///
@@ -120,6 +122,14 @@ pub struct KmerCounter {
     canonical_mode: bool,
     /// Maximum count value (for overflow protection)
     max_count: u32,
+    /// PAR-02: per-worker local accumulators and the end-of-file reduction.
+    ///
+    /// The counting hot path accumulates into a worker's `LocalKmerCounts`
+    /// (handed out by [`KmerCounter::local_handle`]) and calls
+    /// [`KmerCounter::reduce_local_counts`] once per input file. The registry
+    /// is immutable after construction; the generation protocol inside it is
+    /// what prevents a drained local from being reused on a later file.
+    local_registry: LocalHandleRegistry,
 }
 
 impl KmerCounter {
@@ -172,6 +182,7 @@ impl KmerCounter {
             kmer_length,
             canonical_mode,
             max_count: u32::MAX,
+            local_registry: LocalHandleRegistry::new(kmer_length, canonical_mode),
         })
     }
 
@@ -309,6 +320,192 @@ impl KmerCounter {
         self.total_kmers
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(())
+    }
+
+    /// Create an empty per-worker accumulator matching this counter's width.
+    ///
+    /// PAR-02: the CLI hot loop accumulates into a [`LocalKmerCounts`] and
+    /// merges it once per input file. The width follows the same rule as
+    /// [`KmerCounter::new`], so a k <= 32 counter hands out dense `u64`-keyed
+    /// locals and a k > 32 counter hands out wide `u128`-keyed locals.
+    pub fn new_local_counts(&self) -> LocalKmerCounts {
+        LocalKmerCounts::new(self.kmer_length, self.canonical_mode)
+    }
+
+    /// This worker thread's reusable local accumulator for this counter.
+    ///
+    /// The same accumulator is returned to every task running on a given
+    /// worker thread until [`KmerCounter::reduce_local_counts`] drains it. A
+    /// caller locks the returned handle once per record sub-slice (never per
+    /// k-mer window), so the hot loop touches no shared state.
+    ///
+    /// **Thread-safety contract:** reduction must not run concurrently with
+    /// counting on the same counter (same rule as [`KmerCounter::merge`]).
+    pub fn local_handle(&self) -> Arc<Mutex<LocalKmerCounts>> {
+        self.local_registry.handle()
+    }
+
+    /// Sum of skipped invalid windows across all currently registered locals.
+    ///
+    /// `count.rs` takes a before/after delta around each record chunk to keep
+    /// the pre-existing one-warning-per-chunk behavior without any shared
+    /// per-window state.
+    pub fn local_skipped(&self) -> u64 {
+        self.local_registry.skipped_total()
+    }
+
+    /// Merge one worker-local accumulator into the shared table.
+    ///
+    /// Per key this uses the same `entry()` chain as
+    /// [`KmerCounter::increment`] / [`KmerCounter::merge`], but the addition is
+    /// `checked_add` because the reduction is a new summation site (PAR-02 /
+    /// T-06-04): a per-key sum above `u32::MAX` returns the **verbatim**
+    /// `K-mer count overflow reached maximum value <max>` error and never
+    /// wraps or saturates.
+    ///
+    /// `unique_kmers` advances only for keys that were vacant in the shared
+    /// table; `total_kmers` advances by the successfully merged counts. Like
+    /// [`KmerCounter::merge`] (WR-02), a mid-loop overflow leaves the counter
+    /// **poisoned**: keys processed before the failing one stay merged and the
+    /// atomics are published to match that partial content.
+    ///
+    /// # Thread safety
+    /// Do not run this concurrently with counting on the same counter; the same
+    /// caveat as [`KmerCounter::merge`] applies.
+    pub fn merge_local_counts(&self, local: &LocalKmerCounts) -> ProcessingResult<()> {
+        if local.kmer_length() != self.kmer_length {
+            return Err(ProcessingError::new(format!(
+                "Cannot merge local counts with different k-mer lengths: {} vs {}",
+                self.kmer_length,
+                local.kmer_length()
+            )));
+        }
+        if local.canonical_mode() != self.canonical_mode {
+            return Err(ProcessingError::new(
+                "Cannot merge local counts with different canonical modes",
+            ));
+        }
+
+        let mut merged_unique: u64 = 0;
+        let mut merged_total: u64 = 0;
+
+        for (kmer, count) in local.iter() {
+            let mut delta_total: u64 = 0;
+            // Mirror `increment`'s flag-then-check shape (`bump_entry!`): the
+            // shard lock is held for the whole entry lifetime, so the checked
+            // sum is atomic per key on both storage widths.
+            let overflow = match &self.table {
+                CounterTable::Dense(map) => bump_entry!(
+                    flag: overflow,
+                    map: map,
+                    key: self.narrow_to_dense(kmer),
+                    modify: |existing| {
+                        match existing.checked_add(count) {
+                            Some(sum) => {
+                                *existing = sum;
+                                delta_total = count as u64;
+                            }
+                            None => overflow = true,
+                        }
+                    },
+                    insert: {
+                        merged_unique += 1;
+                        delta_total = count as u64;
+                        count
+                    },
+                ),
+                CounterTable::Wide(map) => bump_entry!(
+                    flag: overflow,
+                    map: map,
+                    key: kmer,
+                    modify: |existing| {
+                        match existing.checked_add(count) {
+                            Some(sum) => {
+                                *existing = sum;
+                                delta_total = count as u64;
+                            }
+                            None => overflow = true,
+                        }
+                    },
+                    insert: {
+                        merged_unique += 1;
+                        delta_total = count as u64;
+                        count
+                    },
+                ),
+            };
+
+            if overflow {
+                // Publish the partial atomics so the poisoned counter's stats
+                // match its (partial) contents, exactly like `merge` (WR-02).
+                self.total_kmers
+                    .fetch_add(merged_total, std::sync::atomic::Ordering::Relaxed);
+                self.unique_kmers
+                    .fetch_add(merged_unique, std::sync::atomic::Ordering::Relaxed);
+                return Err(ProcessingError::new(format!(
+                    "K-mer count overflow reached maximum value {}",
+                    self.max_count
+                )));
+            }
+
+            merged_total = match merged_total.checked_add(delta_total) {
+                Some(total) => total,
+                None => {
+                    self.total_kmers
+                        .fetch_add(merged_total, std::sync::atomic::Ordering::Relaxed);
+                    self.unique_kmers
+                        .fetch_add(merged_unique, std::sync::atomic::Ordering::Relaxed);
+                    return Err(ProcessingError::new(
+                        "Total k-mer count overflow during local reduction",
+                    ));
+                }
+            };
+        }
+
+        // The shared total is also a new summation site: checked, never
+        // wrapping. Total > u64::MAX is unreachable in practice, but the
+        // fail-loud rule applies to every new summation (PAR-02).
+        let current_total = self
+            .total_kmers
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let new_total = match current_total.checked_add(merged_total) {
+            Some(total) => total,
+            None => {
+                self.unique_kmers
+                    .fetch_add(merged_unique, std::sync::atomic::Ordering::Relaxed);
+                return Err(ProcessingError::new(
+                    "Total k-mer count overflow during local reduction",
+                ));
+            }
+        };
+        self.total_kmers
+            .store(new_total, std::sync::atomic::Ordering::Relaxed);
+        self.unique_kmers
+            .fetch_add(merged_unique, std::sync::atomic::Ordering::Relaxed);
+
+        Ok(())
+    }
+
+    /// Drain every worker-local accumulator and merge it into the shared table.
+    ///
+    /// Call once per input file (PAR-02) so per-file statistics are correct, a
+    /// later file starts from fresh locals, and each worker's table memory is
+    /// released. After this returns, [`KmerCounter::local_handle`] hands out
+    /// new, empty locals: the registry generation has advanced, so a stale TLS
+    /// handle can never be reused (which would double-count a previous file).
+    pub fn reduce_local_counts(&self) -> ProcessingResult<()> {
+        let locals = self.local_registry.drain();
+        let mut outcome: ProcessingResult<()> = Ok(());
+        for handle in locals {
+            let mut local = lock_local(&handle);
+            if outcome.is_ok() {
+                outcome = self.merge_local_counts(&local);
+            }
+            // Release the table's memory even when a merge failed: the failure
+            // is already being returned, and callers abort without output.
+            local.release();
+        }
+        outcome
     }
 
     /// Get the count for a specific k-mer

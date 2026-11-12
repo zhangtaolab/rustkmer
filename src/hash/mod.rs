@@ -4,9 +4,11 @@
 //! with support for overflow storage and memory optimization.
 
 pub mod filtering;
+pub mod local;
 pub mod matrix;
 pub mod overflow;
 pub mod table;
 
 pub use filtering::{CountFilter, CountFilterConfig, FilteringResult};
+pub use local::LocalKmerCounts;
 pub use table::KmerCounter;

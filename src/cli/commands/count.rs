@@ -11,6 +11,7 @@ use rayon::prelude::*;
 use crate::cli::args::Args;
 use crate::database::format::{DatabaseHeader, KmerEntry, DATABASE_MAGIC, DATABASE_VERSION};
 use crate::error::{KmerError, ProcessingResult};
+use crate::hash::local::LocalKmerCounts;
 use crate::hash::table::KmerCounter;
 use crate::io::discovery::{DiscoveryConfig, FileDiscovery};
 use crate::io::fasta::{validate_fasta_file, FastaProcessor};
@@ -285,6 +286,15 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                     .into());
                 }
 
+                // PAR-02: reduce THIS file's per-worker locals into the shared
+                // table before its statistics are printed. Doing it per file
+                // (not once at process end) keeps multi-file statistics
+                // correct, releases each worker's table memory before the next
+                // file, and advances the registry generation so a drained
+                // local can never be reused (which would double-count file 1
+                // into file 2).
+                counter.reduce_local_counts()?;
+
                 if !*quiet {
                     let elapsed = start_time.elapsed().as_secs_f64();
                     let stats = counter.get_stats();
@@ -353,33 +363,32 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
     }
 }
 
-/// Per-record encode → canonicalize → increment body, shared by the FASTA and
-/// FASTQ parallel paths (D-01; DRY — the two former inline closures were
-/// already near-identical).
+/// Number of records handed to one rayon task in the local-accumulation hot
+/// loop. Each task locks its worker's local accumulator once per sub-slice
+/// (never per k-mer window); 64 records is roughly 8-10k windows for typical
+/// 150 bp reads, large enough to amortize the lock and small enough to keep
+/// work-stealing fine-grained.
+const SUBSLICE_RECORDS: usize = 64;
+
+/// Per-record encode → canonicalize → local-increment body, shared by the
+/// FASTA and FASTQ parallel paths.
 ///
-/// Runs inside a rayon worker task. `counter` is an `&Arc<KmerCounter>`;
-/// DashMap gives interior mutability so `increment` takes `&self` — no
-/// `Mutex` needed, and the `entry().and_modify().or_insert_with()` chain is
-/// atomic per-key (RESEARCH Pattern 1, PCOUNT-04 invariant).
-///
-/// Returns the number of k-mer windows skipped due to invalid characters
-/// (N, etc.) so the caller can aggregate them and emit ONE warning per chunk
-/// from the producer thread (WR-02: the previous per-record `eprintln!` ran
-/// inside the rayon worker, and concurrent workers calling `eprintln!` could
-/// interleave on stderr; moving emission to the single-threaded producer
-/// removes the cross-worker stderr race entirely).
-fn process_one_record(
+/// **PAR-02:** counts go into the worker's [`LocalKmerCounts`], not the shared
+/// `KmerCounter`, so the hot loop performs no shared `increment` and no atomic
+/// fetch-add. `local.record_skipped()` preserves the pre-PAR-02 skipped-window
+/// accounting; the producer derives the per-chunk warning from the local
+/// skipped-total delta (WR-02: one `eprintln!` per chunk from the
+/// single-threaded producer, never from a rayon worker).
+fn count_record_into(
+    local: &mut LocalKmerCounts,
     seq: &[u8],
-    counter: &Arc<KmerCounter>,
     k: usize,
     canonical: bool,
-) -> ProcessingResult<u64> {
+) -> ProcessingResult<()> {
     // Skip sequences shorter than k
     if seq.len() < k {
-        return Ok(0);
+        return Ok(());
     }
-
-    let mut skipped: u64 = 0;
 
     // Extract and count k-mers
     for i in 0..=(seq.len() - k) {
@@ -396,18 +405,51 @@ fn process_one_record(
                     encoded_kmer
                 };
 
-                counter.increment(final_kmer).map_err(|e| {
+                local.increment(final_kmer).map_err(|e| {
                     KmerError::ProcessingError(format!("Failed to increment k-mer count: {}", e))
                 })?;
             }
             Err(_) => {
                 // Skip k-mers with invalid characters (N, etc.)
-                skipped += 1;
+                local.record_skipped();
             }
         }
     }
 
-    Ok(skipped)
+    Ok(())
+}
+
+/// Count a chunk of records into the per-worker locals.
+///
+/// `par_chunks` + `try_for_each_init` gives every rayon task the calling
+/// worker's reusable accumulator (a lock-free TLS fast path) and locks it once
+/// per record sub-slice. Errors short-circuit the chunk, mirroring the old
+/// `try_fold`/`try_reduce` behavior.
+fn count_chunk_into_locals<R, F>(
+    records: &[R],
+    seq_of: F,
+    counter: &Arc<KmerCounter>,
+    k: usize,
+    canonical: bool,
+) -> ProcessingResult<()>
+where
+    R: Sync,
+    F: Fn(&R) -> &[u8] + Sync,
+{
+    records
+        .par_chunks(SUBSLICE_RECORDS)
+        .try_for_each_init(
+            || counter.local_handle(),
+            |handle, sub_slice| -> ProcessingResult<()> {
+                let mut local = handle
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                for record in sub_slice {
+                    count_record_into(&mut local, seq_of(record), k, canonical)?;
+                }
+                Ok(())
+            },
+        )
 }
 
 /// Process a FASTA file and count k-mers.
@@ -479,22 +521,14 @@ fn process_fasta_file(
         chunk.push(record);
 
         if chunk.len() == CHUNK_SIZE {
-            // Hand the full chunk to rayon workers. `try_fold` + `try_reduce`
-            // (not `try_for_each`) so each worker's per-record skip count is
-            // aggregated into a chunk-level total (WR-02: moving the warning
-            // emission out of the worker removes the cross-worker stderr
-            // race entirely; one `eprintln!` fires per chunk from this
-            // single-threaded producer after the `par_iter` completes).
-            let chunk_ref = &chunk;
-            let chunk_skips: u64 = chunk_ref
-                .par_iter()
-                .try_fold(
-                    || 0u64,
-                    |acc, record| {
-                        process_one_record(record.seq(), counter, k, canonical).map(|s| acc + s)
-                    },
-                )
-                .try_reduce(|| 0u64, |a, b| Ok(a + b))?;
+            // PAR-02: hand the chunk to rayon workers, which accumulate into
+            // their own local tables. The per-chunk skipped count is the delta
+            // of the summed local skip counters before/after the chunk, so the
+            // one-warning-per-chunk behavior and wording are preserved without
+            // any shared per-window state.
+            let skipped_before = counter.local_skipped();
+            count_chunk_into_locals(&chunk, |record| record.seq(), counter, k, canonical)?;
+            let chunk_skips = counter.local_skipped().saturating_sub(skipped_before);
             if show_warnings && chunk_skips > 0 {
                 eprintln!(
                     "Warning: Skipped {} k-mer{} with invalid characters in chunk",
@@ -508,15 +542,9 @@ fn process_fasta_file(
 
     // Drain the remainder (last partial chunk).
     if !chunk.is_empty() {
-        let chunk_skips: u64 = chunk
-            .par_iter()
-            .try_fold(
-                || 0u64,
-                |acc, record| {
-                    process_one_record(record.seq(), counter, k, canonical).map(|s| acc + s)
-                },
-            )
-            .try_reduce(|| 0u64, |a, b| Ok(a + b))?;
+        let skipped_before = counter.local_skipped();
+        count_chunk_into_locals(&chunk, |record| record.seq(), counter, k, canonical)?;
+        let chunk_skips = counter.local_skipped().saturating_sub(skipped_before);
         if show_warnings && chunk_skips > 0 {
             eprintln!(
                 "Warning: Skipped {} k-mer{} with invalid characters in chunk",
@@ -585,19 +613,12 @@ fn process_fastq_file(
         chunk.push(record);
 
         if chunk.len() == CHUNK_SIZE {
-            // WR-02: aggregate per-record skips into a chunk-level total and
-            // emit ONE warning from this single-threaded producer after the
-            // `par_iter` completes (see process_fasta_file for full rationale).
-            let chunk_ref = &chunk;
-            let chunk_skips: u64 = chunk_ref
-                .par_iter()
-                .try_fold(
-                    || 0u64,
-                    |acc, record| {
-                        process_one_record(record.seq(), counter, k, canonical).map(|s| acc + s)
-                    },
-                )
-                .try_reduce(|| 0u64, |a, b| Ok(a + b))?;
+            // PAR-02: same local-accumulation path as the FASTA sibling; the
+            // chunk skips come from the local skip-counter delta so one
+            // warning fires per chunk from this single-threaded producer.
+            let skipped_before = counter.local_skipped();
+            count_chunk_into_locals(&chunk, |record| record.seq(), counter, k, canonical)?;
+            let chunk_skips = counter.local_skipped().saturating_sub(skipped_before);
             if show_warnings && chunk_skips > 0 {
                 eprintln!(
                     "Warning: Skipped {} k-mer{} with invalid characters in chunk",
@@ -611,15 +632,9 @@ fn process_fastq_file(
 
     // Drain the remainder (last partial chunk).
     if !chunk.is_empty() {
-        let chunk_skips: u64 = chunk
-            .par_iter()
-            .try_fold(
-                || 0u64,
-                |acc, record| {
-                    process_one_record(record.seq(), counter, k, canonical).map(|s| acc + s)
-                },
-            )
-            .try_reduce(|| 0u64, |a, b| Ok(a + b))?;
+        let skipped_before = counter.local_skipped();
+        count_chunk_into_locals(&chunk, |record| record.seq(), counter, k, canonical)?;
+        let chunk_skips = counter.local_skipped().saturating_sub(skipped_before);
         if show_warnings && chunk_skips > 0 {
             eprintln!(
                 "Warning: Skipped {} k-mer{} with invalid characters in chunk",
