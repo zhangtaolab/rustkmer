@@ -378,9 +378,50 @@ impl CountResult {
         }
     }
 
-    /// Collect every `(key, count)` pair.
+    /// Collect every `(key, count)` pair by consuming the result.
+    ///
+    /// # Arguments
+    /// * None
+    ///
+    /// # Returns
+    /// One pair buffer holding every partition's entries exactly once.
+    ///
+    /// # Errors
+    /// This method is infallible: pair collection has no error path.
     pub fn into_pairs(self) -> Vec<(u128, u32)> {
-        self.collect_pairs()
+        self.into_filtered_pairs(&None)
+    }
+
+    /// Consuming filtered collection: drain every partition table into ONE
+    /// pair buffer, then retain the pairs that pass `filter`.
+    ///
+    /// Each partition table is moved out of the result and dropped as it is
+    /// drained, so a drained table's allocation is released before the next
+    /// one is drained — at no instant does a second full copy of the entries
+    /// exist beside the pair buffer. Filter semantics are identical to
+    /// [`Self::filtered_pairs`] / [`KmerCounter::get_filtered_kmers`].
+    ///
+    /// # Arguments
+    /// * `filter` - Optional count filter (`None` keeps every pair)
+    ///
+    /// # Returns
+    /// The kept `(key, count)` pairs.
+    ///
+    /// # Errors
+    /// This method is infallible: pair collection and filtering have no
+    /// error path.
+    pub fn into_filtered_pairs(self, filter: &Option<CountFilter>) -> Vec<(u128, u32)> {
+        let capacity: usize = self.tables.iter().map(LocalKmerCounts::key_count).sum();
+        let mut pairs = Vec::with_capacity(capacity);
+        // `CountResult` has no `Drop` impl, so the table vector can be moved
+        // out; each table is drained and dropped at the end of its iteration.
+        for table in self.tables {
+            table.into_pairs_into(&mut pairs);
+        }
+        if let Some(filter) = filter {
+            pairs.retain(|(_, count)| filter.passes(*count as u64));
+        }
+        pairs
     }
 
     /// Collect every `(key, count)` pair through a borrow.

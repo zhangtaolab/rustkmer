@@ -7,6 +7,8 @@
 use std::path::Path;
 use std::time::Instant;
 
+use rayon::prelude::*;
+
 use crate::cli::args::Args;
 use crate::count::{CountEngine, CountResult, EngineConfig, SequenceKind};
 use crate::database::format::{DatabaseHeader, KmerEntry, DATABASE_MAGIC, DATABASE_VERSION};
@@ -274,6 +276,13 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                 KmerError::ProcessingError(format!("Failed to finalize counting: {}", e))
             })?;
 
+            // Summaries must be computed BEFORE the output block: the writer
+            // consumes the result (one pair buffer, each partition table
+            // released as it drains) instead of borrowing it.
+            let stats = count_result.stats();
+            let (total_kmers, unique_kmers) = (stats.total_kmers, stats.unique_kmers);
+            let filtering_stats = count_result.filtering_stats(&filter);
+
             // Generate output
             if let Some(output_file) = output {
                 let output_path = Path::new(output_file);
@@ -284,7 +293,7 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
                     }
                     _ => {
                         output_binary_format(
-                            &count_result,
+                            count_result,
                             output_path,
                             *quiet,
                             should_sort,
@@ -295,9 +304,6 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             }
 
             let total_time = start_time.elapsed();
-            let stats = count_result.stats();
-            let (total_kmers, unique_kmers) = (stats.total_kmers, stats.unique_kmers);
-            let filtering_stats = count_result.filtering_stats(&filter);
 
             if !*quiet {
                 eprintln!("Counting completed successfully!");
@@ -335,6 +341,22 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
             Err(KmerError::ProcessingError("Invalid command for execute_count".to_string()).into())
         }
     }
+}
+
+/// Sort `(key, count)` pairs ascending by the numeric encoded key, in place
+/// and in parallel.
+///
+/// `par_sort_unstable_by` is the pdqsort family: it sorts the slice IN PLACE.
+/// Do NOT switch to the merge-sort family (`par_sort` / `par_sort_by`), which
+/// allocates a temporary buffer the size of the slice and would raise peak
+/// RSS by the whole pair buffer.
+///
+/// Keys are unique by the engine's partition-disjointness invariant, so the
+/// order is a strict total order and is therefore independent of the thread
+/// count and of the algorithm — that is what makes the emitted `.rkdb` bytes
+/// (and the text order) thread-count independent.
+fn sort_pairs_ascending(pairs: &mut [(u128, u32)]) {
+    pairs.par_sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
 }
 
 /// Output results in text format
@@ -392,20 +414,27 @@ fn output_text_format(
     Ok(())
 }
 
-/// Output results in RKDB format
+/// Output results in RKDB format.
+///
+/// Consumes the count result: pairs are collected once (each partition table
+/// released as it drains), sorted in place when requested, then streamed one
+/// record at a time through the FROZEN `format.rs` header/entry writers.
 fn output_binary_format(
-    count_result: &CountResult,
+    count_result: CountResult,
     output_path: &Path,
     quiet: bool,
     sort: bool,
     filter: &Option<CountFilter>,
 ) -> ProcessingResult<()> {
+    use std::io::Write;
+
     if !quiet {
         eprintln!("Writing results in RKDB database format...");
     }
 
     let kmer_length = count_result.kmer_length();
-    let mut kmers = count_result.filtered_pairs(filter);
+    let canonical = count_result.canonical_mode();
+    let mut kmers = count_result.into_filtered_pairs(filter);
     let kmer_count = kmers.len();
 
     // Sort k-mers if requested (required for binary search)
@@ -413,7 +442,7 @@ fn output_binary_format(
         if !quiet {
             eprintln!("Sorting {} k-mers...", kmer_count);
         }
-        kmers.sort_by_key(|(a, _)| *a);
+        sort_pairs_ascending(&mut kmers);
     }
 
     let file = std::fs::File::create(output_path)
@@ -437,7 +466,7 @@ fn output_binary_format(
         sorted: sort,
         data_offset: 42, // Fixed header size for RKDB format
         index_offset: 0,
-        canonical: count_result.canonical_mode(),
+        canonical,
         unique_kmers: kmer_count as u64, // Same as total_kmers for now
         file_size: 0, // In-memory only; not serialized (matches canonical writer)
     };
@@ -455,13 +484,18 @@ fn output_binary_format(
         KmerError::FileWriteError(format!("Failed to write database header: {}", e))
     })?;
 
-    // Write k-mer entries — delegates to the canonical KmerEntry::write_to
-    // (format.rs:201: u128 LE kmer + u32 LE count). This replaces the previous
-    // inline raw-byte entry loop so there is exactly one .rkdb entry writer in
-    // the codebase. Byte-identity is verified by tests/golden_tests.rs (P3).
-    for (kmer, count) in kmers {
+    // Stream the sorted slice through the canonical KmerEntry::write_to
+    // (format.rs:201: u128 LE kmer + u32 LE count). There is exactly one
+    // .rkdb entry writer in the codebase; this loop holds no second copy of
+    // the entries.
+    for &(kmer, count) in kmers.iter() {
         KmerEntry::new(kmer, count).write_to(&mut writer)?;
     }
+
+    // Explicit flush: a failed final write must never be silent (T-08-04).
+    writer.flush().map_err(|e| {
+        KmerError::FileWriteError(format!("Failed to flush output file: {}", e))
+    })?;
 
     if !quiet {
         eprintln!("Completed writing {} k-mers in RKDB format", kmer_count);

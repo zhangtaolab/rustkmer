@@ -303,6 +303,32 @@ impl LocalKmerCounts {
         }
     }
 
+    /// Consuming drain: append every `(kmer_encoded, count)` pair to `out`.
+    ///
+    /// This is the output-stage collector (Phase 8 OUT-01): the owning map
+    /// iterator is consumed inside the match arm and dropped when the arm
+    /// ends, so the table's allocation is released during the drain instead
+    /// of after a second full copy of the entries exists. The dense arm
+    /// zero-extends its `u64` keys exactly like [`Self::iter`].
+    ///
+    /// # Arguments
+    /// * `out` - Destination pair buffer; existing contents are preserved and
+    ///   the drained pairs are appended
+    ///
+    /// # Returns
+    /// Nothing; `out` receives every pair the table held.
+    ///
+    /// # Errors
+    /// This method is infallible: pair collection has no error path.
+    pub fn into_pairs_into(self, out: &mut Vec<(u128, u32)>) {
+        match self.table {
+            LocalTable::Dense(map) => {
+                out.extend(map.into_iter().map(|(key, count)| (key as u128, count)));
+            }
+            LocalTable::Wide(map) => out.extend(map),
+        }
+    }
+
     /// Seed one key directly at an arbitrary count, for tests and benchmarks.
     ///
     /// This bypasses the four-billion-increment cost of reaching a count near
