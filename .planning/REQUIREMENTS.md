@@ -35,7 +35,7 @@ Committed scope. Each maps to exactly one roadmap phase. MINIM-* are CONDITIONAL
 
 - [x] **OUT-01**: Output uses unstable/parallel sort (`sort_unstable_by_key` / `rayon::par_sort_unstable`) and streaming write (no `get_all_counts` full materialization); text output sorts by numeric key.
 - [x] **OUT-02**: `.rkdb` v2 byte-identity is proven — golden sha256 captured BEFORE the refactor, sortedness proven through BOTH binary-search consumers (`DatabaseQuery` AND prefix query), header literals and the single `format.rs` writer frozen (IN-03 total_kmers meanings preserved).
-- [ ] **OUT-03**: An old-vs-new AND 1-vs-N differential matrix across k × canonical proves exact counts are preserved by every new path (partitioned tables + end reduction), with disjointness and conservation property tests.
+- [x] **OUT-03**: An old-vs-new AND 1-vs-N differential matrix across k × canonical proves exact counts are preserved by every new path (partitioned tables + end reduction), with disjointness and conservation property tests.
 
 ### Python Parity (PY)
 
@@ -99,7 +99,7 @@ Each requirement maps to exactly one phase. MINIM-* map to conditional Phase 11 
 | ENGINE-03 | Phase 7 | Complete |
 | OUT-01 | Phase 8 | Complete |
 | OUT-02 | Phase 8 | Complete |
-| OUT-03 | Phase 8 | Pending |
+| OUT-03 | Phase 8 | Complete |
 | PY-01 | Phase 9 | Pending |
 | PY-02 | Phase 9 | Pending |
 | BENCH-V2-01 | Phase 10 | Pending |

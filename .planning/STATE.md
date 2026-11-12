@@ -4,18 +4,18 @@ milestone: v2.0
 milestone_name: k=21 Counting Parity
 current_phase: 8
 current_phase_name: Output Pipeline & .rkdb v2 Parity
-current_plan: 3
+current_plan: 4
 status: executing
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-11-12T17:33:28.707Z"
+stopped_at: Completed 08-03-PLAN.md
+last_updated: "2026-11-12T17:42:38.977Z"
 last_activity: 2026-11-13
 last_activity_desc: Phase 07 complete, transitioned to Phase 8
-state_head: eeefcc24ddc04c5ba5fdd6d823bf1dff73b77657
+state_head: 3c08171de1a3ca30b6e98f18ba767e27aa99aaab
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 20
-  completed_plans: 18
+  completed_plans: 19
   percent: 43
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 8 — Output Pipeline & .rkdb v2 Parity
-Current Plan: 3
+Current Plan: 4
 Total Plans in Phase: 4
 Status: Ready to execute
 Last activity: 2026-11-13 — Completed 08-01-PLAN.md (1 of 4 plans in Phase 8)
@@ -95,6 +95,7 @@ Progress: [████░░░░░░] 43% (v2.0)
 | Phase 7 P04 | 23min | 3 tasks | 10 files |
 | Phase 08 P01 | 27 | 3 tasks | 7 files |
 | Phase 08 P02 | 8min | 2 tasks | 1 files |
+| Phase 08 P03 | 6min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -168,6 +169,10 @@ Recent decisions affecting current work:
 - [Phase 08]: Four-arm .rkdb v2 differential green on all six sorted cells: new CLI (t1/t4) == committed pre-refactor fixture == frozen RKDatabase::from_kmer_pairs writer (whole-file sha256) and == hand-built 16+4 LE record bytes (data section)
 - [Phase 08]: Fixture integrity is enforced in-test: manifest sha256 f010e42a pinned, all 12 fixtures re-hashed, and every write helper refuses a tests/fixtures/ path (goldens are never regenerated)
 - [Phase 08]: Sortedness proven by answers: DatabaseQuery disk+preloaded binary search (500 oracle keys, 500 reverse complements, 200 absent) and extract_prefix_optimized exact contiguous block bounds on eight prefix cases; unsorted disk binary search refuses with a named error while preloaded linear search answers
+- [Phase 08]: Explicit 12-cell matrix enumeration with an asserted counter; binary arm also asserts records.len()==reference.len() so duplicates/lost keys fail even when the header count matches
+- [Phase 08]: Skip-N is pinned by an exact observation count on a random record with one internal N at index 45; a repeat-rich record would satisfy distinct<naive windows for the wrong reason
+- [Phase 08]: Mutation driver exit classification: all gates RED then green = 0; a gate staying green = 1; non-unique find, restore mismatch, missing expected assertion text, or gate not green after restore = 2
+- [Phase 08]: Output-boundary proptest drives CountEngine directly (12 in-process cases) instead of the CLI so the test stays fast while exercising the exact pair structures the writer consumes
 
 ### Pending Todos
 
@@ -198,8 +203,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T17:33:28.440Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-11-12T17:42:38.716Z
+Stopped at: Completed 08-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
