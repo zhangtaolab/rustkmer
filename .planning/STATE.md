@@ -4,18 +4,18 @@ milestone: v2.0
 milestone_name: k=21 Counting Parity
 current_phase: 8
 current_phase_name: Output Pipeline & .rkdb v2 Parity
-current_plan: Not started
-status: planning
-stopped_at: Phase 07 complete, ready to plan Phase 8
-last_updated: "2026-11-12T16:19:43.364Z"
+current_plan: 2
+status: executing
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-11-12T17:24:41.971Z"
 last_activity: 2026-11-13
 last_activity_desc: Phase 07 complete, transitioned to Phase 8
-state_head: 706b77b0712c4b8e7cdec52cacd3112f5170dc94
+state_head: b6109a8461b7d90fe93297f6b8297f89d4f36a28
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 16
-  completed_plans: 16
+  total_plans: 20
+  completed_plans: 17
   percent: 43
 ---
 
@@ -26,15 +26,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-11)
 
 **Core value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools (KMC / Jellyfish class), from both the CLI and Python.
-**Current focus:** Phase 06 — Parallelism Correctness & Hot Path
+**Current focus:** Phase 08 — Output Pipeline & .rkdb v2 Parity
 
 ## Current Position
 
 Phase: 8 — Output Pipeline & .rkdb v2 Parity
-Current Plan: Not started
+Current Plan: 2
 Total Plans in Phase: 4
-Status: Ready to plan
-Last activity: 2026-11-13 — Phase 07 complete, transitioned to Phase 8
+Status: Ready to execute
+Last activity: 2026-11-13 — Completed 08-01-PLAN.md (1 of 4 plans in Phase 8)
 
 Progress: [████░░░░░░] 43% (v2.0)
 
@@ -93,6 +93,7 @@ Progress: [████░░░░░░] 43% (v2.0)
 | Phase 07 P02 | 13 | 3 tasks | 8 files |
 | Phase 07 P03 | 6min | 2 tasks | 3 files |
 | Phase 7 P04 | 23min | 3 tasks | 10 files |
+| Phase 08 P01 | 27 | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -158,6 +159,11 @@ Recent decisions affecting current work:
 - [Phase 7]: [07-04] ENGINE-02 measured on the final binary: synthetic 6.42/4.09/4.00 s vs Phase 6 13.59/8.32/6.74 s (GREEN 1.5697/1.605); slice 36.92/17.76/23.83 s vs 57.16/34.98/26.96 s with pinned 229,694,874/519,271,168 and one .rkdb sha256 across t1/t4/t16
 - [Phase 7]: [07-04] Producer bounds the parallel engine (~0.9999 of t4/t16 wall; workers idle ~1.2-4.7 s busy each): parallel extraction stays the unbuilt next lever, and the slice t16>t4 gap is output sort/write variance handed to Phase 8
 - [Phase 7]: [07-04] Diagnostics are profiling-only and the default release binary is byte-identical d107d17e before/after instrumentation; the pre-existing broken profiling feature was minimally repaired to build the probe
+- [Phase 08]: The pre-change output-stage baseline was captured from the untouched tree (binary d107d17e, HEAD 4d53102) before any src edit; git_dirty reflects only the untracked harness files
+- [Phase 08]: par_sort_unstable_by (pdqsort, in place) is mandated over the merge-sort family, whose slice-sized temporary buffer would raise peak RSS
+- [Phase 08]: The pair buffer is the single sort buffer; each partition table is dropped as it drains, so post sorted RSS is 12.04 GB vs 17.97 GB pre-change
+- [Phase 08]: Text output sorts by the numeric encoded key, proven equal to the decoded lexicographic order for every k in 1..=64
+- [Phase 08]: Post-change compare measured GREEN on the same slice: sort delta 8.91 s -> 1.71 s (0.192x), sorted .rkdb sha256 unchanged at 0976f29c
 
 ### Pending Todos
 
@@ -188,8 +194,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T15:55:49.628Z
-Stopped at: Phase 07 complete, ready to plan Phase 8
+Last session: 2026-11-12T17:23:47.060Z
+Stopped at: Completed 08-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
