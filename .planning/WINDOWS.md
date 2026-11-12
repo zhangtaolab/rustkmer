@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 1
+open_count: 0
 waived_count: 6
-fixed_count: 14
+fixed_count: 15
 total_count: 21
-last_updated: 2026-11-12T08:13:20.227Z
+last_updated: 2026-11-12T11:44:46.008Z
 ---
 
 # Broken Windows Ledger
@@ -35,7 +35,7 @@ last_updated: 2026-11-12T08:13:20.227Z
 | 18 | 03 | lint-warning | src/cli/commands/count.rs |  | cargo fmt --check fails on 4 phase-03-untouched files (21 hunks: count.rs, merge_bounded_memory_tests.rs, merge_cleanup_tests.rs, parallel_count_tests.rs) - pre-existing rustfmt version drift; all 03-16 touched files fmt-clean | fixed | Closed 2026-10-19: the pre-existing rustfmt version drift was fixed by commit ba7f451; cargo fmt --check passes clean on the live tree, covering the four files named in the description. | 2026-10-09T05:23:24.458Z | 2026-10-19T02:51:01.461Z |
 | 19 | 05 | unmet-truth | Cargo.lock |  | Rust 1.80 root clippy blocked: half 2.7.1 requires 1.81; indexmap 2.13.0 and proptest 1.9.0 require 1.82 | fixed |  | 2026-11-12T02:32:12.182Z | 2026-11-12T07:45:09.762Z |
 | 20 | 05 | unmet-truth | pyo3/Cargo.lock |  | Rust 1.80 PyO3 clippy blocked: indexmap 2.13.0 requires 1.82 | fixed |  | 2026-11-12T02:32:12.266Z | 2026-11-12T07:45:09.852Z |
-| 21 | 05 | skipped-test | tests/thread_pool_size_tests.rs | 205 | PROF-02 standing gate pool_size_matches_requested_threads is #[ignore]d — expected RED until Phase 6 fixes --threads; Phase 6 must un-ignore it and invert/remove the pool_size_baseline_records_default_pool characterization | open |  | 2026-11-12T08:13:20.227Z |  |
+| 21 | 05 | skipped-test | tests/thread_pool_size_tests.rs | 205 | PROF-02 standing gate pool_size_matches_requested_threads is #[ignore]d — expected RED until Phase 6 fixes --threads; Phase 6 must un-ignore it and invert/remove the pool_size_baseline_records_default_pool characterization | fixed |  | 2026-11-12T08:13:20.227Z | 2026-11-12T11:44:46.008Z |
 
 ````json
 [
@@ -306,10 +306,10 @@ last_updated: 2026-11-12T08:13:20.227Z
     "file": "tests/thread_pool_size_tests.rs",
     "line": 205,
     "description": "PROF-02 standing gate pool_size_matches_requested_threads is #[ignore]d — expected RED until Phase 6 fixes --threads; Phase 6 must un-ignore it and invert/remove the pool_size_baseline_records_default_pool characterization",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-12T08:13:20.227Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-12T11:44:46.008Z",
     "milestone": "v2.0"
   }
 ]

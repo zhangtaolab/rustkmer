@@ -4,17 +4,18 @@ milestone: v2.0
 milestone_name: k=21 Counting Parity
 current_phase: 6
 current_phase_name: Parallelism Correctness & Hot Path
-status: planning
-stopped_at: Phase 05 complete, ready to plan Phase 6
-last_updated: "2026-11-12T10:26:33.272Z"
+current_plan: 2
+status: executing
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-11-12T12:08:00.209Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 05 complete, transitioned to Phase 6
-state_head: dc5f52afb9dcab2b1744128d81f0880492bda871
+state_head: f85003500b827fb58c0d87c8e7639238e02582b0
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 11
+  completed_plans: 8
   percent: 14
 ---
 
@@ -25,14 +26,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-11)
 
 **Core value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools (KMC / Jellyfish class), from both the CLI and Python.
-**Current focus:** Phase 05 — Measurement & Regression Harness
+**Current focus:** Phase 06 — Parallelism Correctness & Hot Path
 
 ## Current Position
 
 Phase: 6 — Parallelism Correctness & Hot Path
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-11-12 — Phase 05 complete, transitioned to Phase 6
+Current Plan: 2
+Total Plans in Phase: 4
+Status: Ready to execute
+Last activity: 2026-11-12 — Completed 06-01 (working --threads, green pool gates, t1 baselines)
 
 Progress: [█░░░░░░░░░] 14% (v2.0)
 
@@ -80,6 +82,7 @@ Progress: [█░░░░░░░░░] 14% (v2.0)
 | Phase 05 P05 | 31 min | 2 tasks | 6 files |
 | Phase 05 P06 | 21 min | 2 tasks | 6 files |
 | Phase 05 P07 | 4 min | 2 tasks | 2 files |
+| Phase 06 P01 | 31 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -114,6 +117,10 @@ Recent decisions affecting current work:
 - [Phase 05]: [05-07] CI gains standing gates: harness unit suite + Python-surface benchmark + PROF-02 measure→upload→verdict; no Python compare gate because no CI-class baseline exists (Phase 10 owns it)
 - [Phase 05]: [05-07] Evidence retention exception: all three artifact uploads use always() + if-no-files-found: warn so failed measurement steps leave evidence; measurement/gate steps stay unconditional and the job verdict is never altered
 - [Phase 05]: [05-07] PROF-02 red is intentional and documented in the workflow and README with a Phase 6 (PAR-01) handoff checklist; prohibited silencing constructs named in the README (continue-on-error, || true, conditional gates, baseline recapture)
+- [Phase 06]: PAR-01: all-cores fallback computed lazily via std::thread::available_parallelism; no rayon query before build_global, so --threads sizes the pool (observed 2/5/17 for 1/4/16)
+- [Phase 06]: PAR-01 gates: pool-size standing gate un-ignored and characterization inverted; thread-scaling GREEN (speedup_t4 1.8118, speedup_t16 1.4372)
+- [Phase 06]: PAR-01 baselines: synthetic t1 18.77 s; real 4M slice t1 142.54 s (229,694,874/519,271,168, slice sha256 71c6264b); Phase 5 RED baseline byte-identical
+- [Phase 06]: verify_threads.py counts unique thread ids: macOS sample emits the main thread as both a summary header and a section header after a rebuild
 
 ### Pending Todos
 
@@ -144,8 +151,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T10:20:12.277Z
-Stopped at: Phase 05 complete, ready to plan Phase 6
+Last session: 2026-11-12T12:07:33.046Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
