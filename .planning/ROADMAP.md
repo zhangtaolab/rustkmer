@@ -93,12 +93,12 @@ Plans:
   2. The PROF-02 thread-scaling gate is green after the engine: parallel-scaling efficiency materially improves toward jellyfish's measured 8.9x-on-16-cores profile and slice wall-clock drops measurably vs the Phase 6 baseline, recorded with parity-before-timing and provenance on every artifact.
   3. ONE core window-extraction function implements the D2 skip-N semantics (CLI output stays identical to the jellyfish-validated reference), and the MultiGzDecoder multi-member gzip regression (v1.0 8102985) stays green.
   4. Exact counts survive partitioning: the slice parity gate passes on the pinned Distinct/Total, disjointness + conservation property tests are green, and every new summation site fails loud with the verbatim u32 overflow message.
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans executed
 Plans:
 - [x] 07-01-PLAN.md — Tracer: ONE extractor + sequential engine + `--threads 1` CLI cutover
 - [x] 07-02-PLAN.md — Persistent workers, bounded queues, exact 2N+1 PROF-02 gate
 - [x] 07-03-PLAN.md — PyO3 extractor cutover, MSRV and one-extractor proofs
-- [ ] 07-04-PLAN.md — ENGINE-02 measurement: scaling, slice walls, RSS, determinism, final gates
+- [x] 07-04-PLAN.md — ENGINE-02 measurement: scaling, slice walls, RSS, determinism, final gates
 **Research flag**: `--research-phase` recommended — partition scheme (hash-range vs canonical-minimizer) for the in-memory tables, queue/batch sizing on P+E hybrid cores, atomics-vs-bandwidth isolation (consume the PROF-03 microbench evidence first). Highest-leverage phase; design evidence pays for itself.
 **Note**: ENGINE-01/ENGINE-03's dual-surface contract completes in Phase 9, where `PyCounter::add_from_*` routes through this engine and the D2 semantics is proven + documented on the Python side (PY-01/PY-02). Phase 7 builds the engine as the single entry point and wires the CLI.
 
@@ -164,7 +164,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → (11 only i
 | 4. Benchmark & Validation | v1.0 | 5/5 | Complete | 2026-10-18 |
 | 5. Measurement & Regression Harness | v2.0 | 7/7 | Complete    | 2026-11-12 |
 | 6. Parallelism Correctness & Hot Path | v2.0 | 5/5 | Complete    | 2026-11-12 |
-| 7. Shared Counting Engine | v2.0 | 3/4 | In Progress | - |
+| 7. Shared Counting Engine | v2.0 | 4/4 | In Progress | - |
 | 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 0/TBD | Not started | - |
 | 9. Python Parity | v2.0 | 0/TBD | Not started | - |
 | 10. Benchmark Verdict | v2.0 | 0/TBD | Not started | - |

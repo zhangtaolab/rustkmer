@@ -5,17 +5,17 @@ milestone_name: k=21 Counting Parity
 current_phase: 7
 current_phase_name: Shared Counting Engine
 current_plan: 4
-status: executing
-stopped_at: Completed 07-03-PLAN.md
-last_updated: "2026-11-12T15:29:58.416Z"
+status: verifying
+stopped_at: Completed 07-04-PLAN.md
+last_updated: "2026-11-12T15:55:49.843Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 06 complete, transitioned to Phase 7
-state_head: 5d431d5e61f0a59e4ed121fcf67438bffe8a4fb5
+state_head: 3e1eb8730fadce840e941d71855987157ccbe625
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 16
-  completed_plans: 15
+  completed_plans: 16
   percent: 29
 ---
 
@@ -33,7 +33,7 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 Phase: 7 — Shared Counting Engine
 Current Plan: 4
 Total Plans in Phase: 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-12 — Phase 06 complete, transitioned to Phase 7
 
 Progress: [███░░░░░░░] 29% (v2.0)
@@ -91,6 +91,7 @@ Progress: [███░░░░░░░] 29% (v2.0)
 | Phase 7 P01 | 8min | 3 tasks | 10 files |
 | Phase 07 P02 | 13 | 3 tasks | 8 files |
 | Phase 07 P03 | 6min | 2 tasks | 3 files |
+| Phase 7 P04 | 23min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -153,6 +154,9 @@ Recent decisions affecting current work:
 - [Phase 07]: [07-03] PyO3 add_sequence and process_sequence_into_local extract only through for_each_window; the non-ACGT pre-filter is retained so Python N-read output is unchanged until Phase 9 (D2)
 - [Phase 07]: [07-03] N-read parity is pinned by a pure-Python strip-non-ACGT reference for k 21/64 x canonical on FASTA/FASTQ/sequence; the pre-filter and skip-N maps differ in all four cells, so the tests guard the D2 boundary
 - [Phase 07]: [07-03] phase7_pyo3_evidence.json persists command lines, module path, pytest summary, one-extractor greps/call sites, manifest freeze, and the N-read parity matrix rather than bare pass booleans
+- [Phase 7]: [07-04] ENGINE-02 measured on the final binary: synthetic 6.42/4.09/4.00 s vs Phase 6 13.59/8.32/6.74 s (GREEN 1.5697/1.605); slice 36.92/17.76/23.83 s vs 57.16/34.98/26.96 s with pinned 229,694,874/519,271,168 and one .rkdb sha256 across t1/t4/t16
+- [Phase 7]: [07-04] Producer bounds the parallel engine (~0.9999 of t4/t16 wall; workers idle ~1.2-4.7 s busy each): parallel extraction stays the unbuilt next lever, and the slice t16>t4 gap is output sort/write variance handed to Phase 8
+- [Phase 7]: [07-04] Diagnostics are profiling-only and the default release binary is byte-identical d107d17e before/after instrumentation; the pre-existing broken profiling feature was minimally repaired to build the probe
 
 ### Pending Todos
 
@@ -183,8 +187,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T15:29:58.201Z
-Stopped at: Completed 07-03-PLAN.md
+Last session: 2026-11-12T15:55:49.628Z
+Stopped at: Completed 07-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
