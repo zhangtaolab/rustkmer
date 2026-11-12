@@ -111,7 +111,12 @@ Plans:
   2. `.rkdb` v2 byte-identity is proven: golden sha256 captured BEFORE the refactor (Phase 5) match post-refactor output; sortedness is proven through BOTH binary-search consumers (`DatabaseQuery` AND prefix query); header literals and the single `format.rs` writer stay frozen (IN-03 total_kmers meanings preserved).
   3. An old-vs-new AND 1-vs-N differential matrix across k × canonical passes for every new path (partitioned tables + end reduction), with disjointness and conservation property tests green.
   4. The proof gates demonstrably fail on injected defects (overflow / duplication / ordering mutations observed RED) — goldens are never regenerated to make a diff green, and overflow at every new site returns the verbatim fail-loud error.
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 08-01-PLAN.md — Baseline + tracer: unstable/parallel sort, streaming write, numeric text order (OUT-01)
+- [ ] 08-02-PLAN.md — `.rkdb` v2 byte identity: four-arm golden/writer/hand-built differential + both-consumer sortedness (OUT-02)
+- [ ] 08-03-PLAN.md — Old-vs-new & 1-vs-N matrix, output-boundary properties, mutation-RED evidence (OUT-03)
+- [ ] 08-04-PLAN.md — Slice-scale stage/byte measurement + final standing-gate and frozen-contract audit
 **Research flag**: none — sort + existing writer + existing golden/differential discipline (v1.0 DENSE-02 / PCOUNT-04 precedents).
 
 ### Phase 9: Python Parity
@@ -165,7 +170,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → (11 only i
 | 5. Measurement & Regression Harness | v2.0 | 7/7 | Complete    | 2026-11-12 |
 | 6. Parallelism Correctness & Hot Path | v2.0 | 5/5 | Complete    | 2026-11-12 |
 | 7. Shared Counting Engine | v2.0 | 4/4 | Complete    | 2026-11-13 |
-| 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 0/TBD | Not started | - |
+| 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 0/4 | Not started | - |
 | 9. Python Parity | v2.0 | 0/TBD | Not started | - |
 | 10. Benchmark Verdict | v2.0 | 0/TBD | Not started | - |
 | 11. Minimizer Partitioning & Memory Ceiling | v2.0 | 0/TBD | Not started (conditional — D3) | - |
