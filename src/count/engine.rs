@@ -56,6 +56,8 @@ use std::ops::Range;
 use std::path::Path;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::thread::JoinHandle;
+#[cfg(feature = "profiling")]
+use std::time::Instant;
 
 use crate::error::{KmerError, ProcessingError, ProcessingResult};
 use crate::hash::filtering::{CountFilter, FilteringResult};
@@ -162,6 +164,62 @@ fn reduce_worker_stats(stats: &[WorkerStat]) -> ProcessingResult<(u64, u64)> {
     Ok((total, unique))
 }
 
+/// Per-worker timing diagnostics, recorded only when this crate is built with
+/// the `profiling` feature.
+///
+/// The values exist only after the workers are joined (`finish`), because a
+/// worker reports them with its tables. Default builds contain none of the
+/// timing calls and do not expose this type.
+#[cfg(feature = "profiling")]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WorkerDiagnostics {
+    /// Key batches processed by this worker (`Flush` barriers excluded).
+    pub batches: u64,
+    /// Accumulated wall time of this worker's increment loops.
+    pub busy_nanos: u64,
+}
+
+/// Engine timing diagnostics, recorded only when this crate is built with the
+/// `profiling` feature.
+///
+/// `wall_nanos` covers the engine's lifetime (construction through `finish`).
+/// `producer_nanos` covers the caller-thread producer work (file open, record
+/// parsing, extraction, routing, sends, and flush waits). On the sequential
+/// path `workers` is empty and both times cover the whole run.
+#[cfg(feature = "profiling")]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EngineDiagnostics {
+    /// Wall time across the engine's lifetime.
+    pub wall_nanos: u64,
+    /// Time the caller thread spent producing and waiting on flush barriers.
+    pub producer_nanos: u64,
+    /// One entry per worker, in worker order.
+    pub workers: Vec<WorkerDiagnostics>,
+}
+
+/// Worker return value: tables plus per-worker diagnostics when profiling.
+#[cfg(feature = "profiling")]
+type WorkerReturn = (Vec<LocalKmerCounts>, WorkerDiagnostics);
+
+/// Worker return value: tables only in default builds (the 07-02 signature).
+#[cfg(not(feature = "profiling"))]
+type WorkerReturn = Vec<LocalKmerCounts>;
+
+/// Join result: tables plus per-worker diagnostics when profiling.
+#[cfg(feature = "profiling")]
+type JoinReturn = (Vec<LocalKmerCounts>, Vec<WorkerDiagnostics>);
+
+/// Join result: tables only in default builds (the 07-02 signature).
+#[cfg(not(feature = "profiling"))]
+type JoinReturn = Vec<LocalKmerCounts>;
+
+/// Convert an elapsed `Instant` into `u64` nanoseconds, saturating at the
+/// representable maximum instead of panicking.
+#[cfg(feature = "profiling")]
+fn elapsed_nanos(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX)
+}
+
 /// Engine construction parameters.
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -258,6 +316,9 @@ pub struct CountResult {
     canonical: bool,
     /// Statistics computed when the engine finished.
     stats: EngineStats,
+    /// Feature-gated timing captured at `finish`; absent from default builds.
+    #[cfg(feature = "profiling")]
+    diagnostics: Option<EngineDiagnostics>,
 }
 
 impl CountResult {
@@ -274,6 +335,21 @@ impl CountResult {
     /// Exact cumulative statistics.
     pub fn stats(&self) -> EngineStats {
         self.stats
+    }
+
+    /// Producer/worker timing captured when the engine finished.
+    ///
+    /// Present only when this crate is built with the `profiling` feature; the
+    /// method does not exist in default builds. The diagnostics are read from
+    /// the finished result because per-worker values are produced when the
+    /// workers are joined.
+    ///
+    /// # Returns
+    /// `Some(diagnostics)` for results produced by [`CountEngine::finish`];
+    /// `None` for hand-constructed results (tests).
+    #[cfg(feature = "profiling")]
+    pub fn diagnostics(&self) -> Option<EngineDiagnostics> {
+        self.diagnostics.clone()
     }
 
     /// Look up one encoded k-mer in its owning partition.
@@ -408,7 +484,7 @@ struct ParallelState {
     /// One acknowledgement receiver per worker (index = worker).
     acknowledgements: Vec<Receiver<WorkerStat>>,
     /// Join handles in worker order; joined exactly once.
-    handles: Vec<JoinHandle<ProcessingResult<Vec<LocalKmerCounts>>>>,
+    handles: Vec<JoinHandle<ProcessingResult<WorkerReturn>>>,
     /// Per-partition producer-side routing buffers.
     buffers: RoutingBuffers,
     /// Whether the workers have been joined (shutdown is idempotent).
@@ -452,6 +528,12 @@ pub struct CountEngine {
     skipped_windows: u64,
     /// Next file-boundary flush token.
     next_token: u64,
+    /// Engine construction instant (profiling only).
+    #[cfg(feature = "profiling")]
+    started: Instant,
+    /// Accumulated caller-thread producer time (profiling only).
+    #[cfg(feature = "profiling")]
+    producer_nanos: u64,
 }
 
 impl CountEngine {
@@ -493,6 +575,10 @@ impl CountEngine {
                 last_stats: EngineStats::default(),
                 skipped_windows: 0,
                 next_token: 0,
+                #[cfg(feature = "profiling")]
+                started: Instant::now(),
+                #[cfg(feature = "profiling")]
+                producer_nanos: 0,
             });
         }
 
@@ -551,7 +637,7 @@ impl CountEngine {
         let mut remaining = partition_tables.into_iter();
         let mut senders: Vec<SyncSender<CountBatch>> = Vec::with_capacity(workers);
         let mut acknowledgements: Vec<Receiver<WorkerStat>> = Vec::with_capacity(workers);
-        let mut handles: Vec<JoinHandle<ProcessingResult<Vec<LocalKmerCounts>>>> =
+        let mut handles: Vec<JoinHandle<ProcessingResult<WorkerReturn>>> =
             Vec::with_capacity(workers);
 
         for worker_index in 0..workers {
@@ -621,6 +707,10 @@ impl CountEngine {
             last_stats: EngineStats::default(),
             skipped_windows: 0,
             next_token: 0,
+            #[cfg(feature = "profiling")]
+            started: Instant::now(),
+            #[cfg(feature = "profiling")]
+            producer_nanos: 0,
         })
     }
 
@@ -658,6 +748,8 @@ impl CountEngine {
 
     /// Counting body shared by both execution shapes.
     fn count_file_inner(&mut self, path: &Path, kind: SequenceKind) -> ProcessingResult<FileStats> {
+        #[cfg(feature = "profiling")]
+        let producer_started = Instant::now();
         let (reader, _compression) = DefaultCompressedFileReader::open_compressed(path).map_err(
             |error| {
                 ProcessingError::with_context(
@@ -710,6 +802,15 @@ impl CountEngine {
             .checked_add(file_skipped)
             .ok_or_else(|| ProcessingError::new(SKIPPED_OVERFLOW_MESSAGE))?;
 
+        // The producer section ends before the file-boundary flush, which
+        // records its own wait in `flush_inner` (no double counting).
+        #[cfg(feature = "profiling")]
+        {
+            self.producer_nanos = self
+                .producer_nanos
+                .saturating_add(elapsed_nanos(producer_started));
+        }
+
         let stats = self.flush()?;
         Ok(FileStats {
             stats,
@@ -740,7 +841,9 @@ impl CountEngine {
 
     /// Flush body shared by both execution shapes.
     fn flush_inner(&mut self) -> ProcessingResult<EngineStats> {
-        match &mut self.mode {
+        #[cfg(feature = "profiling")]
+        let flush_started = Instant::now();
+        let outcome = match &mut self.mode {
             EngineMode::Sequential(state) => {
                 checked_stats_for(&state.tables, self.skipped_windows)
             }
@@ -758,7 +861,16 @@ impl CountEngine {
                     }
                 }
             }
+        };
+        // A file-boundary flush is caller-thread work: buffered sends plus the
+        // wait for every worker acknowledgement.
+        #[cfg(feature = "profiling")]
+        {
+            self.producer_nanos = self
+                .producer_nanos
+                .saturating_add(elapsed_nanos(flush_started));
         }
+        outcome
     }
 
     /// Statistics published by the last `count_file`/`flush`.
@@ -780,6 +892,9 @@ impl CountEngine {
     /// Returns the verbatim aggregate overflow error when a sum would exceed
     /// `u64::MAX`, or the first worker error.
     pub fn finish(mut self) -> ProcessingResult<CountResult> {
+        #[cfg(feature = "profiling")]
+        let mut worker_diagnostics: Vec<WorkerDiagnostics> = Vec::new();
+
         let (tables, stats) = match &mut self.mode {
             EngineMode::Sequential(state) => {
                 let stats = checked_stats_for(&state.tables, self.skipped_windows)?;
@@ -789,18 +904,46 @@ impl CountEngine {
                 // Flush residual buffers and take a final barrier so every
                 // worker has consumed every batch before the join.
                 self.flush()?;
-                let tables = self.join_workers()?;
-                let stats = checked_stats_for(&tables, self.skipped_windows)?;
-                (tables, stats)
+                #[cfg(feature = "profiling")]
+                {
+                    let (joined_tables, diagnostics) = self.join_workers()?;
+                    worker_diagnostics = diagnostics;
+                    let stats = checked_stats_for(&joined_tables, self.skipped_windows)?;
+                    (joined_tables, stats)
+                }
+                #[cfg(not(feature = "profiling"))]
+                {
+                    let joined_tables = self.join_workers()?;
+                    let stats = checked_stats_for(&joined_tables, self.skipped_windows)?;
+                    (joined_tables, stats)
+                }
             }
         };
         self.last_stats = stats;
+
+        #[cfg(feature = "profiling")]
+        let diagnostics = {
+            let wall_nanos = elapsed_nanos(self.started);
+            let producer_nanos = match &self.mode {
+                // The sequential run is entirely caller-thread work.
+                EngineMode::Sequential(_) => wall_nanos,
+                EngineMode::Parallel(_) => self.producer_nanos,
+            };
+            Some(EngineDiagnostics {
+                wall_nanos,
+                producer_nanos,
+                workers: worker_diagnostics,
+            })
+        };
+
         Ok(CountResult {
             tables,
             layout: self.layout,
             k: self.config.k,
             canonical: self.config.canonical,
             stats,
+            #[cfg(feature = "profiling")]
+            diagnostics,
         })
     }
 
@@ -856,14 +999,21 @@ impl CountEngine {
 
     /// Drop every sender and join every worker exactly once.
     ///
-    /// Returns the concatenated tables in layout order on success, or the first
-    /// worker error (including a worker panic, which is fatal only in release
-    /// builds). Idempotent: a second call returns an empty vector.
-    fn join_workers(&mut self) -> ProcessingResult<Vec<LocalKmerCounts>> {
+    /// Returns the concatenated tables in layout order on success (plus the
+    /// per-worker diagnostics in profiling builds), or the first worker error
+    /// (including a worker panic, which is fatal only in release builds).
+    /// Idempotent: a second call returns an empty result.
+    fn join_workers(&mut self) -> ProcessingResult<JoinReturn> {
         let EngineMode::Parallel(state) = &mut self.mode else {
+            #[cfg(feature = "profiling")]
+            return Ok((Vec::new(), Vec::new()));
+            #[cfg(not(feature = "profiling"))]
             return Ok(Vec::new());
         };
         if state.joined {
+            #[cfg(feature = "profiling")]
+            return Ok((Vec::new(), Vec::new()));
+            #[cfg(not(feature = "profiling"))]
             return Ok(Vec::new());
         }
         state.joined = true;
@@ -872,12 +1022,23 @@ impl CountEngine {
         state.senders.clear();
 
         let mut tables = Vec::new();
+        #[cfg(feature = "profiling")]
+        let mut worker_diagnostics: Vec<WorkerDiagnostics> = Vec::new();
         let mut first_error: Option<ProcessingError> = None;
         for handle in state.handles.drain(..) {
             match handle.join() {
-                Ok(Ok(worker_tables)) => {
+                Ok(Ok(worker_return)) => {
                     if first_error.is_none() {
-                        tables.extend(worker_tables);
+                        #[cfg(feature = "profiling")]
+                        {
+                            let (worker_tables, diagnostics) = worker_return;
+                            tables.extend(worker_tables);
+                            worker_diagnostics.push(diagnostics);
+                        }
+                        #[cfg(not(feature = "profiling"))]
+                        {
+                            tables.extend(worker_return);
+                        }
                     }
                 }
                 Ok(Err(error)) => {
@@ -897,7 +1058,16 @@ impl CountEngine {
 
         match first_error {
             Some(error) => Err(error),
-            None => Ok(tables),
+            None => {
+                #[cfg(feature = "profiling")]
+                {
+                    Ok((tables, worker_diagnostics))
+                }
+                #[cfg(not(feature = "profiling"))]
+                {
+                    Ok(tables)
+                }
+            }
         }
     }
 }
@@ -1090,19 +1260,40 @@ fn run_worker(
     mut tables: Vec<LocalKmerCounts>,
     receiver: Receiver<CountBatch>,
     acknowledgements: SyncSender<WorkerStat>,
-) -> ProcessingResult<Vec<LocalKmerCounts>> {
+) -> ProcessingResult<WorkerReturn> {
+    #[cfg(feature = "profiling")]
+    let mut diagnostics = WorkerDiagnostics::default();
+
     while let Ok(batch) = receiver.recv() {
         match batch {
             CountBatch::Dense { partition, keys } => {
+                #[cfg(feature = "profiling")]
+                let batch_started = Instant::now();
                 let table = owned_table(&mut tables, &range, partition, worker_index)?;
                 for key in keys {
                     table.increment(key as u128)?;
                 }
+                #[cfg(feature = "profiling")]
+                {
+                    diagnostics.batches = diagnostics.batches.saturating_add(1);
+                    diagnostics.busy_nanos = diagnostics
+                        .busy_nanos
+                        .saturating_add(elapsed_nanos(batch_started));
+                }
             }
             CountBatch::Wide { partition, keys } => {
+                #[cfg(feature = "profiling")]
+                let batch_started = Instant::now();
                 let table = owned_table(&mut tables, &range, partition, worker_index)?;
                 for key in keys {
                     table.increment(key)?;
+                }
+                #[cfg(feature = "profiling")]
+                {
+                    diagnostics.batches = diagnostics.batches.saturating_add(1);
+                    diagnostics.busy_nanos = diagnostics
+                        .busy_nanos
+                        .saturating_add(elapsed_nanos(batch_started));
                 }
             }
             CountBatch::Flush { token } => {
@@ -1131,7 +1322,14 @@ fn run_worker(
             }
         }
     }
-    Ok(tables)
+    #[cfg(feature = "profiling")]
+    {
+        Ok((tables, diagnostics))
+    }
+    #[cfg(not(feature = "profiling"))]
+    {
+        Ok(tables)
+    }
 }
 
 /// Resolve the worker-owned table for `partition`, validating ownership.
@@ -1293,6 +1491,8 @@ mod tests {
                 unique_kmers: 1,
                 skipped_windows: 0,
             },
+            #[cfg(feature = "profiling")]
+            diagnostics: None,
         };
 
         let error = result

@@ -41,8 +41,6 @@ pub struct MonitoringConfig {
     pub enabled: bool,
 }
 
-#[cfg(not(feature = "profiling"))]
-
 /// Core performance metrics structure
 #[cfg(feature = "profiling")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,7 +173,7 @@ impl PerformanceTimer {
     }
 
     /// Finish timing and record the duration
-    pub fn finish(self) -> Duration {
+    pub fn finish(mut self) -> Duration {
         let duration = self.start_time.elapsed();
         log::debug!(
             "Operation '{}' completed in {:?}",
@@ -183,9 +181,9 @@ impl PerformanceTimer {
             duration
         );
 
-        if let Some(collector) = self.metrics_collector {
+        if let Some(collector) = self.metrics_collector.take() {
             let mut collector = collector.lock().unwrap();
-            collector.record_timing(self.operation_name, duration);
+            collector.record_timing(self.operation_name.clone(), duration);
         }
 
         duration
@@ -314,7 +312,7 @@ impl MetricsCollector {
             self.total_samples
         );
 
-        for (operation, timings) in &self.active_timings {
+        for (operation, _timings) in &self.active_timers {
             if let Some(stats) = self.get_operation_stats(operation) {
                 log::info!(
                     "  {}: {} ops, avg {:?}, min {:?}, max {:?}",

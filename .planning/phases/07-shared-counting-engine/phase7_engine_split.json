@@ -1,0 +1,111 @@
+{
+  "slice_file": ".planning/phases/07-shared-counting-engine/slice-0.fq",
+  "probe_binary_sha256": "1038a2244d9c081d6520689cf86d4cffc36ab736bfbfb37d662a1c71f0967878",
+  "threads": {
+    "1": {
+      "wall_nanos": 26485756500,
+      "producer_nanos": 26485756500,
+      "workers": []
+    },
+    "4": {
+      "wall_nanos": 6517711875,
+      "producer_nanos": 6517646501,
+      "workers": [
+        {
+          "batches": 31636,
+          "busy_nanos": 4721262095
+        },
+        {
+          "batches": 31715,
+          "busy_nanos": 4733243642
+        },
+        {
+          "batches": 31688,
+          "busy_nanos": 4734135851
+        },
+        {
+          "batches": 31764,
+          "busy_nanos": 4746082840
+        }
+      ]
+    },
+    "16": {
+      "wall_nanos": 6439080541,
+      "producer_nanos": 6438909876,
+      "workers": [
+        {
+          "batches": 7909,
+          "busy_nanos": 1217187374
+        },
+        {
+          "batches": 7921,
+          "busy_nanos": 1220128853
+        },
+        {
+          "batches": 7904,
+          "busy_nanos": 1200245703
+        },
+        {
+          "batches": 7902,
+          "busy_nanos": 1224233490
+        },
+        {
+          "batches": 7953,
+          "busy_nanos": 1231729174
+        },
+        {
+          "batches": 7939,
+          "busy_nanos": 1211652443
+        },
+        {
+          "batches": 7903,
+          "busy_nanos": 1211867494
+        },
+        {
+          "batches": 7920,
+          "busy_nanos": 1224671556
+        },
+        {
+          "batches": 7896,
+          "busy_nanos": 1235326886
+        },
+        {
+          "batches": 7952,
+          "busy_nanos": 1245370895
+        },
+        {
+          "batches": 7901,
+          "busy_nanos": 1240308986
+        },
+        {
+          "batches": 7939,
+          "busy_nanos": 1229203858
+        },
+        {
+          "batches": 7959,
+          "busy_nanos": 1234360007
+        },
+        {
+          "batches": 7955,
+          "busy_nanos": 1225735475
+        },
+        {
+          "batches": 7915,
+          "busy_nanos": 1224668603
+        },
+        {
+          "batches": 7935,
+          "busy_nanos": 1234287812
+        }
+      ]
+    }
+  },
+  "producer_bound_t16": true,
+  "producer_fraction": {
+    "1": 1.0,
+    "4": 0.9999899697928883,
+    "16": 0.9999734954394632
+  },
+  "default_release_binary_sha256": "d107d17e7bc60846dbf886727ed656500d189ec32102fa7704f283068a3e35cf",
+  "default_release_binary_unchanged": true
+}

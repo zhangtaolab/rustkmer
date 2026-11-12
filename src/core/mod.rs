@@ -11,7 +11,10 @@ pub use monitoring::{
 };
 
 #[cfg(feature = "profiling")]
-pub use monitoring::{if_profiling, time_operation, MetricsCollector};
+pub use monitoring::MetricsCollector;
+
+#[cfg(feature = "profiling")]
+pub use crate::{if_profiling, time_operation};
 
 pub use metadata::{
     create_metadata, load_metadata, save_metadata, validate_metadata, DatabaseMetadata,
