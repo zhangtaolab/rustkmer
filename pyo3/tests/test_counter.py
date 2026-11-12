@@ -1260,3 +1260,137 @@ class TestPyCounterRollingPathParity:
         assert stats.total_kmers == sum(expected.values())
         assert stats.unique_kmers == len(expected)
 
+
+class TestPyCounterNReadPreFilterParity:
+    """Phase 7 / T-07-15: the extractor cutover must not adopt the CLI's
+    skip-N semantics yet.
+
+    Python's pre-D2 contract removes every non-ACGT byte from a record before
+    counting, which joins the flanks around an ``N``. The shared
+    ``for_each_window`` extractor implements the CLI's skip-N semantics (any
+    window containing ``N`` is skipped and never emitted), so these cases fail
+    if the pre-filter is dropped early or the extractor is fed raw bytes. D2's
+    semantic change stays owned by Phase 9.
+    """
+
+    # Each read has N at the first base, the last base, several Ns in the
+    # middle, an N run in the middle, or a lowercase n; every pre-filtered
+    # sequence is >= 64 bases so the k=64 parametrization has real windows.
+    N_READS = [
+        "N" + "ACGT" * 20,
+        "ACGT" * 20 + "N",
+        "ACGT" * 6 + "NN" + "TGCA" * 15,
+        "ACGT" * 10 + "NNNN" + "ACGT" * 10,
+        "acgt" * 10 + "n" + "tgca" * 10,
+    ]
+
+    # add_sequence inputs with internal Ns (one also carries whitespace, which
+    # the same pre-filter removes).
+    N_SEQUENCES = [
+        "ACGT" * 10 + "NNNN" + "TGCA" * 10,
+        "ACGT" * 8 + " N N \n" + "TGCA" * 10,
+    ]
+
+    @staticmethod
+    def _revcomp(sequence):
+        """Return the reverse complement of a pure-ACGT sequence."""
+        return sequence.translate(str.maketrans("ACGT", "TGCA"))[::-1]
+
+    @classmethod
+    def _reference_counts(cls, sequences, k, canonical):
+        """Pure-Python pre-filter reference count map.
+
+        Strips every non-ACGT byte from each sequence (joining the flanks),
+        then slides a window over the cleaned sequence -- exactly the current
+        PyCounter pre-filter behavior, not the CLI skip-N behavior.
+        """
+        counts = {}
+        for raw_sequence in sequences:
+            sequence = "".join(
+                base for base in raw_sequence.upper() if base in "ACGT"
+            )
+            for i in range(len(sequence) - k + 1):
+                kmer = sequence[i : i + k]
+                if canonical:
+                    kmer = min(kmer, cls._revcomp(kmer))
+                counts[kmer] = counts.get(kmer, 0) + 1
+        return counts
+
+    @classmethod
+    def _write_fastq(cls, path):
+        """Write the N-read fixture as four-line FASTQ records."""
+        lines = []
+        for i, sequence in enumerate(cls.N_READS):
+            lines.extend([f"@nread{i}", sequence, "+", "I" * len(sequence)])
+        path.write_text("\n".join(lines) + "\n")
+
+    @classmethod
+    def _write_fasta(cls, path):
+        """Write the N-read fixture as FASTA records."""
+        blocks = [
+            f">nseq{i}\n{sequence}" for i, sequence in enumerate(cls.N_READS)
+        ]
+        path.write_text("\n".join(blocks) + "\n")
+
+    @pytest.mark.parametrize("k", [21, 64])
+    @pytest.mark.parametrize("canonical", [False, True])
+    def test_add_from_fastq_n_reads_keep_pre_filter_semantics(
+        self, tmp_path, k, canonical
+    ):
+        """FASTQ N-reads must match the pre-filter reference (flanks joined)."""
+        fastq_file = tmp_path / "n_reads.fastq"
+        self._write_fastq(fastq_file)
+        expected = self._reference_counts(self.N_READS, k, canonical)
+
+        counter = pyrustkmer.PyCounter(k, canonical=canonical, threads=1)
+        counter.add_from_fastq(str(fastq_file))
+
+        assert counter.get_all_counts() == expected, (
+            f"Phase 7 T-07-15: add_from_fastq adopted skip-N semantics "
+            f"instead of Python's retained pre-filter (k={k}, "
+            f"canonical={canonical})"
+        )
+        stats = counter.get_stats()
+        assert stats.total_kmers == sum(expected.values())
+        assert stats.unique_kmers == len(expected)
+
+    @pytest.mark.parametrize("k", [21, 64])
+    @pytest.mark.parametrize("canonical", [False, True])
+    def test_add_from_fasta_n_reads_keep_pre_filter_semantics(
+        self, tmp_path, k, canonical
+    ):
+        """FASTA N-reads must match the pre-filter reference (flanks joined)."""
+        fasta_file = tmp_path / "n_reads.fasta"
+        self._write_fasta(fasta_file)
+        expected = self._reference_counts(self.N_READS, k, canonical)
+
+        counter = pyrustkmer.PyCounter(k, canonical=canonical, threads=1)
+        counter.add_from_fasta(str(fasta_file))
+
+        assert counter.get_all_counts() == expected, (
+            f"Phase 7 T-07-15: add_from_fasta adopted skip-N semantics "
+            f"instead of Python's retained pre-filter (k={k}, "
+            f"canonical={canonical})"
+        )
+        stats = counter.get_stats()
+        assert stats.total_kmers == sum(expected.values())
+        assert stats.unique_kmers == len(expected)
+
+    @pytest.mark.parametrize("k", [21, 64])
+    @pytest.mark.parametrize("canonical", [False, True])
+    def test_add_sequence_internal_n_keeps_pre_filter_semantics(self, k, canonical):
+        """add_sequence with internal Ns/whitespace matches the same reference."""
+        expected = self._reference_counts(self.N_SEQUENCES, k, canonical)
+
+        counter = pyrustkmer.PyCounter(k, canonical=canonical, threads=1)
+        for sequence in self.N_SEQUENCES:
+            counter.add_sequence(sequence)
+
+        assert counter.get_all_counts() == expected, (
+            f"Phase 7 T-07-15: add_sequence adopted skip-N semantics instead "
+            f"of Python's retained pre-filter (k={k}, canonical={canonical})"
+        )
+        stats = counter.get_stats()
+        assert stats.total_kmers == sum(expected.values())
+        assert stats.unique_kmers == len(expected)
+

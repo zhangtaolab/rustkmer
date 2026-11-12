@@ -8,7 +8,8 @@ use pyo3::prelude::*;
 use rustkmer::hash::KmerCounter as RustPyCounter;
 use rustkmer::hash::LocalKmerCounts;
 use rustkmer::kmer::canonical::canonical_kmer_u128;
-use rustkmer::kmer::encoding::{encode_kmer_bytes_u128, RollingEncoder, MAX_KMER_SIZE_IN_U64};
+use rustkmer::kmer::encoding::encode_kmer_bytes_u128;
+use rustkmer::kmer::extract::{for_each_window, WindowError};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -282,7 +283,14 @@ impl PyCounter {
         let seq_str = sequence.to_str()?;
         let k = self.counter.kmer_length();
 
-        // Clean sequence: remove whitespace and keep only valid bases
+        // Clean sequence: remove whitespace and keep only valid bases.
+        //
+        // PHASE 7 / T-07-15: this non-ACGT pre-filter is the current Python
+        // contract and is deliberately retained until Phase 9 (D2). Removing
+        // the invalid bytes here joins the flanks around an `N`, so the shared
+        // extractor below sees pure ACGT and its skip-N semantics never fire.
+        // Python output on N-containing input is therefore unchanged by the
+        // extractor cutover.
         let cleaned: Vec<u8> = seq_str
             .bytes()
             .filter(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T'))
@@ -293,32 +301,26 @@ impl PyCounter {
             return Ok(());
         }
 
-        // Extract k-mers
-        for i in 0..=(cleaned.len() - k) {
-            let kmer = &cleaned[i..i + k];
-
-            // Encode k-mer
-            if let Ok(encoded) = encode_kmer_bytes_u128(kmer) {
-                // Apply canonical transformation if needed
-                let encoded_to_add = if self.counter.canonical_mode() {
-                    match canonical_kmer_u128(encoded, k) {
-                        Ok(canonical) => canonical,
-                        Err(_) => continue, // Skip on canonical computation error
-                    }
-                } else {
-                    encoded
-                };
-
-                // Increment count
-                if let Err(e) = self.counter.increment(encoded_to_add) {
-                    return Err(PyErr::new::<PyValueError, _>(format!(
-                        "Failed to increment k-mer count: {}",
-                        e
-                    )));
-                }
-            }
-            // If encoding fails, skip this k-mer (e.g., invalid characters)
-        }
+        // ENGINE-03: window extraction goes through the ONE core extractor
+        // (rolling for k <= 32, per-window u128 for 33..=64) instead of a
+        // second local loop. The sink keeps the existing fail-loud overflow
+        // contract: the first `u32::MAX` key aborts the pass and the error is
+        // surfaced verbatim as a PyValueError.
+        for_each_window(&cleaned, k, self.counter.canonical_mode(), |value| {
+            self.counter.increment(value).map_err(|e| {
+                PyErr::new::<PyValueError, _>(format!("Failed to increment k-mer count: {}", e))
+            })
+        })
+        .map_err(|error| match error {
+            // Unreachable: `PyCounter::new` validates k to 1..=64 before the
+            // counter exists. Map it to the same invalid-k message rather than
+            // panicking inside a pymethod.
+            WindowError::InvalidK(invalid) => PyErr::new::<PyValueError, _>(format!(
+                "Invalid k-mer size: {}. Must be between 1 and 64",
+                invalid
+            )),
+            WindowError::Emit(error) => error,
+        })?;
 
         Ok(())
     }
@@ -653,71 +655,39 @@ impl PyCounter {
 /// public `add_kmer` / `add_sequence` methods deliberately keep using the
 /// shared `increment` path so their behavior is unchanged.
 ///
-/// **PAR-03:** for k ≤ 32 the windows come from the rolling 2-bit encoder;
-/// k 33..=64 keeps the per-window u128 path. The file callers filter non-ACGT
-/// bytes before this helper, so its observable behavior for N-containing reads
-/// is unchanged; the rolling skipped count is still propagated to the local for
-/// completeness.
+/// **ENGINE-03:** window extraction goes through the ONE core
+/// [`rustkmer::kmer::extract::for_each_window`] — the same function the CLI and
+/// the engine use — which owns the rolling (k ≤ 32) / per-window u128
+/// (33..=64) split, skip accounting, and canonicalization. The file callers
+/// filter non-ACGT bytes before this helper, so its observable behavior for
+/// N-containing reads is unchanged (D2 stays Phase 9's job); the extractor's
+/// skipped count is still propagated to the local for completeness.
 ///
-/// Invalid bases (anything outside A/C/G/T after uppercasing) are skipped at
-/// the k-mer extraction step via `encode_kmer_bytes_u128` returning `Err`;
-/// canonical computation errors likewise `continue`. The overflow semantics
-/// (error on `u32::MAX` per k-mer) are inherited verbatim from
-/// `LocalKmerCounts::increment` (PCOUNT-04), and the reduction is checked.
+/// The extractor skips (and counts) any window containing a byte outside
+/// A/C/G/T after uppercasing, and counts a canonical-computation error as
+/// skipped on the wide path. The overflow semantics (error on `u32::MAX` per
+/// k-mer) are inherited verbatim from `LocalKmerCounts::increment`
+/// (PCOUNT-04), and the reduction is checked.
 fn process_sequence_into_local(
     local: &mut LocalKmerCounts,
     k: usize,
     canonical: bool,
     seq_bytes: &[u8],
 ) -> Result<(), rustkmer::ProcessingError> {
-    if seq_bytes.len() < k {
-        return Ok(());
-    }
-
-    if k <= MAX_KMER_SIZE_IN_U64 {
-        // PAR-03: rolling encoder, O(1) per window.
-        let encoder = RollingEncoder::new(k, canonical).map_err(|e| {
-            rustkmer::ProcessingError::with_context("Failed to build rolling encoder", Box::new(e))
-        })?;
-        let skipped = encoder.try_for_each(seq_bytes, |value| {
-            local.increment(value as u128).map_err(|e| {
-                rustkmer::ProcessingError::with_context(
-                    "Failed to increment k-mer count",
-                    Box::new(e),
-                )
-            })
-        })?;
-        for _ in 0..skipped {
-            local.record_skipped();
+    let summary = for_each_window(seq_bytes, k, canonical, |value| {
+        local.increment(value).map_err(|e| {
+            rustkmer::ProcessingError::with_context("Failed to increment k-mer count", Box::new(e))
+        })
+    })
+    .map_err(|error| match error {
+        WindowError::InvalidK(invalid) => {
+            rustkmer::ProcessingError::from(rustkmer::KmerError::InvalidKmerSize(invalid as u32))
         }
-        return Ok(());
-    }
+        WindowError::Emit(error) => error,
+    })?;
 
-    // k 33..=64: unchanged per-window u128 reference path.
-    // Extract k-mers from sequence
-    for i in 0..=(seq_bytes.len() - k) {
-        let kmer = &seq_bytes[i..i + k];
-
-        // Encode k-mer
-        if let Ok(encoded) = encode_kmer_bytes_u128(kmer) {
-            // Apply canonical transformation if needed
-            let encoded_to_add = if canonical {
-                match canonical_kmer_u128(encoded, k) {
-                    Ok(canonical) => canonical,
-                    Err(_) => continue,
-                }
-            } else {
-                encoded
-            };
-
-            // Increment the file-local accumulator
-            if let Err(e) = local.increment(encoded_to_add) {
-                return Err(rustkmer::ProcessingError::with_context(
-                    "Failed to increment k-mer count",
-                    Box::new(e),
-                ));
-            }
-        }
+    for _ in 0..summary.skipped {
+        local.record_skipped();
     }
 
     Ok(())
