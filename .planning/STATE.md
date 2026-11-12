@@ -5,17 +5,17 @@ milestone_name: k=21 Counting Parity
 current_phase: 6
 current_phase_name: Parallelism Correctness & Hot Path
 current_plan: 4
-status: executing
-stopped_at: Completed 06-03-PLAN.md
-last_updated: "2026-11-12T12:35:41.447Z"
+status: verifying
+stopped_at: Completed 06-04-PLAN.md
+last_updated: "2026-11-12T13:06:44.576Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 05 complete, transitioned to Phase 6
-state_head: b01f81ca97fd626dc7c6e245c1461cd18360ae42
+state_head: d7f7751c6028af9963e2958fee0e03f4b6d87cda
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 11
-  completed_plans: 10
+  completed_plans: 11
   percent: 14
 ---
 
@@ -33,7 +33,7 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 Phase: 6 — Parallelism Correctness & Hot Path
 Current Plan: 4
 Total Plans in Phase: 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-12 — Completed 06-01 (working --threads, green pool gates, t1 baselines)
 
 Progress: [█░░░░░░░░░] 14% (v2.0)
@@ -85,6 +85,7 @@ Progress: [█░░░░░░░░░] 14% (v2.0)
 | Phase 06 P01 | 31 min | 3 tasks | 7 files |
 | Phase 06 P02 | 10 min | 3 tasks | 7 files |
 | Phase 06 P03 | 7 | 3 tasks | 6 files |
+| Phase 06 P04 | 27 min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,9 @@ Recent decisions affecting current work:
 - [Phase 06]: RollingEncoder is a Copy value with k/mask/shift precomputed; the hot loop constructs it per record rather than carrying mutable state across rayon chunks
 - [Phase 06]: Rolling emission is a fallible sink (try_for_each) so LocalKmerCounts::increment errors propagate without a per-window branch; each call returns the reference skipped-window count
 - [Phase 06]: canonical.rs re-exports RollingEncoder rather than duplicating it; add_sequence/add_kmer stay on their unchanged shared-increment per-window path
+- [Phase 06]: Scaling regression fixed at the source: 06-02's serial per-file local reduction was parallelized (per-key DashMap shard locks keep checked sums exact) after the first post-change gate measured RED 1.197/1.253; final gate GREEN 1.633/2.016 with no threshold, input, or baseline change
+- [Phase 06]: Post-hot-path true t1 strictly improved vs the 06-01 baselines: synthetic 18.77 -> 13.59 s (0.724x) and 4M slice 142.54 -> 57.16 s (0.401x); Phase 5 and both 06-01 baselines verified byte-identical
+- [Phase 06]: PROF-02 gates are documented as standing: benchmark.yml and thread_scaling.py wording de-REDed; README was already standing after 06-01; no continue-on-error or fallback construct exists
 
 ### Pending Todos
 
@@ -159,8 +163,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T12:35:41.324Z
-Stopped at: Completed 06-03-PLAN.md
+Last session: 2026-11-12T13:06:44.450Z
+Stopped at: Completed 06-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

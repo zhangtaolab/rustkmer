@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 0
 waived_count: 6
-fixed_count: 15
-total_count: 21
-last_updated: 2026-11-12T11:44:46.008Z
+fixed_count: 16
+total_count: 22
+last_updated: 2026-11-12T13:04:58.105Z
 ---
 
 # Broken Windows Ledger
@@ -36,6 +36,7 @@ last_updated: 2026-11-12T11:44:46.008Z
 | 19 | 05 | unmet-truth | Cargo.lock |  | Rust 1.80 root clippy blocked: half 2.7.1 requires 1.81; indexmap 2.13.0 and proptest 1.9.0 require 1.82 | fixed |  | 2026-11-12T02:32:12.182Z | 2026-11-12T07:45:09.762Z |
 | 20 | 05 | unmet-truth | pyo3/Cargo.lock |  | Rust 1.80 PyO3 clippy blocked: indexmap 2.13.0 requires 1.82 | fixed |  | 2026-11-12T02:32:12.266Z | 2026-11-12T07:45:09.852Z |
 | 21 | 05 | skipped-test | tests/thread_pool_size_tests.rs | 205 | PROF-02 standing gate pool_size_matches_requested_threads is #[ignore]d — expected RED until Phase 6 fixes --threads; Phase 6 must un-ignore it and invert/remove the pool_size_baseline_records_default_pool characterization | fixed |  | 2026-11-12T08:13:20.227Z | 2026-11-12T11:44:46.008Z |
+| 22 | 06 | deviation | src/hash/table.rs |  | 06-02 serial per-file local reduction left t4/t16 scaling below the standing 1.3 gate on the post-hot-path binary (measured 1.197/1.253); fixed in 06-04 by parallel per-local reduction (commit 149379b), with the exactness suite green | fixed |  | 2026-11-12T13:04:44.712Z | 2026-11-12T13:04:58.105Z |
 
 ````json
 [
@@ -310,6 +311,19 @@ last_updated: 2026-11-12T11:44:46.008Z
     "reason": "",
     "recorded_at": "2026-11-12T08:13:20.227Z",
     "resolved_at": "2026-11-12T11:44:46.008Z",
+    "milestone": "v2.0"
+  },
+  {
+    "id": 22,
+    "kind": "deviation",
+    "phase": "06",
+    "file": "src/hash/table.rs",
+    "line": null,
+    "description": "06-02 serial per-file local reduction left t4/t16 scaling below the standing 1.3 gate on the post-hot-path binary (measured 1.197/1.253); fixed in 06-04 by parallel per-local reduction (commit 149379b), with the exactness suite green",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-11-12T13:04:44.712Z",
+    "resolved_at": "2026-11-12T13:04:58.105Z",
     "milestone": "v2.0"
   }
 ]

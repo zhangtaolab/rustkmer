@@ -75,12 +75,12 @@ Plans:
   2. Counting accumulates in thread-local counters reduced at end-of-run — per-window `total_kmers`/`unique_kmers` fetch_add is gone from the hot path — and the reduction uses checked arithmetic that fails loud with the verbatim u32 overflow error (a new overflow site, never saturating); the thread-scaling gate shows wall-clock differing across t1/t4/t16.
   3. The rolling 2-bit encoder + bit-parallel reverse-complement (u64 for k≤32) passes the differential edge matrix against the per-window encoder — N at every position, lowercase, record boundaries, k ∈ {1..64} — masking to 2k bits and resetting the valid run at every N and record boundary; the u128 path remains for k>32 and API stability.
   4. A true single-thread baseline is recorded on the slice via the now-working `--threads 1`, single-thread slice time improves measurably (the microbench-measured 2.7x rolling-encode lever), and all existing golden baselines + 1-vs-N differentials stay green — exact counts and `.rkdb` v2 byte-identity preserved.
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans executed
 Plans:
 - [x] 06-01-PLAN.md — PAR-01: working --threads, pool-size gates green, true t1 baseline (tracer)
 - [x] 06-02-PLAN.md — PAR-02: per-worker local counters + checked end-of-file reduction, dual surface
 - [x] 06-03-PLAN.md — PAR-03: rolling encoder + bit-parallel reverse-complement, k 1..64 differential
-- [ ] 06-04-PLAN.md — Measurement and contract gates: GREEN scaling, exactness, MSRV, standing CI
+- [x] 06-04-PLAN.md — Measurement and contract gates: GREEN scaling, exactness, MSRV, standing CI
 **Research flag**: none — the bug mechanism is confirmed in rayon-core source; the rolling encoder is already implemented and key-verified in the profiling microbench.
 
 ### Phase 7: Shared Counting Engine
@@ -157,7 +157,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → (11 only i
 | 3. Memory Safety | v1.0 | 17/17 | Complete | 2026-10-09 |
 | 4. Benchmark & Validation | v1.0 | 5/5 | Complete | 2026-10-18 |
 | 5. Measurement & Regression Harness | v2.0 | 7/7 | Complete    | 2026-11-12 |
-| 6. Parallelism Correctness & Hot Path | v2.0 | 3/4 | In Progress | - |
+| 6. Parallelism Correctness & Hot Path | v2.0 | 4/4 | In Progress | - |
 | 7. Shared Counting Engine | v2.0 | 0/TBD | Not started | - |
 | 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 0/TBD | Not started | - |
 | 9. Python Parity | v2.0 | 0/TBD | Not started | - |
