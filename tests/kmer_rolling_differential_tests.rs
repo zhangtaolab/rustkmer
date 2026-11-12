@@ -384,3 +384,416 @@ fn cli_local_path_matches_reference_for_k_21_32_and_64() {
         }
     }
 }
+
+// --- Task 3: full k 1-through-64 edge matrix --------------------------------
+
+use std::time::{Duration, Instant};
+
+use rustkmer::hash::LocalKmerCounts;
+
+/// Count records through [`LocalKmerCounts`] exactly the way the production hot
+/// loops do: the rolling encoder for k <= 32, the per-window u128 path for
+/// k 33..=64.
+///
+/// Returns `(count map, skipped windows)`.
+fn count_through_local(
+    sequences: &[&[u8]],
+    k: usize,
+    canonical: bool,
+) -> (BTreeMap<u128, u32>, u64) {
+    let mut local = LocalKmerCounts::new(k, canonical);
+
+    if k <= MAX_KMER_SIZE_IN_U64 {
+        let encoder = RollingEncoder::new(k, canonical).expect("k in 1..=32");
+        for sequence in sequences {
+            let skipped = encoder
+                .try_for_each(sequence, |value| {
+                    local.increment(value as u128).map_err(|e| e.to_string())
+                })
+                .expect("rolling emission and local increment cannot fail on the fixture");
+            for _ in 0..skipped {
+                local.record_skipped();
+            }
+        }
+    } else {
+        // The production fallback: one fresh per-window u128 encode per window.
+        for sequence in sequences {
+            if sequence.len() < k {
+                continue;
+            }
+            for window in sequence.windows(k) {
+                match encode_kmer_bytes_u128(window) {
+                    Ok(encoded) => {
+                        let value = if canonical {
+                            canonical_kmer_u128(encoded, k).expect("valid window canonicalizes")
+                        } else {
+                            encoded
+                        };
+                        local
+                            .increment(value)
+                            .expect("local increment cannot fail on the fixture");
+                    }
+                    Err(_) => local.record_skipped(),
+                }
+            }
+        }
+    }
+
+    (local.iter().collect(), local.skipped())
+}
+
+/// Independent reference: a plain map built from the unchanged per-window
+/// encoder, plus the skipped-window count.
+fn reference_map(sequences: &[&[u8]], k: usize, canonical: bool) -> (BTreeMap<u128, u32>, u64) {
+    let mut map = BTreeMap::new();
+    let mut skipped = 0u64;
+    for sequence in sequences {
+        if sequence.len() < k {
+            continue;
+        }
+        for window in sequence.windows(k) {
+            match encode_kmer_bytes_u128(window) {
+                Ok(encoded) => {
+                    let value = if canonical {
+                        canonical_kmer_u128(encoded, k).expect("valid window canonicalizes")
+                    } else {
+                        encoded
+                    };
+                    *map.entry(value).or_insert(0) += 1;
+                }
+                Err(_) => skipped += 1,
+            }
+        }
+    }
+    (map, skipped)
+}
+
+/// Build `base` with a run of `N`s starting at `position`.
+fn with_n_run(base: &[u8], position: usize, run_length: usize) -> Vec<u8> {
+    let mut sequence = base.to_vec();
+    for offset in 0..run_length {
+        if let Some(byte) = sequence.get_mut(position + offset) {
+            *byte = b'N';
+        }
+    }
+    sequence
+}
+
+#[test]
+fn full_edge_matrix_matches_reference_for_k_1_through_64() {
+    let fixture = acgt_fixture();
+    let lowercase: Vec<u8> = fixture.iter().map(u8::to_ascii_lowercase).collect();
+    let mixed_case: Vec<u8> = fixture
+        .iter()
+        .enumerate()
+        .map(|(index, byte)| {
+            if index % 2 == 0 {
+                byte.to_ascii_lowercase()
+            } else {
+                byte.to_ascii_uppercase()
+            }
+        })
+        .collect();
+
+    for k in 1..=64 {
+        for canonical in [false, true] {
+            if k <= MAX_KMER_SIZE_IN_U64 {
+                // Lowercase and mixed-case emission must match the reference
+                // (both sides uppercase before encoding).
+                for sequence in [&fixture, &lowercase, &mixed_case] {
+                    let encoder = RollingEncoder::new(k, canonical).expect("k in 1..=32");
+                    let got = rolling_windows(&encoder, sequence);
+                    let want = reference_windows(sequence, k, canonical);
+                    assert_eq!(
+                        got, want,
+                        "case matrix diverged (k={}, canonical={})",
+                        k, canonical
+                    );
+                }
+
+                // Empty and shorter-than-k sequences emit nothing and skip
+                // nothing (there is no length-k window at all).
+                for short in [Vec::new(), vec![b'A'; k - 1], vec![b'A'; k]] {
+                    let encoder = RollingEncoder::new(k, canonical).expect("k in 1..=32");
+                    let got = rolling_windows(&encoder, &short);
+                    let want = reference_windows(&short, k, canonical);
+                    assert_eq!(
+                        got,
+                        want,
+                        "short-sequence differential diverged (len={}, k={})",
+                        short.len(),
+                        k
+                    );
+                }
+
+                // N at EVERY position, plus consecutive runs.
+                for position in 0..fixture.len() {
+                    let sequence = with_n_run(&fixture, position, 1);
+                    let encoder = RollingEncoder::new(k, canonical).expect("k in 1..=32");
+                    let got = rolling_windows(&encoder, &sequence);
+                    let want = reference_windows(&sequence, k, canonical);
+                    assert_eq!(
+                        got, want,
+                        "N-at-every-position diverged (k={}, canonical={}, position={})",
+                        k, canonical, position
+                    );
+                }
+
+                let mut run_lengths = vec![1usize, 2, 3];
+                if k > 2 {
+                    run_lengths.push(k - 1);
+                }
+                run_lengths.push(k);
+                run_lengths.push(k + 1);
+                for &run_length in &run_lengths {
+                    for &position in &[0usize, 1, fixture.len() / 2, fixture.len() - 3] {
+                        if position + run_length > fixture.len() {
+                            continue;
+                        }
+                        let sequence = with_n_run(&fixture, position, run_length);
+                        let encoder = RollingEncoder::new(k, canonical).expect("k in 1..=32");
+                        let got = rolling_windows(&encoder, &sequence);
+                        let want = reference_windows(&sequence, k, canonical);
+                        assert_eq!(
+                            got, want,
+                            "consecutive-N run diverged (k={}, canonical={}, position={}, run={})",
+                            k, canonical, position, run_length
+                        );
+                    }
+                }
+
+                // Record-boundary pairs: per-record processing must equal the
+                // per-record reference. The concatenation has exactly k-1 more
+                // windows, so a state leak would be observable.
+                let records: [&[u8]; 2] = [&fixture[..100], &fixture[60..]];
+                let encoder = RollingEncoder::new(k, canonical).expect("k in 1..=32");
+                let mut got_records = Vec::new();
+                let mut skipped_records = 0u64;
+                for record in records {
+                    let (emitted, skipped) = rolling_windows(&encoder, record);
+                    got_records.extend(emitted);
+                    skipped_records += skipped;
+                }
+                let mut want_records = Vec::new();
+                let mut want_skipped = 0u64;
+                for record in records {
+                    let (emitted, skipped) = reference_windows(record, k, canonical);
+                    want_records.extend(emitted);
+                    want_skipped += skipped;
+                }
+                assert_eq!(
+                    (got_records, skipped_records),
+                    (want_records, want_skipped),
+                    "record-boundary pair diverged (k={}, canonical={})",
+                    k,
+                    canonical
+                );
+
+                let mut concatenated = Vec::new();
+                for record in records {
+                    concatenated.extend_from_slice(record);
+                }
+                let (joint, _) = rolling_windows(&encoder, &concatenated);
+                let per_record_windows = (records[0].len() - k + 1) + (records[1].len() - k + 1);
+                assert_eq!(
+                    joint.len(),
+                    per_record_windows + (k - 1),
+                    "boundary fixture must create k-1 spanning windows (k={})",
+                    k
+                );
+            } else {
+                // k 33..=64 has no rolling path: the routing boundary itself is
+                // asserted, and the unchanged u128 per-window path is compared
+                // through the local accumulator.
+                assert!(
+                    RollingEncoder::new(k, canonical).is_err(),
+                    "k={} must not be routed to the rolling path",
+                    k
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn local_accumulator_maps_match_reference_for_k_matrix() {
+    let fixture = acgt_fixture();
+    let lowercase: Vec<u8> = fixture.iter().map(u8::to_ascii_lowercase).collect();
+    let with_ns = with_n_run(&fixture, fixture.len() / 2, 5);
+
+    let records: Vec<&[u8]> = vec![&fixture, &lowercase, &with_ns, b"ACGTACGT"];
+
+    for k in [1usize, 21, 31, 32, 33, 64] {
+        for canonical in [false, true] {
+            let got = count_through_local(&records, k, canonical);
+            let want = reference_map(&records, k, canonical);
+            assert_eq!(
+                got, want,
+                "local-accumulator map/skip differential diverged \
+                 (k={}, canonical={})",
+                k, canonical
+            );
+        }
+    }
+}
+
+#[test]
+fn u128_fallback_edge_inputs_match_reference_and_cli() {
+    let fixture = acgt_fixture();
+    let lowercase: Vec<u8> = fixture.iter().map(u8::to_ascii_lowercase).collect();
+    let with_ns = with_n_run(&fixture, 40, 4);
+    let records: [&[u8]; 3] = [&fixture, &lowercase, &with_ns];
+
+    // N at every position through the u128 fallback path: map AND skip counts.
+    for k in [33usize, 48, 64] {
+        for canonical in [false, true] {
+            for position in 0..fixture.len() {
+                let sequence = with_n_run(&fixture, position, 1);
+                let got = count_through_local(&[&sequence], k, canonical);
+                let want = reference_map(&[&sequence], k, canonical);
+                assert_eq!(
+                    got, want,
+                    "u128 fallback N differential diverged \
+                     (k={}, canonical={}, position={})",
+                    k, canonical, position
+                );
+            }
+        }
+    }
+
+    // End-to-end: the real CLI at k=33 and k=64 (the fallback branch) must
+    // reproduce the reference map. Success also proves the routing boundary:
+    // the rolling encoder rejects these k values, so a mis-route would error.
+    let dir = TempDir::new("cli-fallback");
+    let input = dir.join("par03-fallback.fastq");
+    write_fastq(&input, &records);
+
+    for k in [33usize, 64] {
+        for canonical in [false, true] {
+            let output = dir.join(&format!("k{}-canonical-{}.tsv", k, canonical));
+            run_cli_count(&[&input], k, canonical, &output);
+            let got = read_text_counts(&output);
+            let want = reference_text_counts(&records, k, canonical);
+            assert_eq!(
+                got, want,
+                "CLI u128 fallback diverged (k={}, canonical={})",
+                k, canonical
+            );
+        }
+    }
+}
+
+/// Fixed, deterministic corpus for the timing gate: 2000 records of 150 bases.
+fn timing_corpus() -> Vec<Vec<u8>> {
+    const BASES: [u8; 4] = *b"ACGT";
+    const RECORDS: usize = 2000;
+    const LENGTH: usize = 150;
+
+    let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
+    let mut corpus = Vec::with_capacity(RECORDS);
+    for _ in 0..RECORDS {
+        let mut record = Vec::with_capacity(LENGTH);
+        for _ in 0..LENGTH {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            record.push(BASES[((state >> 33) & 3) as usize]);
+        }
+        corpus.push(record);
+    }
+    corpus
+}
+
+/// Per-window path: one encode + canonicalize per window.
+fn time_per_window_path(corpus: &[Vec<u8>], k: usize) -> (Duration, u64) {
+    let mut checksum = 0u64;
+    let start = Instant::now();
+    for sequence in corpus {
+        if sequence.len() < k {
+            continue;
+        }
+        for window in sequence.windows(k) {
+            if let Ok(encoded) = encode_kmer_bytes_u128(window) {
+                let canonical = canonical_kmer_u128(encoded, k).expect("valid window");
+                checksum = checksum.wrapping_add(canonical as u64);
+            }
+        }
+    }
+    (start.elapsed(), checksum)
+}
+
+/// Rolling path: one O(1) update per window.
+fn time_rolling_path(encoder: &RollingEncoder, corpus: &[Vec<u8>]) -> (Duration, u64) {
+    let mut checksum = 0u64;
+    let start = Instant::now();
+    for sequence in corpus {
+        encoder.for_each(sequence, |value| checksum = checksum.wrapping_add(value));
+    }
+    (start.elapsed(), checksum)
+}
+
+fn best_of_three(mut run: impl FnMut() -> (Duration, u64)) -> (Duration, u64) {
+    let mut best: Option<(Duration, u64)> = None;
+    for _ in 0..3 {
+        let measured = run();
+        best = Some(match best {
+            Some((duration, checksum)) if duration <= measured.0 => (duration, checksum),
+            _ => measured,
+        });
+    }
+    best.expect("three runs")
+}
+
+/// **PAR-03 timing gate (T-06 performance evidence).** The rolling path must be
+/// at most 0.75x the per-window duration on a >= 200k-window fixed corpus.
+///
+/// Ignored by default: only a release build is verdict-bearing. Run:
+/// `cargo test --release --locked --test kmer_rolling_differential_tests -- --ignored`.
+#[test]
+#[ignore = "timing gate: run under cargo test --release -- --ignored"]
+fn rolling_path_is_at_most_three_quarters_of_per_window_time() {
+    if cfg!(debug_assertions) {
+        eprintln!(
+            "PAR-03 timing gate skipped: debug-build timings are not verdict-bearing; \
+             run with --release"
+        );
+        return;
+    }
+
+    const K: usize = 21;
+    let corpus = timing_corpus();
+    let windows: usize = corpus.iter().map(|record| record.len() - K + 1).sum();
+    assert!(
+        windows >= 200_000,
+        "timing corpus must hold at least 200000 windows (has {})",
+        windows
+    );
+
+    let encoder = RollingEncoder::new(K, true).expect("k=21");
+
+    // Warmup both paths once before measuring.
+    let _ = time_per_window_path(&corpus, K);
+    let _ = time_rolling_path(&encoder, &corpus);
+
+    let (per_window, per_window_checksum) = best_of_three(|| time_per_window_path(&corpus, K));
+    let (rolling, rolling_checksum) = best_of_three(|| time_rolling_path(&encoder, &corpus));
+
+    assert_eq!(
+        rolling_checksum, per_window_checksum,
+        "timing corpus checksums must agree (the paths must do the same work)"
+    );
+
+    let ratio = rolling.as_secs_f64() / per_window.as_secs_f64();
+    println!(
+        "PAR-03 timing gate: windows={} per_window={:?} rolling={:?} ratio={:.3}",
+        windows, per_window, rolling, ratio
+    );
+    assert!(
+        ratio <= 0.75,
+        "rolling path must be at most 0.75x the per-window duration; measured {:.3} \
+         (per_window={:?}, rolling={:?})",
+        ratio,
+        per_window,
+        rolling
+    );
+}
