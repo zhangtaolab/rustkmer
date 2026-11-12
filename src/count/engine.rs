@@ -574,3 +574,82 @@ impl SkipWarningBatch {
         self.batches
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A direct aggregate-sum overflow must fail loud with the verbatim total
+    /// message and never wrap or saturate.
+    #[test]
+    fn checked_sum_fails_loud_on_total_overflow() {
+        let error = checked_sum([u64::MAX - 1, 2], TOTAL_OVERFLOW_MESSAGE)
+            .expect_err("u64::MAX - 1 + 2 must overflow");
+        assert_eq!(
+            error.to_string(),
+            "Total k-mer count overflow during local reduction",
+            "the total-overflow message is part of the contract"
+        );
+    }
+
+    /// Exact-maximum + 1 is an overflow for both aggregate messages.
+    #[test]
+    fn checked_sum_fails_loud_on_exact_max_plus_one() {
+        let total_error = checked_sum([u64::MAX, 1], TOTAL_OVERFLOW_MESSAGE)
+            .expect_err("u64::MAX + 1 must overflow");
+        assert_eq!(total_error.to_string(), TOTAL_OVERFLOW_MESSAGE);
+
+        let unique_error = checked_sum([u64::MAX, 1], UNIQUE_OVERFLOW_MESSAGE)
+            .expect_err("u64::MAX + 1 must overflow");
+        assert_eq!(
+            unique_error.to_string(),
+            "Unique k-mer count overflow during local reduction"
+        );
+    }
+
+    /// `merge_into` must preserve the per-key verbatim overflow contract of
+    /// `KmerCounter::merge_local_counts`: the failing merge leaves the
+    /// counter's count at `u32::MAX`, never wraps.
+    #[test]
+    fn merge_into_preserves_verbatim_per_key_overflow() {
+        let key: u128 = 0x1234_5678_9ABC;
+
+        // Publish a saturated key through the already-tested counter path.
+        let mut saturated = LocalKmerCounts::new(21, false);
+        saturated.seed_count(key, u32::MAX);
+        let counter = KmerCounter::new(21, false, 16, 1).expect("counter constructs");
+        counter
+            .merge_local_counts(&saturated)
+            .expect("the first merge fits");
+
+        // A fresh engine table holding one more observation of the same key.
+        let mut one = LocalKmerCounts::new(21, false);
+        one.increment(key).expect("first increment succeeds");
+        let result = CountResult {
+            tables: vec![one],
+            layout: PartitionLayout::new(1),
+            k: 21,
+            canonical: false,
+            stats: EngineStats {
+                total_kmers: 1,
+                unique_kmers: 1,
+                skipped_windows: 0,
+            },
+        };
+
+        let error = result
+            .merge_into(&counter)
+            .expect_err("u32::MAX + 1 must overflow");
+        assert_eq!(
+            error.to_string(),
+            "K-mer count overflow reached maximum value 4294967295",
+            "merge_into must surface the counter's verbatim overflow message"
+        );
+        assert_eq!(
+            counter.get_count(key),
+            Some(u32::MAX),
+            "a failed merge must not wrap the per-key count"
+        );
+    }
+}
+

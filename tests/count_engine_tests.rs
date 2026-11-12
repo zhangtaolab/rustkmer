@@ -15,7 +15,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use rustkmer::count::{CountEngine, EngineConfig, SequenceKind};
+use rustkmer::count::{CountEngine, CountResult, EngineConfig, SequenceKind};
+use rustkmer::hash::filtering::CountFilter;
+use rustkmer::hash::table::KmerCounter;
 use rustkmer::kmer::canonical::canonical_kmer_u128;
 use rustkmer::kmer::encoding::encode_kmer_bytes_u128;
 use sha2::{Digest, Sha256};
@@ -254,6 +256,194 @@ fn cli_t1_engine_matches_legacy_and_rkdb_sha256() {
                 want_text,
                 "CLI t1 text map must equal the reference map (k={k}, canonical={canonical})"
             );
+        }
+    }
+}
+
+// --- Task 2: exact statistics, per-key ownership, and the merge bridge ------
+
+/// Count the fixture through the sequential engine and finish it.
+fn count_fixture_with_engine(input: &Path, k: usize, canonical: bool) -> CountResult {
+    let mut engine = CountEngine::new(EngineConfig::new(k, canonical, 1, 1024))
+        .expect("valid k must construct the engine");
+    engine
+        .count_file(input, SequenceKind::Fastq)
+        .expect("sequential engine count must succeed");
+    engine.finish().expect("finish must succeed")
+}
+
+/// `CountResult::merge_into` must compose the disjoint partition tables into a
+/// fresh `KmerCounter` through the already-tested `merge_local_counts` path,
+/// producing a map and statistics identical to the reference.
+#[test]
+fn merge_into_matches_reference_counter() {
+    let sequences = fixture_sequences();
+    let dir = tempfile::tempdir().expect("tempdir for merge fixture");
+    let input = dir.path().join("fixture.fastq");
+    write_fastq(&input, &sequences);
+    let borrowed: Vec<&[u8]> = sequences.iter().map(Vec::as_slice).collect();
+
+    for k in [21usize, 32, 64] {
+        for canonical in [false, true] {
+            let result = count_fixture_with_engine(&input, k, canonical);
+            let want = reference_map(&borrowed, k, canonical);
+
+            let counter = KmerCounter::new(k, canonical, 1024, 1).expect("counter constructs");
+            result
+                .merge_into(&counter)
+                .expect("merge_into must succeed on a fresh counter");
+            let got: BTreeMap<u128, u32> = counter.get_all_counts().into_iter().collect();
+            assert_eq!(
+                got, want,
+                "merge_into map diverged from the reference (k={k}, canonical={canonical})"
+            );
+
+            let want_total: u64 = want.values().map(|count| *count as u64).sum();
+            assert_eq!(
+                counter.total_kmers(),
+                want_total,
+                "merged counter total must equal the sum of counts"
+            );
+            assert_eq!(
+                counter.unique_kmers(),
+                want.len() as u64,
+                "merged counter unique must equal the distinct-key count"
+            );
+        }
+    }
+}
+
+/// Per-key lookup and pair iteration must agree with the reference map: every
+/// reference key is found exactly once, an absent key returns `None`, and
+/// `for_each_count` yields each pair exactly once.
+#[test]
+fn get_count_and_for_each_count_agree_with_the_map() {
+    let sequences = fixture_sequences();
+    let dir = tempfile::tempdir().expect("tempdir for lookup fixture");
+    let input = dir.path().join("fixture.fastq");
+    write_fastq(&input, &sequences);
+    let borrowed: Vec<&[u8]> = sequences.iter().map(Vec::as_slice).collect();
+
+    for k in [21usize, 32, 64] {
+        for canonical in [false, true] {
+            let result = count_fixture_with_engine(&input, k, canonical);
+            let want = reference_map(&borrowed, k, canonical);
+
+            for (key, count) in &want {
+                assert_eq!(
+                    result.get_count(*key),
+                    Some(*count),
+                    "get_count must find every reference key exactly once \
+                     (k={k}, canonical={canonical}, key={key})"
+                );
+            }
+
+            let mut visited: BTreeMap<u128, u32> = BTreeMap::new();
+            result.for_each_count(|key, count| {
+                assert!(
+                    visited.insert(key, count).is_none(),
+                    "for_each_count visited a key twice: {key}"
+                );
+            });
+            assert_eq!(
+                visited, want,
+                "for_each_count must yield the reference map exactly once \
+                 (k={k}, canonical={canonical})"
+            );
+
+            // A valid encoded key absent from the fixture must return None.
+            // k = 64 spans the whole u128 key space, so cap the search there.
+            let key_limit: u128 = if 2 * k >= 128 {
+                u128::MAX
+            } else {
+                1u128 << (2 * k)
+            };
+            let mut absent: u128 = 0;
+            while want.contains_key(&absent) {
+                absent += 1;
+                assert!(absent < key_limit, "the fixture cannot cover every key");
+            }
+            assert_eq!(
+                result.get_count(absent),
+                None,
+                "get_count must return None for an unobserved key (k={k})"
+            );
+        }
+    }
+}
+
+/// `stats()` and `filtering_stats()` must match `KmerCounter` semantics,
+/// including the WR-01 denominator (`total_before` = successfully counted
+/// k-mers) for `-L`/`-U` combinations.
+#[test]
+fn stats_and_filtering_match_counter_semantics() {
+    let sequences = fixture_sequences();
+    let dir = tempfile::tempdir().expect("tempdir for stats fixture");
+    let input = dir.path().join("fixture.fastq");
+    write_fastq(&input, &sequences);
+    let borrowed: Vec<&[u8]> = sequences.iter().map(Vec::as_slice).collect();
+
+    for k in [21usize, 64] {
+        for canonical in [false, true] {
+            let result = count_fixture_with_engine(&input, k, canonical);
+            let want = reference_map(&borrowed, k, canonical);
+
+            let stats = result.stats();
+            let want_total: u64 = want.values().map(|count| *count as u64).sum();
+            assert_eq!(
+                stats.total_kmers, want_total,
+                "total must be the sum of counts (k={k}, canonical={canonical})"
+            );
+            assert_eq!(
+                stats.unique_kmers,
+                want.len() as u64,
+                "unique must be the distinct-key count"
+            );
+            let mut pair_count = 0u64;
+            result.for_each_count(|_, _| pair_count += 1);
+            assert_eq!(
+                pair_count, stats.unique_kmers,
+                "pair iteration must yield exactly `unique` pairs"
+            );
+
+            // Reference counter built by the production per-window path.
+            let counter = KmerCounter::new(k, canonical, 1024, 1).expect("counter constructs");
+            for (key, count) in &want {
+                for _ in 0..*count {
+                    counter
+                        .increment(*key)
+                        .expect("reference increments cannot overflow");
+                }
+            }
+
+            let filters = [
+                None,
+                Some(CountFilter::new(None, None)),
+                Some(CountFilter::new(Some(2), None)),
+                Some(CountFilter::new(None, Some(3))),
+                Some(CountFilter::new(Some(2), Some(5))),
+            ];
+            for filter in filters {
+                let expected = counter.get_filtering_stats(&filter);
+                let got = result.filtering_stats(&filter);
+                assert_eq!(got.total_before, expected.total_before);
+                assert_eq!(got.unique_before, expected.unique_before);
+                assert_eq!(got.kept_after, expected.kept_after);
+                assert_eq!(got.filtered_out, expected.filtered_out);
+                assert!(
+                    (got.kept_percentage() - expected.kept_percentage()).abs() < f64::EPSILON,
+                    "kept percentage must match KmerCounter semantics (k={k}, filter={filter:?})"
+                );
+
+                let expected_pairs: BTreeMap<u128, u32> =
+                    counter.get_filtered_kmers(&filter).into_iter().collect();
+                let got_pairs: BTreeMap<u128, u32> =
+                    result.filtered_pairs(&filter).into_iter().collect();
+                assert_eq!(
+                    got_pairs, expected_pairs,
+                    "filtered_pairs must match get_filtered_kmers (k={k}, filter={filter:?})"
+                );
+            }
         }
     }
 }
