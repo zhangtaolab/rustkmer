@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "captured": "2026-11-12T08:11:30.504904+00:00",
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 2959584,
+      "sha256": "8f64d442636871ee27173a4cc1c670a7e0d345ba6122a7582c08c13acf26c14f"
+    },
+    "git_commit": "e34b56d90392eb24a7a84d77a86ec56acb9ba20e",
+    "git_dirty": true,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-12T08:11:30.573642+00:00"
+  },
+  "manifest_sha256": "f010e42a213de6786ac67e2a6f9227485320e7ddfca4c6521cf019880786f25f",
+  "fixtures": [
+    {
+      "name": "golden_k21_canon_sorted.rkdb",
+      "sha256": "a5da813e2977157afc4b8c395dc6fbc721516024c52cb257208490e29b796af7"
+    },
+    {
+      "name": "golden_k21_canon_unsorted.rkdb",
+      "sha256": "f4641c1f57bf0f85dc7988a50711375e2ddaa8d378cc28e6775c4eda7133aac2"
+    },
+    {
+      "name": "golden_k21_noncanon_sorted.rkdb",
+      "sha256": "6395577a302f2c22c102724f00d58d4b3cd2f117942b914bc1617f79fea4f264"
+    },
+    {
+      "name": "golden_k21_noncanon_unsorted.rkdb",
+      "sha256": "334ab82e44d5854e0a741af8cb7515f81f2834a43af87cdc11cd5708e0d09139"
+    },
+    {
+      "name": "golden_k32_canon_sorted.rkdb",
+      "sha256": "3b020fe0306ffa3e2726228a4461838af9d56f8b8ca745d5731657c1783c7572"
+    },
+    {
+      "name": "golden_k32_canon_unsorted.rkdb",
+      "sha256": "81de3c339e1126a6dd6f63192f11f570d1b864e42f4ae691895a1e0cbe7422ef"
+    },
+    {
+      "name": "golden_k32_noncanon_sorted.rkdb",
+      "sha256": "c8b5102c1082a881f1c660ddb71b7cfb3e4ffedb639ab2c03f63b31708fb9799"
+    },
+    {
+      "name": "golden_k32_noncanon_unsorted.rkdb",
+      "sha256": "1ca6c37a8f4d322243dca0afeb444d9d4d4cbe51217fdf21c6d439851a86abee"
+    },
+    {
+      "name": "golden_k64_canon_sorted.rkdb",
+      "sha256": "b886b35b48641e5f9be3e3ed63f7c66de503f5ec13eaf0fd4297ae990c4513e1"
+    },
+    {
+      "name": "golden_k64_canon_unsorted.rkdb",
+      "sha256": "d55482a3cb5eb71e33786d87547ad01e4af661b6012a962200f26c9de93e52aa"
+    },
+    {
+      "name": "golden_k64_noncanon_sorted.rkdb",
+      "sha256": "39231759cb2e9eff7c295c5ac53c49e29c6ee074a59d5a26e054d05158ff23fa"
+    },
+    {
+      "name": "golden_k64_noncanon_unsorted.rkdb",
+      "sha256": "da34b2cb2320e1221619f6542267f3ce3b3086037f70543bfd17b6536eab0478"
+    }
+  ],
+  "golden_sha256_test": {
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--test",
+      "golden_sha256_tests"
+    ],
+    "returncode": 0
+  },
+  "note": "Static rehashing detects fixture tampering only \u2014 it does not exercise the production write path. Phase 8 (OUT-02) still requires an actual old-vs-new write-path differential against an independent reference."
+}
