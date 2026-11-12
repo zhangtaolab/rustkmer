@@ -5,16 +5,16 @@ milestone_name: k=21 Counting Parity
 current_phase: 05
 current_phase_name: Measurement & Regression Harness
 status: executing
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-11-12T09:08:51.161Z"
+stopped_at: Completed 05-05-PLAN.md
+last_updated: "2026-11-12T09:49:57.065Z"
 last_activity: 2026-11-12
 last_activity_desc: "Completed quick task 261112-jwl: Raise Rust MSRV 1.80 to 1.82"
-state_head: 319b80782a1a60dc84475b14f68129b6ce1d650e
+state_head: 1045f619d6170a28020cb33dc1b3f738ef53ab3b
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 05 (Measurement & Regression Harness) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 Last activity: 2026-11-12 - Completed quick task 261112-jwl: Raise Rust MSRV 1.80 to 1.82
 
@@ -76,6 +76,7 @@ Progress: [░░░░░░░░░░] 0% (v2.0)
 | Phase 05 P02 | 18 min | 2 tasks | 3 files |
 | Phase 05 P03 | 17 min | 2 tasks | 6 files |
 | Phase 05 P04 | 45 min | 2 tasks | 5 files |
+| Phase 05 P05 | 31 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,9 @@ Recent decisions affecting current work:
 - [Phase 05]: [05-04] Parity reference bound to the FULL random recipe (source_sha256 + seed + selection_manifest_sha256 + live-recomputed output_sha256); unbound/missing-identity/ambiguous/duplicate all exit 2; pinned head-4M constants (229694874/519271168) asserted on capture, never re-pinned; --hash-size 2G for real runs
 - [Phase 05]: [05-04] Real-data gates proven on CRR1936095 part_001 (source dae91042): head-4M 229694874/519271168 + 1M random seed 20261112 73578421/129801125, both gate-proof re-runs exit 0; random distinct/instance 1.76 vs head 2.26 confirms head repeat-rich
 - [Phase 05]: [05-04] Real-slice RED scaling baseline committed (t1/t4/t16 72.27/70.05/68.80s, speedup_t4 1.0318 / speedup_t16 1.0505, both <1.3) — standing Phase 6 PAR-01 target; freshness-bound capture, honest warm cache, no hot-path change
+- [Phase 05]: [05-05] Microbench manifest declares rust-version 1.82 (plan literal 1.80 superseded by user-approved MSRV raise 69a82cf); standalone crate builds --locked from committed audited microbench_Cargo.lock whose measured-mechanism closure (dashmap 6.2.1/hashbrown 0.14.5/ahash 0.8.12 + padding/lock/zerocopy/libc deps) is aligned to the production lock; sha256 eabd946a recorded in evidence
+- [Phase 05]: [05-05] Attribution-v1 at t16 on real 200k subslice (18M distinct): global-atomics share 120.22 ns/window = 115.2% of shared-vs-local gap; bandwidth share -15.82 ns recorded with inconclusive note (never clamped); t16/t1 multiplier 1.877 vs research 9.4x in-vivo (DRAM-regime + rayon spin-wait absent here) — Phase 7 reads atomics-dominant, bandwidth unproven at 18M distinct
+- [Phase 05]: [05-05] Conservation recomputed from raw counts (flag never trusted): any failure exits 1 and the microbench aborts without JSON (mutation-proven); child exit 1 maps to controller exit 1, other child failures exit 2; negative/near-zero (<1% of gap) shares get honest inconclusive notes
 
 ### Pending Todos
 
@@ -131,8 +135,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T09:08:24.297Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-11-12T09:49:57.047Z
+Stopped at: Completed 05-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
