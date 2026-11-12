@@ -38,7 +38,10 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
 
+use proptest::prelude::*;
+use rustkmer::count::{CountEngine, CountResult, EngineConfig, SequenceKind};
 use rustkmer::database::format::RKDatabase;
+use rustkmer::hash::filtering::CountFilter;
 use rustkmer::kmer::canonical::canonical_kmer_u128;
 use rustkmer::kmer::encoding::{decode_kmer_u128, encode_kmer_bytes_u128};
 
@@ -472,6 +475,137 @@ fn n_containing_record_skips_exactly_the_windows_that_cover_the_n() {
         assert!(
             records.windows(2).all(|pair| pair[0].0 < pair[1].0),
             "k={k}: the N-record output must still be strictly ascending"
+        );
+    }
+}
+
+/// Count one FASTA file with the shared engine directly (no CLI), at a fixed
+/// thread count so the output-boundary properties are exercised on the same
+/// structures the CLI writer consumes.
+fn count_with_engine(input: &Path, k: usize, canonical: bool) -> CountResult {
+    let mut engine = CountEngine::new(EngineConfig::new(k, canonical, 4, 1024))
+        .expect("valid k must construct the engine");
+    engine
+        .count_file(input, SequenceKind::Fasta)
+        .expect("engine count must succeed");
+    engine.finish().expect("finish must succeed")
+}
+
+/// A generated ACGT sequence whose 40-base prefix motif is repeated four times,
+/// so some keys have counts above 1 and a min-count filter is non-vacuous.
+fn repeat_rich_sequence(seed: u64) -> Vec<u8> {
+    let mut sequence = lcg_bases(160, seed);
+    let motif = sequence[..40].to_vec();
+    for _ in 0..3 {
+        sequence.extend_from_slice(&motif);
+    }
+    sequence
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 12, .. ProptestConfig::default() })]
+
+    /// Disjointness and conservation at the OUTPUT boundary (T-08-14): every
+    /// key is visited exactly once, the pair count equals the engine's unique
+    /// count, the count sum equals the engine's total, the numeric sort is
+    /// strictly ascending, the filter keeps exactly the passing pairs and
+    /// matches `filtering_stats`, and two identical runs agree.
+    #[test]
+    fn proptest_output_boundary_disjointness_and_conservation(
+        k in prop::sample::select(vec![21usize, 64]),
+        canonical in any::<bool>(),
+        seed in any::<u64>(),
+        min_count in 1u64..=3,
+    ) {
+        let dir = tempfile::tempdir().expect("tempdir for the output-boundary proptest");
+        let input = dir.path().join("proptest.fa");
+        let sequence = repeat_rich_sequence(seed);
+        write_fasta(&input, std::slice::from_ref(&sequence));
+        let context = format!("k={k} canonical={canonical} filter=min_count:{min_count}");
+
+        // Run 1: disjointness observed at the output boundary, then
+        // conservation, then strict ordering of the sorted pair vector.
+        let first = count_with_engine(&input, k, canonical);
+        let stats = first.stats();
+        let mut seen: BTreeMap<u128, u32> = BTreeMap::new();
+        first.for_each_count(|key, count| {
+            let previous = seen.insert(key, count);
+            assert!(
+                previous.is_none(),
+                "{context}: for_each_count must visit every key at most once \
+                 (duplicate {key:#x})"
+            );
+        });
+        prop_assert_eq!(
+            seen.len() as u64, stats.unique_kmers,
+            "{}: for_each_count must visit exactly the engine's unique keys", context
+        );
+
+        let unfiltered = first.into_filtered_pairs(&None);
+        prop_assert_eq!(
+            unfiltered.len() as u64, stats.unique_kmers,
+            "{}: into_filtered_pairs(&None) must emit one pair per unique key", context
+        );
+        prop_assert_eq!(
+            unfiltered.iter().map(|(_, count)| *count as u64).sum::<u64>(),
+            stats.total_kmers,
+            "{}: the pair count sum must equal the engine's total", context
+        );
+
+        let mut sorted = unfiltered.clone();
+        sorted.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+        prop_assert!(
+            sorted.windows(2).all(|pair| pair[0].0 < pair[1].0),
+            "{}: sorting by numeric key must yield a strictly ascending sequence \
+             (a non-strict step means a duplicate key escaped disjointness)", context
+        );
+        prop_assert_eq!(
+            sorted.iter().copied().collect::<BTreeMap<u128, u32>>(),
+            seen.clone(),
+            "{}: the sorted output pairs must equal the visited map", context
+        );
+
+        // Run 2: filter semantics, asserted against `filtering_stats` and the
+        // exhaustive map from run 1.
+        let second = count_with_engine(&input, k, canonical);
+        let filter = CountFilter::new(Some(min_count), None);
+        let filter_option = Some(filter);
+        let filtering = second.filtering_stats(&filter_option);
+        let kept = second.into_filtered_pairs(&filter_option);
+        prop_assert_eq!(
+            kept.len() as u64, filtering.kept_after,
+            "{}: the filtered pair count must equal filtering_stats kept_after", context
+        );
+        prop_assert!(
+            kept.iter().all(|(_, count)| *count as u64 >= min_count),
+            "{}: a pair below the min-count threshold must not be emitted", context
+        );
+        let expected: BTreeMap<u128, u32> = seen
+            .iter()
+            .filter(|(_, count)| **count as u64 >= min_count)
+            .map(|(&key, &count)| (key, count))
+            .collect();
+        prop_assert_eq!(
+            kept.iter().copied().collect::<BTreeMap<u128, u32>>(),
+            expected,
+            "{}: the filtered pairs must be exactly the passing pairs", context
+        );
+        if min_count > 1 {
+            prop_assert!(
+                (kept.len() as u64) < stats.unique_kmers,
+                "{}: the filter case must be non-vacuous (a count-1 key must be dropped)",
+                context
+            );
+        }
+
+        // Run 3: identical input must yield the identical pair multiset,
+        // independent of the engine's partition/reduction order.
+        let third = count_with_engine(&input, k, canonical);
+        let mut again = third.into_filtered_pairs(&None);
+        again.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+        prop_assert_eq!(
+            again, sorted,
+            "{}: two identical runs must yield the identical (key, count) multiset", context
         );
     }
 }
