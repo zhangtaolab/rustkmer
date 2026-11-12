@@ -31,6 +31,8 @@ strictly greater deltas breach; wall and RSS are judged independently.
 
 ## Quick runs
 
+### v1.0 baseline / synthetic gate
+
 ```bash
 # sanity self-check (exact k-mer counts on synthetic input; ~1 min)
 python3 scripts/bench/bench.py --mode synthetic --self-check
@@ -45,6 +47,279 @@ python3 scripts/bench/compare.py \
   --current results.json --wall-threshold 0.25 --rss-threshold 0.15 \
   --wall-advisory
 ```
+
+### Random-record slicing (PROF-01)
+
+The historical 4M-read head slice is repeat-rich (distinct/instance 2.26 vs
+1.76 for a random subslice), so representativeness checks use seeded uniform
+random-record slices. `random_slice.py` is single-pass reservoir sampling;
+`make_slice.sh`'s first-N behavior is unchanged for the pinned reference.
+
+```bash
+python3 scripts/bench/random_slice.py \
+  --input /Users/forrest/Data/data/illumina/CRR1936095_r1.part_001.fq.gz \
+  --reads 1000000 --seed 20261112 \
+  --out slice-random.fq --manifest slice-random.manifest.json
+```
+
+The manifest records the source fingerprint, the seed, the requested/actual
+record counts, the sorted selected source indices, and the output sha256 —
+identical input + seed + record count yields byte-identical FASTQ and JSON.
+
+### Pinned + random parity gates (PROF-01)
+
+`bench.py --slice-selection head|random` provisions the slice; the parity
+reference is fingerprint-bound to the full recipe (source sha256 + kind +
+reads + k + canonical, plus seed + manifest sha256 for random slices), so a
+wrong seed or a changed dataset is exit 2/1, never a convenient pass. Use
+`--hash-size 2G` on the real slice: the 1G smoke default silently penalizes
+the 229M-distinct input. `--parity-reference` and
+`--capture-parity-reference` require `--parity-only` and slice mode.
+
+```bash
+SRC=/Users/forrest/Data/data/illumina/CRR1936095_r1.part_001.fq.gz
+
+# pinned head-4M reference (asserts 229,694,874 distinct / 519,271,168 total)
+python3 scripts/bench/bench.py --mode slice --input "$SRC" \
+  --slice-selection head --slice-reads 4000000 --hash-size 2G --parity-only \
+  --parity-reference scripts/bench/baselines/slice_parity.crr1936095.json
+
+# random 1M reference (seed 20261112: 73,578,421 distinct / 129,801,125 total)
+python3 scripts/bench/bench.py --mode slice --input "$SRC" \
+  --slice-selection random --slice-reads 1000000 --slice-seed 20261112 \
+  --hash-size 2G --parity-only \
+  --parity-reference scripts/bench/baselines/slice_parity.crr1936095.json
+
+# capture a NEW reference record after a live parity pass (never re-pin the
+# pinned head-4M constants; a changed dataset exits 1 instead)
+python3 scripts/bench/bench.py --mode slice --input "$SRC" \
+  --slice-selection random --slice-reads 1000000 --slice-seed 20261112 \
+  --hash-size 2G --parity-only \
+  --capture-parity-reference scripts/bench/baselines/slice_parity.crr1936095.json
+```
+
+### Thread-scaling gate (PROF-02)
+
+`thread_scaling.py` measures `count` at `--threads 1/4/16` on one input in
+counterbalanced rounds and gates on **material** scaling: both
+`speedup_t4 = median_wall(t1)/median_wall(t4)` and `speedup_t16` must reach
+`--min-speedup` (default 1.3). Exit codes: **0** GREEN, **1** measured
+no-op/regression (RED), **2** invalid (missing arm, cross-arm count
+mismatch, zero counts, bad provenance, unsupported platform).
+
+```bash
+# run mode — measure + verdict (exit 1 on the current tree; see Expected RED)
+python3 scripts/bench/thread_scaling.py --mode synthetic --reads 200000 \
+  --reps 2 --out thread_scaling.json
+
+# measure only — writes the doc and exits 0 (the CI upload step)
+python3 scripts/bench/thread_scaling.py --mode synthetic --reads 200000 \
+  --reps 2 --measure-only --out thread_scaling.json
+
+# verdict only — no measurement, reads an existing results doc (CI gate step)
+python3 scripts/bench/thread_scaling.py --current thread_scaling.json
+
+# real slice (head selection for comparability with the research matrix)
+python3 scripts/bench/thread_scaling.py --mode slice \
+  --input /Users/forrest/Data/data/illumina/CRR1936095_r1.part_001.fq.gz \
+  --slice-reads 4000000 --reps 3 --out thread_scaling_baseline.json
+```
+
+### Live pool-size observation (PROF-02)
+
+`verify_threads.py` observes the ACTUAL rayon pool of a live `count` child
+(one independent process per requested N — rayon initializes its global pool
+once per process). macOS uses `sample`, Linux `/proc/<pid>/task`; unsupported
+platforms exit 2 rather than reporting a false PASS.
+
+```bash
+python3 .planning/research/profiling/verify_threads.py \
+  --binary target/release/rustkmer --input <large.fastq> \
+  --threads 1 4 16 --json thread_observations.json
+```
+
+### Contention microbench (PROF-03)
+
+`contention_bench.py` drives the standalone microbench's four
+mechanism-isolating arms (shared-counter, shared-dashmap, atomic-only,
+thread-local) and persists attribution evidence. Real reads are required for
+evidence — `--synthetic` is smoke-only. Exit **0** valid, **1** conservation
+failure, **2** invalid.
+
+```bash
+python3 scripts/bench/contention_bench.py \
+  --input /Users/forrest/Data/data/illumina/CRR1936095_r1.part_001.fq.gz \
+  --reads 200000 --seed 20261112 --threads 1 4 16 --reps 3 \
+  --out .planning/phases/05-measurement-regression-harness/contention_evidence.json
+```
+
+### Python-surface benchmark (PROF-04)
+
+The installed `pyrustkmer` `.so` is prebuilt — rebuild from source before
+capture, with `CONDA_PREFIX` unset and the interpreter's virtualenv pinned to
+`.venv313`:
+
+```bash
+env -u CONDA_PREFIX VIRTUAL_ENV="$PWD/.venv313" PATH="$PWD/.venv313/bin:$PATH" \
+  .venv313/bin/maturin develop --release -m pyo3/Cargo.toml
+.venv313/bin/python -c "import pyrustkmer; print(pyrustkmer.__file__)"
+```
+
+Each measured rep is a FRESH worker process under `/usr/bin/time` (no
+in-process clock). Slice mode proves CLI-vs-Python parity on an N-free
+control BEFORE timing and commits the dev-host baseline from that control;
+the real-N arm is separately labeled `timing-only-real-N-pre-D2`.
+
+```bash
+.venv313/bin/python scripts/bench/python_bench.py \
+  --python .venv313/bin/python --mode slice \
+  --input /Users/forrest/Data/data/illumina/CRR1936095_r1.part_001.fq.gz \
+  --slice-reads 1000000 --slice-seed 20261112 --reps 3 \
+  --out scripts/bench/scratch/python_bench.json \
+  --emit-baseline scripts/bench/baselines/python_bench_baseline.darwin.json
+```
+
+`--emit-baseline` is slice-mode only and its filename must match the host
+flavor (`python_bench_baseline.darwin.json` / `.linux.json`), so a synthetic
+or mislabeled baseline cannot be committed as a real one.
+
+### N-read differential (PROF-05)
+
+`n_read_differential.py` records the CLI-vs-Python divergence on N-containing
+reads (CLI skips N-windows; Python strips N and joins flanks → chimeric
+k-mers). The no-N control must be exactly equal. Exit **0** measured verdict,
+**1** unexpected result, **2** invalid input. This is record-only evidence:
+neither surface's semantics is changed.
+
+```bash
+python3 scripts/bench/n_read_differential.py \
+  --out .planning/phases/05-measurement-regression-harness/n_read_differential.json
+
+# Phase 9 re-run AFTER the D2 skip-N unification lands: every case must be
+# equal (same command plus --expect-unified; exit 0 required)
+python3 scripts/bench/n_read_differential.py --expect-unified \
+  --out .planning/phases/05-measurement-regression-harness/n_read_differential.json
+```
+
+### Golden capture (Phase 8 input)
+
+`capture_goldens.py` rehashes the 12 committed golden `.rkdb` fixtures and
+asserts manifest equality. It never regenerates fixtures and never runs the
+ignored generator; a tampered fixture is a blocking finding, not a recapture.
+
+```bash
+python3 scripts/bench/capture_goldens.py \
+  --out .planning/phases/05-measurement-regression-harness/golden_capture.json
+```
+
+## Standing harness gates in CI
+
+`.github/workflows/benchmark.yml` runs, in order: release build → harness
+unit suite (`python3 -m unittest discover -s scripts/bench/tests -t .`) →
+synthetic BENCH-01 measure/upload/gate → maturin wheel build + install →
+`python_bench.py --mode synthetic` + artifact upload → thread-scaling
+`--measure-only` + artifact upload → the PROF-02 `--current` verdict (last).
+Every measurement and gate step trusts the script exit code directly.
+
+There is deliberately **no Python compare gate** in CI yet: no CI-class
+baseline exists, and comparing a CI run against the committed dev-host
+baseline would violate the per-runner-class rule. Phase 10 owns CI-class
+baselines (see the bootstrap below).
+
+## Expected RED gates (PROF-02)
+
+These gates are **expected RED** on the current tree. They are the Phase 5
+deliverable observing a real bug, not regressions:
+
+- **Thread-scaling gate** (`scripts/bench/thread_scaling.py`): exits **1**
+  because `--threads` is a silent no-op — t1 ≈ t4 ≈ t16 and both speedups sit
+  near 1.0. The CI verdict step is intentionally red for this reason.
+- **Rust standing gate** `pool_size_matches_requested_threads`
+  (`tests/thread_pool_size_tests.rs`) is `#[ignore]`d; run it explicitly and
+  it is RED on the current tree (e.g. requested 1 / observed 17-18).
+- **Characterization test** `pool_size_baseline_records_default_pool` pins
+  the current bug in the DEFAULT suite (it is GREEN today) and will FAIL
+  once Phase 6 fixes `--threads` — that failure is the signal to invert or
+  remove it.
+
+### Phase 6 handoff checklist (PAR-01)
+
+1. Un-ignore `pool_size_matches_requested_threads` and make it pass.
+2. Invert or remove `pool_size_baseline_records_default_pool` (it encodes
+   the bug; do not leave it asserting the buggy pool size).
+3. Re-run the scaling gate locally (`--out ...` run mode) and confirm exit 0.
+4. Let the CI verdict step go green; do not change the gate or its threshold
+   to get there.
+
+The CI red is **intentional** and must never be silenced. Prohibited
+constructs, all of which would launder the gate: GitHub Actions
+`continue-on-error`, shell fallbacks such as `|| true` (or `; true`), any
+conditional on a measurement/gate step (`if: success() && false`, etc.), and
+"baseline recapture" that repins the scaling numbers to make a no-op pass.
+An `if: always()` ARTIFACT UPLOAD is not an exception to this rule — see
+"CI evidence retention" below.
+
+## Provenance fields
+
+Every new results/evidence artifact carries a `provenance` block; a path
+string without a hash is not provenance. The shared builder is
+`binary_provenance` in `scripts/bench/bench.py`:
+
+| Field | Meaning |
+|---|---|
+| `binary` / `module` | resolved absolute path, size, and sha256 of the ACTUAL executable or native `.so` bytes |
+| `git_commit` | repo `HEAD` at measurement (not the last commit touching the script) |
+| `git_dirty` | whether the working tree was dirty |
+| `build_profile` | `release` (or `release+debug-assertions` where applicable) |
+| `rust_toolchain` | `rustc --version` output |
+| `platform` | `sys.platform` + machine (e.g. `darwin-arm64`) |
+| `python_executable` / `python_version` / `maturin_version` | Python artifacts only: the measured interpreter, its version, and the wheel build tool |
+
+Artifacts also carry `input_fingerprint` (path/size/sha256 of each measured
+input), the selection manifest for random slices, and per-arm raw reps with
+medians. Python artifacts fingerprint the inner native module, because
+maturin 1.11's editable develop wraps the `.so` in a generated shim package.
+
+## Python baseline classes and the CI bootstrap
+
+A baseline's numbers only make sense against the runner class that produced
+them. Two classes exist:
+
+- **dev-host class** — the committed
+  `scripts/bench/baselines/python_bench_baseline.darwin.json`
+  (`baseline_scope: dev-host-local-comparison`). It exists for Phase 9's
+  same-host before/after comparison. It must **never** gate CI.
+- **CI class** — produced from CI runner artifacts only (Phase 10). Do not
+  compare across classes.
+
+Bootstrap a CI-class Python baseline the same way the bench baseline is
+bootstrapped:
+
+```bash
+# 1. Push so benchmark.yml runs; the python bench step uploads its artifact.
+gh run list --workflow=benchmark.yml --branch dev --limit 1
+gh run watch
+
+# 2. Download the artifact for the runner class you are baselining.
+gh run download <run-id> --name python-bench-results-Linux --dir /tmp/py-bench-linux
+#   (macOS artifact is python-bench-results-macOS)
+
+# 3. Commit the downloaded result as a CI-class baseline for that platform
+#    only (Phase 10 owns the comparison gate and thresholds). Never copy CI
+#    numbers into the dev-host baseline, or dev-host numbers into a CI file.
+```
+
+Artifact name contracts: `bench-results-<runner OS>`,
+`python-bench-results-<runner OS>`, `thread-scaling-<runner OS>`.
+
+## CI evidence retention
+
+Artifact-upload steps run with `if: always()` (plus `if-no-files-found:
+warn`) so a FAILED measurement step still leaves its evidence on the run — a
+python_bench exit 2 or a scaling `--measure-only` exit 2 must not lose the
+artifact that explains it. Measurement and gate steps never carry a
+condition. An `if: always()` upload is **not** error softening: it runs no
+gate, and the failed measurement/gate step still fails the job verdict.
 
 ## The committed-baseline CI gate
 
@@ -195,10 +470,36 @@ the deliberate tradeoff.
 
 ```
 scripts/bench/
-├── bench.py          # measurement core: provision → measure → sanity → reduce
-├── compare.py        # gate comparator (exit 0/1/2) — CI invokes this
-├── gen_synthetic.py  # seeded deterministic FASTQ generator
-├── make_slice.sh     # deterministic gunzip -c | head slice tool
-├── baselines/        # committed per-platform baselines (darwin, linux)
-└── tests/            # stdlib-unittest suites + dual-platform time fixtures
+├── bench.py                 # measurement core: provision → measure → sanity → reduce
+│                            #   (+ random-record subslicing, parity references)
+├── compare.py               # gate comparator (exit 0/1/2) — CI invokes this
+├── gen_synthetic.py         # seeded deterministic FASTQ generator
+├── make_slice.sh            # deterministic first-N slice tool (unchanged)
+├── random_slice.py          # seeded Algorithm R random-record slicer + manifest
+├── thread_scaling.py        # PROF-02 t1/t4/t16 scaling gate (exit 0/1/2)
+├── python_bench.py          # PROF-04 fresh-worker PyO3 counting benchmark
+├── n_read_differential.py   # PROF-05 CLI-vs-Python N-read differential (D2 evidence)
+├── contention_bench.py      # PROF-03 four-arm contention microbench controller
+├── capture_goldens.py       # read-only golden .rkdb hash capture (Phase 8 input)
+├── baselines/
+│   ├── bench_baseline.darwin.json          # BENCH-01 per-platform baselines
+│   ├── bench_baseline.linux.json
+│   ├── python_bench_baseline.darwin.json   # dev-host-class PROF-04 baseline
+│   └── slice_parity.crr1936095.json        # pinned head-4M + random parity references
+├── tests/                   # stdlib-unittest suites + dual-platform time fixtures
+└── scratch/                 # gitignored runtime outputs (slices, dbs, docs)
+
+.planning/research/profiling/
+├── verify_threads.py        # live rayon pool-size observer (PROF-02)
+├── microbench_main.rs       # four mechanism-isolating contention arms (PROF-03)
+├── microbench_Cargo.toml
+└── microbench_Cargo.lock    # committed audited lock for the measured closure
+
+.planning/phases/05-measurement-regression-harness/
+├── golden_capture.json          # immutable pre-refactor golden capture
+├── thread_reality_evidence.json # observed pool sizes (expected RED)
+├── slice_parity_evidence.json   # head + random parity pass evidence
+├── thread_scaling_baseline.json # real-slice RED scaling baseline (Phase 6 target)
+├── contention_evidence.json     # attribution-v1 evidence (Phase 7 input)
+└── n_read_differential.json     # D2 divergence evidence
 ```
