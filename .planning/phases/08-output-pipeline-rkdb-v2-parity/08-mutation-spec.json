@@ -1,0 +1,58 @@
+{
+  "mutations": [
+    {
+      "name": "ordering",
+      "file": "src/cli/commands/count.rs",
+      "find": "|(a, _), (b, _)| a.cmp(b)",
+      "replace": "|(a, _), (b, _)| b.cmp(a)",
+      "gates": [
+        {
+          "test_bin": "output_pipeline_tests",
+          "test_name": "sorted_rkdb_records_are_strictly_ascending",
+          "expect_substring": "strictly ascending"
+        },
+        {
+          "test_bin": "rkdb_v2_byte_identity_tests",
+          "test_name": "new_count_path_matches_all_six_committed_sorted_goldens",
+          "expect_substring": "are not byte-identical"
+        },
+        {
+          "test_bin": "rkdb_v2_byte_identity_tests",
+          "test_name": "database_query_binary_search_answers_every_oracle_key_from_the_new_write_path",
+          "expect_substring": "returned the wrong count for oracle key"
+        }
+      ]
+    },
+    {
+      "name": "duplication",
+      "file": "src/cli/commands/count.rs",
+      "find": "        KmerEntry::new(kmer, count).write_to(&mut writer)?;",
+      "replace": "        KmerEntry::new(kmer, count).write_to(&mut writer)?;\n        KmerEntry::new(kmer, count).write_to(&mut writer)?;",
+      "gates": [
+        {
+          "test_bin": "output_pipeline_tests",
+          "test_name": "sorted_rkdb_records_are_strictly_ascending",
+          "expect_substring": "strictly ascending"
+        },
+        {
+          "test_bin": "output_pipeline_tests",
+          "test_name": "header_record_count_equals_the_number_of_records_on_disk",
+          "expect_substring": "header record count must equal the records parsed from disk"
+        }
+      ]
+    },
+    {
+      "name": "overflow",
+      "file": "src/hash/local.rs",
+      "find": "            LocalTable::Wide(map) => match map.get_mut(&kmer_encoded) {\n                Some(count) => {\n                    if *count == self.max_count {",
+      "replace": "            LocalTable::Wide(map) => match map.get_mut(&kmer_encoded) {\n                Some(count) => {\n                    if *count == self.max_count && false {",
+      "gates": [
+        {
+          "test_bin": "thread_local_count_tests",
+          "test_name": "local_increment_at_u32_ceiling_is_verbatim_and_does_not_advance_total",
+          "expect_substring": "attempt to add with overflow"
+        }
+      ]
+    }
+  ]
+}

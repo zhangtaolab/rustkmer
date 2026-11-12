@@ -1,0 +1,136 @@
+{
+  "mutations": [
+    {
+      "name": "ordering",
+      "file": "src/cli/commands/count.rs",
+      "find": "|(a, _), (b, _)| a.cmp(b)",
+      "replace": "|(a, _), (b, _)| b.cmp(a)",
+      "pre_blob": "6e3038d8fd7e154ddf8e2d51e3726a712fc6e926",
+      "post_blob": "9eeb477cdd869bc55e83b5f942caf520b24f87e4",
+      "restored_blob_matches": true,
+      "gates": [
+        {
+          "test_bin": "output_pipeline_tests",
+          "test_name": "sorted_rkdb_records_are_strictly_ascending",
+          "command": [
+            "cargo",
+            "test",
+            "--locked",
+            "--test",
+            "output_pipeline_tests",
+            "sorted_rkdb_records_are_strictly_ascending"
+          ],
+          "observed_exit": 101,
+          "expect_substring_seen": true,
+          "failure_excerpt": "\nrunning 1 test\ntest sorted_rkdb_records_are_strictly_ascending ... FAILED\n\nfailures:\n\n---- sorted_rkdb_records_are_strictly_ascending stdout ----\n\nthread 'sorted_rkdb_records_are_strictly_ascending' (23358120) panicked at tests/output_pipeline_tests.rs:207:5:\nsorted .rkdb records must be strictly ascending by numeric key\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    sorted_rkdb_records_are_strictly_ascending\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.59s\n\n   Compiling rustkmer v0.5.0 (/Users/forrest/GitHub/rustkmer)\nwarning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency\n   --> src/hash/table.rs:483:42\n    |\n483 |         let published = self.total_kmers.fetch_update(\n    |                                          ^^^^^^^^^^^^\n    |\n    = note: `#[warn(deprecated)]` on by default\nhelp: replace the use of the deprecated method\n    |\n483 -         let published = self.total_kmers.fetch_update(\n483 +         let published = self.total_kmers.try_update(\n    |\n\nwarning: `rustkmer` (lib) generated 1 warning (run `cargo fix --lib -p rustkmer` to apply 1 suggestion)\n    Finished `test` profile [unoptimized + debuginfo] target(s) ",
+          "post_restore_exit": 0
+        },
+        {
+          "test_bin": "rkdb_v2_byte_identity_tests",
+          "test_name": "new_count_path_matches_all_six_committed_sorted_goldens",
+          "command": [
+            "cargo",
+            "test",
+            "--locked",
+            "--test",
+            "rkdb_v2_byte_identity_tests",
+            "new_count_path_matches_all_six_committed_sorted_goldens"
+          ],
+          "observed_exit": 101,
+          "expect_substring_seen": true,
+          "failure_excerpt": "\nrunning 1 test\ntest new_count_path_matches_all_six_committed_sorted_goldens ... FAILED\n\nfailures:\n\n---- new_count_path_matches_all_six_committed_sorted_goldens stdout ----\n\nthread 'new_count_path_matches_all_six_committed_sorted_goldens' (23358409) panicked at tests/rkdb_v2_byte_identity_tests.rs:231:5:\nk=21 canonical=true sorted=true (golden_k21_canon_sorted.rkdb): write-path drift \u2014 the new path no longer emits the golden bytes: new CLI path (0cd9d2b3b01b6957573a7f3e0770ac170ff6eaadb79126fcdd051991d0eed429) and committed pre-refactor fixture (a5da813e2977157afc4b8c395dc6fbc721516024c52cb257208490e29b796af7) are not byte-identical\nfirst difference at whole-file byte 42: left arm 0xc0, right arm 0x00 (left arm 442 bytes, right arm 442 bytes)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    new_count_path_matches_all_six_committed_sorted_goldens\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.35s\n\nwarning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency\n   --> src/hash/table.rs:483:42\n    |\n483 |         let published = self.total_kmers.fetch_update(\n    |                                          ^^^^^^^^^^^^\n    |\n    = note: `#[warn(deprecated)]` on by default\nhelp: replace the use of the deprecated method\n    |\n483 -         let published = self.total_kmers.fetch_update(\n483 +         let published = self.total_kmers.try_update(\n    |\n\nwarning: `rustkmer` (lib) generated 1 warning (run `cargo fix --lib -p rustkmer` to apply 1 suggestion)\n   Compiling rus",
+          "post_restore_exit": 0
+        },
+        {
+          "test_bin": "rkdb_v2_byte_identity_tests",
+          "test_name": "database_query_binary_search_answers_every_oracle_key_from_the_new_write_path",
+          "command": [
+            "cargo",
+            "test",
+            "--locked",
+            "--test",
+            "rkdb_v2_byte_identity_tests",
+            "database_query_binary_search_answers_every_oracle_key_from_the_new_write_path"
+          ],
+          "observed_exit": 101,
+          "expect_substring_seen": true,
+          "failure_excerpt": "\nrunning 1 test\ntest database_query_binary_search_answers_every_oracle_key_from_the_new_write_path ... FAILED\n\nfailures:\n\n---- database_query_binary_search_answers_every_oracle_key_from_the_new_write_path stdout ----\n\nthread 'database_query_binary_search_answers_every_oracle_key_from_the_new_write_path' (23358488) panicked at tests/rkdb_v2_byte_identity_tests.rs:932:9:\nassertion `left == right` failed: DatabaseQuery disk binary search returned the wrong count for oracle key 0xf307741 (AAAAAAATTATAACTCTCAAC)\n  left: None\n right: Some(1)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    database_query_binary_search_answers_every_oracle_key_from_the_new_write_path\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.43s\n\nwarning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency\n   --> src/hash/table.rs:483:42\n    |\n483 |         let published = self.total_kmers.fetch_update(\n    |                                          ^^^^^^^^^^^^\n    |\n    = note: `#[warn(deprecated)]` on by default\nhelp: replace the use of the deprecated method\n    |\n483 -         let published = self.total_kmers.fetch_update(\n483 +         let published = self.total_kmers.try_update(\n    |\n\nwarning: `rustkmer` (lib) generated 1 warning (run `cargo fix --lib -p rustkmer` to apply 1 suggestion)\n    Finished `test` profile [unoptimized + ",
+          "post_restore_exit": 0
+        }
+      ]
+    },
+    {
+      "name": "duplication",
+      "file": "src/cli/commands/count.rs",
+      "find": "        KmerEntry::new(kmer, count).write_to(&mut writer)?;",
+      "replace": "        KmerEntry::new(kmer, count).write_to(&mut writer)?;\n        KmerEntry::new(kmer, count).write_to(&mut writer)?;",
+      "pre_blob": "6e3038d8fd7e154ddf8e2d51e3726a712fc6e926",
+      "post_blob": "95597a5dca5e3ea4b0ce2ce4706fb59bbf48206e",
+      "restored_blob_matches": true,
+      "gates": [
+        {
+          "test_bin": "output_pipeline_tests",
+          "test_name": "sorted_rkdb_records_are_strictly_ascending",
+          "command": [
+            "cargo",
+            "test",
+            "--locked",
+            "--test",
+            "output_pipeline_tests",
+            "sorted_rkdb_records_are_strictly_ascending"
+          ],
+          "observed_exit": 101,
+          "expect_substring_seen": true,
+          "failure_excerpt": "\nrunning 1 test\ntest sorted_rkdb_records_are_strictly_ascending ... FAILED\n\nfailures:\n\n---- sorted_rkdb_records_are_strictly_ascending stdout ----\n\nthread 'sorted_rkdb_records_are_strictly_ascending' (23360156) panicked at tests/output_pipeline_tests.rs:207:5:\nsorted .rkdb records must be strictly ascending by numeric key\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    sorted_rkdb_records_are_strictly_ascending\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.56s\n\n   Compiling rustkmer v0.5.0 (/Users/forrest/GitHub/rustkmer)\nwarning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency\n   --> src/hash/table.rs:483:42\n    |\n483 |         let published = self.total_kmers.fetch_update(\n    |                                          ^^^^^^^^^^^^\n    |\n    = note: `#[warn(deprecated)]` on by default\nhelp: replace the use of the deprecated method\n    |\n483 -         let published = self.total_kmers.fetch_update(\n483 +         let published = self.total_kmers.try_update(\n    |\n\nwarning: `rustkmer` (lib) generated 1 warning (run `cargo fix --lib -p rustkmer` to apply 1 suggestion)\n    Finished `test` profile [unoptimized + debuginfo] target(s) ",
+          "post_restore_exit": 0
+        },
+        {
+          "test_bin": "output_pipeline_tests",
+          "test_name": "header_record_count_equals_the_number_of_records_on_disk",
+          "command": [
+            "cargo",
+            "test",
+            "--locked",
+            "--test",
+            "output_pipeline_tests",
+            "header_record_count_equals_the_number_of_records_on_disk"
+          ],
+          "observed_exit": 101,
+          "expect_substring_seen": true,
+          "failure_excerpt": "\nrunning 1 test\ntest header_record_count_equals_the_number_of_records_on_disk ... FAILED\n\nfailures:\n\n---- header_record_count_equals_the_number_of_records_on_disk stdout ----\n\nthread 'header_record_count_equals_the_number_of_records_on_disk' (23360249) panicked at tests/output_pipeline_tests.rs:235:5:\nassertion `left == right` failed: the header record count must equal the records parsed from disk\n  left: 20\n right: 40\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    header_record_count_equals_the_number_of_records_on_disk\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.36s\n\nwarning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency\n   --> src/hash/table.rs:483:42\n    |\n483 |         let published = self.total_kmers.fetch_update(\n    |                                          ^^^^^^^^^^^^\n    |\n    = note: `#[warn(deprecated)]` on by default\nhelp: replace the use of the deprecated method\n    |\n483 -         let published = self.total_kmers.fetch_update(\n483 +         let published = self.total_kmers.try_update(\n    |\n\nwarning: `rustkmer` (lib) generated 1 warning (run `cargo fix --lib -p rustkmer` to apply 1 suggestion)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.07s\n     Running tests/output_pipeli",
+          "post_restore_exit": 0
+        }
+      ]
+    },
+    {
+      "name": "overflow",
+      "file": "src/hash/local.rs",
+      "find": "            LocalTable::Wide(map) => match map.get_mut(&kmer_encoded) {\n                Some(count) => {\n                    if *count == self.max_count {",
+      "replace": "            LocalTable::Wide(map) => match map.get_mut(&kmer_encoded) {\n                Some(count) => {\n                    if *count == self.max_count && false {",
+      "pre_blob": "a002a573659c63b178e1e215ef77c6340d06f0c6",
+      "post_blob": "42ddcbf6fabee5e45869ad6e9c007e2c437a3977",
+      "restored_blob_matches": true,
+      "gates": [
+        {
+          "test_bin": "thread_local_count_tests",
+          "test_name": "local_increment_at_u32_ceiling_is_verbatim_and_does_not_advance_total",
+          "command": [
+            "cargo",
+            "test",
+            "--locked",
+            "--test",
+            "thread_local_count_tests",
+            "local_increment_at_u32_ceiling_is_verbatim_and_does_not_advance_total"
+          ],
+          "observed_exit": 101,
+          "expect_substring_seen": true,
+          "failure_excerpt": "\nrunning 1 test\ntest local_increment_at_u32_ceiling_is_verbatim_and_does_not_advance_total ... FAILED\n\nfailures:\n\n---- local_increment_at_u32_ceiling_is_verbatim_and_does_not_advance_total stdout ----\n\nthread 'local_increment_at_u32_ceiling_is_verbatim_and_does_not_advance_total' (23361616) panicked at src/hash/local.rs:192:21:\nattempt to add with overflow\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    local_increment_at_u32_ceiling_is_verbatim_and_does_not_advance_total\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s\n\n   Compiling rustkmer v0.5.0 (/Users/forrest/GitHub/rustkmer)\nwarning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency\n   --> src/hash/table.rs:483:42\n    |\n483 |         let published = self.total_kmers.fetch_update(\n    |                                          ^^^^^^^^^^^^\n    |\n    = note: `#[warn(deprecated)]` on by default\nhelp: replace the use of the deprecated method\n    |\n483 -         let published = self.total_kmers.fetch_update(\n483 +         let published = self.total_kmers.try_update(\n    |\n\nwarning: `rustkmer` (lib) generated 1 warning (run `cargo fix --lib -p rustkmer` to apply 1 suggestion)\n    Finished `test` profile [unoptimized + debuginfo",
+          "post_restore_exit": 0
+        }
+      ]
+    }
+  ],
+  "verdict": {
+    "result": "GREEN"
+  }
+}
