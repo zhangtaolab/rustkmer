@@ -1,0 +1,98 @@
+{
+  "msrv_clippy": {
+    "root_command": "cargo +1.82.0 clippy --locked --all-targets -- -D warnings",
+    "pyo3_command": "cargo +1.82.0 clippy --locked --all-targets --manifest-path pyo3/Cargo.toml -- -D warnings",
+    "result": "pass"
+  },
+  "release_build": "pass",
+  "full_test_suite": {
+    "command": "cargo test --locked",
+    "test_result_summaries": [
+      "test result: ok. 259 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.17s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+      "test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s",
+      "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s",
+      "test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s",
+      "test result: ok. 9 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.60s",
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.39s",
+      "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+      "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+      "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s",
+      "test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s",
+      "test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.01s",
+      "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s",
+      "test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s",
+      "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.71s",
+      "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+      "test result: ok. 17 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 6.45s"
+    ]
+  },
+  "pool_size_gate": {
+    "command": "cargo test --locked --test thread_pool_size_tests",
+    "runs": 3,
+    "per_run_test_result_summaries": [
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.59s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.60s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.62s"
+    ]
+  },
+  "bench_harness_unittests": {
+    "command": "python3 -m unittest discover -s scripts/bench/tests -t .",
+    "summary": "OK (skipped=1)",
+    "ran": "Ran 316 tests in 10.705s",
+    "first_run": {
+      "result": "FAILED (failures=1, skipped=1)",
+      "failing_test": "scripts.bench.tests.test_verify_threads.TestNegativeControls.test_pre_engine_n_plus_one_stub_is_measured_red",
+      "observation": "observed=0 instead of requested=4 observed=5 while the host was still settling after the full Rust suite; no test, helper, or gate was modified",
+      "resolution": "re-ran the identical suite on an idle host: Ran 316 tests, OK (skipped=1)"
+    }
+  },
+  "pyo3": {
+    "module_path": "/Users/forrest/GitHub/rustkmer/.venv311/lib/python3.11/site-packages/pyrustkmer/__init__.py",
+    "pytest_summary": "======================= 158 passed, 63 skipped in 0.13s ========================"
+  },
+  "anti_softening": {
+    "current_tree": {
+      ".github/workflows/benchmark.yml": {
+        "continue_on_error_or_true": 0,
+        "expected_failure_wording": 0
+      },
+      "scripts/bench/README.md": {
+        "continue_on_error_or_true": 2,
+        "expected_failure_wording": 0
+      },
+      "scripts/bench/thread_scaling.py": {
+        "continue_on_error_or_true": 2,
+        "expected_failure_wording": 0
+      }
+    },
+    "head_baseline": {
+      ".github/workflows/benchmark.yml": {
+        "continue_on_error_or_true": 0,
+        "expected_failure_wording": 0
+      },
+      "scripts/bench/README.md": {
+        "continue_on_error_or_true": 2,
+        "expected_failure_wording": 0
+      },
+      "scripts/bench/thread_scaling.py": {
+        "continue_on_error_or_true": 2,
+        "expected_failure_wording": 0
+      }
+    }
+  },
+  "baselines_unchanged": true,
+  "golden_manifest_sha256": "f010e42a213de6786ac67e2a6f9227485320e7ddfca4c6521cf019880786f25f",
+  "manifest_freeze": true
+}
