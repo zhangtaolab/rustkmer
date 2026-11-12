@@ -15,4 +15,7 @@ so a later plan or quick task can pick them up.
   `RustPyCounter::new(...)` call in `PyCounter::new`). Pre-existing and on a
   line this plan did not touch; left alone. The root `cargo fmt --check` gate
   does not cover the separate pyo3 crate.
+  **Resolved in 06-03:** plan 06-03 edits `pyo3/src/counter.rs` for PAR-03 and
+  its formatting pass normalized the pre-existing drift (`RustPyCounter::new`
+  call and the two compressed-file openers). No behavior change.
 

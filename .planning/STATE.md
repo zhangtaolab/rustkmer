@@ -4,18 +4,18 @@ milestone: v2.0
 milestone_name: k=21 Counting Parity
 current_phase: 6
 current_phase_name: Parallelism Correctness & Hot Path
-current_plan: 3
+current_plan: 4
 status: executing
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-11-12T12:23:58.809Z"
+stopped_at: Completed 06-03-PLAN.md
+last_updated: "2026-11-12T12:35:41.447Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 05 complete, transitioned to Phase 6
-state_head: 532133a4f1fafe8317927117f7dcf724d7e4bf5c
+state_head: b01f81ca97fd626dc7c6e245c1461cd18360ae42
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 11
-  completed_plans: 9
+  completed_plans: 10
   percent: 14
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 6 — Parallelism Correctness & Hot Path
-Current Plan: 3
+Current Plan: 4
 Total Plans in Phase: 4
 Status: Ready to execute
 Last activity: 2026-11-12 — Completed 06-01 (working --threads, green pool gates, t1 baselines)
@@ -84,6 +84,7 @@ Progress: [█░░░░░░░░░] 14% (v2.0)
 | Phase 05 P07 | 4 min | 2 tasks | 2 files |
 | Phase 06 P01 | 31 min | 3 tasks | 7 files |
 | Phase 06 P02 | 10 min | 3 tasks | 7 files |
+| Phase 06 P03 | 7 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -125,6 +126,9 @@ Recent decisions affecting current work:
 - [Phase 06]: [06-02] PAR-02: per-worker LocalKmerCounts keyed by a unique counter id + generation; drain bumps the generation so a drained local can never be reused (multi-file exactness)
 - [Phase 06]: [06-02] PAR-02: reduction uses checked_add per u32 key and for the shared u64 total; partial-merge atomics follow merge's WR-02 poison-consistency contract; overflow returns the verbatim message
 - [Phase 06]: [06-02] Dual surface: PyO3 file methods use one local per call + one merge under py.detach; add_kmer/add_sequence stay on the shared increment path
+- [Phase 06]: RollingEncoder is a Copy value with k/mask/shift precomputed; the hot loop constructs it per record rather than carrying mutable state across rayon chunks
+- [Phase 06]: Rolling emission is a fallible sink (try_for_each) so LocalKmerCounts::increment errors propagate without a per-window branch; each call returns the reference skipped-window count
+- [Phase 06]: canonical.rs re-exports RollingEncoder rather than duplicating it; add_sequence/add_kmer stay on their unchanged shared-increment per-window path
 
 ### Pending Todos
 
@@ -155,8 +159,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T12:23:58.696Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-11-12T12:35:41.324Z
+Stopped at: Completed 06-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
