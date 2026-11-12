@@ -436,20 +436,18 @@ where
     R: Sync,
     F: Fn(&R) -> &[u8] + Sync,
 {
-    records
-        .par_chunks(SUBSLICE_RECORDS)
-        .try_for_each_init(
-            || counter.local_handle(),
-            |handle, sub_slice| -> ProcessingResult<()> {
-                let mut local = handle
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                for record in sub_slice {
-                    count_record_into(&mut local, seq_of(record), k, canonical)?;
-                }
-                Ok(())
-            },
-        )
+    records.par_chunks(SUBSLICE_RECORDS).try_for_each_init(
+        || counter.local_handle(),
+        |handle, sub_slice| -> ProcessingResult<()> {
+            let mut local = handle
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            for record in sub_slice {
+                count_record_into(&mut local, seq_of(record), k, canonical)?;
+            }
+            Ok(())
+        },
+    )
 }
 
 /// Process a FASTA file and count k-mers.

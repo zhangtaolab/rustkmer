@@ -232,7 +232,11 @@ fn reduce_drains_and_hands_out_fresh_locals_for_the_next_file() -> anyhow::Resul
     assert!(first_total > 0, "file 1 must produce a nonzero total");
     assert_eq!(
         first_total,
-        counter.get_all_counts().iter().map(|(_, c)| *c as u64).sum::<u64>(),
+        counter
+            .get_all_counts()
+            .iter()
+            .map(|(_, c)| *c as u64)
+            .sum::<u64>(),
         "after the reduce, the shared total must match the shared table"
     );
 
@@ -280,11 +284,8 @@ struct TempDir {
 
 impl TempDir {
     fn new(tag: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "rustkmer-par02-{}-{}",
-            std::process::id(),
-            tag
-        ));
+        let path =
+            std::env::temp_dir().join(format!("rustkmer-par02-{}-{}", std::process::id(), tag));
         let _ = fs::remove_dir_all(&path);
         fs::create_dir_all(&path).expect("create temp dir");
         Self { path }
@@ -541,7 +542,10 @@ fn local_increment_at_u32_ceiling_is_verbatim_and_does_not_advance_total() {
             k
         );
         assert_eq!(
-            local.iter().find(|(encoded, _)| *encoded == key).map(|(_, c)| c),
+            local
+                .iter()
+                .find(|(encoded, _)| *encoded == key)
+                .map(|(_, c)| c),
             Some(u32::MAX),
             "k={}: the saturated key must remain at the ceiling (no wrap)",
             k

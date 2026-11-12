@@ -465,9 +465,7 @@ impl KmerCounter {
         // The shared total is also a new summation site: checked, never
         // wrapping. Total > u64::MAX is unreachable in practice, but the
         // fail-loud rule applies to every new summation (PAR-02).
-        let current_total = self
-            .total_kmers
-            .load(std::sync::atomic::Ordering::Relaxed);
+        let current_total = self.total_kmers.load(std::sync::atomic::Ordering::Relaxed);
         let new_total = match current_total.checked_add(merged_total) {
             Some(total) => total,
             None => {

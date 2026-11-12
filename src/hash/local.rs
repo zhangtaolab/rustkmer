@@ -348,9 +348,7 @@ impl LocalKmerCounts {
 }
 
 /// Lock a local handle, recovering the data if a worker panicked while holding it.
-pub(crate) fn lock_local(
-    handle: &Arc<Mutex<LocalKmerCounts>>,
-) -> MutexGuard<'_, LocalKmerCounts> {
+pub(crate) fn lock_local(handle: &Arc<Mutex<LocalKmerCounts>>) -> MutexGuard<'_, LocalKmerCounts> {
     handle
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -441,8 +439,10 @@ impl LocalHandleRegistry {
         let drained = std::mem::take(&mut *locals);
         // Release-store while still holding the lock, so the miss path in
         // `handle` cannot interleave a fresh local into the old generation.
-        self.generation
-            .store(self.generation.load(Ordering::Acquire) + 1, Ordering::Release);
+        self.generation.store(
+            self.generation.load(Ordering::Acquire) + 1,
+            Ordering::Release,
+        );
         drained
     }
 
@@ -452,6 +452,9 @@ impl LocalHandleRegistry {
             .state
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        locals.iter().map(|handle| lock_local(handle).skipped()).sum()
+        locals
+            .iter()
+            .map(|handle| lock_local(handle).skipped())
+            .sum()
     }
 }
