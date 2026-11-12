@@ -5,17 +5,17 @@ milestone_name: k=21 Counting Parity
 current_phase: 8
 current_phase_name: Output Pipeline & .rkdb v2 Parity
 current_plan: 4
-status: executing
-stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-11-12T17:42:38.977Z"
+status: verifying
+stopped_at: Completed 08-04-PLAN.md
+last_updated: "2026-11-12T18:04:17.778Z"
 last_activity: 2026-11-13
 last_activity_desc: Phase 07 complete, transitioned to Phase 8
-state_head: 3c08171de1a3ca30b6e98f18ba767e27aa99aaab
+state_head: a8cf51d6ee89a385174129ba16269b8047fca1db
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 20
-  completed_plans: 19
+  completed_plans: 20
   percent: 43
 ---
 
@@ -33,7 +33,7 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 Phase: 8 — Output Pipeline & .rkdb v2 Parity
 Current Plan: 4
 Total Plans in Phase: 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-13 — Completed 08-01-PLAN.md (1 of 4 plans in Phase 8)
 
 Progress: [████░░░░░░] 43% (v2.0)
@@ -96,6 +96,7 @@ Progress: [████░░░░░░] 43% (v2.0)
 | Phase 08 P01 | 27 | 3 tasks | 7 files |
 | Phase 08 P02 | 8min | 2 tasks | 1 files |
 | Phase 08 P03 | 6min | 3 tasks | 5 files |
+| Phase 8 P04 | 19min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -173,6 +174,9 @@ Recent decisions affecting current work:
 - [Phase 08]: Skip-N is pinned by an exact observation count on a random record with one internal N at index 45; a repeat-rich record would satisfy distinct<naive windows for the wrong reason
 - [Phase 08]: Mutation driver exit classification: all gates RED then green = 0; a gate staying green = 1; non-unique find, restore mismatch, missing expected assertion text, or gate not green after restore = 2
 - [Phase 08]: Output-boundary proptest drives CountEngine directly (12 in-process cases) instead of the CLI so the test stays fast while exercising the exact pair structures the writer consumes
+- [Phase 8]: Post-change output-stage compare re-ran on the final tree: GREEN with sorted 10.41 s vs 18.73 s, sort delta 1.70 s (0.191x), sha256 0976f29c unchanged, sorted RSS 12.04 GB vs 17.97 GB
+- [Phase 8]: Slice arms 31.82/10.15/9.31 s vs Phase 7 36.92/17.76/23.83 s at 12.04/12.04/12.05 GB RSS; all three .rkdb hash to 0976f29c, so output bytes are thread-count independent at 229M keys
+- [Phase 8]: Final battery green with the writer frozen at blob eb0d5bf2 and the golden manifest at f010e42a; anti-softening current==HEAD==(workflow 0, README 2, thread_scaling.py 2), expected-failure wording zero
 
 ### Pending Todos
 
@@ -203,8 +207,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T17:42:38.716Z
-Stopped at: Completed 08-03-PLAN.md
+Last session: 2026-11-12T18:04:17.507Z
+Stopped at: Completed 08-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
