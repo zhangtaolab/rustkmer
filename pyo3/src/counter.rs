@@ -6,6 +6,7 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rustkmer::hash::KmerCounter as RustPyCounter;
+use rustkmer::hash::LocalKmerCounts;
 use rustkmer::kmer::canonical::canonical_kmer_u128;
 use rustkmer::kmer::encoding::encode_kmer_bytes_u128;
 use std::path::Path;
@@ -635,25 +636,31 @@ impl PyCounter {
     }
 }
 
-/// Count all k-mers in `seq_bytes` against `counter`.
+/// Count all k-mers in `seq_bytes` into one file-level local accumulator.
 ///
 /// This is a free function (not a method on `PyCounter`) so it can be called
-/// from inside a `py.allow_threads(move || { .. })` closure, which may only
-/// capture `Send` types. The closure clones the `Arc<RustPyCounter>` and moves
-/// it in, then passes a `&RustPyCounter` here. `RustPyCounter` uses
-/// `dashmap::DashMap` for storage, so `increment` takes `&self` and is sound
-/// under rayon's parallel workers (Phase 2, PCOUNT-03 / D-08).
+/// from inside a `py.detach(move || { .. })` closure, which may only capture
+/// `Send` types. The closure clones the `Arc<RustPyCounter>` and moves it in,
+/// then the file helper passes its `&mut LocalKmerCounts` here.
+///
+/// **PAR-02:** the file helpers create ONE [`LocalKmerCounts`] per file call
+/// and merge it into the shared counter once at the end. That keeps the
+/// per-sequence hot loop off the shared table and removes the per-window
+/// `total_kmers` / `unique_kmers` atomics, exactly like the CLI path. The
+/// public `add_kmer` / `add_sequence` methods deliberately keep using the
+/// shared `increment` path so their behavior is unchanged.
 ///
 /// Invalid bases (anything outside A/C/G/T after uppercasing) are skipped at
 /// the k-mer extraction step via `encode_kmer_bytes_u128` returning `Err`;
 /// canonical computation errors likewise `continue`. The overflow semantics
 /// (error on `u32::MAX` per k-mer) are inherited verbatim from
-/// `RustPyCounter::increment` (PCOUNT-04).
-fn process_sequence_on_counter(
-    counter: &RustPyCounter,
+/// `LocalKmerCounts::increment` (PCOUNT-04), and the reduction is checked.
+fn process_sequence_into_local(
+    local: &mut LocalKmerCounts,
+    k: usize,
+    canonical: bool,
     seq_bytes: &[u8],
 ) -> Result<(), rustkmer::ProcessingError> {
-    let k = counter.kmer_length();
     if seq_bytes.len() < k {
         return Ok(());
     }
@@ -665,7 +672,7 @@ fn process_sequence_on_counter(
         // Encode k-mer
         if let Ok(encoded) = encode_kmer_bytes_u128(kmer) {
             // Apply canonical transformation if needed
-            let encoded_to_add = if counter.canonical_mode() {
+            let encoded_to_add = if canonical {
                 match canonical_kmer_u128(encoded, k) {
                     Ok(canonical) => canonical,
                     Err(_) => continue,
@@ -674,8 +681,8 @@ fn process_sequence_on_counter(
                 encoded
             };
 
-            // Increment count
-            if let Err(e) = counter.increment(encoded_to_add) {
+            // Increment the file-local accumulator
+            if let Err(e) = local.increment(encoded_to_add) {
                 return Err(rustkmer::ProcessingError::with_context(
                     "Failed to increment k-mer count",
                     Box::new(e),
@@ -689,14 +696,15 @@ fn process_sequence_on_counter(
 
 /// Count all k-mers in a FASTA file (gzip/bzip2/xz/plain) against `counter`.
 ///
-/// Designed to run inside a `py.allow_threads(..)` closure: takes only `Send`
-/// types (an `&Arc<RustPyCounter>` and a `&str` path). Reads the file,
-/// decompresses it transparently if the extension is `.gz` / `.bz2` / `.xz`
-/// (WR-05: previously only `.gz` was detected; `.bz2` / `.xz` were silently
-/// mis-parsed), and accumulates each record's sequence into the shared
-/// counter. Errors are returned as `rustkmer::ProcessingError` so the caller
-/// (which holds the GIL again after `allow_threads` returns) can map them to
-/// `PyErr`.
+/// Designed to run inside a `py.detach(..)` closure: takes only `Send` types
+/// (an `&Arc<RustPyCounter>` and a `&str` path). Reads the file, decompresses
+/// it transparently if the extension is `.gz` / `.bz2` / `.xz` (WR-05:
+/// previously only `.gz` was detected; `.bz2` / `.xz` were silently
+/// mis-parsed), and accumulates each record's sequence into ONE file-local
+/// [`LocalKmerCounts`] (PAR-02). The local is merged into the shared counter
+/// once at the end, so the per-sequence loop touches no shared state.
+/// Errors are returned as `rustkmer::ProcessingError` so the caller (which
+/// holds the GIL again after `py.detach` returns) can map them to `PyErr`.
 fn process_fasta_file_on_counter(
     counter: &Arc<RustPyCounter>,
     path: &str,
@@ -717,6 +725,9 @@ fn process_fasta_file_on_counter(
     let reader = BufReader::new(file);
 
     let k = counter.kmer_length();
+    let canonical = counter.canonical_mode();
+    // PAR-02: one local per file call; merged once before returning.
+    let mut local = counter.new_local_counts();
     let mut current_seq = Vec::new();
 
     for line_result in reader.lines() {
@@ -729,7 +740,7 @@ fn process_fasta_file_on_counter(
         if trimmed.starts_with('>') {
             // Process previous sequence
             if !current_seq.is_empty() && current_seq.len() >= k {
-                process_sequence_on_counter(counter, &current_seq)?;
+                process_sequence_into_local(&mut local, k, canonical, &current_seq)?;
             }
             current_seq.clear();
         } else {
@@ -744,22 +755,26 @@ fn process_fasta_file_on_counter(
 
     // Process last sequence
     if !current_seq.is_empty() && current_seq.len() >= k {
-        process_sequence_on_counter(counter, &current_seq)?;
+        process_sequence_into_local(&mut local, k, canonical, &current_seq)?;
     }
+
+    // PAR-02: checked end-of-file reduction (the only shared-table touch).
+    counter.merge_local_counts(&local)?;
 
     Ok(())
 }
 
 /// Count all k-mers in a FASTQ file (gzip/bzip2/xz/plain) against `counter`.
 ///
-/// Designed to run inside a `py.allow_threads(..)` closure: takes only `Send`
-/// types (an `&Arc<RustPyCounter>` and a `&str` path). Reads the file,
-/// decompresses it transparently if the extension is `.gz` / `.bz2` / `.xz`
-/// (WR-05: previously only `.gz` was detected; `.bz2` / `.xz` were silently
-/// mis-parsed), and accumulates each record's sequence into the shared
-/// counter. Errors are returned as `rustkmer::ProcessingError` so the caller
-/// (which holds the GIL again after `allow_threads` returns) can map them to
-/// `PyErr`.
+/// Designed to run inside a `py.detach(..)` closure: takes only `Send` types
+/// (an `&Arc<RustPyCounter>` and a `&str` path). Reads the file, decompresses
+/// it transparently if the extension is `.gz` / `.bz2` / `.xz` (WR-05:
+/// previously only `.gz` was detected; `.bz2` / `.xz` were silently
+/// mis-parsed), and accumulates each record's sequence into ONE file-local
+/// [`LocalKmerCounts`] (PAR-02). The local is merged into the shared counter
+/// once at the end, so the per-sequence loop touches no shared state.
+/// Errors are returned as `rustkmer::ProcessingError` so the caller (which
+/// holds the GIL again after `py.detach` returns) can map them to `PyErr`.
 fn process_fastq_file_on_counter(
     counter: &Arc<RustPyCounter>,
     path: &str,
@@ -780,6 +795,9 @@ fn process_fastq_file_on_counter(
     let reader = BufReader::new(file);
 
     let k = counter.kmer_length();
+    let canonical = counter.canonical_mode();
+    // PAR-02: one local per file call; merged once before returning.
+    let mut local = counter.new_local_counts();
     let mut line_num = 0;
 
     for line_result in reader.lines() {
@@ -801,10 +819,13 @@ fn process_fastq_file_on_counter(
                 .collect();
 
             if seq_bytes.len() >= k {
-                process_sequence_on_counter(counter, &seq_bytes)?;
+                process_sequence_into_local(&mut local, k, canonical, &seq_bytes)?;
             }
         }
     }
+
+    // PAR-02: checked end-of-file reduction (the only shared-table touch).
+    counter.merge_local_counts(&local)?;
 
     Ok(())
 }

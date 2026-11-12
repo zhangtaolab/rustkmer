@@ -1080,3 +1080,94 @@ class TestPyCounterParallel:
             "PCOUNT-03 divergence: threads=1 and threads=4 produced "
             "different count maps (concurrency bug)"
         )
+
+
+class TestPyCounterLocalAccumulationParity:
+    """PAR-02: PyCounter's file methods must accumulate through the shared
+    local core and produce exactly the counts a pure-Python sliding-window
+    reference computes.
+
+    The file helpers now create one `LocalKmerCounts` per file call and merge
+    it once at the end, so a parity failure here is either a local-accumulation
+    bug or a reduction bug. `add_sequence` deliberately stays on the shared
+    increment path; comparing both methods against the same reference pins that
+    both surfaces agree.
+    """
+
+    # Deterministic, pure-ACGT sequences of 80 bases each, so k=64 has windows.
+    SEQUENCES = [
+        "ACGT" * 20,
+        "TTTT" * 20,
+        "ACAC" * 20,
+        "GTGT" * 20,
+        "AAAACCCCGGGGTTTT" * 5,
+        "GATTACAG" * 10,
+    ]
+
+    @staticmethod
+    def _revcomp(sequence):
+        """Return the reverse complement of a pure-ACGT sequence."""
+        return sequence.translate(str.maketrans("ACGT", "TGCA"))[::-1]
+
+    @classmethod
+    def _reference_counts(cls, k, canonical):
+        """Pure-Python sliding-window reference count map."""
+        counts = {}
+        for sequence in cls.SEQUENCES:
+            for i in range(len(sequence) - k + 1):
+                kmer = sequence[i : i + k]
+                if canonical:
+                    kmer = min(kmer, cls._revcomp(kmer))
+                counts[kmer] = counts.get(kmer, 0) + 1
+        return counts
+
+    @classmethod
+    def _write_fastq(cls, path):
+        """Write the fixture sequences as four-line FASTQ records."""
+        lines = []
+        for i, sequence in enumerate(cls.SEQUENCES):
+            lines.extend([f"@read{i}", sequence, "+", "I" * len(sequence)])
+        path.write_text("\n".join(lines) + "\n")
+
+    @pytest.mark.parametrize("k", [21, 64])
+    @pytest.mark.parametrize("canonical", [False, True])
+    def test_add_from_fastq_matches_python_reference(self, tmp_path, k, canonical):
+        """add_from_fastq counts and stats must match the Python reference."""
+        fastq_file = tmp_path / "par02.fastq"
+        self._write_fastq(fastq_file)
+        expected = self._reference_counts(k, canonical)
+
+        counter = pyrustkmer.PyCounter(k, canonical=canonical, threads=1)
+        counter.add_from_fastq(str(fastq_file))
+
+        assert counter.get_all_counts() == expected, (
+            f"PAR-02: add_from_fastq diverged from the Python reference "
+            f"(k={k}, canonical={canonical})"
+        )
+        stats = counter.get_stats()
+        assert stats.total_kmers == sum(expected.values()), (
+            f"total_kmers mismatch (k={k}, canonical={canonical}): "
+            f"{stats.total_kmers} != {sum(expected.values())}"
+        )
+        assert stats.unique_kmers == len(expected), (
+            f"unique_kmers mismatch (k={k}, canonical={canonical}): "
+            f"{stats.unique_kmers} != {len(expected)}"
+        )
+
+    @pytest.mark.parametrize("k", [21, 64])
+    @pytest.mark.parametrize("canonical", [False, True])
+    def test_add_sequence_matches_python_reference(self, k, canonical):
+        """add_sequence (shared increment path) must match the same reference."""
+        expected = self._reference_counts(k, canonical)
+
+        counter = pyrustkmer.PyCounter(k, canonical=canonical, threads=1)
+        for sequence in self.SEQUENCES:
+            counter.add_sequence(sequence)
+
+        assert counter.get_all_counts() == expected, (
+            f"PAR-02: add_sequence diverged from the Python reference "
+            f"(k={k}, canonical={canonical})"
+        )
+        stats = counter.get_stats()
+        assert stats.total_kmers == sum(expected.values())
+        assert stats.unique_kmers == len(expected)
