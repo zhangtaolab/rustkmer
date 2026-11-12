@@ -1,4 +1,4 @@
-//! PROF-02 — live rayon pool-size observation tests (plan 05-03).
+//! PROF-02 — live rayon pool-size observation tests (plan 05-03, Phase 6 PAR-01).
 //!
 //! # Why subprocess observation is the only honest evidence
 //!
@@ -13,27 +13,23 @@
 //! `.planning/research/profiling/verify_threads.py`, one independent child
 //! process per requested N, and read its structured `--json` records.
 //!
-//! # The expected GREEN/RED split on the current tree
+//! # The standing gate
 //!
-//! * [`pool_size_baseline_records_default_pool`] — characterization, runs in
-//!   the default suite and is GREEN while the bug exists: at `--threads 1`
-//!   on a multi-core host the observed OS thread count is > 2 (17 on the
-//!   16-core dev host). It pins the CURRENT buggy behavior.
-//! * [`pool_size_matches_requested_threads`] — the standing gate, `#[ignore]`d
-//!   with a Phase-6 reason and RED on the current tree: observed must equal
-//!   requested + 1 (workers + main) for N in {1, 4, 16}.
+//! [`pool_size_matches_requested_threads`] runs in the default suite and is
+//! the standing gate: one fresh CLI child per N in {1, 4, 16} must observe
+//! exactly requested + 1 OS threads (rayon workers + main). It was RED in
+//! Phase 5 while `--threads` was a silent no-op; Phase 6 (PAR-01) fixed the
+//! resolver, so it now pins the fixed behavior.
 //!
-//! # Phase 6 handoff (do this consciously, not silently)
-//!
-//! When Phase 6 (PAR-01) makes `--threads` size the pool:
-//! 1. un-ignore [`pool_size_matches_requested_threads`] (it turns GREEN);
-//! 2. invert or remove [`pool_size_baseline_records_default_pool`] — it is
-//!    DESIGNED to fail once the bug is fixed, forcing this baseline decision
-//!    to be made explicitly instead of rotting into a false regression.
+//! [`pool_size_characterization_records_requested_pool`] pins the same
+//! contract for a single `--threads 1` child in the default suite. On a
+//! single-core host the fixed one-worker pool and the old all-cores default
+//! coincide, so the comparison is skipped there (the standing gate still
+//! runs).
 //!
 //! Every pool-size assertion message embeds the literal pattern
-//! `requested=<N> observed=<M>` so an expected-RED run is mechanically
-//! distinguishable from a build/infra failure by grepping the test log.
+//! `requested=<N> observed=<M>` so a failure is mechanically distinguishable
+//! from a build/infra failure by grepping the test log.
 //!
 //! Windows: the test-root CI matrix includes windows-latest, where neither
 //! macOS `sample` nor Linux `/proc/<pid>/task` exists; both tests return
@@ -125,13 +121,13 @@ fn read_records(json_path: &Path, out: &Output) -> Vec<serde_json::Value> {
         .clone()
 }
 
-/// Characterization test (default suite, GREEN on the current buggy tree):
-/// at `--threads 1` on a multi-core host the CLI runs MORE than 2 OS threads
-/// — the flag does not size the pool. Once Phase 6 fixes `--threads` this
-/// test FAILS by design, forcing its conscious inversion/removal (see the
-/// module doc's Phase 6 handoff).
+/// Characterization of the fixed behavior (default suite): a fresh
+/// `--threads 1` child on a multi-core host observes exactly requested + 1
+/// OS threads — one rayon worker plus the main thread. Single-core hosts
+/// skip the comparison because the fixed one-worker pool and the old
+/// all-cores default coincide there (the standing gate still runs).
 #[test]
-fn pool_size_baseline_records_default_pool() {
+fn pool_size_characterization_records_requested_pool() {
     if cfg!(windows) {
         eprintln!(
             "PROF-02 platform-skip: pool-size observation needs macOS `sample` or Linux \
@@ -170,32 +166,30 @@ fn pool_size_baseline_records_default_pool() {
         .map(|n| n.get())
         .unwrap_or(1);
     if cores > 1 {
-        assert!(
-            observed > 2,
-            "PROF-02 characterization inverted: requested=1 observed={observed} — the pool now \
-             matches the flag. Phase 6 has fixed --threads: consciously invert or remove this \
-             baseline test and un-ignore pool_size_matches_requested_threads."
+        assert_eq!(
+            observed,
+            requested + 1,
+            "PROF-02 pool-size mismatch: requested={requested} observed={observed} — \
+             --threads must size the pool to requested workers plus the main thread"
         );
         eprintln!(
-            "PROF-02 baseline (expected until Phase 6): requested=1 observed={observed} on a \
-             {cores}-core host — --threads does not size the pool"
+            "PROF-02 characterization: requested={requested} observed={observed} on a \
+             {cores}-core host — --threads sizes the pool"
         );
     } else {
         eprintln!(
-            "PROF-02: single-core host — the no-op bug is unobservable here \
-             (requested=1 observed={observed} coincides with the correct pool size)"
+            "PROF-02: single-core host — the fixed and default pools coincide \
+             (requested={requested} observed={observed}); comparison skipped"
         );
     }
 }
 
-/// Standing gate (RED on the current tree, GREEN after Phase 6): the observed
-/// OS thread count must equal requested + 1 (workers + main) for each of
-/// N = 1, 4, 16, each observed in an independent subprocess because rayon's
-/// global pool is once-per-process. Per-N assertions run BEFORE the exit-code
-/// assertion so an expected-RED log always carries the machine-greppable
-/// `requested=<N> observed=<M>` pattern.
+/// Standing gate: the observed OS thread count must equal requested + 1
+/// (workers + main) for each of N = 1, 4, 16, each observed in an
+/// independent subprocess because rayon's global pool is once-per-process.
+/// Per-N assertions run BEFORE the exit-code assertion so a failure log
+/// always carries the machine-greppable `requested=<N> observed=<M>` pattern.
 #[test]
-#[ignore = "PROF-02 standing gate: expected RED until Phase 6 fixes --threads; run with cargo test --test thread_pool_size_tests -- --ignored"]
 fn pool_size_matches_requested_threads() {
     if cfg!(windows) {
         eprintln!(

@@ -108,7 +108,8 @@ no-op/regression (RED), **2** invalid (missing arm, cross-arm count
 mismatch, zero counts, bad provenance, unsupported platform).
 
 ```bash
-# run mode — measure + verdict (exit 1 on the current tree; see Expected RED)
+# run mode — measure + verdict (exit 0 when --threads sizes the pool; exit 1
+# is a measured no-op/regression)
 python3 scripts/bench/thread_scaling.py --mode synthetic --reads 200000 \
   --reps 2 --out thread_scaling.json
 
@@ -226,37 +227,33 @@ baseline exists, and comparing a CI run against the committed dev-host
 baseline would violate the per-runner-class rule. Phase 10 owns CI-class
 baselines (see the bootstrap below).
 
-## Expected RED gates (PROF-02)
+## Standing thread gates (PROF-02)
 
-These gates are **expected RED** on the current tree. They are the Phase 5
-deliverable observing a real bug, not regressions:
+Both PROF-02 gates are **standing** and must remain green. They were RED in
+Phase 5 while `--threads` was a silent no-op (Phase 6 PAR-01 fixed the
+resolver); they now pin the fixed behavior:
 
-- **Thread-scaling gate** (`scripts/bench/thread_scaling.py`): exits **1**
-  because `--threads` is a silent no-op — t1 ≈ t4 ≈ t16 and both speedups sit
-  near 1.0. The CI verdict step is intentionally red for this reason.
+- **Thread-scaling gate** (`scripts/bench/thread_scaling.py`): exits **0**
+  only when both `speedup_t4` and `speedup_t16` reach `--min-speedup`. A
+  measured no-op or regression is exit **1** — never converted to a pass.
 - **Rust standing gate** `pool_size_matches_requested_threads`
-  (`tests/thread_pool_size_tests.rs`) is `#[ignore]`d; run it explicitly and
-  it is RED on the current tree (e.g. requested 1 / observed 17-18).
-- **Characterization test** `pool_size_baseline_records_default_pool` pins
-  the current bug in the DEFAULT suite (it is GREEN today) and will FAIL
-  once Phase 6 fixes `--threads` — that failure is the signal to invert or
-  remove it.
+  (`tests/thread_pool_size_tests.rs`) runs in the default `cargo test`
+  suite: a fresh CLI child per requested N in {1, 4, 16} must observe exactly
+  requested + 1 OS threads (rayon workers + main).
+- **Characterization test** `pool_size_characterization_records_requested_pool`
+  pins the same contract for a single `--threads 1` child in the default
+  suite. Single-core hosts skip the comparison because the fixed one-worker
+  pool and the old all-cores default coincide there.
 
-### Phase 6 handoff checklist (PAR-01)
+### Maintaining the gates
 
-1. Un-ignore `pool_size_matches_requested_threads` and make it pass.
-2. Invert or remove `pool_size_baseline_records_default_pool` (it encodes
-   the bug; do not leave it asserting the buggy pool size).
-3. Re-run the scaling gate locally (`--out ...` run mode) and confirm exit 0.
-4. Let the CI verdict step go green; do not change the gate or its threshold
-   to get there.
-
-The CI red is **intentional** and must never be silenced. Prohibited
-constructs, all of which would launder the gate: GitHub Actions
-`continue-on-error`, shell fallbacks such as `|| true` (or `; true`), any
-conditional on a measurement/gate step (`if: success() && false`, etc.), and
-"baseline recapture" that repins the scaling numbers to make a no-op pass.
-An `if: always()` ARTIFACT UPLOAD is not an exception to this rule — see
+Do not lower the scaling threshold, weaken the pool-size contract, or
+recapture the Phase 5 RED baseline to get green. Prohibited constructs, all
+of which would launder the gate: GitHub Actions `continue-on-error`, shell
+fallbacks such as `|| true` (or `; true`), any conditional on a
+measurement/gate step (`if: success() && false`, etc.), and "baseline
+recapture" that repins the scaling numbers to make a no-op pass. An
+`if: always()` ARTIFACT UPLOAD is not an exception to this rule — see
 "CI evidence retention" below.
 
 ## Provenance fields
@@ -497,7 +494,7 @@ scripts/bench/
 
 .planning/phases/05-measurement-regression-harness/
 ├── golden_capture.json          # immutable pre-refactor golden capture
-├── thread_reality_evidence.json # observed pool sizes (expected RED)
+├── thread_reality_evidence.json # Phase 5 observed pool sizes (pre-fix RED, historical)
 ├── slice_parity_evidence.json   # head + random parity pass evidence
 ├── thread_scaling_baseline.json # real-slice RED scaling baseline (Phase 6 target)
 ├── contention_evidence.json     # attribution-v1 evidence (Phase 7 input)
