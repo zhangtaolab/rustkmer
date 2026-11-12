@@ -16,7 +16,8 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Barrier};
 
 use rayon::prelude::*;
 use rustkmer::error::ProcessingResult;
@@ -677,4 +678,125 @@ fn overlapping_locals_count_a_shared_key_once_and_totals_conserve() -> anyhow::R
         "shared total must equal the sum of stored counts"
     );
     Ok(())
+}
+
+// --- Concurrent reduction regression (06-05 gap closure) ---------------------
+
+/// **Concurrent local reduction never loses the aggregate total (PAR-02).**
+///
+/// 06-04 made [`KmerCounter::reduce_local_counts`] merge drained locals in
+/// parallel, which turns concurrent [`KmerCounter::merge_local_counts`] calls
+/// into a supported configuration. This test pins the aggregate consequence: a
+/// worker in round `r` merges exactly one distinct key with count 1 into the
+/// shared table, so every round must publish `total_kmers == THREADS` and
+/// `unique_kmers == THREADS` exactly.
+///
+/// The protocol is barrier-synchronized and deterministic — no sleeps and no
+/// timing thresholds:
+/// - Workers wait at barrier A with their round's local fully populated, so all
+///   [`THREADS`] merges start together.
+/// - The parent resets the counter before barrier A, so every round measures
+///   only that round's merges.
+/// - Workers wait at barrier B after the merge returns; parent observations are
+///   recorded only after B, and no assertion runs inside the round loop so a
+///   pre-fix failure can never strand barrier-blocked workers.
+///
+/// On the pre-fix load + checked_add + store publication this test loses
+/// updates in a nonzero number of rounds (the `lost rounds=` diagnostic); with
+/// the atomic read-modify-write publication it must report zero lost rounds.
+#[test]
+fn concurrent_local_reduction_never_loses_aggregate_total() {
+    const THREADS: usize = 16;
+    const ROUNDS: usize = 2000;
+
+    // k=21 selects the dense u64 width. The defect lives in the
+    // width-independent aggregate publication, so one width is enough.
+    let counter = KmerCounter::new(21, false, THREADS, 1)
+        .expect("build the counter for the concurrent local-reduction regression");
+    let barrier = Barrier::new(THREADS + 1);
+    let merge_failed = AtomicBool::new(false);
+    let mut observed: Vec<(u64, u64)> = Vec::with_capacity(ROUNDS);
+
+    std::thread::scope(|scope| {
+        for tid in 0..THREADS {
+            let counter = &counter;
+            let barrier = &barrier;
+            let merge_failed = &merge_failed;
+            scope.spawn(move || {
+                for _ in 0..ROUNDS {
+                    // Capacity 1 keeps the per-round allocation tiny; this
+                    // local holds exactly one distinct key with count 1.
+                    let mut local = LocalKmerCounts::with_capacity(21, false, 1);
+                    local
+                        .increment(tid as u128)
+                        .expect("increment one distinct key into a fresh local");
+
+                    barrier.wait(); // A: every local is populated; parent reset
+                    if counter.merge_local_counts(&local).is_err() {
+                        // Never return early: a worker that skipped barrier B
+                        // would deadlock the remaining parties.
+                        merge_failed.store(true, Ordering::Relaxed);
+                    }
+                    barrier.wait(); // B: every merge of this round returned
+                }
+            });
+        }
+
+        for _ in 0..ROUNDS {
+            // Reset happens before A, so it cannot interleave with a merge.
+            counter.reset();
+            barrier.wait(); // A
+            barrier.wait(); // B
+            observed.push((counter.total_kmers(), counter.unique_kmers()));
+        }
+    });
+
+    assert!(
+        !merge_failed.load(Ordering::Relaxed),
+        "a concurrent merge_local_counts call returned an error"
+    );
+
+    let expected = THREADS as u64;
+    let lost_rounds = observed
+        .iter()
+        .filter(|(total, _)| *total != expected)
+        .count();
+    let first_loss = observed.iter().position(|(total, _)| *total != expected);
+    assert_eq!(
+        lost_rounds,
+        0,
+        "lost rounds={}/{} (first failing round {:?}, observed {:?}, expected total {})",
+        lost_rounds,
+        ROUNDS,
+        first_loss,
+        first_loss.map(|index| observed[index]),
+        expected
+    );
+
+    for (round, (_, unique)) in observed.iter().enumerate() {
+        assert_eq!(
+            *unique, expected,
+            "unique rounds: round {} published unique_kmers {} instead of {}",
+            round, unique, expected
+        );
+    }
+
+    // The last round's merges are still in the shared table (no reset after it:
+    // every thread observed exactly one key with count 1).
+    let final_counts = counter.get_all_counts();
+    assert_eq!(
+        final_counts.len(),
+        THREADS,
+        "final shared table must hold exactly one entry per thread"
+    );
+    assert!(
+        final_counts.iter().all(|(_, count)| *count == 1),
+        "every final stored count must be exactly 1, got {:?}",
+        final_counts
+    );
+    let stored_sum: u64 = final_counts.iter().map(|(_, count)| *count as u64).sum();
+    assert_eq!(
+        stored_sum, expected,
+        "final shared table's stored-count sum must equal THREADS"
+    );
 }
