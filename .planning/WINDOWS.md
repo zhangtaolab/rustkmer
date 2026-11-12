@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 2
+open_count: 0
 waived_count: 6
-fixed_count: 12
+fixed_count: 14
 total_count: 20
-last_updated: 2026-11-12T02:32:12.266Z
+last_updated: 2026-11-12T07:45:09.852Z
 ---
 
 # Broken Windows Ledger
@@ -33,8 +33,8 @@ last_updated: 2026-11-12T02:32:12.266Z
 | 16 | 03 | unrun-verify | pyo3/src/database.rs | 1457 | Plan 03-12: PyDatabase.merge now rejects cross-input k-mer-size/canonical mismatches (CR-03 fix) via inheritance through merge_databases_to_path -> merge_prologue with zero pyo3 edits; the PyRuntimeError manifestation is verified by call-graph inspection and pyo3 clippy compile only, not pytest — the maturin python-source blocker (WINDOWS.md entries 4/5/11) makes every pyo3 pytest run impossible this phase | fixed | Closed 2026-10-19: discharged by evidence, not new code. The maturin python-source blocker named in the description was dropped in dbb13ef, making the pyo3 suite runnable; the 2026-10-17 phase-03 re-verification rebuilt pyrustkmer from source and ran the full suite green (125 passed, 0 failed, including test_database_merge.py 12/12); quick-261019-d1y added a 3-OS pyo3-pytest CI job so this gap class now has standing automated verification. | 2026-10-08T17:09:14.524Z | 2026-10-19T02:51:01.388Z |
 | 17 | 03 | unmet-truth | src/database/prefix_cache_merge.rs | 800 | merge_single_prefix_streaming assumes ascending shard runs; post-03-16 a non-canonical input's shard under a mixed-canonical merge can be non-ascending, so mixed-canonical output is only proven correct on the auto/hashmap path (merge_mode=streaming or >threshold buckets still wrong) | fixed | Closed in plan 03-17 (03-VERIFICATION round-3 gaps[0]): ExternalSortMerger::new forces the sorting (hashmap) per-bucket writer for mixed-canonical header sets (log::warn override), and merge_single_prefix_streaming refuses adjacent descending runs at both record-consumption sites - mixed-canonical output is ascending, summed, and exactly queryable on BOTH bucket writers; the streaming arm of mixed_canonical_prefix_cache_output_is_ascending_summed_and_queryable pins it RED->GREEN. | 2026-10-09T05:23:24.392Z | 2026-10-09T12:01:10.226Z |
 | 18 | 03 | lint-warning | src/cli/commands/count.rs |  | cargo fmt --check fails on 4 phase-03-untouched files (21 hunks: count.rs, merge_bounded_memory_tests.rs, merge_cleanup_tests.rs, parallel_count_tests.rs) - pre-existing rustfmt version drift; all 03-16 touched files fmt-clean | fixed | Closed 2026-10-19: the pre-existing rustfmt version drift was fixed by commit ba7f451; cargo fmt --check passes clean on the live tree, covering the four files named in the description. | 2026-10-09T05:23:24.458Z | 2026-10-19T02:51:01.461Z |
-| 19 | 05 | unmet-truth | Cargo.lock |  | Rust 1.80 root clippy blocked: half 2.7.1 requires 1.81; indexmap 2.13.0 and proptest 1.9.0 require 1.82 | open |  | 2026-11-12T02:32:12.182Z |  |
-| 20 | 05 | unmet-truth | pyo3/Cargo.lock |  | Rust 1.80 PyO3 clippy blocked: indexmap 2.13.0 requires 1.82 | open |  | 2026-11-12T02:32:12.266Z |  |
+| 19 | 05 | unmet-truth | Cargo.lock |  | Rust 1.80 root clippy blocked: half 2.7.1 requires 1.81; indexmap 2.13.0 and proptest 1.9.0 require 1.82 | fixed |  | 2026-11-12T02:32:12.182Z | 2026-11-12T07:45:09.762Z |
+| 20 | 05 | unmet-truth | pyo3/Cargo.lock |  | Rust 1.80 PyO3 clippy blocked: indexmap 2.13.0 requires 1.82 | fixed |  | 2026-11-12T02:32:12.266Z | 2026-11-12T07:45:09.852Z |
 
 ````json
 [
@@ -279,10 +279,10 @@ last_updated: 2026-11-12T02:32:12.266Z
     "file": "Cargo.lock",
     "line": null,
     "description": "Rust 1.80 root clippy blocked: half 2.7.1 requires 1.81; indexmap 2.13.0 and proptest 1.9.0 require 1.82",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-12T02:32:12.182Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-12T07:45:09.762Z",
     "milestone": "v2.0"
   },
   {
@@ -292,10 +292,10 @@ last_updated: 2026-11-12T02:32:12.266Z
     "file": "pyo3/Cargo.lock",
     "line": null,
     "description": "Rust 1.80 PyO3 clippy blocked: indexmap 2.13.0 requires 1.82",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-12T02:32:12.266Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-12T07:45:09.852Z",
     "milestone": "v2.0"
   }
 ]
