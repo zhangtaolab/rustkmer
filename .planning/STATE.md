@@ -4,18 +4,18 @@ milestone: v2.0
 milestone_name: k=21 Counting Parity
 current_phase: 7
 current_phase_name: Shared Counting Engine
-current_plan: Not started
-status: planning
-stopped_at: Phase 06 complete, ready to plan Phase 7
-last_updated: "2026-11-12T13:52:01.159Z"
+current_plan: 2
+status: executing
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-11-12T15:07:25.332Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 06 complete, transitioned to Phase 7
-state_head: 4eff17e3e7495b3461842acfdd18ce9f41e6e20a
+state_head: 623af47bec189cdec09e24b3a4f897f44595dc1f
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 16
+  completed_plans: 13
   percent: 29
 ---
 
@@ -31,9 +31,9 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 7 — Shared Counting Engine
-Current Plan: Not started
-Total Plans in Phase: 5
-Status: Ready to plan
+Current Plan: 2
+Total Plans in Phase: 4
+Status: Ready to execute
 Last activity: 2026-11-12 — Phase 06 complete, transitioned to Phase 7
 
 Progress: [███░░░░░░░] 29% (v2.0)
@@ -88,6 +88,7 @@ Progress: [███░░░░░░░] 29% (v2.0)
 | Phase 06 P03 | 7 | 3 tasks | 6 files |
 | Phase 06 P04 | 27 min | 3 tasks | 8 files |
 | Phase 06 P05 | 3 min | 2 tasks | 2 files |
+| Phase 7 P01 | 8min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,10 @@ Recent decisions affecting current work:
 - [Phase 06]: [06-05] Aggregate total_kmers is published with AtomicU64::fetch_update + checked_add (a Relaxed compare-exchange loop), not load+store; a bare fetch_add is rejected because it silently wraps past u64::MAX
 - [Phase 06]: [06-05] Deterministic concurrent-reduction regression (16 threads x 2000 rounds, barrier-synchronized with all assertions outside the round loop) recorded RED lost rounds=266/2000 on the pre-fix tree and GREEN post-fix
 - [Phase 06]: [06-05] Concurrent merge_local_counts is documented as supported while concurrent counting remains unsupported; per-key checked u32 merges stay parallel and .rkdb v2, public APIs, and MSRV 1.82 are untouched
+- [Phase 7]: ONE for_each_window skip-N extractor (k 1..=64) is the only window loop in counting code; the engine and legacy CLI both use it, PyO3 routing is 07-03
+- [Phase 7]: Partition layout P = min(256, max(64, threads)) with splitmix64 + multiply-shift routing, independent of thread count
+- [Phase 7]: CountResult::merge_into reuses KmerCounter::merge_local_counts; all new u64 aggregate sums are checked with verbatim fail-loud messages
+- [Phase 7]: The --threads 1 path uses a true sequential engine path (no worker threads); --threads > 1 keeps the Phase 6 legacy path until 07-02
 
 ### Pending Todos
 
@@ -168,8 +173,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T13:39:30.507Z
-Stopped at: Phase 06 complete, ready to plan Phase 7
+Last session: 2026-11-12T15:07:25.131Z
+Stopped at: Completed 07-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
