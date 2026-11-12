@@ -1,0 +1,59 @@
+{
+  "differentials": "pass",
+  "golden_manifest_sha256": "f010e42a213de6786ac67e2a6f9227485320e7ddfca4c6521cf019880786f25f",
+  "parity_distinct": 2400000,
+  "parity_total": 2400000,
+  "parity_provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 3005056,
+      "sha256": "2950744299b13ffc8650dd3dbc1497a8b35a8c62f839b15ce6d620d7322e503b"
+    },
+    "git_commit": "329cfb247c51766188b23910d766c9682c6559ba",
+    "git_dirty": false,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-12T13:01:47.593886+00:00"
+  },
+  "suites": {
+    "parallel_count_tests": {
+      "passed": 4,
+      "failed": 0,
+      "ignored": 1,
+      "note": "ignored = run-once D-10 pre-refactor baseline capture (never regenerated)"
+    },
+    "dense_differential_tests": {
+      "passed": 6,
+      "failed": 0,
+      "ignored": 0
+    },
+    "golden_tests": {
+      "passed": 34,
+      "failed": 0,
+      "ignored": 0
+    },
+    "golden_sha256_tests": {
+      "passed": 5,
+      "failed": 0,
+      "ignored": 0
+    },
+    "thread_local_count_tests": {
+      "passed": 9,
+      "failed": 0,
+      "ignored": 0
+    },
+    "kmer_rolling_differential_tests": {
+      "passed": 9,
+      "failed": 0,
+      "ignored": 1,
+      "note": "ignored = release timing gate, exercised by plan 06-03"
+    },
+    "lib": {
+      "passed": 242,
+      "failed": 0,
+      "ignored": 0
+    }
+  },
+  "fixtures_unchanged": true
+}
