@@ -24,7 +24,7 @@ Full detail: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md) · Summary
 **Milestone Goal:** Match or beat Jellyfish2 on human-scale k=21 counting (and k=31 under fair, matched-hash comparison) on BOTH the CLI and Python surfaces, closing the BENCH-02 gap outright. Approach ratified from empirical profiling (D1): the ~5x gap is ~3.5x parallel-scaling inefficiency × ~1.4x single-thread cost — not a data-structure problem. Stage A in-memory parallelism (Phases 5-10) is the spine; Stage B minimizer/disk-backed (Phase 11) is conditional on D3.
 
 - [x] **Phase 5: Measurement & Regression Harness** - Standing slice bench + parity gate, --threads reality tests, contention microbench, Python baseline, N-read differential (completed 2026-11-12)
-- [ ] **Phase 6: Parallelism Correctness & Hot Path** - Working --threads, thread-local counters with end reduction (no per-window atomics), rolling encode + bit-parallel revcomp
+- [x] **Phase 6: Parallelism Correctness & Hot Path** - Working --threads, thread-local counters with end reduction (no per-window atomics), rolling encode + bit-parallel revcomp (completed 2026-11-12)
 - [ ] **Phase 7: Shared Counting Engine** - One src/count/engine.rs entry point: persistent workers, disjoint partitioned tables, overlapped producer/consumer (the ~3.5x lever)
 - [ ] **Phase 8: Output Pipeline & .rkdb v2 Parity** - Unstable/parallel sort + streaming write; golden byte-identity, both-consumer sortedness, full differential matrix
 - [ ] **Phase 9: Python Parity** - PyCounter routed through the shared engine, D2 skip-N semantics documented, measured win vs the Phase 5 baseline
@@ -75,7 +75,7 @@ Plans:
   2. Counting accumulates in thread-local counters reduced at end-of-run — per-window `total_kmers`/`unique_kmers` fetch_add is gone from the hot path — and the reduction uses checked arithmetic that fails loud with the verbatim u32 overflow error (a new overflow site, never saturating); the thread-scaling gate shows wall-clock differing across t1/t4/t16.
   3. The rolling 2-bit encoder + bit-parallel reverse-complement (u64 for k≤32) passes the differential edge matrix against the per-window encoder — N at every position, lowercase, record boundaries, k ∈ {1..64} — masking to 2k bits and resetting the valid run at every N and record boundary; the u128 path remains for k>32 and API stability.
   4. A true single-thread baseline is recorded on the slice via the now-working `--threads 1`, single-thread slice time improves measurably (the microbench-measured 2.7x rolling-encode lever), and all existing golden baselines + 1-vs-N differentials stay green — exact counts and `.rkdb` v2 byte-identity preserved.
-**Plans**: 5/5 plans executed
+**Plans**: 5/5 plans complete
 Plans:
 - [x] 06-01-PLAN.md — PAR-01: working --threads, pool-size gates green, true t1 baseline (tracer)
 - [x] 06-02-PLAN.md — PAR-02: per-worker local counters + checked end-of-file reduction, dual surface
@@ -158,7 +158,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → (11 only i
 | 3. Memory Safety | v1.0 | 17/17 | Complete | 2026-10-09 |
 | 4. Benchmark & Validation | v1.0 | 5/5 | Complete | 2026-10-18 |
 | 5. Measurement & Regression Harness | v2.0 | 7/7 | Complete    | 2026-11-12 |
-| 6. Parallelism Correctness & Hot Path | v2.0 | 5/5 | In Progress | - |
+| 6. Parallelism Correctness & Hot Path | v2.0 | 5/5 | Complete    | 2026-11-12 |
 | 7. Shared Counting Engine | v2.0 | 0/TBD | Not started | - |
 | 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 0/TBD | Not started | - |
 | 9. Python Parity | v2.0 | 0/TBD | Not started | - |
