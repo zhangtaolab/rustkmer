@@ -41,7 +41,7 @@
     {
       "number": "8",
       "name": "Output Pipeline & .rkdb v2 Parity",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "9",
@@ -61,8 +61,8 @@
   ],
   "next": {
     "command": "/gsd-progress --next",
-    "label": "Advance to the next step (verify)",
-    "reason": "Phase 4 of 7 · 43% · ready to verify"
+    "label": "Advance to the next step (plan phase 9)",
+    "reason": "Phase 5 of 7 — needs a plan"
   },
-  "updated_at": "2026-11-12T18:03:59.350Z"
+  "updated_at": "2026-11-12T18:21:36.248Z"
 }

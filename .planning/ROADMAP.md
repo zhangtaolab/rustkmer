@@ -26,7 +26,7 @@ Full detail: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md) · Summary
 - [x] **Phase 5: Measurement & Regression Harness** - Standing slice bench + parity gate, --threads reality tests, contention microbench, Python baseline, N-read differential (completed 2026-11-12)
 - [x] **Phase 6: Parallelism Correctness & Hot Path** - Working --threads, thread-local counters with end reduction (no per-window atomics), rolling encode + bit-parallel revcomp (completed 2026-11-12)
 - [x] **Phase 7: Shared Counting Engine** - One src/count/engine.rs entry point: persistent workers, disjoint partitioned tables, overlapped producer/consumer (the ~3.5x lever) (completed 2026-11-13)
-- [ ] **Phase 8: Output Pipeline & .rkdb v2 Parity** - Unstable/parallel sort + streaming write; golden byte-identity, both-consumer sortedness, full differential matrix
+- [x] **Phase 8: Output Pipeline & .rkdb v2 Parity** - Unstable/parallel sort + streaming write; golden byte-identity, both-consumer sortedness, full differential matrix (completed 2026-11-13)
 - [ ] **Phase 9: Python Parity** - PyCounter routed through the shared engine, D2 skip-N semantics documented, measured win vs the Phase 5 baseline
 - [ ] **Phase 10: Benchmark Verdict** - Full human-scale jellyfish parity verdict on both surfaces + KMC3 exact-count comparison (BENCH-V2-01)
 - [ ] **Phase 11: Minimizer Partitioning & Memory Ceiling** - CONDITIONAL (D3): hand-rolled canonical minimizers + skew-controlled disk-backed bins — only if Stage A misses parity or a memory ceiling Stage A cannot meet
@@ -111,7 +111,7 @@ Plans:
   2. `.rkdb` v2 byte-identity is proven: golden sha256 captured BEFORE the refactor (Phase 5) match post-refactor output; sortedness is proven through BOTH binary-search consumers (`DatabaseQuery` AND prefix query); header literals and the single `format.rs` writer stay frozen (IN-03 total_kmers meanings preserved).
   3. An old-vs-new AND 1-vs-N differential matrix across k × canonical passes for every new path (partitioned tables + end reduction), with disjointness and conservation property tests green.
   4. The proof gates demonstrably fail on injected defects (overflow / duplication / ordering mutations observed RED) — goldens are never regenerated to make a diff green, and overflow at every new site returns the verbatim fail-loud error.
-**Plans**: 4/4 plans executed
+**Plans**: 4/4 plans complete
 Plans:
 - [x] 08-01-PLAN.md — Baseline + tracer: unstable/parallel sort, streaming write, numeric text order (OUT-01)
 - [x] 08-02-PLAN.md — `.rkdb` v2 byte identity: four-arm golden/writer/hand-built differential + both-consumer sortedness (OUT-02)
@@ -170,7 +170,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → (11 only i
 | 5. Measurement & Regression Harness | v2.0 | 7/7 | Complete    | 2026-11-12 |
 | 6. Parallelism Correctness & Hot Path | v2.0 | 5/5 | Complete    | 2026-11-12 |
 | 7. Shared Counting Engine | v2.0 | 4/4 | Complete    | 2026-11-13 |
-| 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 4/4 | In Progress | - |
+| 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 4/4 | Complete    | 2026-11-13 |
 | 9. Python Parity | v2.0 | 0/TBD | Not started | - |
 | 10. Benchmark Verdict | v2.0 | 0/TBD | Not started | - |
 | 11. Minimizer Partitioning & Memory Ceiling | v2.0 | 0/TBD | Not started (conditional — D3) | - |

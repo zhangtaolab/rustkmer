@@ -116,6 +116,7 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 | Phase 5 harness: atomics dominate contention (contention_evidence, 18M-distinct subslice) | Measured global-atomics attribution 120.22 ns (~115% of the shared-vs-local gap); bandwidth inconclusive at this scale (honest, not clamped). Confirms per-window global atomics as the Phase 7 engine target | ✅ Measured (re-measure at DRAM scale if decision-critical) |
 | Phase 6 delivered the parallelism lever: `--threads` fixed + thread-local counters + rolling encode | Measured on a fresh 1.82 binary: real 4M slice t1 142.54s → 57.16s (ratio 0.401), t4 34.98s / t16 26.96s; synthetic t1 18.77→13.59s; scaling gate GREEN (t4 1.63x, t16 2.02x); counts byte-exact; per-worker-local peak RSS rose (slice t4/t16 25 GiB vs 17 GiB) — the partitioned-memory cost is explicitly assigned to Phase 7's engine design | ✅ Exceeded the phase goal (verification 20/20 after a concurrent-total gap fix) |
 | Phase 7 shared engine: persistent workers + 64 hash-range partitions + overlapped producer, one `for_each_window` extractor | Measured (independent re-execution): real 4M slice t1 57.16→36.92s, t4 34.98→17.76s, t16 26.96→23.83s; synthetic t1 13.59→6.42s; peak RSS ~17.96 GB (down from 25 GiB — partitioned scheme); t1/t4/t16 `.rkdb` sha256 identical; exact pinned parity. Honest finding: the count phase is now PRODUCER-BOUND (single producer ≈99.9997% of parallel wall) — parallel extraction is the documented future lever; the slice wall is now dominated by output sort/write (Phase 8) | ✅ Verified 12/12 (2N+1 gate exact with reachable RED control) |
+| Phase 8 output pipeline: in-place parallel unstable sort + streaming write through the frozen writer | Measured (independent re-execution): real 4M slice t1/t4/t16 36.92/17.76/23.83 → 31.82/10.15/9.31s; sort delta 8.91→1.70s (0.19x); sorted RSS 17.97→12.04 GB; `.rkdb` sha256 `0976f29c…` unchanged across t1/t4/t16 and pre/post; 12 pre-refactor goldens byte-identical; four-arm differential + both binary-search consumers + mutation-RED (ordering/duplication/overflow). Frozen format.rs/fixtures/manifests untouched | ✅ Verified 16/16 (OUT-01..03 complete) |
 
 ## Evolution
 
@@ -135,4 +136,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-13 after Phase 7 (Shared Counting Engine)*
+*Last updated: 2026-11-13 after Phase 8 (Output Pipeline & .rkdb v2 Parity)*
