@@ -1,5 +1,5 @@
-//! OUT-02 — `.rkdb` v2 byte-identity for the new counting output path
-//! (Phase 8, plan 08-02, Task 1).
+//! OUT-02 — `.rkdb` v2 byte-identity for the new counting output path, and
+//! sortedness proven through BOTH binary-search consumers (Phase 8, plan 08-02).
 //!
 //! The Phase 5 goldens are the contract. Before this binary existed they were
 //! only re-hashed, so a drift in the counting write path that happened to leave
@@ -20,8 +20,13 @@
 //! only the record multiset and totals are asserted — never byte order — under a
 //! header whose sorted flag is false.
 //!
-//! Sortedness is proven by ANSWERS, not by the header flag, in Task 2 of this
-//! plan: both binary-search consumers are driven from the files produced here.
+//! Sortedness is then proven by ANSWERS, not by the header flag (the v1.0
+//! CR-02 precedent): `DatabaseQuery` binary-searches the disk file and the
+//! preloaded vector, and `extract_prefix_optimized` returns exact oracle
+//! subsets with exact contiguous block bounds. The negative control is an
+//! unsorted `--no-sort` file: disk binary search must refuse with a named
+//! unsorted-database error rather than answer wrongly, while the preloaded
+//! linear route still answers the full oracle.
 //!
 //! Fixture integrity: the manifest's sha256 is pinned (`f010e42a…`), every one
 //! of the 12 fixtures is re-hashed against its entry, and every write in this
@@ -33,7 +38,7 @@
 //! golden input, where the two numbers differ, so an inverted meaning cannot
 //! pass.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -41,8 +46,10 @@ use std::process::{Command, Output};
 
 use anyhow::{anyhow, bail, Context, Result};
 use rustkmer::database::format::{DatabaseHeader, RKDatabase};
+use rustkmer::database::prefix_query_optimized::extract_prefix_optimized;
+use rustkmer::database::query::DatabaseQuery;
 use rustkmer::kmer::canonical::canonical_kmer_u128;
-use rustkmer::kmer::encoding::{decode_kmer_u128, encode_kmer_bytes_u128};
+use rustkmer::kmer::encoding::{decode_kmer_u128, encode_kmer_bytes_u128, reverse_complement_u128};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
@@ -89,6 +96,17 @@ const GOLDEN_FIXTURES: &[&str] = &[
     "golden_k64_noncanon_sorted.rkdb",
     "golden_k64_noncanon_unsorted.rkdb",
 ];
+
+/// Consumer-fixture k-mer size (the production target).
+const CONSUMER_K: usize = 21;
+
+/// Consumer-fixture sequence length. Comfortably above 500 sampled keys plus
+/// 200 absent candidates, and small enough that the whole binary stays fast.
+const CONSUMER_BASES: usize = 20_000;
+
+/// Seed for the deterministic inline LCG that builds the consumer fixture. The
+/// sequence must be reproducible across machines, so no OS PRNG is used.
+const CONSUMER_SEED: u64 = 0x005E_ED00_0008_0201;
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -575,5 +593,548 @@ fn record_count_and_sum_of_counts_have_distinct_meaning() -> Result<()> {
         "IN-03: the sum of the records' counts must equal the oracle's total observations \
          ({sum_of_counts})"
     );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Task 2 — both binary-search consumers and the frozen header literals
+// ---------------------------------------------------------------------------
+
+/// Deterministic inline LCG. No external crates and no OS PRNG, so the
+/// consumer fixture is identical on every machine and every run.
+fn next_lcg_state(state: &mut u64) -> u64 {
+    *state = state
+        .wrapping_mul(6_364_136_223_846_793_005)
+        .wrapping_add(1_442_695_040_888_963_407);
+    *state
+}
+
+/// A deterministic pseudo-random ACGT sequence of `length` bases.
+fn pseudo_random_acgt(length: usize, seed: u64) -> String {
+    let mut state = seed;
+    let mut sequence = String::with_capacity(length);
+    for _ in 0..length {
+        let value = next_lcg_state(&mut state);
+        let base = match (value >> 62) & 0b11 {
+            0 => 'A',
+            1 => 'C',
+            2 => 'G',
+            _ => 'T',
+        };
+        sequence.push(base);
+    }
+    sequence
+}
+
+/// The 20,000-base consumer fixture written as ONE FASTA record, plus the
+/// oracle built from the same sequence with the reference algorithm.
+fn consumer_fixture(dir: &Path) -> Result<(PathBuf, BTreeMap<u128, u32>)> {
+    let sequence = pseudo_random_acgt(CONSUMER_BASES, CONSUMER_SEED);
+    let input = write_fasta(dir, "consumer_random.fa", &[sequence.as_str()]);
+    let oracle = build_oracle(&[sequence.as_str()], CONSUMER_K, true)?;
+    Ok((input, oracle))
+}
+
+/// Run the new CLI path at threads 1 and 4 into two temp files; return both
+/// byte blobs (they must be identical).
+fn run_consumer_fixture(input: &Path, dir: &Path) -> Result<(Vec<u8>, Vec<u8>)> {
+    let out_t1 = dir.join("consumer-t1.rkdb");
+    let out_t4 = dir.join("consumer-t4.rkdb");
+    let t1 = run_count(input, CONSUMER_K, true, true, 1, &out_t1);
+    assert_success(&t1, "consumer fixture, threads=1");
+    let t4 = run_count(input, CONSUMER_K, true, true, 4, &out_t4);
+    assert_success(&t4, "consumer fixture, threads=4");
+    Ok((
+        fs::read(&out_t1).context("read consumer t1 output")?,
+        fs::read(&out_t4).context("read consumer t4 output")?,
+    ))
+}
+
+/// Sample `sample` evenly spaced keys from an ascending key list.
+fn sample_keys(keys: &[u128], sample: usize) -> Vec<u128> {
+    assert!(
+        keys.len() >= sample,
+        "the oracle must hold at least {sample} keys to sample deterministically, got {}",
+        keys.len()
+    );
+    (0..sample)
+        .map(|index| keys[index * keys.len() / sample])
+        .collect()
+}
+
+/// Build `count` valid k-mers whose CANONICAL form is absent from the oracle.
+/// Queries go through the canonicalizing `query_kmer`, so absence of the
+/// canonical form is the property that must hold.
+fn absent_query_keys(oracle: &BTreeMap<u128, u32>, k: usize, count: usize) -> Vec<String> {
+    let mask = if 2 * k >= 128 {
+        u128::MAX
+    } else {
+        (1u128 << (2 * k)) - 1
+    };
+    let mut state = 0x00D1_5EA5_E0F0_1234u64;
+    let mut seen: BTreeSet<u128> = BTreeSet::new();
+    let mut absent = Vec::with_capacity(count);
+    while absent.len() < count {
+        let high = next_lcg_state(&mut state) as u128;
+        let low = next_lcg_state(&mut state) as u128;
+        let raw = ((high << 64) | low) & mask;
+        let canonical =
+            canonical_kmer_u128(raw, k).expect("a masked 2k-bit value is a valid k-mer");
+        if oracle.contains_key(&canonical) || !seen.insert(canonical) {
+            continue;
+        }
+        absent.push(decode_kmer_u128(raw, k));
+    }
+    absent
+}
+
+/// The exact contiguous block a prefix selects in the ascending oracle list:
+/// `start_index` is the first matching index, `end_index` one past the last
+/// matching index, and for a no-match prefix both are the insertion point.
+struct ExpectedPrefixBlock {
+    start_index: usize,
+    end_index: usize,
+    matches: Vec<(String, u64)>,
+}
+
+fn expected_prefix_block(
+    oracle_pairs: &[(u128, u32)],
+    prefix: &str,
+    k: usize,
+) -> ExpectedPrefixBlock {
+    let mut matches = Vec::new();
+    let mut first_match: Option<usize> = None;
+    let mut end_index = 0usize;
+    let mut insertion_index: Option<usize> = None;
+
+    for (index, &(kmer, count)) in oracle_pairs.iter().enumerate() {
+        let decoded = decode_kmer_u128(kmer, k);
+        if decoded.starts_with(prefix) {
+            if first_match.is_none() {
+                first_match = Some(index);
+            }
+            end_index = index + 1;
+            matches.push((decoded, count as u64));
+        } else if insertion_index.is_none() && decoded.as_str() > prefix {
+            insertion_index = Some(index);
+        }
+    }
+
+    let (start_index, end_index) = match first_match {
+        Some(start) => (start, end_index),
+        None => {
+            let insertion = insertion_index.unwrap_or(oracle_pairs.len());
+            (insertion, insertion)
+        }
+    };
+    ExpectedPrefixBlock {
+        start_index,
+        end_index,
+        matches,
+    }
+}
+
+/// Eight prefix cases: four single bases, one 3-base and one 10-base prefix
+/// taken from existing keys, one full-length key, and one prefix with no
+/// matches. Order: A, C, G, T, 3-base, 10-base, full-length, no-match.
+fn prefix_cases(oracle_pairs: &[(u128, u32)], k: usize) -> Vec<String> {
+    assert!(
+        oracle_pairs.len() >= 3,
+        "the consumer oracle must hold at least three keys to derive prefix cases"
+    );
+    let middle = decode_kmer_u128(oracle_pairs[oracle_pairs.len() / 2].0, k);
+    let third = decode_kmer_u128(oracle_pairs[oracle_pairs.len() / 3].0, k);
+
+    let mut cases = vec![
+        "A".to_string(),
+        "C".to_string(),
+        "G".to_string(),
+        "T".to_string(),
+        middle[..3].to_string(),
+        third[..10].to_string(),
+        middle,
+    ];
+    cases.push(no_match_prefix(oracle_pairs, k));
+    cases
+}
+
+/// Find a deterministic 10-base ACGT prefix that matches no oracle key.
+fn no_match_prefix(oracle_pairs: &[(u128, u32)], k: usize) -> String {
+    const PREFIX_LEN: usize = 10;
+    let decoded: Vec<String> = oracle_pairs
+        .iter()
+        .map(|&(kmer, _)| decode_kmer_u128(kmer, k))
+        .collect();
+    for candidate in 0u32..(1u32 << (2 * PREFIX_LEN)) {
+        let mut prefix = String::with_capacity(PREFIX_LEN);
+        for shift in (0..PREFIX_LEN).rev() {
+            let digit = (candidate >> (2 * shift)) & 0b11;
+            prefix.push(match digit {
+                0 => 'A',
+                1 => 'C',
+                2 => 'G',
+                _ => 'T',
+            });
+        }
+        if !decoded.iter().any(|sequence| sequence.starts_with(&prefix)) {
+            return prefix;
+        }
+    }
+    unreachable!(
+        "every {PREFIX_LEN}-base prefix appears in the oracle — the fixture cannot exercise the \
+         no-match case"
+    )
+}
+
+/// The 42-byte header literals, the strict ascending record order, the exact
+/// record-count meaning, and the t1/t4 byte identity — all on files produced
+/// by the new counting path.
+#[test]
+fn header_bytes_match_the_frozen_v2_literals() -> Result<()> {
+    let dir = TempDir::new()?;
+    let (input, oracle) = consumer_fixture(dir.path())?;
+    let (t1, t4) = run_consumer_fixture(&input, dir.path())?;
+
+    assert_whole_file_equal(
+        &t1,
+        &t4,
+        "new path at threads=1",
+        "new path at threads=4",
+        "the 20,000-base consumer fixture must be byte-identical across thread counts",
+    );
+
+    for (label, bytes) in [("threads=1", &t1), ("threads=4", &t4)] {
+        assert!(
+            bytes.len() >= RKDB_V2_HEADER_BYTES,
+            "{label}: file is {} bytes — too short for the v2 header",
+            bytes.len()
+        );
+
+        // Frozen raw literals, byte by byte, at their exact offsets.
+        assert_eq!(&bytes[0..4], b"RKDB", "{label}: frozen magic");
+        assert_eq!(
+            u16::from_le_bytes([bytes[4], bytes[5]]),
+            2,
+            "{label}: frozen version"
+        );
+        assert_eq!(bytes[6], CONSUMER_K as u8, "{label}: kmer_size");
+        assert_eq!(
+            &bytes[7..10],
+            &[0u8; 3],
+            "{label}: the three padding bytes after kmer_size must be zero"
+        );
+        let total_kmers = u64::from_le_bytes(
+            bytes[10..18]
+                .try_into()
+                .expect("header total_kmers is 8 bytes"),
+        );
+        assert_eq!(
+            bytes[18], 3,
+            "{label}: the flags byte must be 3 (sorted bit 1 + canonical bit 2)"
+        );
+        assert_eq!(
+            &bytes[19..26],
+            &[0u8; 7],
+            "{label}: the seven padding bytes after the flags must be zero"
+        );
+        let data_offset = u64::from_le_bytes(
+            bytes[26..34]
+                .try_into()
+                .expect("header data_offset is 8 bytes"),
+        );
+        assert_eq!(data_offset, 42, "{label}: frozen data_offset");
+        let index_offset = u64::from_le_bytes(
+            bytes[34..42]
+                .try_into()
+                .expect("header index_offset is 8 bytes"),
+        );
+        assert_eq!(index_offset, 0, "{label}: frozen index_offset");
+
+        // The same literals through the production header reader.
+        let header = DatabaseHeader::read_from(&mut Cursor::new(bytes.as_slice()))
+            .map_err(|error| anyhow!("{label}: read header: {error}"))?;
+        assert_eq!(header.magic, *b"RKDB", "{label}: header.magic");
+        assert_eq!(header.version, 2, "{label}: header.version");
+        assert_eq!(
+            header.kmer_size, CONSUMER_K as u8,
+            "{label}: header.kmer_size"
+        );
+        assert!(header.sorted, "{label}: header.sorted must be set");
+        assert!(header.canonical, "{label}: header.canonical must be set");
+        assert_eq!(header.data_offset, 42, "{label}: header.data_offset");
+        assert_eq!(header.index_offset, 0, "{label}: header.index_offset");
+
+        // Records: strictly ascending, parse lands exactly on the file end
+        // (`parse_rkdb_bytes` rejects a trailing partial record), and the
+        // header count is the RECORD COUNT.
+        let (_, records) =
+            parse_rkdb_bytes(bytes).with_context(|| format!("{label}: parse records"))?;
+        assert!(
+            records.windows(2).all(|pair| pair[0].0 < pair[1].0),
+            "{label}: sorted .rkdb records must be strictly ascending by encoded key"
+        );
+        assert_eq!(
+            total_kmers,
+            records.len() as u64,
+            "{label}: header total_kmers must equal the on-disk record count"
+        );
+        assert_eq!(
+            records.len(),
+            oracle.len(),
+            "{label}: the file must hold exactly the oracle's distinct k-mers"
+        );
+        assert_eq!(
+            header.total_kmers,
+            records.len() as u64,
+            "{label}: the read-back header agrees with the raw bytes"
+        );
+    }
+    Ok(())
+}
+
+/// Consumer one: `DatabaseQuery` answers every sampled oracle key, its reverse
+/// complement, and returns `None` for absent keys — both from the disk binary
+/// search and from the preloaded search.
+#[test]
+fn database_query_binary_search_answers_every_oracle_key_from_the_new_write_path() -> Result<()> {
+    const SAMPLE: usize = 500;
+    const ABSENT: usize = 200;
+
+    let dir = TempDir::new()?;
+    let (input, oracle) = consumer_fixture(dir.path())?;
+    let out = dir.path().join("consumer-sorted.rkdb");
+    let run = run_count(&input, CONSUMER_K, true, true, 4, &out);
+    assert_success(&run, "DatabaseQuery consumer, sorted output");
+
+    let oracle_keys: Vec<u128> = oracle.keys().copied().collect();
+    let sampled = sample_keys(&oracle_keys, SAMPLE);
+    let absent = absent_query_keys(&oracle, CONSUMER_K, ABSENT);
+
+    // Fixture honesty: the sampled set and the absent set are the documented
+    // sizes, and the reverse-complement arm is not vacuous (at least one
+    // sampled key's reverse complement differs from the key itself).
+    assert_eq!(sampled.len(), SAMPLE, "the deterministic sample size");
+    assert_eq!(absent.len(), ABSENT, "the deterministic absent-key count");
+    let non_palindromic = sampled
+        .iter()
+        .filter(|&&kmer| reverse_complement_u128(kmer, CONSUMER_K) != kmer)
+        .count();
+    assert!(
+        non_palindromic > 0,
+        "the reverse-complement arm must query at least one sequence that differs from its \
+         key, otherwise the arm is vacuous"
+    );
+
+    // Disk binary search (preload = false).
+    let mut disk = DatabaseQuery::open(&out, false)?;
+    for &kmer in &sampled {
+        let sequence = decode_kmer_u128(kmer, CONSUMER_K);
+        assert_eq!(
+            disk.query_kmer(&sequence)?,
+            Some(oracle[&kmer]),
+            "DatabaseQuery disk binary search returned the wrong count for oracle key \
+             {kmer:#x} ({sequence})"
+        );
+    }
+    for &kmer in &sampled {
+        let reverse = reverse_complement_u128(kmer, CONSUMER_K);
+        let sequence = decode_kmer_u128(reverse, CONSUMER_K);
+        assert_eq!(
+            disk.query_kmer(&sequence)?,
+            Some(oracle[&kmer]),
+            "DatabaseQuery disk binary search returned the wrong canonical count for the reverse \
+             complement {sequence} of oracle key {kmer:#x}"
+        );
+    }
+    for sequence in &absent {
+        assert_eq!(
+            disk.query_kmer(sequence)?,
+            None,
+            "DatabaseQuery disk binary search must return None for the absent k-mer {sequence}"
+        );
+    }
+
+    // Preloaded search (preload = true): every oracle key plus the absent set.
+    let mut memory = DatabaseQuery::open(&out, true)?;
+    for (&kmer, &count) in &oracle {
+        let sequence = decode_kmer_u128(kmer, CONSUMER_K);
+        assert_eq!(
+            memory.query_kmer(&sequence)?,
+            Some(count),
+            "DatabaseQuery preloaded binary search returned the wrong count for oracle key \
+             {kmer:#x} ({sequence})"
+        );
+    }
+    for sequence in &absent {
+        assert_eq!(
+            memory.query_kmer(sequence)?,
+            None,
+            "DatabaseQuery preloaded binary search must return None for the absent k-mer {sequence}"
+        );
+    }
+    Ok(())
+}
+
+/// Negative control: an unsorted file must be REFUSED by disk binary search
+/// (never answered wrongly), while the preloaded linear route still answers
+/// the full oracle.
+#[test]
+fn disk_binary_search_refuses_an_unsorted_database() -> Result<()> {
+    let dir = TempDir::new()?;
+    let (input, oracle) = consumer_fixture(dir.path())?;
+    let out = dir.path().join("consumer-unsorted.rkdb");
+    let run = run_count(&input, CONSUMER_K, true, false, 4, &out);
+    assert_success(&run, "DatabaseQuery consumer, unsorted output");
+
+    let parsed = parse_rkdb(&out)?;
+    assert!(
+        !parsed.header.sorted,
+        "the --no-sort file must carry sorted=false; otherwise this negative control is vacuous"
+    );
+
+    let probe_key = *oracle
+        .keys()
+        .next()
+        .expect("the consumer oracle is non-empty");
+    let probe_sequence = decode_kmer_u128(probe_key, CONSUMER_K);
+
+    let mut disk = DatabaseQuery::open(&out, false)?;
+    let error = disk
+        .query_kmer(&probe_sequence)
+        .expect_err("disk binary search on an unsorted database must refuse, not answer");
+    let message = error.to_string();
+    assert!(
+        message.contains("unsorted database"),
+        "the refusal must name the unsorted database (the wrong count must never be returned), \
+         got: {message}"
+    );
+
+    // Preloaded mode answers the full oracle through the linear route.
+    let mut memory = DatabaseQuery::open(&out, true)?;
+    for (&kmer, &count) in &oracle {
+        let sequence = decode_kmer_u128(kmer, CONSUMER_K);
+        assert_eq!(
+            memory.query_kmer(&sequence)?,
+            Some(count),
+            "DatabaseQuery preloaded LINEAR search must answer oracle key {kmer:#x} ({sequence}) \
+             from the unsorted file"
+        );
+    }
+    Ok(())
+}
+
+/// Consumer two: `extract_prefix_optimized` returns exactly the oracle subset,
+/// in file order, with the exact contiguous block bounds — and the unsorted
+/// file's linear fallback returns the same matches.
+#[test]
+fn prefix_query_answers_exactly_on_files_produced_by_the_new_write_path() -> Result<()> {
+    let dir = TempDir::new()?;
+    let (input, oracle) = consumer_fixture(dir.path())?;
+    let sorted_out = dir.path().join("consumer-prefix-sorted.rkdb");
+    let unsorted_out = dir.path().join("consumer-prefix-unsorted.rkdb");
+    let sorted_run = run_count(&input, CONSUMER_K, true, true, 4, &sorted_out);
+    assert_success(&sorted_run, "prefix consumer, sorted output");
+    let unsorted_run = run_count(&input, CONSUMER_K, true, false, 4, &unsorted_out);
+    assert_success(&unsorted_run, "prefix consumer, unsorted output");
+
+    let oracle_pairs = oracle_pairs(&oracle);
+    let cases = prefix_cases(&oracle_pairs, CONSUMER_K);
+    assert_eq!(
+        cases.len(),
+        8,
+        "the eight prefix cases are four single bases, one 3-base, one 10-base, one \
+         full-length key, and one no-match prefix"
+    );
+
+    // Sorted consumer: exact matches, exact order, exact block bounds.
+    let sorted_db = RKDatabase::from_file_path(&sorted_out)?;
+    for (case_index, prefix) in cases.iter().enumerate() {
+        let result = extract_prefix_optimized(&sorted_db, prefix)?;
+        let expected = expected_prefix_block(&oracle_pairs, prefix, CONSUMER_K);
+        // Fixture honesty: the first seven cases must exercise at least one
+        // match; only the last case is the no-match case. A vacuously empty
+        // expectation everywhere would let every equality below pass.
+        if case_index + 1 == cases.len() {
+            assert!(
+                expected.matches.is_empty(),
+                "prefix case {prefix:?} is the no-match case but the oracle holds {} matches",
+                expected.matches.len()
+            );
+        } else {
+            assert!(
+                !expected.matches.is_empty(),
+                "prefix case {prefix:?} must exercise at least one oracle match"
+            );
+        }
+        assert!(
+            result.memory_block.is_sorted,
+            "prefix {prefix:?}: the sorted database must take the binary-search route"
+        );
+        assert_eq!(
+            result.matches, expected.matches,
+            "prefix {prefix:?}: extract_prefix_optimized must return exactly the oracle subset, \
+             in file order"
+        );
+        assert_eq!(
+            result.memory_block.start_index, expected.start_index,
+            "prefix {prefix:?}: start_index must be the first matching index {}",
+            expected.start_index
+        );
+        assert_eq!(
+            result.memory_block.end_index, expected.end_index,
+            "prefix {prefix:?}: end_index must be one past the last matching index {}",
+            expected.end_index
+        );
+        assert_eq!(
+            result.memory_block.block_size,
+            expected.end_index - expected.start_index,
+            "prefix {prefix:?}: block_size must equal end_index - start_index"
+        );
+        assert_eq!(
+            result.total_matches,
+            expected.matches.len(),
+            "prefix {prefix:?}: total_matches must equal the oracle subset size"
+        );
+    }
+
+    // Unsorted consumer: the linear fallback returns the same matches.
+    let unsorted_db = RKDatabase::from_file_path(&unsorted_out)?;
+    assert!(
+        !unsorted_db.header.sorted,
+        "the --no-sort file must carry sorted=false"
+    );
+    for prefix in &cases {
+        let result = extract_prefix_optimized(&unsorted_db, prefix)?;
+        let expected = expected_prefix_block(&oracle_pairs, prefix, CONSUMER_K);
+        assert!(
+            !result.memory_block.is_sorted,
+            "prefix {prefix:?}: the unsorted database must report the linear route"
+        );
+        let observed: BTreeSet<(String, u64)> = result.matches.iter().cloned().collect();
+        let expected_set: BTreeSet<(String, u64)> = expected.matches.iter().cloned().collect();
+        assert_eq!(
+            observed, expected_set,
+            "prefix {prefix:?}: the unsorted linear fallback must return the same oracle subset"
+        );
+        assert_eq!(
+            result.memory_block.start_index, 0,
+            "prefix {prefix:?}: the linear route starts at index 0"
+        );
+        assert_eq!(
+            result.memory_block.end_index,
+            unsorted_db.entries.len(),
+            "prefix {prefix:?}: the linear route covers every entry"
+        );
+        assert_eq!(
+            result.memory_block.block_size,
+            unsorted_db.entries.len(),
+            "prefix {prefix:?}: the linear block size is the whole entry list"
+        );
+        assert_eq!(
+            result.total_matches,
+            expected.matches.len(),
+            "prefix {prefix:?}: the unsorted route must find the oracle subset size"
+        );
+    }
     Ok(())
 }
