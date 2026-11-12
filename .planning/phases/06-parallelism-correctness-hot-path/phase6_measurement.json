@@ -1,0 +1,40 @@
+{
+  "pre_t1_s": 18.77,
+  "post_t1_s": 13.59,
+  "ratio": 0.7240277037826318,
+  "speedup_t4": 1.6334134615384615,
+  "speedup_t16": 2.016320474777448,
+  "post_provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 3005056,
+      "sha256": "2950744299b13ffc8650dd3dbc1497a8b35a8c62f839b15ce6d620d7322e503b"
+    },
+    "git_commit": "e4657536a9bec8a07aebd9639d4c70e7e57dcbf7",
+    "git_dirty": true,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-12T12:50:37.367732+00:00"
+  },
+  "pre_provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 2959584,
+      "sha256": "953bf0e018641c7eca3d0051bf375f891dea1a4403e78bcd73b8189704c2f90a"
+    },
+    "git_commit": "61edf8b6798145500236c1d83741d6dc00540b37",
+    "git_dirty": true,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-12T11:49:13.398312+00:00"
+  },
+  "slice": {
+    "pre_t1_s": 142.54,
+    "post_t1_s": 57.16,
+    "ratio": 0.4010102427388803,
+    "input": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+    "slice_reads": 4000000
+  }
+}
