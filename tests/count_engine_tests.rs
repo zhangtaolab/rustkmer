@@ -12,11 +12,15 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use flate2::write::GzEncoder;
+use flate2::Compression;
+use proptest::prelude::*;
 use rustkmer::count::{
-    CountEngine, CountResult, EngineConfig, PartitionLayout, SequenceKind,
+    partition_of, CountEngine, CountResult, EngineConfig, PartitionLayout, SequenceKind,
 };
 use rustkmer::hash::filtering::CountFilter;
 use rustkmer::hash::table::KmerCounter;
@@ -1059,4 +1063,344 @@ fn engine_multi_file_cumulative_is_exact_with_workers() {
         want_a.keys().all(|key| !want_b.contains_key(key)),
         "the two fixtures must be key-disjoint for uniques to be additive"
     );
+}
+
+// --- 07-02 Task 3: determinism, gzip completeness, conservation ------------
+
+/// Count one file through a fresh engine at the requested thread count.
+fn count_path_with_engine(
+    input: &Path,
+    k: usize,
+    canonical: bool,
+    threads: usize,
+) -> CountResult {
+    let mut engine = CountEngine::new(EngineConfig::new(k, canonical, threads, 1024))
+        .expect("valid k must construct the engine");
+    engine
+        .count_file(input, SequenceKind::Fastq)
+        .expect("engine count must succeed");
+    engine.finish().expect("finish must succeed")
+}
+
+/// Serialize sequences as four-line FASTQ records.
+fn fastq_payload(sequences: &[Vec<u8>]) -> Vec<u8> {
+    let mut body = Vec::new();
+    for (idx, sequence) in sequences.iter().enumerate() {
+        body.extend_from_slice(format!("@read{idx}\n").as_bytes());
+        body.extend_from_slice(sequence);
+        body.extend_from_slice(b"\n+\n");
+        body.extend_from_slice(&vec![b'I'; sequence.len()]);
+        body.push(b'\n');
+    }
+    body
+}
+
+/// Encode one gzip member.
+fn gzip_member(payload: &[u8]) -> Vec<u8> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder
+        .write_all(payload)
+        .expect("writing to an in-memory encoder is infallible");
+    encoder.finish().expect("finishing an in-memory gzip member is infallible")
+}
+
+/// Sorted `.rkdb` bytes and text maps must be identical at t1/t4/t16 — this
+/// pins determinism, not just equal multisets.
+#[test]
+fn t1_t4_t16_maps_and_rkdb_sha256_are_identical() {
+    let sequences = fixture_sequences();
+    let dir = tempfile::tempdir().expect("tempdir for determinism fixture");
+    let input = dir.path().join("determinism.fastq");
+    write_fastq(&input, &sequences);
+
+    for k in [21usize, 64] {
+        for canonical in [false, true] {
+            let mut text_maps: Vec<BTreeMap<String, u32>> = Vec::new();
+            let mut hashes: Vec<String> = Vec::new();
+
+            for threads in [1usize, 4, 16] {
+                let text = dir
+                    .path()
+                    .join(format!("det-k{k}-c{canonical}-t{threads}.tsv"));
+                let rkdb = dir
+                    .path()
+                    .join(format!("det-k{k}-c{canonical}-t{threads}.rkdb"));
+
+                let text_out = run_cli(&input, k, canonical, threads, "text", &text);
+                let binary_out = run_cli(&input, k, canonical, threads, "binary", &rkdb);
+                assert_cli_success(&text_out, "determinism text output");
+                assert_cli_success(&binary_out, "determinism binary output");
+
+                text_maps.push(read_text_counts(&text));
+                hashes.push(sha256_hex(
+                    &fs::read(&rkdb).expect("read determinism rkdb"),
+                ));
+            }
+
+            assert_eq!(
+                text_maps[1], text_maps[0],
+                "text maps must be identical at t1 and t4 (k={k}, canonical={canonical})"
+            );
+            assert_eq!(
+                text_maps[2], text_maps[0],
+                "text maps must be identical at t1 and t16 (k={k}, canonical={canonical})"
+            );
+            assert_eq!(
+                hashes[1], hashes[0],
+                "sorted .rkdb bytes must be identical at t1 and t4 (k={k}, canonical={canonical})"
+            );
+            assert_eq!(
+                hashes[2], hashes[0],
+                "sorted .rkdb bytes must be identical at t1 and t16 (k={k}, canonical={canonical})"
+            );
+        }
+    }
+}
+
+/// Two files through separate engines, summed elementwise, must equal the same
+/// two files counted cumulatively through one engine.
+#[test]
+fn multi_file_cumulative_equals_elementwise_sum() {
+    let dir = tempfile::tempdir().expect("tempdir for elementwise fixture");
+
+    let file_a_sequences = fixture_sequences();
+    let file_a = dir.path().join("elementwise_a.fastq");
+    write_fastq(&file_a, &file_a_sequences);
+
+    // Disjoint from the mixed-sequence fixture, so uniques are additive.
+    let file_b_sequences: Vec<Vec<u8>> = (0..8).map(|_| vec![b'G'; 120]).collect();
+    let file_b = dir.path().join("elementwise_b.fastq");
+    write_fastq(&file_b, &file_b_sequences);
+
+    for threads in [1usize, 4] {
+        let result_a = count_path_with_engine(&file_a, 21, false, threads);
+        let result_b = count_path_with_engine(&file_b, 21, false, threads);
+
+        let mut summed = collect_result_map(&result_a);
+        for (key, count) in collect_result_map(&result_b) {
+            let entry = summed.entry(key).or_insert(0);
+            *entry = entry
+                .checked_add(count)
+                .expect("fixture counts cannot overflow u32");
+        }
+
+        let mut engine = CountEngine::new(EngineConfig::new(21, false, threads, 1024))
+            .expect("valid k must construct the engine");
+        engine
+            .count_file(&file_a, SequenceKind::Fastq)
+            .expect("file A must count");
+        engine
+            .count_file(&file_b, SequenceKind::Fastq)
+            .expect("file B must count");
+        let combined = engine.finish().expect("finish must succeed");
+
+        assert_eq!(
+            collect_result_map(&combined),
+            summed,
+            "cumulative multi-file map must equal the elementwise sum of separate runs \
+             (threads={threads})"
+        );
+        assert_eq!(
+            combined.stats().total_kmers,
+            result_a.stats().total_kmers + result_b.stats().total_kmers,
+            "cumulative total must be additive (threads={threads})"
+        );
+        assert_eq!(
+            combined.stats().unique_kmers,
+            result_a.stats().unique_kmers + result_b.stats().unique_kmers,
+            "disjoint fixtures make the cumulative unique count additive (threads={threads})"
+        );
+    }
+}
+
+/// Every key must live in exactly one partition table, per-partition counts
+/// must sum to the global statistics, and the union must equal the reference.
+#[test]
+fn partition_disjointness_and_conservation_hold() {
+    let sequences = fixture_sequences();
+    let dir = tempfile::tempdir().expect("tempdir for conservation fixture");
+    let input = dir.path().join("conservation.fastq");
+    write_fastq(&input, &sequences);
+    let borrowed: Vec<&[u8]> = sequences.iter().map(Vec::as_slice).collect();
+
+    for k in [21usize, 64] {
+        for canonical in [false, true] {
+            let result = count_path_with_engine(&input, k, canonical, 4);
+            let want = reference_map(&borrowed, k, canonical);
+            let partitions = PartitionLayout::new(4).partitions();
+
+            let mut seen: BTreeMap<u128, u32> = BTreeMap::new();
+            let mut per_partition: Vec<(u64, u64)> = vec![(0, 0); partitions];
+            result.for_each_count(|key, count| {
+                assert!(
+                    seen.insert(key, count).is_none(),
+                    "a key must be yielded by exactly one table: {key}"
+                );
+                assert_eq!(
+                    result.get_count(key),
+                    Some(count),
+                    "get_count must route every key to its single owning partition"
+                );
+                let partition = partition_of(key, partitions);
+                assert!(partition < partitions);
+                per_partition[partition].0 += count as u64;
+                per_partition[partition].1 += 1;
+            });
+
+            assert_eq!(
+                seen, want,
+                "the union of the partition tables must equal the reference \
+                 (k={k}, canonical={canonical})"
+            );
+            let total: u64 = per_partition.iter().map(|(total, _)| *total).sum();
+            let unique: u64 = per_partition.iter().map(|(_, unique)| *unique).sum();
+            assert_eq!(
+                total,
+                result.stats().total_kmers,
+                "per-partition totals must sum to the global total (k={k}, canonical={canonical})"
+            );
+            assert_eq!(
+                unique,
+                result.stats().unique_kmers,
+                "per-partition uniques must sum to the global unique count \
+                 (k={k}, canonical={canonical})"
+            );
+            assert_eq!(
+                total,
+                want.values().map(|count| *count as u64).sum::<u64>(),
+                "per-partition totals must equal the reference sum"
+            );
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 16, .. ProptestConfig::default() })]
+
+    /// Conservation and disjointness for generated ACGT/N sequences across the
+    /// whole k range and both canonical modes, on the worker pipeline.
+    #[test]
+    fn proptest_partition_disjointness_and_conservation(
+        sequences in prop::collection::vec(
+            prop::collection::vec(
+                prop::sample::select(vec![b'A', b'C', b'G', b'T', b'N']),
+                1..240,
+            ),
+            1..4,
+        ),
+        k in 1usize..=64,
+        canonical in any::<bool>(),
+    ) {
+        let dir = tempfile::tempdir().expect("tempdir for proptest fixture");
+        let input = dir.path().join("proptest.fastq");
+        write_fastq(&input, &sequences);
+        let borrowed: Vec<&[u8]> = sequences.iter().map(Vec::as_slice).collect();
+        let want = reference_map(&borrowed, k, canonical);
+        let threads = if k % 2 == 0 { 4 } else { 3 };
+
+        let result = count_path_with_engine(&input, k, canonical, threads);
+        let partitions = PartitionLayout::new(threads).partitions();
+
+        let mut pairs = Vec::new();
+        result.for_each_count(|key, count| pairs.push((key, count)));
+
+        let mut seen: BTreeMap<u128, u32> = BTreeMap::new();
+        let mut per_partition: Vec<(u64, u64)> = vec![(0, 0); partitions];
+        for (key, count) in pairs {
+            prop_assert!(
+                seen.insert(key, count).is_none(),
+                "a key must be yielded by exactly one table: {}", key
+            );
+            prop_assert_eq!(result.get_count(key), Some(count));
+            let partition = partition_of(key, partitions);
+            prop_assert!(partition < partitions);
+            per_partition[partition].0 += count as u64;
+            per_partition[partition].1 += 1;
+        }
+
+        prop_assert_eq!(&seen, &want);
+        let total: u64 = per_partition.iter().map(|(total, _)| *total).sum();
+        let unique: u64 = per_partition.iter().map(|(_, unique)| *unique).sum();
+        prop_assert_eq!(total, result.stats().total_kmers);
+        prop_assert_eq!(unique, result.stats().unique_kmers);
+        prop_assert_eq!(total, want.values().map(|count| *count as u64).sum::<u64>());
+    }
+}
+
+/// Two-member gzip input must count the concatenation of every member at both
+/// the sequential and worker paths — no silent truncation after member one.
+#[test]
+fn multi_member_gzip_counts_every_member_at_t1_and_t4() {
+    let member_a_sequences = vec![mixed_sequence(60), mixed_sequence(40)];
+    let member_b_sequences = vec![
+        mixed_sequence(50),
+        mixed_sequence(70),
+        mixed_sequence(30),
+    ];
+
+    let mut bytes = gzip_member(&fastq_payload(&member_a_sequences));
+    bytes.extend_from_slice(&gzip_member(&fastq_payload(&member_b_sequences)));
+    // Fixture sanity: exactly two gzip members (magic 1f 8b) must be present,
+    // or this regression proves nothing.
+    assert_eq!(
+        bytes.windows(2).filter(|window| *window == b"\x1f\x8b").count(),
+        2,
+        "the fixture must contain two independent gzip members"
+    );
+
+    let dir = tempfile::tempdir().expect("tempdir for multi-member gzip fixture");
+    let input = dir.path().join("members.fastq.gz");
+    fs::write(&input, &bytes).expect("write multi-member gzip fixture");
+
+    let mut all_sequences = member_a_sequences;
+    all_sequences.extend(member_b_sequences);
+    let borrowed: Vec<&[u8]> = all_sequences.iter().map(Vec::as_slice).collect();
+    let want = reference_map(&borrowed, 21, false);
+    let want_total: u64 = want.values().map(|count| *count as u64).sum();
+
+    for threads in [1usize, 4] {
+        let result = count_path_with_engine(&input, 21, false, threads);
+        assert_eq!(
+            collect_result_map(&result),
+            want,
+            "every gzip member must be counted (threads={threads})"
+        );
+        assert_eq!(
+            result.stats().total_kmers,
+            want_total,
+            "the two-member total must be the concatenation of both members \
+             (threads={threads})"
+        );
+    }
+}
+
+/// A one-member gzip followed by literal non-gzip bytes must fail loudly with
+/// the file path in the message (no silent truncation, no panic) at both
+/// thread counts.
+#[test]
+fn trailing_garbage_fails_loudly_with_file_context() {
+    let mut bytes = gzip_member(&fastq_payload(&[mixed_sequence(60)]));
+    bytes.extend_from_slice(b"trailing garbage, not a gzip member");
+
+    let dir = tempfile::tempdir().expect("tempdir for trailing-garbage fixture");
+    let input = dir.path().join("trailing_garbage.fastq.gz");
+    fs::write(&input, &bytes).expect("write trailing-garbage fixture");
+    let path_fragment = input.display().to_string();
+
+    for threads in [1usize, 4] {
+        let mut engine = CountEngine::new(EngineConfig::new(21, false, threads, 64))
+            .expect("valid k must construct the engine");
+        let error = engine
+            .count_file(&input, SequenceKind::Fastq)
+            .expect_err("trailing garbage after the final member must fail loudly");
+        let message = error.to_string();
+        assert!(
+            message.contains(&path_fragment),
+            "the error must carry the file path (threads={threads}), got: {message}"
+        );
+        assert!(
+            message.contains("Error reading FASTQ record from file"),
+            "the error must carry the record-reading context (threads={threads}), got: {message}"
+        );
+    }
 }
