@@ -44,7 +44,7 @@ Committed scope. Each maps to exactly one roadmap phase. MINIM-* are CONDITIONAL
 
 ### Benchmark Verdict (BENCH)
 
-- [ ] **BENCH-V2-01**: A KMC3 comparison runs with exact-count configuration (install KMC 3.2.4 official mac.arm64 tarball; `-ci1 -cx4294967295 -cs4294967295`, matched threads/canonical, agreed `-m`), a parity gate on the measured input BEFORE timing, temp-disk recording, and graceful degradation when KMC3 is absent.
+- ~~**BENCH-V2-01**: A KMC3 comparison runs with exact-count configuration (install KMC 3.2.4 official mac.arm64 tarball; `-ci1 -cx4294967295 -cs4294967295`, matched threads/canonical, agreed `-m`), a parity gate on the measured input BEFORE timing, temp-disk recording, and graceful degradation when KMC3 is absent.~~ **DESCOPED 2026-11-13** — user decision: "不需要KMC3，本项目与KMC3 无关". Supersedes the D3 ruling that kept it in v2.0; no third-party binary is downloaded or executed.
 - [ ] **BENCH-V2-02**: A full human-scale jellyfish parity verdict is produced on BOTH surfaces — slice gate at every step, then the full run; medians of counterbalanced reps, honest per-rep cache_state, CI baselines regenerated only from the CI runner class. Acceptance: rustkmer matches or beats jellyfish at k=21 (and k=31 under fair, matched-hash comparison).
 
 ### Conditional Minimizer / Memory Ceiling (MINIM) — Stage B, gated on D3
@@ -102,7 +102,7 @@ Each requirement maps to exactly one phase. MINIM-* map to conditional Phase 11 
 | OUT-03 | Phase 8 | Complete |
 | PY-01 | Phase 9 | Complete |
 | PY-02 | Phase 9 | Complete |
-| BENCH-V2-01 | Phase 10 | Pending |
+| BENCH-V2-01 | Phase 10 | Descoped 2026-11-13 (user: no KMC3 comparison) |
 | BENCH-V2-02 | Phase 10 | Pending |
 | MINIM-01 | Phase 11 (conditional — D3) | Pending (conditional) |
 | MINIM-02 | Phase 11 (conditional — D3) | Pending (conditional) |
