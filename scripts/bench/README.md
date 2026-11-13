@@ -243,8 +243,9 @@ requested configuration. The artifact carries both measured arms, the
 control median, exact counts), and full provenance.
 
 This is dev-host evidence only: it adds no CI comparison gate, because no
-CI-class baseline exists. Phase 10 owns CI-class baselines (see "Python
-baseline classes and the CI bootstrap" below).
+CI-class baseline exists. Phase 10 records dev-host evidence only and
+deliberately regenerates no CI-class baseline (see "Phase-10 verdict stages"
+below).
 
 ### N-read differential (PROF-05)
 
@@ -297,8 +298,8 @@ Every measurement and gate step trusts the script exit code directly.
 
 There is deliberately **no Python compare gate** in CI yet: no CI-class
 baseline exists, and comparing a CI run against the committed dev-host
-baseline would violate the per-runner-class rule. Phase 10 owns CI-class
-baselines (see the bootstrap below).
+baseline would violate the per-runner-class rule. No CI-class baseline is
+produced by Phase 10 either — that phase records dev-host evidence only.
 
 ## Standing thread gates (PROF-02)
 
@@ -328,6 +329,32 @@ measurement/gate step (`if: success() && false`, etc.), and "baseline
 recapture" that repins the scaling numbers to make a no-op pass. An
 `if: always()` ARTIFACT UPLOAD is not an exception to this rule — see
 "CI evidence retention" below.
+
+## Phase-10 verdict stages
+
+`phase10.py` is the Phase-10 verdict controller (BENCH-V2-02). It measures
+ONE arm per tool over BOTH split parts of the CRR1936095 read-1 set and is
+strictly staged:
+
+| Stage | What it does |
+|---|---|
+| `synthetic` | four-arm spine proof over two seeded synthetic parts (`mode: synthetic`) |
+| `slice-gate` | provisions the head-4M slice from `part_001` once, gates k=21 against the committed pinned reference (its sha256 is re-checked before consumption), and records k=31 as live-parity-only because no pinned k=31 slice reference exists |
+| `cli` | full-scale CLI session: `rk-t16`, `rk-t1` (scaling evidence only) and `jf-t16` over both parts |
+| `python` | full-scale Python session: `jf-t16` and `py-t16`; consumes the slice-gate artifact, the Python preflight record, and the matching CLI document, pinning each one's sha256 |
+| `preflight-python` | projects the Python peak from the MEASURED CLI distinct count and writes a PROCEED/BLOCKED record |
+| `render` | mechanically renders the verdict document and the Markdown report from the committed result documents |
+
+Exit contract (shared with the rest of `scripts/bench/`): **0** valid result
+or measured YES, **1** a genuine measured NO (artifacts kept), **2** invalid
+or inapplicable (no artifact written). The disk-floor guard keeps its own
+exit **3**. The `render` stage publishes the verdict and the report
+atomically: on exit 2 neither destination exists.
+
+The Phase-10 verdict artifacts are **dev-host evidence only**: no CI-class
+baseline is regenerated, written, or modified, and a dev-host number must
+never be copied into a CI baseline slot. Every file under
+`scripts/bench/baselines/` is a read-only input whose sha256 is pinned.
 
 ## Provenance fields
 
@@ -359,8 +386,9 @@ them. Two classes exist:
   `scripts/bench/baselines/python_bench_baseline.darwin.json`
   (`baseline_scope: dev-host-local-comparison`). It exists for Phase 9's
   same-host before/after comparison. It must **never** gate CI.
-- **CI class** — produced from CI runner artifacts only (Phase 10). Do not
-  compare across classes.
+- **CI class** — produced from CI runner artifacts only. No CI-class
+  baseline exists today; Phase 10 records **dev-host evidence only** and
+  regenerates no baseline. Do not compare across classes.
 
 Bootstrap a CI-class Python baseline the same way the bench baseline is
 bootstrapped:
@@ -375,8 +403,8 @@ gh run download <run-id> --name python-bench-results-Linux --dir /tmp/py-bench-l
 #   (macOS artifact is python-bench-results-macOS)
 
 # 3. Commit the downloaded result as a CI-class baseline for that platform
-#    only (Phase 10 owns the comparison gate and thresholds). Never copy CI
-#    numbers into the dev-host baseline, or dev-host numbers into a CI file.
+#    only (a later phase owns the comparison gate and thresholds). Never copy
+#    CI numbers into the dev-host baseline, or dev-host numbers into a CI file.
 ```
 
 Artifact name contracts: `bench-results-<runner OS>`,
@@ -548,6 +576,8 @@ scripts/bench/
 ├── random_slice.py          # seeded Algorithm R random-record slicer + manifest
 ├── thread_scaling.py        # PROF-02 t1/t4/t16 scaling gate (exit 0/1/2)
 ├── python_bench.py          # PROF-04 fresh-worker PyO3 counting benchmark
+├── phase10.py               # Phase-10 verdict controller: four arms over both
+│                            #   split parts, slice gate, mechanical report (0/1/2)
 ├── n_read_differential.py   # PROF-05 CLI-vs-Python N-read differential (D2 evidence)
 ├── contention_bench.py      # PROF-03 four-arm contention microbench controller
 ├── capture_goldens.py       # read-only golden .rkdb hash capture (Phase 8 input)

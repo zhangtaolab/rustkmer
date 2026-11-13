@@ -17,10 +17,14 @@ The load-bearing rules encoded here:
 Stdlib unittest only — no pytest.
 """
 
+import contextlib
+import copy
 import hashlib
 import inspect
+import io
 import json
 import shutil
+import statistics
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,6 +36,7 @@ if __package__ in (None, ""):
 
 from scripts.bench import phase10 as p10
 from scripts.bench import python_bench as pb
+from scripts.bench.bench import validate_provenance
 
 PART_1 = "/data/part_001.fq.gz"
 PART_2 = "/data/part_006.fq.gz"
@@ -81,7 +86,7 @@ def make_arm(name, tool, threads, wall, peak=1000, reps=None, unique=100,
 
 
 def make_doc(arms, k=21, session="cli", mode="full"):
-    return {
+    doc = {
         "schema_version": p10.SCHEMA_VERSION,
         "mode": mode,
         "phase": 10,
@@ -102,6 +107,16 @@ def make_doc(arms, k=21, session="cli", mode="full"):
                      "rounds": []},
         "provenance": fake_provenance(),
     }
+    if session == "python":
+        doc["provenance"]["module"] = {
+            "path": "/venv/lib/python3.13/site-packages/pyrustkmer.so",
+            "size_bytes": 1234,
+            "sha256": "f" * 64,
+        }
+        doc["provenance"]["python_executable"] = "/venv/bin/python"
+        doc["provenance"]["python_version"] = "3.13.11"
+        doc["provenance"]["maturin_version"] = "maturin 1.11.5"
+    return doc
 
 
 def cli_doc(rk_wall=100.0, jf_wall=100.0, t1_wall=5000.0, k=21):
@@ -225,6 +240,7 @@ class RoundsFixture(unittest.TestCase):
                 "module_path": str(self.module),
                 "module_mtime": 1.0,
                 "python_version": "3.13.11",
+                "inputs": [PART_1, PART_2],
             }
             stats_path.write_text(json.dumps(payload), encoding="utf-8")
         index = len(self.calls)
@@ -542,6 +558,411 @@ class TestPreflightStage(unittest.TestCase):
         self.assertEqual({r["k"] for r in doc["records"]}, {21, 31})
         for record in doc["records"]:
             self.assertEqual(record["decision"], "BLOCKED")
+
+
+class TestReport(unittest.TestCase):
+    """The Phase-10 renderer: deterministic, literal-bearing, order-pinned.
+
+    The report is a pure function of the result documents (the only
+    environment read is the harness source commit), every mandatory statement
+    is literal text asserted here, and invalid input raises instead of
+    rendering an empty table.
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+
+    def render(self, docs, name="report.md"):
+        out = self.tmp / name
+        p10.render_report([copy.deepcopy(doc) for doc in docs], out)
+        return out.read_text(encoding="utf-8")
+
+    def section(self, text, header):
+        start = text.index(header)
+        rest = text[start + len(header):]
+        end = rest.index("\n## ") if "\n## " in rest else len(rest)
+        return rest[:end]
+
+    def full_docs(self, k=21):
+        return [cli_doc(k=k), python_doc(k=k)]
+
+    def test_re_render_is_byte_identical(self):
+        docs = self.full_docs()
+        first = self.render(docs, "a.md")
+        second = self.render(docs, "b.md")
+        self.assertEqual(first, second)
+
+    def test_editing_one_recorded_median_changes_that_number(self):
+        docs = copy.deepcopy(self.full_docs())
+        before = self.render(docs, "a.md")
+        for arm in docs[0]["arms"]:
+            if arm["name"] == p10.ARM_RK_T16:
+                arm["medians"]["wall_s"] = 123.456
+        after = self.render(docs, "b.md")
+        self.assertNotEqual(before, after)
+        self.assertIn("123.456", after)
+        self.assertNotIn("123.456", before)
+
+    def test_five_pinned_literals_are_present(self):
+        report = self.render(self.full_docs())
+        for literal in ("BENCH-V2-01", "partially satisfied",
+                        "Dev-host evidence only", "scaling evidence"):
+            self.assertIn(literal, report)
+        self.assertIn("equality", report.lower())
+
+    def test_arm_order_is_pinned_independent_of_json_order(self):
+        docs = self.full_docs()
+        docs[0]["arms"].reverse()
+        docs[1]["arms"].reverse()
+        report = self.render(docs)
+        cli_table = self.section(report, "### CLI session")
+        positions = [cli_table.index(f"| {name} |")
+                     for name in (p10.ARM_RK_T16, p10.ARM_RK_T1,
+                                  p10.ARM_JF_T16)]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_even_rep_median_is_the_mean_of_the_two_middle_values(self):
+        self.assertEqual(
+            p10.arm_medians([{"wall_s": 10.0, "peak_rss_bytes": 1000},
+                             {"wall_s": 20.0, "peak_rss_bytes": 1000}])
+            ["wall_s"], 15.0)
+        docs = self.full_docs()
+        for arm in docs[0]["arms"]:
+            if arm["name"] == p10.ARM_RK_T16:
+                arm["reps"] = [
+                    make_rep(wall=10.0, round_index=0),
+                    make_rep(wall=20.0, round_index=1),
+                ]
+                arm["medians"]["wall_s"] = statistics.median([10.0, 20.0])
+        report = self.render(docs)
+        row = next(line for line in report.splitlines()
+                   if line.startswith(f"| {p10.ARM_RK_T16} |"))
+        self.assertIn("| 15.0 |", row)
+        self.assertIn("10.0 / 20.0", row)
+
+    def test_each_arm_row_carries_rep_walls_and_large_counts(self):
+        docs = self.full_docs()
+        for arm in docs[0]["arms"]:
+            if arm["name"] == p10.ARM_RK_T16:
+                arm["medians"]["peak_bytes"] = 1 << 30
+        report = self.render(docs)
+        cli_table = self.section(report, "### CLI session")
+        row = next(line for line in cli_table.splitlines()
+                   if line.startswith(f"| {p10.ARM_RK_T16} |"))
+        self.assertIn("100", row)
+        self.assertIn("200", row)
+        self.assertIn("| 1.00 |", row)  # one GiB peak rendered in GiB
+
+    def test_scaling_evidence_line_excludes_t1(self):
+        report = self.render(self.full_docs())
+        cli_table = self.section(report, "### CLI session")
+        self.assertIn("Scaling evidence (excluded from the verdict)", cli_table)
+
+    def test_cv_warning_marker_is_rendered(self):
+        docs = self.full_docs()
+        docs[0]["arms"][0]["medians"]["cv_warning"] = True
+        report = self.render(docs)
+        self.assertIn("[cv_warning]", report)
+
+    def test_report_names_both_binary_sha256_values(self):
+        report = self.render(self.full_docs())
+        self.assertIn("a" * 64, report)   # CLI binary sha256
+        self.assertIn("f" * 64, report)   # Python module sha256
+
+    def test_missing_arm_raises(self):
+        docs = self.full_docs()
+        docs[0]["arms"] = [arm for arm in docs[0]["arms"]
+                           if arm["name"] != p10.ARM_RK_T16]
+        with self.assertRaises(ValueError):
+            self.render(docs)
+
+    def test_missing_document_raises(self):
+        with self.assertRaises(ValueError):
+            self.render([cli_doc()])
+
+    def test_zero_rep_arm_raises(self):
+        docs = self.full_docs()
+        docs[0]["arms"][0]["reps"] = []
+        with self.assertRaises(ValueError):
+            self.render(docs)
+
+    def test_unsupported_document_kind_raises(self):
+        docs = self.full_docs()
+        docs[0]["kind"] = "phase10-python-preflight"
+        with self.assertRaises(ValueError):
+            self.render(docs)
+
+    def test_missing_provenance_raises(self):
+        docs = self.full_docs()
+        del docs[0]["provenance"]
+        with self.assertRaises(ValueError):
+            self.render(docs)
+
+    def test_parity_mismatch_raises(self):
+        docs = self.full_docs()
+        for arm in docs[1]["arms"]:
+            if arm["name"] == p10.ARM_PY_T16:
+                arm["unique_kmers"] = 101
+        with self.assertRaises(ValueError):
+            self.render(docs)
+
+    # --- the render stage: atomic publish and exit codes --------------------
+
+    def write_docs(self, docs):
+        paths = []
+        for index, doc in enumerate(docs):
+            path = self.tmp / f"doc{index}.json"
+            path.write_text(json.dumps(doc), encoding="utf-8")
+            paths.append(str(path))
+        return paths
+
+    def run_render(self, docs, extra_patches=None):
+        paths = self.write_docs(docs)
+        verdict_out = self.tmp / "10-verdict.json"
+        report_out = self.tmp / "10-BENCHMARK-REPORT.md"
+        argv = ["--stage", "render", "--docs", *paths,
+                "--verdict-out", str(verdict_out),
+                "--out", str(report_out),
+                "--rustkmer", "/repo/target/release/rustkmer"]
+        patches = [mock.patch.object(
+            p10, "binary_provenance",
+            side_effect=lambda *_args, **_kwargs: fake_provenance())]
+        patches += list(extra_patches or [])
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.ExitStack() as stack:
+            for patch in patches:
+                stack.enter_context(patch)
+            stack.enter_context(contextlib.redirect_stdout(out))
+            stack.enter_context(contextlib.redirect_stderr(err))
+            try:
+                code = p10.main(argv)
+            except SystemExit as exc:
+                code = exc.code
+        return code, verdict_out, report_out, out.getvalue(), err.getvalue()
+
+    def test_render_stage_publishes_both_artifacts_on_yes(self):
+        code, verdict_out, report_out, _out, err = self.run_render(
+            self.full_docs())
+        self.assertEqual(code, p10.EXIT_OK, err)
+        verdict = json.loads(verdict_out.read_text(encoding="utf-8"))
+        self.assertEqual(verdict["kind"], "phase10-verdict")
+        self.assertEqual(verdict["overall"], "YES")
+        self.assertEqual(verdict["descoped"]["requirement"], "BENCH-V2-01")
+        self.assertFalse(verdict["kmc3_executed"])
+        self.assertFalse(verdict["ci_baseline_written"])
+        self.assertTrue(verdict["dev_host_only"])
+        self.assertEqual(len(verdict["inputs"]), 2)
+        report = report_out.read_text(encoding="utf-8")
+        self.assertIn("BENCH-V2-01", report)
+
+    def test_render_stage_keeps_artifacts_on_no(self):
+        docs = self.full_docs()
+        for arm in docs[1]["arms"]:
+            if arm["name"] == p10.ARM_PY_T16:
+                arm["medians"]["wall_s"] = 999.0
+        code, verdict_out, report_out, _out, err = self.run_render(docs)
+        self.assertEqual(code, p10.EXIT_NO, err)
+        self.assertTrue(verdict_out.exists())
+        self.assertTrue(report_out.exists())
+        verdict = json.loads(verdict_out.read_text(encoding="utf-8"))
+        self.assertEqual(verdict["overall"], "NO")
+
+    def test_injected_render_failure_leaves_neither_destination(self):
+        def boom(_docs):
+            raise ValueError("injected render failure")
+
+        code, verdict_out, report_out, _out, err = self.run_render(
+            self.full_docs(), [mock.patch.object(p10, "render_report_text",
+                                                 side_effect=boom)])
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertIn("injected render failure", err)
+        self.assertFalse(verdict_out.exists())
+        self.assertFalse(report_out.exists())
+
+    def test_invalid_document_leaves_neither_destination(self):
+        docs = self.full_docs()
+        del docs[0]["provenance"]
+        code, verdict_out, report_out, _out, _err = self.run_render(docs)
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertFalse(verdict_out.exists())
+        self.assertFalse(report_out.exists())
+
+
+class TestSliceGateRecord(unittest.TestCase):
+    """The slice-gate stage pins the reference and labels k=31 honestly."""
+
+    REAL_PART_1 = "CRR1936095_r1.part_001.fq.gz"
+    REAL_PART_2 = "CRR1936095_r1.part_006.fq.gz"
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+        self.out = self.tmp / "10-slice-gate.json"
+        self.gate_calls = []
+
+    def make_data(self, names=(None, None)):
+        data = self.tmp / "data"
+        data.mkdir()
+        for name in names:
+            if name:
+                (data / name).write_bytes(b"part-bytes")
+        return data
+
+    def make_fingerprint(self, reference_sha=p10.REFERENCE_SHA256):
+        def fake_fingerprint(path):
+            resolved = Path(path)
+            if resolved == p10.PARITY_REFERENCE:
+                return {"path": str(resolved), "size_bytes": 123,
+                        "sha256": reference_sha}
+            return {
+                "path": str(resolved),
+                "size_bytes": resolved.stat().st_size,
+                "sha256": hashlib.sha256(str(resolved).encode()).hexdigest(),
+            }
+        return fake_fingerprint
+
+    def run_stage(self, data, reference_sha=p10.REFERENCE_SHA256,
+                  parity_side_effect=None):
+        def fake_provision(resolved_inputs, slice_reads, scratch):
+            slice_path = Path(scratch) / "slice-0.fq"
+            slice_path.write_bytes(b"slice-bytes")
+            return [slice_path, slice_path]
+
+        def fake_run_parity(slice_path, k, threads, rustkmer, scratch,
+                            hash_size=None):
+            if parity_side_effect is not None:
+                return parity_side_effect(k)
+            return {"distinct": 1000 + k, "total": 2000 + k}
+
+        def fake_gate(counts, path, source_sha256, slice_kind, reads, k,
+                      canonical, selection=None):
+            self.gate_calls.append({"counts": counts, "path": path,
+                                    "source_sha256": source_sha256,
+                                    "slice_kind": slice_kind, "reads": reads,
+                                    "k": k, "canonical": canonical})
+            return {"expected": {"distinct": counts["distinct"],
+                                 "total": counts["total"]}}
+
+        patches = [
+            mock.patch.object(p10, "provision_slice",
+                              side_effect=fake_provision),
+            mock.patch.object(p10, "run_parity",
+                              side_effect=fake_run_parity),
+            mock.patch.object(p10, "gate_parity_reference",
+                              side_effect=fake_gate),
+            mock.patch.object(p10, "fingerprint",
+                              side_effect=self.make_fingerprint(reference_sha)),
+            mock.patch.object(p10, "binary_provenance",
+                              side_effect=lambda *_a, **_k: fake_provenance()),
+        ]
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.ExitStack() as stack:
+            for patch in patches:
+                stack.enter_context(patch)
+            stack.enter_context(contextlib.redirect_stdout(out))
+            stack.enter_context(contextlib.redirect_stderr(err))
+            try:
+                code = p10.main(["--stage", "slice-gate",
+                                 "--data-dir", str(data),
+                                 "--out", str(self.out),
+                                 "--scratch", str(self.tmp / "scratch"),
+                                 "--rustkmer",
+                                 "/repo/target/release/rustkmer"])
+            except SystemExit as exc:
+                code = exc.code
+        return code, err.getvalue()
+
+    def test_record_carries_both_k_gates_and_pins_the_reference(self):
+        data = self.make_data((self.REAL_PART_1, self.REAL_PART_2))
+        code, err = self.run_stage(data)
+        self.assertEqual(code, p10.EXIT_OK, err)
+        doc = json.loads(self.out.read_text(encoding="utf-8"))
+        self.assertEqual(doc["kind"], "phase10-slice-gate")
+        self.assertEqual(doc["phase"], 10)
+        validate_provenance(doc)
+        gates = {gate["k"]: gate for gate in doc["gates"]}
+        self.assertEqual(set(gates), {21, 31})
+        reference = gates[21]["parity_reference"]
+        self.assertIsNotNone(reference)
+        self.assertEqual(reference["path"],
+                         "scripts/bench/baselines/slice_parity.crr1936095.json")
+        self.assertEqual(reference["sha256"], p10.REFERENCE_SHA256)
+        self.assertEqual(gates[21]["reference_gate"], p10.PINNED_REFERENCE_GATE)
+        self.assertIsNone(gates[31]["parity_reference"])
+        self.assertEqual(gates[31]["reference_gate"], p10.LIVE_PARITY_ONLY)
+        for k, gate in gates.items():
+            self.assertEqual(gate["slice_recipe"]["k"], k)
+            self.assertEqual(gate["slice_recipe"]["slice_selection"], "head")
+            self.assertEqual(gate["slice_recipe"]["slice_reads"],
+                             p10.PINNED_SLICE_READS)
+            self.assertEqual(gate["slice_recipe"]["hash_size"],
+                             p10.PARITY_HASH_SIZE)
+            self.assertEqual(gate["slice_recipe"]["source_sha256"],
+                             doc["input_fingerprint"][0]["sha256"])
+            self.assertEqual(gate["distinct"], 1000 + k)
+            self.assertEqual(gate["total"], 2000 + k)
+        self.assertEqual(len(doc["input_fingerprint"]), 2)
+        # The k=21 gate is bound to the SOURCE part, not the slice.
+        self.assertEqual(len(self.gate_calls), 1)
+        call = self.gate_calls[0]
+        self.assertEqual(call["k"], 21)
+        self.assertEqual(call["reads"], p10.PINNED_SLICE_READS)
+        self.assertEqual(call["slice_kind"],
+                         p10.slice_kind_for("head", p10.PINNED_SLICE_READS))
+
+    def test_compression_suffix_is_stripped_before_the_token_match(self):
+        self.assertEqual(
+            p10.strip_compression_suffix("CRR1936095_r1.part_001.fq.gz"),
+            "CRR1936095_r1.part_001")
+        self.assertEqual(
+            p10.strip_compression_suffix("CRR1936095_r1.part_006.fastq.gz"),
+            "CRR1936095_r1.part_006")
+        self.assertIsNone(p10.strip_compression_suffix("part_001.fq"))
+
+    def test_reference_sha_mismatch_exits_2_with_no_artifact(self):
+        data = self.make_data((self.REAL_PART_1, self.REAL_PART_2))
+        code, err = self.run_stage(data, reference_sha="0" * 64)
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertIn("refusing to consume a modified reference", err)
+        self.assertFalse(self.out.exists())
+
+    def test_one_part_directory_exits_2(self):
+        data = self.make_data((self.REAL_PART_1, None))
+        code, _err = self.run_stage(data)
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertFalse(self.out.exists())
+
+    def test_three_part_directory_exits_2(self):
+        data = self.make_data((self.REAL_PART_1, self.REAL_PART_2,
+                               "CRR1936095_r1.part_007.fq.gz"))
+        code, _err = self.run_stage(data)
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertFalse(self.out.exists())
+
+    def test_wrong_part_name_exits_2(self):
+        data = self.make_data(("CRR1936095_r1.part_002.fq.gz",
+                               self.REAL_PART_2))
+        code, _err = self.run_stage(data)
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertFalse(self.out.exists())
+
+    def test_reversed_parts_are_rejected(self):
+        """gather_inputs sorts a directory, so pin the ORDER check directly."""
+        data = self.make_data((self.REAL_PART_1, self.REAL_PART_2))
+        first, second = sorted(data.iterdir())
+        with self.assertRaises(ValueError):
+            p10.require_split_parts([second, first])
+
+    def test_parity_mismatch_propagates_and_writes_nothing(self):
+        data = self.make_data((self.REAL_PART_1, self.REAL_PART_2))
+
+        def parity_failure(k):
+            raise SystemExit(p10.EXIT_NO)
+
+        code, _err = self.run_stage(data, parity_side_effect=parity_failure)
+        self.assertEqual(code, p10.EXIT_NO)
+        self.assertFalse(self.out.exists())
 
 
 if __name__ == "__main__":

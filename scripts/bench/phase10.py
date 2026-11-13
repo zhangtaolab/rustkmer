@@ -45,9 +45,11 @@ Python 3.11+ stdlib only — no third-party imports.
 import argparse
 import hashlib
 import json
+import os
 import platform
 import statistics
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,21 +63,30 @@ if __package__ in (None, ""):
 from scripts.bench import python_bench
 from scripts.bench.bench import (
     DEFAULT_COOLDOWN_S,
+    DEFAULT_DISK_FLOOR_GB,
     DEFAULT_HASH_SIZE,
     DEFAULT_RUSTKMER,
+    REPO_ROOT,
     SCHEMA_VERSION,
+    BYTES_PER_GIB,
     BenchmarkConfig,
     attempt_cache_purge,
     binary_provenance,
+    check_disk_floor,
     default_decompressor,
     fingerprint,
+    gate_parity_reference,
+    gather_inputs,
     harness_source_commit,
     jellyfish_count_cmd,
     jellyfish_stats,
     measure,
+    provision_slice,
     provision_synthetic,
     reduce_arm,
+    run_parity,
     rustkmer_count_cmd,
+    slice_kind_for,
     stats,
     validate_provenance,
     validate_schema,
@@ -122,6 +133,23 @@ PINNED_SOURCE_SHA256 = (
 PARITY_HASH_SIZE = "2G"
 REFERENCE_SHA256 = (
     "9826bd59c51e34be520c6fca008aea304fb69232f6887cc808b93c4f49ac8a96")
+# PRE-RUN CLI projection basis: the research upper estimate for the union
+# distinct count. This is a projection input, never a measurement — the
+# document records `basis: "research-upper-estimate"`.
+CLI_PREFLIGHT_DISTINCT = 1_200_000_000
+SLICE_GATE_K_VALUES = (21, 31)
+LIVE_PARITY_ONLY = "live-parity-only (no pinned k=31 slice reference)"
+PINNED_REFERENCE_GATE = "pinned-reference"
+
+# The five mandatory report literals asserted verbatim by this plan's tests
+# and by the Plan 10-04 final gate. Keep them exact and case-sensitive.
+REPORT_LITERALS = (
+    "BENCH-V2-01",
+    "partially satisfied",
+    "Dev-host evidence only",
+    "scaling evidence",
+    "equality",
+)
 
 SYNTHETIC_READS = 200_000
 DEFAULT_K = 21
@@ -190,6 +218,11 @@ def build_arm_specs(inputs, k, rustkmer, python, scratch, include):
     if ARM_PY_T16 in names:
         info = python_bench.interpreter_info(str(python))
         site_prefix = info["site_prefix"]
+        if not isinstance(site_prefix, str) or not site_prefix.strip():
+            raise ValueError(
+                "the --python interpreter reported no site_prefix — the "
+                "measured module cannot be proven to live in the measured "
+                "interpreter's site-packages")
     specs = []
     for name in names:
         threads = 1 if name == ARM_RK_T1 else ACCEPTANCE_THREADS
@@ -248,9 +281,8 @@ def rep_peak_bytes(rep):
     return max(rep["peak_rss_bytes"], rep.get("peak_footprint_bytes") or 0)
 
 
-def run_rounds(specs, reps, cooldown_s, measure_fn=measure,
-               purge_fn=attempt_cache_purge, sleep_fn=time.sleep,
-               on_rep=None):
+def run_rounds(specs, reps, cooldown_s, measure_fn=None, purge_fn=None,
+               sleep_fn=None, on_rep=None):
     """Warmups + counterbalanced measured rounds; return {arm: [rep dicts]}.
 
     One discarded warmup per TOOL (the first spec of that tool) runs before
@@ -258,10 +290,19 @@ def run_rounds(specs, reps, cooldown_s, measure_fn=measure,
     rustkmer warmup covers the tool. Each measured rep records its honest
     cache_state, round and arm_order. For a pyrustkmer spec the stale stats
     file is deleted before the run, the fresh payload is validated through
-    python_bench.validate_worker_stats with the spec's site_prefix, and the
-    exact counts plus module identity are attached — a py run that leaves no
-    stats file is invalid, never synthesized.
+    python_bench.validate_worker_stats with the spec's site_prefix, the
+    payload's input list must equal the spec's two-part list IN ORDER, and
+    the exact counts plus module identity are attached — a py run that
+    leaves no stats file is invalid, never synthesized.
+
+    The injectable seams default to the module-level primitives at CALL time
+    (not at definition time), so a test can patch `phase10.measure` /
+    `phase10.attempt_cache_purge` / `time.sleep` and still drive the real
+    stage entry points.
     """
+    measure_fn = measure if measure_fn is None else measure_fn
+    purge_fn = attempt_cache_purge if purge_fn is None else purge_fn
+    sleep_fn = time.sleep if sleep_fn is None else sleep_fn
     if reps < 1:
         raise ValueError(f"reps must be >= 1, got {reps}")
     names = [spec["name"] for spec in specs]
@@ -301,7 +342,15 @@ def run_rounds(specs, reps, cooldown_s, measure_fn=measure,
             counts = python_bench.validate_worker_stats(
                 payload, spec["site_prefix"],
                 expected_threads=spec["threads"])
+            payload_inputs = [str(part) for part in payload.get("inputs") or []]
+            spec_inputs = [str(part) for part in spec["inputs"]]
+            if payload_inputs != spec_inputs:
+                raise ValueError(
+                    f"py arm {spec['name']!r} reported inputs "
+                    f"{payload_inputs!r} but the arm measured {spec_inputs!r} "
+                    f"— both parts must be counted once each, in argv order")
             rep.update(counts)
+            rep["inputs"] = payload_inputs
             rep["module_path"] = payload["module_path"]
             rep["module_mtime"] = payload.get("module_mtime")
             rep["threads_resolved"] = payload["threads_resolved"]
@@ -350,12 +399,115 @@ def arm_medians(reps):
     }
 
 
+def finalize_python_arm(name, reps, expected=None):
+    """The py arm's strict end-of-session reduction.
+
+    `check_rep_identity` is a HARD failure on any rep-count, module, or
+    resolved-thread disagreement (never averaged away); the arm then carries
+    the nested medians plus the exact counts and the per-rep measured
+    module/input identity. `db_sha256` is null because the Python arm writes
+    no database — the measured artifact is the worker payload.
+    """
+    exact = python_bench.check_rep_identity(reps, expected=expected)
+    first = reps[0]
+    return {
+        "name": name,
+        "tool": "pyrustkmer",
+        "threads": first["threads_resolved"],
+        "inputs": list(first.get("inputs") or []),
+        "reps": reps,
+        "medians": arm_medians(reps),
+        "unique_kmers": exact["unique_kmers"],
+        "total_kmers": exact["total_kmers"],
+        "db_sha256": None,
+    }
+
+
+def _single_arm(doc, name, label):
+    """The one arm named `name` in `doc`, or ValueError on absence/ambiguity."""
+    matches = [arm for arm in doc.get("arms", [])
+               if isinstance(arm, dict) and arm.get("name") == name]
+    if len(matches) != 1:
+        observed = [arm.get("name") for arm in doc.get("arms", [])
+                    if isinstance(arm, dict)]
+        raise ValueError(
+            f"{label}: expected exactly one arm {name!r}, found "
+            f"{len(matches)} in {observed}")
+    return matches[0]
+
+
+def _exact_counts(arm, label):
+    """The arm's positive exact (unique, total) pair, or ValueError."""
+    unique = arm.get("unique_kmers")
+    total = arm.get("total_kmers")
+    for key, value in (("unique_kmers", unique), ("total_kmers", total)):
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ValueError(
+                f"{label}: {key}={value!r} must be a positive integer — a "
+                f"zero count is a silent input failure, never a measurement")
+    return unique, total
+
+
+def assert_session_parity(doc, *arm_names):
+    """Every named arm must report the SAME positive exact counts.
+
+    A mismatch means the arms did not count the same bytes (or the worker
+    dropped a part) — a hard failure, never averaged. Returns the parity
+    block describing the agreed counts.
+    """
+    names = list(arm_names)
+    if len(names) < 2:
+        raise ValueError("assert_session_parity needs at least two arms")
+    observed = {}
+    for name in names:
+        arm = _single_arm(doc, name, "session parity")
+        observed[name] = _exact_counts(arm, f"session parity arm {name!r}")
+    reference_name = names[0]
+    reference = observed[reference_name]
+    for name in names[1:]:
+        if observed[name] != reference:
+            raise ValueError(
+                f"session parity mismatch: {reference_name} counts "
+                f"{reference} vs {name} counts {observed[name]} — the arms "
+                f"counted different bytes on the same measured input")
+    return {"arms": names, "unique_kmers": reference[0],
+            "total_kmers": reference[1], "equal": True}
+
+
+def assert_cross_session_jellyfish(cli_doc, python_doc):
+    """The two sessions' jellyfish arms must agree on counts AND input bytes.
+
+    The jellyfish reference is re-measured in each session; identical counts
+    prove both sessions counted the same bytes. A difference is a hard
+    failure because a venv/run-chain change would silently invalidate the
+    cross-session comparison.
+    """
+    cli_arm = _single_arm(cli_doc, ARM_JF_T16, "cross-session cli")
+    python_arm = _single_arm(python_doc, ARM_JF_T16, "cross-session python")
+    cli_counts = _exact_counts(cli_arm, "cross-session cli jellyfish")
+    python_counts = _exact_counts(python_arm, "cross-session python jellyfish")
+    if cli_counts != python_counts:
+        raise ValueError(
+            f"cross-session jellyfish counts differ: cli {cli_counts} vs "
+            f"python {python_counts} — the two sessions counted different "
+            f"bytes")
+    cli_fp = cli_doc.get("input_fingerprint")
+    python_fp = python_doc.get("input_fingerprint")
+    if cli_fp != python_fp:
+        raise ValueError(
+            "cross-session input fingerprint differs between the CLI and "
+            f"Python sessions: {cli_fp!r} vs {python_fp!r}")
+    return {"cli": cli_counts, "python": python_counts,
+            "input_fingerprint": cli_fp, "equal": True}
+
+
 def build_arms(specs, reps_by_arm, rustkmer):
     """Reduce measured reps to arm records with exact nonzero counts.
 
     Counts come from the producer of the bytes: `rustkmer stats` for the CLI
     arms, `jellyfish stats` for the reference arm, and the validated worker
-    payloads for the Python arm. A zero count is invalid, never a measurement.
+    payloads for the Python arm (through the strict `finalize_python_arm`).
+    A zero count is invalid, never a measurement.
     """
     arms = []
     for spec in specs:
@@ -363,8 +515,12 @@ def build_arms(specs, reps_by_arm, rustkmer):
         if not reps:
             raise ValueError(f"arm {spec['name']!r} has zero successful reps")
         if spec["tool"] == "pyrustkmer":
-            exact = python_bench.check_rep_identity(reps)
-        elif spec["tool"] == "jellyfish":
+            arm = finalize_python_arm(spec["name"], reps)
+            if not arm["inputs"]:
+                arm["inputs"] = list(spec["inputs"])
+            arms.append(arm)
+            continue
+        if spec["tool"] == "jellyfish":
             jf = jellyfish_stats(spec["out"])
             exact = {"unique_kmers": jf["distinct"], "total_kmers": jf["total"]}
         else:
@@ -375,9 +531,7 @@ def build_arms(specs, reps_by_arm, rustkmer):
             raise ValueError(
                 f"arm {spec['name']!r}: zero counts {exact} after the reps — "
                 f"silent input failure, never a measurement")
-        db_sha256 = None
-        if spec["tool"] != "pyrustkmer":
-            db_sha256 = fingerprint(spec["out"])["sha256"]
+        db_sha256 = fingerprint(spec["out"])["sha256"]
         arms.append({
             "name": spec["name"],
             "tool": spec["tool"],
@@ -564,6 +718,35 @@ def write_doc(doc, out_path):
     return out
 
 
+def python_session_provenance(args, module_path):
+    """Python-session provenance: the interpreter + module, plus the CLI.
+
+    The Python artifact must name BOTH measured surfaces: the native module
+    that produced the Python number (sha256 of the actual `.so` bytes) and
+    the CLI binary used as the session's parity reference.
+    """
+    info = python_bench.interpreter_info(str(args.python))
+    prov = python_bench.build_provenance(args, info, module_path)
+    prov["cli_binary"] = binary_provenance(args.rustkmer, "release")
+    return prov
+
+
+def write_evidence_doc(doc, out_path):
+    """Validate provenance, then write an evidence (non-results) document.
+
+    Used by the slice-gate record: its shape is a `kind` document, not the
+    results schema, so `validate_schema` does not apply — but no artifact
+    may reach disk without complete provenance (T-10-06).
+    """
+    validate_provenance(doc)
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
+    return out
+
+
 def build_session_provenance(args, arms):
     """CLI binary provenance, extended with the Python module when measured."""
     prov = binary_provenance(args.rustkmer, "release")
@@ -588,128 +771,553 @@ def _doc_k(doc):
     return k
 
 
-def render_report(docs, out_path):
-    """Render the Phase-10 Markdown report from recorded documents.
+def _validate_fingerprint(fp, label):
+    """One well-formed input fingerprint: path, size, and 64-char sha256."""
+    if not isinstance(fp, dict):
+        raise ValueError(f"{label}: input fingerprint must be a dict")
+    path = fp.get("path")
+    size = fp.get("size_bytes")
+    sha = fp.get("sha256")
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError(f"{label}: fingerprint path must be a non-empty string")
+    if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+        raise ValueError(f"{label}: fingerprint size_bytes={size!r} invalid")
+    if not isinstance(sha, str) or len(sha) != 64:
+        raise ValueError(f"{label}: fingerprint sha256={sha!r} invalid")
+    return {"path": path, "size_bytes": size, "sha256": sha}
+
+
+def _validate_render_document(doc):
+    """Validate one results document and return it unchanged."""
+    if not isinstance(doc, dict):
+        raise ValueError("render: every document must be a JSON object")
+    validate_schema(doc)
+    validate_provenance(doc)
+    kind = doc.get("kind")
+    if kind is not None:
+        raise ValueError(
+            f"render: unsupported document kind {kind!r} — only results "
+            f"documents are rendered")
+    if doc.get("mode") not in ("synthetic", "full"):
+        raise ValueError(
+            f"render: supports mode=synthetic/full, got "
+            f"mode={doc.get('mode')!r}")
+    return doc
+
+
+def _render_groups(docs, allow_synthetic):
+    """Group validated documents per k and session; raise on missing pairs."""
+    groups = {}
+    for doc in docs:
+        k = _doc_k(doc)
+        session = doc.get("session")
+        if not isinstance(session, str) or not session:
+            raise ValueError(f"render: k={k} document has no session")
+        groups.setdefault(k, {}).setdefault(session, []).append(doc)
+    pairs = {}
+    for k in sorted(groups):
+        sessions = groups[k]
+        if "synthetic" in sessions:
+            if not allow_synthetic:
+                raise ValueError(
+                    f"render: k={k} is a synthetic document — the full "
+                    f"render stage needs committed cli/python documents")
+            if len(sessions) != 1 or len(sessions["synthetic"]) != 1:
+                raise ValueError(
+                    f"render: k={k}: a synthetic document must be the only "
+                    f"document for its k")
+            pairs[k] = (sessions["synthetic"][0], sessions["synthetic"][0])
+            continue
+        unknown = sorted(set(sessions) - {"cli", "python"})
+        if unknown:
+            raise ValueError(
+                f"render: k={k}: unsupported session(s) {unknown!r}")
+        for session in ("cli", "python"):
+            if len(sessions.get(session, [])) != 1:
+                raise ValueError(
+                    f"render: k={k}: need exactly one {session}-session "
+                    f"document, found {len(sessions.get(session, []))} — a "
+                    f"missing document is never rendered as an empty table")
+        pairs[k] = (sessions["cli"][0], sessions["python"][0])
+    if not pairs:
+        raise ValueError("render: no documents to render")
+    return pairs
+
+
+_REPORT_ARM_HEADER = (
+    "| arm | threads | per-rep wall (s) | median wall (s) "
+    "| median peak (GiB) | distinct | total | notes |",
+    "|-----|---------|------------------|-----------------|"
+    "------------------|----------|-------|-------|",
+)
+
+
+def _report_arm_row(arm):
+    """One table row: raw rep walls, recorded median, peak GiB, exact counts."""
+    name = arm.get("name")
+    if not isinstance(name, str) or not name:
+        raise ValueError("render: every arm needs a non-empty name")
+    medians = arm.get("medians")
+    if not isinstance(medians, dict):
+        raise ValueError(f"render: arm {name!r} has no medians block")
+    reps = arm.get("reps")
+    if not isinstance(reps, list) or not reps:
+        raise ValueError(
+            f"render: arm {name!r} has zero reps — no median may exist")
+    wall = medians.get("wall_s")
+    peak = medians.get("peak_bytes")
+    for label, value in (("median wall", wall), ("median peak_bytes", peak)):
+        if (not isinstance(value, (int, float)) or isinstance(value, bool)
+                or value <= 0):
+            raise ValueError(
+                f"render: arm {name!r} {label}={value!r} must be a positive "
+                f"number")
+    unique, total = _exact_counts(arm, f"render arm {name!r}")
+    walls = " / ".join(repr(rep.get("wall_s")) for rep in reps)
+    warn = " `[cv_warning]`" if medians.get("cv_warning") else ""
+    return (f"| {name} | {arm.get('threads')} | {walls} | {wall!r} "
+            f"| {peak / BYTES_PER_GIB:.2f} | {unique:,} | {total:,} "
+            f"|{warn} |")
+
+
+def _ordered_arms(doc):
+    """The document's arms in the pinned canonical order, never JSON order."""
+    by_name = {}
+    for arm in doc.get("arms", []):
+        if not isinstance(arm, dict):
+            raise ValueError("render: every arm must be an object")
+        name = arm.get("name")
+        if name not in ARM_ORDER:
+            raise ValueError(
+                f"render: unsupported arm {name!r} — the pinned order is "
+                f"{ARM_ORDER}")
+        if name in by_name:
+            raise ValueError(f"render: duplicate arm {name!r}")
+        by_name[name] = arm
+    session = doc.get("session")
+    required = {
+        "cli": (ARM_RK_T16, ARM_RK_T1, ARM_JF_T16),
+        "python": (ARM_JF_T16, ARM_PY_T16),
+    }.get(session)
+    if required is not None:
+        missing = [name for name in required if name not in by_name]
+        if missing:
+            raise ValueError(
+                f"render: the {session}-session document is missing arm(s) "
+                f"{missing} — a missing arm is never rendered as a row")
+    return [by_name[name] for name in ARM_ORDER if name in by_name]
+
+
+def _cache_census(docs):
+    """Count each distinct cache_state value across every rep of every doc."""
+    counts = {}
+    for doc in docs:
+        for arm in doc.get("arms", []):
+            for rep in arm.get("reps", []):
+                state = str(rep.get("cache_state", "absent"))
+                counts[state] = counts.get(state, 0) + 1
+    return counts
+
+
+def _dataset_lines(docs):
+    """Both split parts, each path, size, and sha256 — from the documents."""
+    by_path = {}
+    for doc in docs:
+        for raw in doc.get("input_fingerprint") or []:
+            fp = _validate_fingerprint(
+                raw, f"render k={_doc_k(doc)} {doc.get('session')}")
+            previous = by_path.get(fp["path"])
+            if previous is not None and previous["sha256"] != fp["sha256"]:
+                raise ValueError(
+                    f"render: dataset fingerprint mismatch for {fp['path']!r} "
+                    f"— {previous['sha256']} vs {fp['sha256']}")
+            by_path[fp["path"]] = fp
+    if not by_path:
+        raise ValueError("render: the documents carry no input fingerprints")
+    lines = ["## Dataset provenance", ""]
+    for path in sorted(by_path):
+        fp = by_path[path]
+        lines.append(
+            f"- `{path}` — size_bytes={fp['size_bytes']:,} "
+            f"sha256=`{fp['sha256']}`")
+    lines += [
+        "",
+        "- Both split parts of the CRR1936095 read-1 set form ONE measured "
+        "input per arm; no arm measures a single part.",
+        "- The fingerprints above are read from the committed result "
+        "documents, not re-read at render time.",
+        "",
+    ]
+    return lines
+
+
+def _table_lines(doc, session_label):
+    """One session's arm table, plus the t1 scaling-evidence line."""
+    lines = [f"### {session_label} session", ""]
+    lines += list(_REPORT_ARM_HEADER)
+    for arm in _ordered_arms(doc):
+        lines.append(_report_arm_row(arm))
+    by_name = {arm["name"]: arm for arm in doc.get("arms", [])}
+    t1 = by_name.get(ARM_RK_T1)
+    if t1 is not None:
+        medians = t1.get("medians") if isinstance(t1.get("medians"),
+                                                   dict) else {}
+        lines.append(
+            f"Scaling evidence (excluded from the verdict): `{ARM_RK_T1}` at "
+            f"{t1.get('threads')} thread(s), median "
+            f"{medians.get('wall_s')!r} s.")
+    lines.append("")
+    return lines
+
+
+def _verdict_lines(pairs, docs):
+    """The per-k verdict from recorded medians plus every mandatory statement."""
+    lines = ["## Verdict", ""]
+    overall = "YES"
+    for k in sorted(pairs):
+        cli_doc, python_doc = pairs[k]
+        block = verdict_block(k, cli_doc, python_doc)
+        if block["result"] != "YES":
+            overall = "NO"
+        label = ("primary acceptance question" if k == 21
+                 else ("matched-hash re-verification" if k == 31
+                       else "secondary comparison"))
+        lines.append(
+            f"- k={k} ({label}): **{block['result']}** — rustkmer "
+            f"{block['rustkmer_result']} (median {block['rustkmer_wall_s']!r} "
+            f"s vs jellyfish {block['jellyfish_cli_wall_s']!r} s), python "
+            f"{block['python_result']} (median {block['python_wall_s']!r} s "
+            f"vs jellyfish {block['jellyfish_python_wall_s']!r} s).")
+    lines += [
+        f"- Overall: **{overall}** — k=21 is the primary acceptance "
+        f"question; k=31 re-verifies the v1.0 matched-hash comparison.",
+        "",
+        "- Rule: the comparison is `rustkmer_median <= jellyfish_median` per "
+        "surface in the SAME session; equality counts as match-or-beat, with "
+        "no tolerance band and no re-roll.",
+        "- Only arms recorded at `threads == 16` enter the verdict.",
+        "- The t1 arm is scaling evidence only and never enters a YES/NO "
+        "computation.",
+        "- A NO is a recorded outcome, not a failure to explain away; the "
+        "phase never re-runs until a result turns green.",
+        "",
+        "- BENCH-V2-01 (KMC3 comparison) is descoped: by user decision on "
+        "2026-11-13 the KMC3 comparison was removed from this phase's scope. "
+        "No KMC3 binary was downloaded, installed, or executed, and its "
+        "absence from this report is intentional.",
+        "- the cold-cache criterion is only partially satisfied: no sudo "
+        "purge was run on this host, so no rep claims a cold cache. Per-rep "
+        "cache_state census: "
+        + ", ".join(f"{state} x{count}" for state, count
+                    in sorted(_cache_census(docs).items()))
+        + ".",
+        "- Dev-host evidence only. No CI-class baseline was regenerated, "
+        "written, or modified by this phase, and these numbers must never be "
+        "copied into a CI baseline slot.",
+        "",
+    ]
+    return lines
+
+
+def _parity_lines(pairs, docs):
+    """One explicit parity statement per k from the recorded exact counts."""
+    lines = ["## Parity evidence", ""]
+    for k in sorted(pairs):
+        entries = []
+        for doc in docs:
+            if _doc_k(doc) != k:
+                continue
+            for arm in _ordered_arms(doc):
+                unique, total = _exact_counts(
+                    arm, f"parity {arm.get('name')!r}")
+                entries.append((arm.get("name"), doc.get("session"),
+                                unique, total))
+        distincts = {entry[2] for entry in entries}
+        totals = {entry[3] for entry in entries}
+        if len(distincts) != 1 or len(totals) != 1:
+            raise ValueError(
+                f"render: k={k}: recorded exact counts differ across arms "
+                f"({sorted(distincts)} distinct, {sorted(totals)} total) — "
+                f"no parity claim may be rendered")
+        distinct = entries[0][2]
+        total = entries[0][3]
+        arms_text = ", ".join(f"{name} ({session})"
+                              for name, session, _, _ in entries)
+        lines.append(
+            f"- k={k}: distinct={distinct:,} total={total:,} — EQUAL across "
+            f"{arms_text} on the same two-part input.")
+    lines.append("")
+    return lines
+
+
+def _shared_params(docs):
+    """The params block all documents must agree on (reps/cooldown/hash_size)."""
+    reference = docs[0].get("params")
+    if not isinstance(reference, dict):
+        raise ValueError("render: the first document carries no params block")
+    for key in ("reps", "cooldown_s", "hash_size"):
+        for doc in docs[1:]:
+            params = doc.get("params") or {}
+            if params.get(key) != reference.get(key):
+                raise ValueError(
+                    f"render: documents disagree on params.{key}: "
+                    f"{reference.get(key)!r} vs {params.get(key)!r}")
+    return reference
+
+
+def _methodology_lines(docs):
+    """Reps, rotation, warmup, -s, decompression asymmetry, stats cost."""
+    params = _shared_params(docs)
+    schedule = docs[0].get("schedule")
+    schedule = schedule if isinstance(schedule, dict) else {}
+    rounds = schedule.get("rounds") or []
+    schedule_text = "; ".join(
+        f"round {index}: {' then '.join(order)}"
+        for index, order in enumerate(rounds))
+    lines = [
+        "## Methodology",
+        "",
+        f"- reps: {params.get('reps')} measured per arm; cooldown "
+        f"{params.get('cooldown_s')} s between measured runs.",
+        "- rotation: round-robin rotation — every round visits every arm "
+        "once, and round r starts at arm r mod N, so order bias cannot "
+        "accumulate inside one arm's block.",
+        "- one discarded warmup per TOOL before round 0.",
+        f"- schedule policy: {schedule.get('policy')}; warmup order: "
+        f"{', '.join(schedule.get('warmup_order') or [])}.",
+    ]
+    if schedule_text:
+        lines.append(f"- recorded rotation: {schedule_text}.")
+    lines += [
+        f"- jellyfish `-s {params.get('hash_size')}` (generous initial hash).",
+        "- rustkmer `--size` stayed at its default and is NOT matched to "
+        "jellyfish `-s`: rustkmer auto-grows while jellyfish receives a "
+        "generous `-s`; matching the numbers would pre-reserve roughly "
+        "160 GB.",
+        "- decompression asymmetry: rustkmer reads the `.gz` natively; "
+        "jellyfish receives `gzcat <part_001> <part_006> | jellyfish count "
+        "... /dev/stdin`, so decompression is inside BOTH measured walls (the "
+        "residual pipe overhead remains and is stated here per protocol).",
+        "- `rustkmer stats` is a single post-arm read per arm because it "
+        "scans the whole database; it is not a per-rep cost.",
+        "- every number in this report is read from the committed result "
+        "documents; the renderer holds no measurement literals and consults "
+        "no clock.",
+        "",
+    ]
+    return lines
+
+
+def _provenance_lines(docs):
+    """CLI binary + Python module provenance, plus the harness source commit."""
+    primary = docs[0].get("provenance")
+    if not isinstance(primary, dict):
+        raise ValueError("render: the first document carries no provenance")
+    binary = primary["binary"]
+    lines = [
+        "## Provenance",
+        "",
+        f"- CLI binary: `{binary['path']}` — size_bytes={binary['size_bytes']} "
+        f"sha256=`{binary['sha256']}`",
+        f"- CLI build: git commit `{primary['git_commit']}`, dirty="
+        f"{primary['git_dirty']}, profile {primary['build_profile']}, "
+        f"{primary['rust_toolchain']}",
+    ]
+    module_prov = next(
+        (doc["provenance"] for doc in docs
+         if isinstance(doc.get("provenance"), dict)
+         and isinstance(doc["provenance"].get("module"), dict)), None)
+    if module_prov is not None:
+        module = module_prov["module"]
+        lines.append(
+            f"- Python module: `{module['path']}` — "
+            f"size_bytes={module['size_bytes']} sha256=`{module['sha256']}`")
+        lines.append(
+            f"- Python interpreter: {module_prov.get('python_executable')} "
+            f"({module_prov.get('python_version')}); maturin "
+            f"{module_prov.get('maturin_version')}")
+    lines += [
+        f"- Harness source commit (last commit touching this renderer): "
+        f"`{harness_source_commit()}`",
+        "",
+    ]
+    return lines
+
+
+def validate_report_text(text):
+    """Assert the five mandatory literals are present, case-sensitively."""
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("render: the report text is empty")
+    for literal in REPORT_LITERALS:
+        if literal not in text:
+            raise ValueError(
+                f"render: mandatory report literal {literal!r} is missing — "
+                f"the report cannot be published without it")
+    return text
+
+
+def render_report_text(docs):
+    """Render the Phase-10 Markdown report text from recorded documents.
 
     Mechanical by construction: every number comes from the documents, the
     only environment read is `harness_source_commit()`, and no clock is
     consulted — re-rendering the same documents is byte-identical, so a
-    hand-edited number is detectable.
+    hand-edited number is detectable. The five mandatory literals are
+    validated in memory before any byte is published.
     """
     if not docs:
         raise ValueError("render_report needs at least one document")
-    validated = []
-    for doc in docs:
-        validate_schema(doc)
-        validate_provenance(doc)
-        if doc.get("mode") not in ("synthetic", "full"):
-            raise ValueError(
-                f"render_report supports mode=synthetic/full, got "
-                f"mode={doc.get('mode')!r}")
-        validated.append(doc)
-    validated.sort(key=lambda d: (
-        _doc_k(d), _SESSION_ORDER.get(d.get("session"), 99),
-        str(d.get("session"))))
-
+    validated = [_validate_render_document(doc) for doc in docs]
+    pairs = _render_groups(validated, allow_synthetic=True)
     lines = [
         "# rustkmer vs Jellyfish2 — Phase 10 benchmark report",
         "",
-        "*Mechanically rendered from the recorded results JSONs by "
+        "*Mechanically rendered from the committed result documents by "
         "`python3 scripts/bench/phase10.py --stage render`. Every number "
-        "below is read from those JSONs — the renderer carries no measurement "
-        "literals and consults no clock — so re-rendering reproduces this "
-        "file byte-for-byte and a hand-edited number is detectable "
-        "(BENCH-V2-02/T-10-01).*",
-        "",
-        "## Dataset provenance",
+        "below is read from those documents — the renderer holds no "
+        "measurement literals and consults no clock — so re-rendering "
+        "reproduces this file byte-for-byte and a hand-edited number is "
+        "detectable (BENCH-V2-02/T-10-05).*",
         "",
     ]
-    seen_fingerprints = set()
-    for doc in validated:
-        for fp in doc.get("input_fingerprint", []):
-            sha = fp.get("sha256")
-            if sha in seen_fingerprints:
-                continue
-            seen_fingerprints.add(sha)
-            lines.append(
-                f"- `{fp.get('path')}` — size_bytes={fp.get('size_bytes')} "
-                f"sha256=`{sha}`")
-        lines.append(
-            f"- mode={doc.get('mode')} session={doc.get('session')} "
-            f"k={_doc_k(doc)} created={doc.get('created')}")
-    lines.append("")
-
-    table_header = [
-        "| arm | tool | threads | median wall (s) | median peak bytes "
-        "| reps | per-rep wall (s) | per-rep peak bytes | per-rep cache_state |",
-        "|-----|------|---------|-----------------|-------------------"
-        "|------|-------------------|--------------------|---------------------|",
-    ]
-    for doc in validated:
-        lines += ["", f"## k={_doc_k(doc)} — mode={doc.get('mode')} "
-                      f"session={doc.get('session')}", ""]
-        lines += table_header
-        by_name = {arm.get("name"): arm for arm in doc.get("arms", [])
-                   if isinstance(arm, dict)}
-        ordered = [name for name in ARM_ORDER if name in by_name]
-        ordered += [name for name in by_name if name not in ARM_ORDER]
-        for name in ordered:
-            arm = by_name[name]
-            medians = arm.get("medians")
-            if not isinstance(medians, dict):
-                raise ValueError(f"arm {name!r} has no medians block")
-            reps = arm.get("reps")
-            if not isinstance(reps, list):
-                raise ValueError(f"arm {name!r} has no reps list")
-            walls = " / ".join(repr(r.get("wall_s")) for r in reps)
-            peaks = " / ".join(repr(rep_peak_bytes(r)) for r in reps)
-            states = " / ".join(str(r.get("cache_state")) for r in reps)
-            lines.append(
-                f"| {name} | {arm.get('tool')} | {arm.get('threads')} "
-                f"| {medians.get('wall_s')!r} | {medians.get('peak_bytes')!r} "
-                f"| {len(reps)} | {walls} | {peaks} | {states} |")
-        # Trim the leading blank added above when this is the first document.
-        while lines and lines[-1] == "":
-            lines.pop()
-    lines.append("")
-
-    lines += ["## Verdict (from recorded medians)", ""]
-    for k in sorted({_doc_k(doc) for doc in validated}):
-        docs_k = [doc for doc in validated if _doc_k(doc) == k]
-        cli_doc = next((d for d in docs_k if d.get("session") == "cli"), None)
-        python_doc = next(
-            (d for d in docs_k if d.get("session") == "python"), None)
-        if cli_doc is None or python_doc is None:
-            if len(docs_k) != 1:
-                raise ValueError(
-                    f"k={k}: render needs a cli and a python session document "
-                    f"(or exactly one combined document); got "
-                    f"{[d.get('session') for d in docs_k]}")
-            cli_doc = python_doc = docs_k[0]
-        block = verdict_block(k, cli_doc, python_doc)
-        lines.append(
-            f"- k={k}: **{block['result']}** — rustkmer "
-            f"{block['rustkmer_result']} ({block['rustkmer_wall_s']!r} s vs "
-            f"jellyfish {block['jellyfish_cli_wall_s']!r} s), python "
-            f"{block['python_result']} ({block['python_wall_s']!r} s vs "
-            f"jellyfish {block['jellyfish_python_wall_s']!r} s)")
-        lines.append(f"  - rule: {block['rule']}")
+    lines += _dataset_lines(validated)
+    for k in sorted(pairs):
+        cli_doc, python_doc = pairs[k]
+        lines += [f"## k={k}", ""]
+        if cli_doc is python_doc:
+            lines += _table_lines(cli_doc, "combined")
+        else:
+            lines += _table_lines(cli_doc, "CLI")
+            lines += _table_lines(python_doc, "Python")
+    lines += _verdict_lines(pairs, validated)
+    lines += _parity_lines(pairs, validated)
+    lines += _methodology_lines(validated)
+    lines += _provenance_lines(validated)
     lines += [
-        "",
         "---",
         "",
         "*Generated file — do not edit by hand. Regenerate with "
-        "`python3 scripts/bench/phase10.py --stage render --out <results.json> "
-        "--report-out <this file>`; harness source commit "
-        f"`{harness_source_commit()}`.*",
+        "`python3 scripts/bench/phase10.py --stage render --docs "
+        "<cli-k21.json> <cli-k31.json> <python-k21.json> <python-k31.json> "
+        "--verdict-out .planning/phases/10-benchmark-verdict/10-verdict.json "
+        "--out .planning/phases/10-benchmark-verdict/"
+        "10-BENCHMARK-REPORT.md`; phase directory "
+        "`.planning/phases/10-benchmark-verdict/`.*",
         "",
     ]
+    return validate_report_text("\n".join(lines))
 
+
+def render_report(docs, out_path):
+    """Write the rendered report (byte-identical on re-render)."""
+    text = render_report_text(docs)
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    with open(out, "w", newline="\n") as fh:
-        fh.write("\n".join(lines))
+    with open(out, "w", newline="\n", encoding="utf-8") as fh:
+        fh.write(text)
     return out
+
+
+def _unlink_quiet(path):
+    try:
+        Path(path).unlink()
+    except FileNotFoundError:
+        pass
+
+
+def publish_atomic(artifacts):
+    """Publish [(destination, text)] via sibling temps + os.replace.
+
+    All-or-nothing: on ANY failure both temps and BOTH destinations are
+    removed, so a partially published pair can never exist (T-10-05).
+    """
+    destinations = [Path(path) for path, _text in artifacts]
+    temps = []
+    try:
+        for path, text in artifacts:
+            path = Path(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fd, temp_name = tempfile.mkstemp(
+                prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+            os.close(fd)
+            temp = Path(temp_name)
+            temps.append(temp)
+            with open(temp, "w", newline="\n", encoding="utf-8") as fh:
+                fh.write(text)
+        for (path, _text), temp in zip(artifacts, temps):
+            os.replace(str(temp), str(Path(path)))
+    except BaseException:
+        for temp in temps:
+            _unlink_quiet(temp)
+        for destination in destinations:
+            _unlink_quiet(destination)
+        raise
+
+
+def _load_result_documents(paths):
+    docs = []
+    for path in paths:
+        with open(path, encoding="utf-8") as fh:
+            docs.append(json.load(fh))
+    return docs
+
+
+def run_render(args):
+    """Build the verdict document and the report IN MEMORY, then publish.
+
+    Neither destination exists on EXIT_INVALID; both exist on EXIT_OK/EXIT_NO.
+    The verdict document's `provenance.created` is its only varying field and
+    the report never includes it, so the report alone is byte-comparable.
+    """
+    if not args.docs:
+        invalid("the render stage requires --docs <the four result documents>")
+    if args.verdict_out is None:
+        invalid("the render stage requires --verdict-out <verdict document>")
+    out_path = Path(args.out)
+    verdict_path = Path(args.verdict_out)
+    try:
+        docs = [_validate_render_document(doc)
+                for doc in _load_result_documents(args.docs)]
+        pairs = _render_groups(docs, allow_synthetic=False)
+        verdicts = [verdict_block(k, cli_doc, python_doc)
+                    for k, (cli_doc, python_doc) in sorted(pairs.items())]
+        overall = "YES" if all(block["result"] == "YES"
+                               for block in verdicts) else "NO"
+        verdict_doc = {
+            "schema_version": SCHEMA_VERSION,
+            "kind": "phase10-verdict",
+            "phase": PHASE,
+            "created": datetime.now(timezone.utc).isoformat(),
+            "verdicts": verdicts,
+            "overall": overall,
+            "descoped": {
+                "requirement": "BENCH-V2-01",
+                "decision": ("descoped by user decision on 2026-11-13; no "
+                             "KMC3 binary downloaded, installed, or executed"),
+            },
+            "inputs": [fingerprint(path) for path in args.docs],
+            "dev_host_only": True,
+            "kmc3_executed": False,
+            "ci_baseline_written": False,
+            "provenance": binary_provenance(args.rustkmer, "release"),
+        }
+        validate_provenance(verdict_doc)
+        report_text = render_report_text(docs)
+        publish_atomic([
+            (verdict_path, json.dumps(verdict_doc, indent=2) + "\n"),
+            (out_path, report_text),
+        ])
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001 — invalid publish, never a verdict
+        _unlink_quiet(out_path)
+        _unlink_quiet(verdict_path)
+        print(f"phase10.py: {exc}", file=sys.stderr)
+        return EXIT_INVALID
+    for block in verdicts:
+        print(verdict_line(block))
+    print(f"PHASE10 VERDICT overall={overall}")
+    return EXIT_OK if overall == "YES" else EXIT_NO
 
 
 # --- memory projection (plan 10-03/10-04 preflight) -------------------------
@@ -918,6 +1526,426 @@ def run_preflight_python(args):
     return EXIT_OK if overall == "PROCEED" else EXIT_INVALID
 
 
+# --- slice gate (stage built here; executed against real data in plan 10-03) -
+
+_COMPRESSION_SUFFIXES = (".fastq.gz", ".fq.gz")
+_SPLIT_PART_TOKENS = (".part_001", ".part_006")
+
+
+def strip_compression_suffix(name):
+    """The basename minus a trailing `.fq.gz`/`.fastq.gz`, else None.
+
+    The real split parts are `CRR1936095_r1.part_001.fq.gz` and
+    `CRR1936095_r1.part_006.fq.gz`: the part token lives BEFORE the
+    compression suffix, so the suffix must be stripped first or a token
+    match against the full name can never succeed.
+    """
+    for suffix in _COMPRESSION_SUFFIXES:
+        if name.endswith(suffix):
+            return name[:-len(suffix)]
+    return None
+
+
+def require_split_parts(inputs):
+    """Exactly part_001 then part_006, matched on the stripped stem."""
+    paths = [Path(p) for p in inputs]
+    if len(paths) != 2:
+        raise ValueError(
+            f"the slice gate requires exactly the two split parts, got "
+            f"{len(paths)}: {[str(path) for path in paths]}")
+    stems = []
+    for path in paths:
+        stem = strip_compression_suffix(path.name)
+        if stem is None:
+            raise ValueError(
+                f"split part {path} is not a .fq.gz/.fastq.gz file — the "
+                f"part token is matched on the compression-stripped stem")
+        stems.append(stem)
+    if not (stems[0].endswith(_SPLIT_PART_TOKENS[0])
+            and stems[1].endswith(_SPLIT_PART_TOKENS[1])):
+        raise ValueError(
+            f"expected the two parts to end with .part_001 then .part_006 "
+            f"after stripping the compression suffix; got {stems!r}")
+    return paths
+
+
+def build_slice_gate_doc(inputs, rustkmer, scratch, k_values=(21, 31)):
+    """Provision the head-4M slice ONCE and record both k gates.
+
+    k=21 is gated against the committed pinned reference, whose sha256 is
+    re-checked BEFORE consumption (a modified reference exits 2 with no
+    artifact). k=31 has no pinned slice reference, so it is recorded as an
+    explicitly labeled live-parity-only gate; no expectation is invented and
+    the k=21 counts are never reused. The slice is provisioned from the
+    FIRST part only, and the reference is bound to the SOURCE part's
+    fingerprint, not the slice's.
+    """
+    paths = require_split_parts(inputs)
+    scratch = Path(scratch)
+    scratch.mkdir(parents=True, exist_ok=True)
+    fingerprints = [fingerprint(path) for path in paths]
+    source_sha256 = fingerprints[0]["sha256"]
+    slices = provision_slice([paths[0]], PINNED_SLICE_READS, scratch)
+    slice_path = Path(slices[0])
+    reference_sha256 = fingerprint(PARITY_REFERENCE)["sha256"]
+    if reference_sha256 != REFERENCE_SHA256:
+        raise ValueError(
+            f"parity reference sha256 {reference_sha256} != pinned "
+            f"{REFERENCE_SHA256} — refusing to consume a modified reference")
+    try:
+        reference_rel = str(PARITY_REFERENCE.relative_to(REPO_ROOT))
+    except ValueError:
+        reference_rel = str(PARITY_REFERENCE)
+    gates = []
+    for k in k_values:
+        if k not in SLICE_GATE_K_VALUES:
+            raise ValueError(
+                f"the slice gate only records k={SLICE_GATE_K_VALUES}, "
+                f"got {k}")
+        counts = run_parity(slice_path, k, ACCEPTANCE_THREADS, rustkmer,
+                            scratch, hash_size=PARITY_HASH_SIZE)
+        recipe = {
+            "mode": "slice",
+            "k": k,
+            "canonical": True,
+            "threads": ACCEPTANCE_THREADS,
+            "hash_size": PARITY_HASH_SIZE,
+            "slice_selection": "head",
+            "slice_reads": PINNED_SLICE_READS,
+            "source_sha256": source_sha256,
+        }
+        if k == 21:
+            gate_parity_reference(
+                counts, str(PARITY_REFERENCE), source_sha256,
+                slice_kind_for("head", PINNED_SLICE_READS),
+                PINNED_SLICE_READS, 21, True)
+            parity_reference = {"path": reference_rel,
+                                "sha256": reference_sha256}
+            reference_gate = PINNED_REFERENCE_GATE
+        else:
+            parity_reference = None
+            reference_gate = LIVE_PARITY_ONLY
+        gates.append({
+            "k": k,
+            "slice_recipe": recipe,
+            "distinct": counts["distinct"],
+            "total": counts["total"],
+            "parity_reference": parity_reference,
+            "reference_gate": reference_gate,
+        })
+    doc = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": "phase10-slice-gate",
+        "phase": PHASE,
+        "gates": gates,
+        "input_fingerprint": fingerprints,
+        "created": datetime.now(timezone.utc).isoformat(),
+        "provenance": binary_provenance(rustkmer, "release"),
+    }
+    validate_provenance(doc)
+    return doc
+
+
+def run_slice_gate(args):
+    """Resolve the split directory, build the gate record, write it once.
+
+    Input-shape and reference-pin problems return EXIT_INVALID with no
+    artifact. A live parity mismatch (exit 1) or an invalid reference (exit
+    2) is raised by the bench primitives themselves and propagates.
+    """
+    out_path = Path(args.out)
+    scratch = Path(args.scratch) if args.scratch else out_path.parent / "scratch"
+    try:
+        inputs = [Path(p) for p in gather_inputs(str(args.data_dir))]
+        doc = build_slice_gate_doc(inputs, args.rustkmer, scratch)
+    except Exception as exc:  # noqa: BLE001 — invalid gate, never a verdict
+        print(f"phase10.py: {exc}", file=sys.stderr)
+        return EXIT_INVALID
+    write_evidence_doc(doc, out_path)
+    for gate in doc["gates"]:
+        print(f"SLICE GATE k={gate['k']} distinct={gate['distinct']} "
+              f"total={gate['total']} reference={gate['reference_gate']}")
+    print(f"slice gate record written to {out_path}")
+    return EXIT_OK
+
+
+# --- full-scale sessions (plans 10-03/10-04) --------------------------------
+
+def _stage_paths(args):
+    out_path = Path(args.out)
+    scratch = Path(args.scratch) if args.scratch else out_path.parent / "scratch"
+    scratch.mkdir(parents=True, exist_ok=True)
+    return out_path, scratch
+
+
+def _resolve_two_parts(data_dir):
+    """The complete read-1 set: exactly the two split parts, sorted."""
+    inputs = [Path(p) for p in gather_inputs(str(data_dir))]
+    if len(inputs) != 2:
+        raise ValueError(
+            f"the full-scale stages require exactly two split parts under "
+            f"{data_dir}, found {len(inputs)} — both parts are ONE measured "
+            f"input list, never two half-size arms")
+    return inputs
+
+
+def _stage_params(k, reps, cooldown_s):
+    """The pinned params sub-shape Plans 10-03/10-04 assert by key."""
+    return {
+        "k": k,
+        "canonical": True,
+        "threads": ACCEPTANCE_THREADS,
+        "reps": reps,
+        "cooldown_s": cooldown_s,
+        "hash_size": DEFAULT_HASH_SIZE,
+        "arm_order": list(ARM_ORDER),
+    }
+
+
+def _stage_schedule(specs, reps):
+    return {
+        "policy": "round-robin-rotation",
+        "warmup_order": list(TOOL_WARMUP_ORDER),
+        "rounds": rotation_schedule([spec["name"] for spec in specs], reps),
+    }
+
+
+def _cli_preflight():
+    """The PRE-RUN CLI projection at the research upper estimate.
+
+    `basis` is recorded as `research-upper-estimate` so a projection can
+    never be mistaken for a measurement; the decision is derived through
+    `memory_gate`, never caller-supplied.
+    """
+    projected = cli_peak_bytes(CLI_PREFLIGHT_DISTINCT)
+    ok, detail = memory_gate(projected)
+    return {
+        "basis": "research-upper-estimate",
+        "distinct_assumed": CLI_PREFLIGHT_DISTINCT,
+        "projected_bytes": projected,
+        "budget_bytes": MEMORY_BUDGET_BYTES,
+        "decision": "PROCEED" if ok else "BLOCKED",
+        "model": "cli-16B-slot-32B-pair-64-partitions",
+        "detail": detail,
+    }
+
+
+def run_cli_session(args):
+    """Full-scale CLI session: `rk-t16`, `rk-t1` and `jf-t16` over both parts.
+
+    The disk floor and the PRE-RUN projection are checked BEFORE any measured
+    run; the post-arm exact counts are read once per arm; the two rustkmer
+    databases must be byte-identical; the scratch databases are deleted after
+    their sha256 is recorded. Any failure exits 2 with no artifact.
+    """
+    out_path, scratch = _stage_paths(args)
+    try:
+        inputs = _resolve_two_parts(args.data_dir)
+        check_disk_floor(scratch, DEFAULT_DISK_FLOOR_GB)
+        preflight = _cli_preflight()
+        if preflight["decision"] != "PROCEED":
+            raise ValueError(
+                f"pre-run CLI projection blocked: {preflight['detail']}")
+        specs = build_arm_specs(
+            inputs, args.k, args.rustkmer, args.python, scratch,
+            [ARM_RK_T16, ARM_RK_T1, ARM_JF_T16])
+        reps_by_arm = run_rounds(specs, args.reps, args.cooldown_s)
+        for reps in reps_by_arm.values():
+            for rep in reps:
+                validate_rep_memory(rep)
+        arms = build_arms(specs, reps_by_arm, args.rustkmer)
+        rk_shas = {arm["db_sha256"] for arm in arms
+                   if arm["tool"] == "rustkmer"}
+        if len(rk_shas) != 1 or None in rk_shas:
+            raise ValueError(
+                f"rustkmer arms recorded unequal database sha256 values "
+                f"{sorted(str(sha) for sha in rk_shas)} — t16 and t1 must "
+                f"produce identical .rkdb bytes")
+        doc = assemble_doc(
+            mode="full", session="cli", k=args.k,
+            params=_stage_params(args.k, args.reps, args.cooldown_s),
+            inputs=inputs, arms=arms, scratch=scratch,
+            provenance=build_session_provenance(args, arms),
+            extra={"preflight": preflight,
+                   "schedule": _stage_schedule(specs, args.reps)})
+        assert_session_parity(doc, ARM_RK_T16, ARM_RK_T1, ARM_JF_T16)
+        for spec in specs:
+            out = Path(spec["out"])
+            if out.exists():
+                out.unlink()
+        write_doc(doc, out_path)
+    except Exception as exc:  # noqa: BLE001 — invalid session, never a verdict
+        print(f"phase10.py: {exc}", file=sys.stderr)
+        return EXIT_INVALID
+    for arm in arms:
+        medians = arm["medians"]
+        print(f"{arm['name']}: median wall {medians['wall_s']!r}s "
+              f"peak_bytes {medians['peak_bytes']!r} reps {len(arm['reps'])}")
+    return EXIT_OK
+
+
+def _load_slice_gate_doc(path):
+    """Read the slice-gate artifact and assert it is still the pinned gate."""
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    if doc.get("kind") != "phase10-slice-gate":
+        raise ValueError(
+            f"pre-gate {path} is kind={doc.get('kind')!r}, not "
+            f"'phase10-slice-gate'")
+    matches = [gate for gate in doc.get("gates", [])
+               if isinstance(gate, dict) and gate.get("k") == 21]
+    if len(matches) != 1:
+        raise ValueError(
+            f"pre-gate {path}: expected exactly one k=21 gate, found "
+            f"{len(matches)}")
+    gate = matches[0]
+    for key in ("distinct", "total"):
+        if gate.get(key) != PINNED_HEAD4M[key]:
+            raise ValueError(
+                f"pre-gate {path}: k=21 gate {key}={gate.get(key)!r} != "
+                f"pinned {PINNED_HEAD4M[key]!r} — this is not the pinned "
+                f"head-4M reference gate")
+    reference = gate.get("parity_reference")
+    if (not isinstance(reference, dict)
+            or reference.get("sha256") != REFERENCE_SHA256):
+        raise ValueError(
+            f"pre-gate {path}: k=21 gate does not carry the pinned reference "
+            f"sha256 {REFERENCE_SHA256}")
+    return doc
+
+
+def _load_python_preflight(path, k):
+    """Read the preflight record for `k` and re-derive its decision."""
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    if doc.get("kind") != "phase10-python-preflight":
+        raise ValueError(
+            f"preflight {path} is kind={doc.get('kind')!r}, not "
+            f"'phase10-python-preflight'")
+    matches = [record for record in doc.get("records", [])
+               if isinstance(record, dict) and record.get("k") == k]
+    if len(matches) != 1:
+        raise ValueError(
+            f"preflight {path}: expected exactly one record for k={k}, "
+            f"found {len(matches)}")
+    record = matches[0]
+    distinct = record.get("distinct")
+    projected = record.get("projected_bytes")
+    budget = record.get("budget_bytes")
+    if (not isinstance(distinct, int) or isinstance(distinct, bool)
+            or distinct <= 0):
+        raise ValueError(f"preflight {path}: distinct={distinct!r} invalid")
+    if (not isinstance(budget, int) or isinstance(budget, bool)
+            or budget <= 0):
+        raise ValueError(f"preflight {path}: budget_bytes={budget!r} invalid")
+    model_projection = python_projection_bytes(distinct)
+    if projected != model_projection:
+        raise ValueError(
+            f"preflight {path}: projected_bytes={projected!r} != the model's "
+            f"{model_projection} — a tampered projection cannot gate the "
+            f"Python arm")
+    ok, detail = memory_gate(projected, budget)
+    want = "PROCEED" if ok else "BLOCKED"
+    if record.get("decision") != want:
+        raise ValueError(
+            f"preflight {path}: decision={record.get('decision')!r} but the "
+            f"model derives {want!r} ({detail})")
+    if want != "PROCEED":
+        raise ValueError(
+            f"preflight {path}: Python projection BLOCKED ({detail}) — the "
+            f"Python arm must not run; this is a user stop, never a silent "
+            f"skip")
+    for key in ("distinct_source", "distinct_source_sha256"):
+        value = record.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"preflight {path}: {key} missing")
+    return record
+
+
+def run_python_session(args):
+    """Full-scale Python session: `jf-t16` and `py-t16` over both parts.
+
+    Consumes committed evidence only after pinning its sha256: the slice-gate
+    artifact must still carry the pinned k=21 counts, and the preflight
+    record's projection/decision is re-derived. Every rep is a fresh
+    interpreter validated by the `py-t16` branch of `run_rounds`; the session
+    is parity-checked internally and against the committed CLI document. The
+    scratch `.jf` is deleted after its sha256 is recorded.
+    """
+    if not args.pre_gate:
+        invalid("the python stage requires --pre-gate <10-slice-gate.json>")
+    if not args.preflight:
+        invalid("the python stage requires --preflight "
+                "<10-python-preflight.json>")
+    if not args.cli_doc:
+        invalid("the python stage requires --cli-doc <the matching CLI "
+                "document>")
+    out_path, scratch = _stage_paths(args)
+    try:
+        inputs = _resolve_two_parts(args.data_dir)
+        check_disk_floor(scratch, DEFAULT_DISK_FLOOR_GB)
+        _load_slice_gate_doc(args.pre_gate)
+        preflight = _load_python_preflight(args.preflight, args.k)
+        cli_doc = load_cli_document(args.cli_doc)
+        if _doc_k(cli_doc) != args.k:
+            raise ValueError(
+                f"--cli-doc {args.cli_doc} is k={_doc_k(cli_doc)} but the "
+                f"Python session measures k={args.k}")
+        specs = build_arm_specs(
+            inputs, args.k, args.rustkmer, args.python, scratch,
+            [ARM_JF_T16, ARM_PY_T16])
+        reps_by_arm = run_rounds(specs, args.reps, args.cooldown_s)
+        for reps in reps_by_arm.values():
+            for rep in reps:
+                validate_rep_memory(rep)
+        arms = build_arms(specs, reps_by_arm, args.rustkmer)
+        py_arm = next(arm for arm in arms if arm["name"] == ARM_PY_T16)
+        doc = assemble_doc(
+            mode="full", session="python", k=args.k,
+            params=_stage_params(args.k, args.reps, args.cooldown_s),
+            inputs=inputs, arms=arms, scratch=scratch,
+            provenance=python_session_provenance(
+                args, py_arm["reps"][0]["module_path"]),
+            extra={
+                "pre_gate": {
+                    "path": str(args.pre_gate),
+                    "sha256": file_sha256(args.pre_gate),
+                },
+                "memory_preflight": {
+                    "decision": preflight["decision"],
+                    "distinct": preflight["distinct"],
+                    "projected_bytes": preflight["projected_bytes"],
+                    "budget_bytes": preflight["budget_bytes"],
+                    "headroom_bytes": (preflight["budget_bytes"]
+                                       - preflight["projected_bytes"]),
+                    "observed_peak_bytes": py_arm["medians"]["peak_bytes"],
+                    "source": preflight["distinct_source"],
+                    "source_sha256": preflight["distinct_source_sha256"],
+                },
+                "cross_session": {
+                    "cli_doc": str(args.cli_doc),
+                    "cli_doc_sha256": file_sha256(args.cli_doc),
+                },
+                "schedule": _stage_schedule(specs, args.reps),
+            })
+        assert_session_parity(doc, ARM_JF_T16, ARM_PY_T16)
+        assert_cross_session_jellyfish(cli_doc, doc)
+        for spec in specs:
+            if spec["tool"] == "jellyfish":
+                out = Path(spec["out"])
+                if out.exists():
+                    out.unlink()
+        write_doc(doc, out_path)
+    except Exception as exc:  # noqa: BLE001 — invalid session, never a verdict
+        print(f"phase10.py: {exc}", file=sys.stderr)
+        return EXIT_INVALID
+    for arm in arms:
+        medians = arm["medians"]
+        print(f"{arm['name']}: median wall {medians['wall_s']!r}s "
+              f"peak_bytes {medians['peak_bytes']!r} reps {len(arm['reps'])}")
+    return EXIT_OK
+
+
 # --- CLI --------------------------------------------------------------------
 
 STAGES = ("synthetic", "slice-gate", "cli", "python", "render",
@@ -951,6 +1979,20 @@ def build_parser():
     parser.add_argument("--cli-docs", nargs="+", default=None,
                         help="preflight-python: the two full-mode CLI "
                              "documents (k=21 and k=31)")
+    parser.add_argument("--cli-doc", default=None,
+                        help="python stage: the matching full-mode CLI "
+                             "document (same k)")
+    parser.add_argument("--pre-gate", default=None,
+                        help="python stage: the slice-gate artifact "
+                             "(10-slice-gate.json)")
+    parser.add_argument("--preflight", default=None,
+                        help="python stage: the Python preflight artifact "
+                             "(10-python-preflight.json)")
+    parser.add_argument("--docs", nargs="+", default=None,
+                        help="render stage: the full-mode result documents "
+                             "(cli and python, one per k)")
+    parser.add_argument("--verdict-out", default=None,
+                        help="render stage: the verdict document output path")
     return parser
 
 
@@ -968,7 +2010,15 @@ def main(argv=None):
         return run_synthetic(args)
     if args.stage == "preflight-python":
         return run_preflight_python(args)
-    invalid(f"stage {args.stage!r} not implemented in plan 10-01")
+    if args.stage == "slice-gate":
+        return run_slice_gate(args)
+    if args.stage == "cli":
+        return run_cli_session(args)
+    if args.stage == "python":
+        return run_python_session(args)
+    if args.stage == "render":
+        return run_render(args)
+    invalid(f"stage {args.stage!r} not implemented in plan 10-02")
     return EXIT_INVALID
 
 
