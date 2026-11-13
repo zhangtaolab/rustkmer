@@ -1,33 +1,34 @@
 #!/usr/bin/env python3
 """PROF-05 CLI-vs-Python N-read differential (05-06) — D2 evidence.
 
-Quantifies the KNOWN pre-Phase-9 semantic divergence on N-containing reads:
-the CLI skips k-mer windows containing N ("skip-N-windows") while the PyO3
-file path strips non-ACGT bases and joins the flanks ("strip-and-join"),
-creating chimeric k-mers. Nine deterministic four-line FASTQ cases at k=21
-are counted through BOTH surfaces on the SAME bytes (canonical=True,
-threads=1): the CLI map is decoded from its .rkdb via
+Phase 9 landed the ratified D2 skip-N unification: BOTH surfaces now skip
+every k-mer window containing a non-ACGT byte, so the pre-Phase-9 Python
+strip-and-join behavior (which created chimeric k-mers) survives only as
+history. Nine deterministic four-line FASTQ cases at k=21 are counted
+through BOTH surfaces on the SAME bytes (canonical=True, threads=1): the
+CLI map is decoded from its .rkdb via
 pyrustkmer.PyDatabase(path, LoadMode.Preload).export_all_kmers() — no second
 binary decoder, no prose parsing — and the Python map comes from
 PyCounter.add_from_fastq + get_all_counts().
 
-This file RECORDS evidence; it changes neither surface's semantics. The
-ratified D2 skip-N unification is implemented in Phase 9 (never silently —
-WR-04 precedent); Phase 9 re-runs this script with --expect-unified to
-prove the divergence is eliminated.
+--expect-unified is the Phase 9 re-run mode. With --previous PATH the
+committed pre-D2 artifact is validated first (k, canonical, exact case-name
+set, per-case record shape) and embedded as a `before` block while the
+top-level `cases` remain the after state — one self-contained artifact
+carries both records.
 
 Verdict semantics (evaluate):
   - The no-N control MUST be exactly equal across surfaces; a mismatch is
     exit 1 (harness bug or unexpected semantics change).
-  - --expect-divergence (default): at least one N-case must show
-    Python-only chimeric keys, else exit 1 (the fixture failed to exercise
-    the known divergence).
+  - --expect-divergence: at least one N-case must show Python-only
+    chimeric keys, else exit 1 (the fixture failed to exercise the
+    historical divergence).
   - --expect-unified (Phase 9 re-run): ALL cases must be equal, else exit 1.
 
 Exit codes: 0 verdict satisfied; 1 measured verdict failure; 2 invalid
 (empty records, missing control, failed child process, missing/stale
-extension) — never an empty PASS. The evidence doc is written only on
-verdict paths (0/1), never on exit-2 paths.
+extension, incompatible --previous artifact) — never an empty PASS. The
+evidence doc is written only on verdict paths (0/1), never on exit-2 paths.
 
 Stdlib controller; pyrustkmer is imported lazily so the unit suite runs
 without it.
@@ -69,7 +70,7 @@ K = 21
 BASE_30 = "ACGTACGTACGTACGTACGTACGTACGTAC"  # 30 bp, no N
 CONTROL_NAME = "control_no_n"
 EXPECTED_SEMANTICS = {"cli": "skip-N-windows",
-                      "python": "strip-and-join-pre-Phase-9"}
+                      "python": "skip-N-windows"}
 EXAMPLE_CAP = 5
 
 
@@ -121,6 +122,76 @@ def fastq_bytes(case):
     for i, seq in enumerate(case["reads"]):
         lines += [f"@read{i}", seq, "+", "I" * len(seq)]
     return ("\n".join(lines) + "\n").encode()
+
+
+def _validated_surface_counts(record, surface, name, path):
+    """Validate one case's `cli`/`python` {distinct, total} block."""
+    block = record.get(surface)
+    if not isinstance(block, dict):
+        raise ValueError(
+            f"prior case {name!r} has no {surface} counts block: {path}")
+    counts = {}
+    for field in ("distinct", "total"):
+        value = block.get(field)
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(
+                f"prior case {name!r} {surface}.{field}={value!r} is not an "
+                f"integer: {path}")
+        counts[field] = value
+    return counts
+
+
+def load_previous(path):
+    """Load and validate a prior differential artifact for a `before` block.
+
+    Validate-before-embed (compare.py's load_results habit): a prior with a
+    different k or canonical setting, a different case-name set, or a
+    malformed per-case record is invalid — never an empty pass. An
+    unreadable file raises OSError and unparseable JSON raises
+    json.JSONDecodeError; main() maps both to exit 2.
+    """
+    prior_path = Path(path)
+    raw = prior_path.read_bytes()
+    data = json.loads(raw.decode("utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"prior artifact is not a JSON object: {path}")
+    if data.get("k") != K:
+        raise ValueError(
+            f"prior artifact k={data.get('k')!r} does not match K={K}: {path}")
+    if data.get("canonical") is not True:
+        raise ValueError(
+            f"prior artifact canonical={data.get('canonical')!r} is not "
+            f"true: {path}")
+    records = data.get("cases")
+    if not isinstance(records, list):
+        raise ValueError(f"prior artifact has no cases list: {path}")
+    expected_names = {case["name"] for case in build_cases()}
+    cases = {}
+    for record in records:
+        if not isinstance(record, dict) or "name" not in record:
+            raise ValueError(
+                f"prior artifact has a malformed case record: {path}")
+        name = record["name"]
+        if name in cases:
+            raise ValueError(
+                f"prior artifact repeats case {name!r}: {path}")
+        cases[name] = {
+            surface: _validated_surface_counts(record, surface, name, path)
+            for surface in ("cli", "python")
+        }
+    if set(cases) != expected_names:
+        missing = sorted(expected_names - set(cases))
+        extra = sorted(set(cases) - expected_names)
+        raise ValueError(
+            f"prior artifact case names do not match the fixture "
+            f"(missing={missing}, extra={extra}): {path}")
+    return {
+        "path": str(path),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "expectation": data.get("expectation"),
+        "totals": data.get("totals"),
+        "cases": cases,
+    }
 
 
 def diff_maps(cli_map, python_map):
@@ -253,6 +324,7 @@ def run_differential(args):
             records.append(count_case(case, tmp, rustkmer, pyrustkmer))
 
     code, lines = evaluate(records, expect)
+    previous = load_previous(args.previous) if args.previous else None
     divergent = [r["name"] for r in records if _has_diff(r)]
     doc = {
         "schema_version": 1,
@@ -273,6 +345,8 @@ def run_differential(args):
                     "expect": expect, "exit_code": code},
         "provenance": None,
     }
+    if previous is not None:
+        doc["before"] = previous
     prov = binary_provenance(rustkmer, "release")
     prov["module"] = fingerprint(module_path)
     prov["python_executable"] = sys.executable
@@ -295,10 +369,17 @@ def run_differential(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="PROF-05 CLI-vs-Python N-read differential (D2 evidence; "
-                    "record-only — neither surface's semantics is changed).")
+        description="PROF-05 CLI-vs-Python N-read differential (D2 evidence). "
+                    "Phase 9 landed the skip-N unification: both surfaces "
+                    "skip windows containing non-ACGT bytes. --expect-unified "
+                    "is the Phase 9 re-run mode; --previous embeds the "
+                    "committed pre-D2 artifact as a before block.")
     parser.add_argument("--rustkmer", default=DEFAULT_RUSTKMER)
     parser.add_argument("--out", default=str(DEFAULT_OUT))
+    parser.add_argument("--previous", metavar="PATH",
+                        help="prior differential artifact to validate and "
+                             "embed as a before block; the top-level cases "
+                             "remain the after state")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--expect-divergence", action="store_true",
                        help="default: N-cases must show chimeric divergence")

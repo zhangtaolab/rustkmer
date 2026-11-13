@@ -8,6 +8,7 @@ The guarded import keeps RED a genuine planned-behavior failure rather than
 a collection/import fault (05-05 precedent).
 """
 
+import hashlib
 import json
 import sys
 import tempfile
@@ -227,19 +228,24 @@ class TestEvaluate(ImplementedGate):
                           case_record("control_no_n")], "divergence")
 
 
+def run_main(argv):
+    """Run nrd.main with captured output; SystemExit maps to its code."""
+    import contextlib
+    import io
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        try:
+            code = nrd.main(argv)
+        except SystemExit as exc:
+            code = exc.code
+    return code, out.getvalue(), err.getvalue()
+
+
 class TestInvalidArtifacts(ImplementedGate):
     """Invalid runs exit 2 — never an empty PASS (no PyO3 needed)."""
 
     def run_main(self, argv):
-        import contextlib
-        import io
-        out, err = io.StringIO(), io.StringIO()
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            try:
-                code = nrd.main(argv)
-            except SystemExit as exc:
-                code = exc.code
-        return code, out.getvalue(), err.getvalue()
+        return run_main(argv)
 
     def test_missing_rustkmer_binary_exits_2(self):
         self.require()
@@ -261,6 +267,150 @@ class TestInvalidArtifacts(ImplementedGate):
             self.assertEqual(code, 2)
             self.assertIn("pyrustkmer", err)
             self.assertFalse(Path(tmp, "out.json").exists())
+
+
+class TestUnifiedSemantics(ImplementedGate):
+    """The recorded semantics literal is the post-D2 unified one."""
+
+    def test_expected_semantics_is_unified(self):
+        self.require()
+        self.assertEqual(
+            nrd.EXPECTED_SEMANTICS,
+            {"cli": "skip-N-windows", "python": "skip-N-windows"})
+
+
+class TestPreviousLoading(ImplementedGate):
+    """--previous validates a prior artifact before embedding it as `before`."""
+
+    def valid_prior(self):
+        return {
+            "schema_version": 1,
+            "k": nrd.K,
+            "canonical": True,
+            "expectation": "divergence",
+            "totals": {
+                "cases": len(nrd.build_cases()),
+                "python_only_total": 33,
+                "cli_only_total": 0,
+                "count_delta_total": 0,
+                "divergent_cases": ["n_at_window_end", "n_at_window_start",
+                                    "multiple_n", "lowercase_n"],
+            },
+            "cases": [
+                {"name": case["name"],
+                 "cli": {"distinct": 2, "total": 10},
+                 "python": {"distinct": 3, "total": 12}}
+                for case in nrd.build_cases()
+            ],
+        }
+
+    def write_prior(self, tmp, doc, name="prior.json"):
+        path = Path(tmp) / name
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        return path
+
+    def assert_invalid(self, tmp, prior):
+        path = self.write_prior(tmp, prior)
+        with self.assertRaises(ValueError):
+            nrd.load_previous(path)
+
+    def test_valid_prior_embeds_path_sha256_totals_and_cases(self):
+        self.require()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_prior(tmp, self.valid_prior())
+            prior = nrd.load_previous(path)
+            self.assertEqual(prior["path"], str(path))
+            self.assertEqual(prior["sha256"],
+                             hashlib.sha256(path.read_bytes()).hexdigest())
+            self.assertEqual(prior["expectation"], "divergence")
+            self.assertEqual(prior["totals"]["python_only_total"], 33)
+            self.assertEqual(
+                prior["cases"]["control_no_n"],
+                {"cli": {"distinct": 2, "total": 10},
+                 "python": {"distinct": 3, "total": 12}})
+            self.assertEqual(set(prior["cases"]),
+                             {c["name"] for c in nrd.build_cases()})
+
+    def test_k_mismatch_raises(self):
+        self.require()
+        prior = self.valid_prior()
+        prior["k"] = nrd.K + 2
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assert_invalid(tmp, prior)
+
+    def test_canonical_not_true_raises(self):
+        self.require()
+        for value in (False, "true", None):
+            prior = self.valid_prior()
+            prior["canonical"] = value
+            with tempfile.TemporaryDirectory() as tmp:
+                self.assert_invalid(tmp, prior)
+
+    def test_missing_case_name_raises(self):
+        self.require()
+        prior = self.valid_prior()
+        prior["cases"].pop()
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assert_invalid(tmp, prior)
+
+    def test_extra_case_name_raises(self):
+        self.require()
+        prior = self.valid_prior()
+        extra = dict(prior["cases"][0], name="surprise_case")
+        prior["cases"].append(extra)
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assert_invalid(tmp, prior)
+
+    def test_duplicate_case_name_raises(self):
+        self.require()
+        prior = self.valid_prior()
+        prior["cases"].append(dict(prior["cases"][0]))
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assert_invalid(tmp, prior)
+
+    def test_missing_cases_list_raises(self):
+        self.require()
+        prior = self.valid_prior()
+        prior.pop("cases")
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assert_invalid(tmp, prior)
+
+    def test_malformed_json_raises(self):
+        self.require()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "prior.json"
+            path.write_text("{not json", encoding="utf-8")
+            with self.assertRaises(json.JSONDecodeError):
+                nrd.load_previous(path)
+
+    def test_malformed_case_blocks_raise(self):
+        self.require()
+        mutations = [
+            lambda record: record["cli"].__setitem__("distinct", "2"),
+            lambda record: record["python"].__setitem__("total", 1.5),
+            lambda record: record["python"].pop("total"),
+            lambda record: record.pop("cli"),
+        ]
+        for mutate in mutations:
+            prior = self.valid_prior()
+            mutate(prior["cases"][0])
+            with tempfile.TemporaryDirectory() as tmp:
+                self.assert_invalid(tmp, prior)
+
+    def test_previous_composes_with_expect_unified_at_parse_time(self):
+        self.require()
+        # --previous must NOT live in the --expect-* mutually exclusive
+        # group: Phase 9's re-run passes both flags together. An argparse
+        # rejection would surface as a usage error before the binary check.
+        with tempfile.TemporaryDirectory() as tmp:
+            prior_path = self.write_prior(tmp, self.valid_prior())
+            code, _, err = run_main(
+                ["--expect-unified", "--previous", str(prior_path),
+                 "--rustkmer", str(Path(tmp) / "absent-rustkmer"),
+                 "--out", str(Path(tmp) / "out.json")])
+            self.assertEqual(code, 2)
+            self.assertIn("rustkmer binary not found", err)
+            self.assertNotIn("not allowed with argument", err)
 
 
 if __name__ == "__main__":
