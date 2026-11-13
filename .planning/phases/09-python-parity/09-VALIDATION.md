@@ -34,7 +34,7 @@ Pre-change baselines recorded 2026-11-13: pytest `158 passed, 63 skipped`; harne
 - **After every task commit:** Run the quick run command, plus the task-specific pytest file when the task touches `pyo3/`.
 - **After every plan wave:** Rebuild the extension (`env -u CONDA_PREFIX VIRTUAL_ENV=.venv313 … maturin develop --release -m pyo3/Cargo.toml`), assert `pyrustkmer.__version__`, then `pytest pyo3/tests -q` plus the harness unittest discovery.
 - **Before `/gsd-verify-work`:** Full suite green, plus the four golden/output test binaries, the `--expect-unified` differential, the `--compare-baseline` benchmark, the byte-identity pytest, and the concurrency pytest.
-- **Max feedback latency:** 600 seconds.
+- **Max feedback latency:** 600 seconds per task (quick run plus the touched test file); the full battery in the Validation Sign-Off is a phase gate measured at ~7–12 minutes, so it is not counted as per-task feedback.
 
 ---
 

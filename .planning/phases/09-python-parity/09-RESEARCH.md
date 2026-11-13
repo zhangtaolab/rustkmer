@@ -576,7 +576,7 @@ Exit contract: `0` valid measurement and PASS; `1` valid measurement and FAIL (d
 | A6 | Removing the pre-filter makes whitespace/other non-ACGT bytes in `add_sequence` break windows (not just N). | D2 / Pitfalls | If unintended, the scope must be narrowed to N only; the locked text says "removed everywhere". |
 | A7 | The real-N benchmark arm's label/note must change for post-D2 runs while committed baselines stay immutable. | Benchmark | Otherwise new artifacts carry a false "pre-D2" label. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Where do Phase 9 evidence artifacts live?**
    - What we know: prior phases used `pre/`, `post/`, and top-level evidence JSONs.
