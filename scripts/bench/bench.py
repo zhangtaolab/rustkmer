@@ -67,6 +67,12 @@ DISK_FLOOR_EXIT = 3
 # macOS BSD `time -l` reports peak RSS in BYTES (verified on this repo's dev
 # host):            "  60391424  maximum resident set size"
 MAC_RSS = re.compile(r"^\s*(\d+)\s+maximum resident set size\s*$")
+# macOS `time -l` also reports the DIRECT CHILD's footprint in BYTES:
+#                   "             1294648  peak memory footprint"
+# For a pipeline arm this describes only the shell (~1 MB), while the RSS
+# line aggregates the waited-for child — the two lines must both be parsed
+# and the honest peak is max(rss, footprint) (10-RESEARCH Pitfall 5).
+MAC_FOOTPRINT = re.compile(r"^\s*(\d+)\s+peak memory footprint\s*$")
 # Linux GNU `time -v` reports peak RSS in KBYTES and must be scaled x1024:
 #                   "Maximum resident set size (kbytes): 62384"
 LIN_RSS = re.compile(r"Maximum resident set size \(kbytes\):\s*(\d+)")
@@ -98,29 +104,51 @@ def hms_to_seconds(text):
 
 
 def parse_time_output(stderr_text, plat):
-    """Parse /usr/bin/time stderr into {'wall_s': float, 'peak_rss_bytes': int}.
+    """Parse /usr/bin/time stderr into wall and honest peak-memory fields.
 
-    darwin: RSS taken as-is (already bytes); wall from the '<s> real' line.
-    linux:  RSS scaled kbytes x 1024 -> bytes; wall from the Elapsed line.
+    Returns four keys:
+      wall_s                float seconds
+      peak_rss_bytes        int bytes (darwin: raw; linux: kbytes x 1024)
+      peak_footprint_bytes  int bytes on darwin, None on linux
+      peak_bytes            max(peak_rss_bytes, peak_footprint_bytes-or-rss)
 
-    Raises ValueError when either line is absent or unparseable — never
+    The project convention is `max(rss, phys_footprint)` (10-CONTEXT). macOS
+    `time -l` prints BOTH `maximum resident set size` (the waited-for child
+    pipeline's high-water mark) and `peak memory footprint` (the direct child
+    only — a pipeline shell reports ~1 MB). Recording only RSS can miss
+    compressed-memory peaks on direct children; recording only footprint
+    under-reports pipeline arms by orders of magnitude. Hence the max.
+
+    darwin: RSS taken as-is (already bytes); a missing footprint line raises
+    (format drift). linux: RSS scaled kbytes x 1024; `time -v` has no
+    footprint line, so peak_footprint_bytes is None and peak_bytes equals
+    the RSS.
+
+    Raises ValueError when a required line is absent or unparseable — never
     best-effort (a 1024x units error or a format drift here corrupts every
     downstream number; RESEARCH Pitfall 2 / threat T-04-01).
     """
     if plat == "darwin":
         rss_re, rss_scale, wall_re = MAC_RSS, 1, MAC_REAL
+        footprint_re = MAC_FOOTPRINT
     elif plat == "linux":
         rss_re, rss_scale, wall_re = LIN_RSS, 1024, LIN_ELAPSED
+        footprint_re = None
     else:
         raise ValueError(f"unsupported platform: {plat!r}")
 
     wall_s = None
     peak_rss_bytes = None
+    peak_footprint_bytes = None
     for line in stderr_text.splitlines():
         if peak_rss_bytes is None:
             m = rss_re.search(line)
             if m:
                 peak_rss_bytes = int(m.group(1)) * rss_scale
+        if footprint_re is not None and peak_footprint_bytes is None:
+            m = footprint_re.search(line)
+            if m:
+                peak_footprint_bytes = int(m.group(1))
         if wall_s is None:
             m = wall_re.search(line)
             if m:
@@ -128,10 +156,18 @@ def parse_time_output(stderr_text, plat):
     if peak_rss_bytes is None:
         raise ValueError(
             f"no parsable peak-RSS line for platform {plat!r} — format drift?")
+    if footprint_re is not None and peak_footprint_bytes is None:
+        raise ValueError(
+            f"no parsable peak-footprint line for platform {plat!r} — "
+            f"format drift?")
     if wall_s is None:
         raise ValueError(
             f"no parsable wall-clock line for platform {plat!r} — format drift?")
-    return {"wall_s": wall_s, "peak_rss_bytes": peak_rss_bytes}
+    peak_bytes = (peak_rss_bytes if peak_footprint_bytes is None
+                  else max(peak_rss_bytes, peak_footprint_bytes))
+    return {"wall_s": wall_s, "peak_rss_bytes": peak_rss_bytes,
+            "peak_footprint_bytes": peak_footprint_bytes,
+            "peak_bytes": peak_bytes}
 
 
 def measure(argv):
