@@ -13,6 +13,33 @@ except ImportError:
     pytest.skip("pyrustkmer module not installed", allow_module_level=True)
 
 
+def _revcomp(sequence):
+    """Return the reverse complement of a pure-ACGT sequence."""
+    return sequence.translate(str.maketrans("ACGT", "TGCA"))[::-1]
+
+
+def _strip_join_counts(sequences, k, canonical):
+    """Retired pre-D2 behavior: strip non-ACGT bytes, then slide windows.
+
+    This joins the flanks around an ``N`` (or whitespace) and can create
+    chimeric k-mers. It is kept only as the anti-softening control for the
+    Phase 9 D2 tests: when this map equals the skip-N reference map on a
+    fixture, that fixture no longer exercises the D2 change and the guard
+    must fail.
+    """
+    counts = {}
+    for raw_sequence in sequences:
+        sequence = "".join(
+            base for base in raw_sequence.upper() if base in "ACGT"
+        )
+        for start in range(len(sequence) - k + 1):
+            kmer = sequence[start : start + k]
+            if canonical:
+                kmer = min(kmer, _revcomp(kmer))
+            counts[kmer] = counts.get(kmer, 0) + 1
+    return counts
+
+
 class TestPyCounterBasicCreation:
     """Test basic PyCounter creation and initialization."""
 
@@ -136,24 +163,28 @@ class TestPyCounterAddSequence:
         assert counter.get_count("TAC") == 2
 
     def test_add_sequence_with_whitespace(self):
-        """Test that whitespace in sequence is ignored."""
+        """Whitespace breaks every k=7 window (Phase 9 D2 skip-N)."""
         counter = pyrustkmer.PyCounter(7)
         counter.add_sequence("ACG TACG ACGT")
-        assert counter.get_count("ACGTACG") == 1
+        assert counter.is_empty() is True
+        assert counter.get_count("ACGTACG") == 0
+        assert counter.get_stats().total_kmers == 0
 
     def test_add_sequence_with_newlines(self):
-        """Test that newlines in sequence are ignored."""
+        """Newlines break every k=7 window (Phase 9 D2 skip-N)."""
         counter = pyrustkmer.PyCounter(7)
         counter.add_sequence("ACG\nTACG\nACGT")
-        assert counter.get_count("ACGTACG") == 1
+        assert counter.is_empty() is True
+        assert counter.get_count("ACGTACG") == 0
+        assert counter.get_stats().total_kmers == 0
 
     def test_add_sequence_with_invalid_characters(self):
-        """Test that invalid characters in sequence are skipped."""
+        """The single k=7 window contains N, so it is skipped (Phase 9 D2)."""
         counter = pyrustkmer.PyCounter(7)
         counter.add_sequence("ACGNACG")
-        # Should extract k-mers skipping N: ACGACG
-        assert counter.get_count("ACGACGA") == 0  # Invalid k-mer spanning N
+        assert counter.is_empty() is True
         assert counter.get_count("ACGTACG") == 0
+        assert counter.get_stats().total_kmers == 0
 
     def test_add_sequence_shorter_than_k(self):
         """Test adding sequence shorter than k-mer length (no error)."""
@@ -596,7 +627,7 @@ IIIIIIIIIIIIIIIII
         counter = pyrustkmer.PyCounter(7)
         nonexistent = tmp_path / "nonexistent.fastq"
 
-        with pytest.raises(ValueError, match="Failed to open file"):
+        with pytest.raises(ValueError, match="Failed to process FASTQ"):
             counter.add_from_fastq(str(nonexistent))
 
     def test_add_from_fastq_gz_compressed(self, tmp_path):
@@ -1174,14 +1205,17 @@ class TestPyCounterLocalAccumulationParity:
 
 
 class TestPyCounterRollingPathParity:
-    """PAR-03: for k <= 32, add_from_fastq now counts through the shared rolling
-    2-bit encoder; add_sequence keeps its per-window path. Both must still match
-    a pure-Python sliding-window reference exactly.
+    """PAR-03 / Phase 9 D2: the shared extractor's rolling (k <= 32) and u128
+    (33..=64) paths must exactly match a pure-Python SKIP-N reference on both
+    the file and string surfaces.
 
-    The fixture mixes lowercase with uppercase (both surfaces uppercase before
-    encoding) and includes an ``N`` (both surfaces filter non-ACGT bytes before
-    counting, so the reference applies the same filter). k=32 pins the all-ones
-    mask boundary in the Python surface; k=64 pins the unchanged u128 fallback.
+    The fixture mixes lowercase with uppercase (both are uppercased before
+    encoding) and includes an ``N`` sequence. A length-k window containing any
+    non-ACGT byte is skipped and never counted; the flanks around an ``N`` are
+    NOT joined. ``test_fixture_still_exercises_d2_not_strip_and_join`` is the
+    anti-softening guard: it proves the retired strip-and-join map differs on
+    this fixture, so this class cannot pass under the old semantics. k=32 pins
+    the all-ones mask boundary; k=64 pins the unchanged u128 fallback.
     """
 
     SEQUENCES = [
@@ -1194,8 +1228,8 @@ class TestPyCounterRollingPathParity:
 
     @staticmethod
     def _clean(sequence):
-        """Apply the same non-ACGT filter/uppercase the bindings use."""
-        return "".join(base for base in sequence.upper() if base in "ACGT")
+        """Uppercase only: the D2 path has no strip-and-join pre-filter."""
+        return sequence.upper()
 
     @staticmethod
     def _revcomp(sequence):
@@ -1204,12 +1238,14 @@ class TestPyCounterRollingPathParity:
 
     @classmethod
     def _reference_counts(cls, k, canonical):
-        """Pure-Python sliding-window reference count map."""
+        """Skip-N reference: a window with any non-ACGT byte is never counted."""
         counts = {}
         for raw_sequence in cls.SEQUENCES:
             sequence = cls._clean(raw_sequence)
             for i in range(len(sequence) - k + 1):
                 kmer = sequence[i : i + k]
+                if any(base not in "ACGT" for base in kmer):
+                    continue
                 if canonical:
                     kmer = min(kmer, cls._revcomp(kmer))
                 counts[kmer] = counts.get(kmer, 0) + 1
@@ -1260,22 +1296,32 @@ class TestPyCounterRollingPathParity:
         assert stats.total_kmers == sum(expected.values())
         assert stats.unique_kmers == len(expected)
 
+    def test_fixture_still_exercises_d2_not_strip_and_join(self):
+        """D2 anti-softening guard: strip-and-join must differ on this fixture."""
+        strip_join = _strip_join_counts(self.SEQUENCES, 21, True)
+        skip_n = self._reference_counts(21, True)
+        assert strip_join != skip_n, (
+            "D2 anti-softening guard: this fixture no longer distinguishes "
+            "strip-and-join from skip-N at k=21/canonical=True, so the "
+            "rolling-path parity class could pass under the retired semantics"
+        )
 
-class TestPyCounterNReadPreFilterParity:
-    """Phase 7 / T-07-15: the extractor cutover must not adopt the CLI's
-    skip-N semantics yet.
 
-    Python's pre-D2 contract removes every non-ACGT byte from a record before
-    counting, which joins the flanks around an ``N``. The shared
-    ``for_each_window`` extractor implements the CLI's skip-N semantics (any
-    window containing ``N`` is skipped and never emitted), so these cases fail
-    if the pre-filter is dropped early or the extractor is fed raw bytes. D2's
-    semantic change stays owned by Phase 9.
+class TestPyCounterNReadSkipParity:
+    """Phase 9 D2: every Python counting input follows the CLI skip-N contract.
+
+    Python no longer removes non-ACGT bytes before counting (which joined the
+    flanks around an ``N`` and created chimeric k-mers). Each surface feeds raw
+    bytes to the shared extractor, so a length-k window containing any
+    non-ACGT byte - ``N``, ``n``, whitespace, or any other byte - is skipped
+    and never counted, and ``total_kmers`` is smaller on N-containing input by
+    design. ``test_fixture_still_exercises_d2_not_strip_and_join`` guards both
+    fixtures: it fails if the retired strip-and-join map ever matches the new
+    skip-N reference, which would make these tests vacuous.
     """
 
     # Each read has N at the first base, the last base, several Ns in the
-    # middle, an N run in the middle, or a lowercase n; every pre-filtered
-    # sequence is >= 64 bases so the k=64 parametrization has real windows.
+    # middle, an N run in the middle, or a lowercase n.
     N_READS = [
         "N" + "ACGT" * 20,
         "ACGT" * 20 + "N",
@@ -1284,8 +1330,8 @@ class TestPyCounterNReadPreFilterParity:
         "acgt" * 10 + "n" + "tgca" * 10,
     ]
 
-    # add_sequence inputs with internal Ns (one also carries whitespace, which
-    # the same pre-filter removes).
+    # add_sequence inputs with internal Ns; one also carries whitespace, which
+    # breaks windows under D2 exactly like any other non-ACGT byte.
     N_SEQUENCES = [
         "ACGT" * 10 + "NNNN" + "TGCA" * 10,
         "ACGT" * 8 + " N N \n" + "TGCA" * 10,
@@ -1298,19 +1344,14 @@ class TestPyCounterNReadPreFilterParity:
 
     @classmethod
     def _reference_counts(cls, sequences, k, canonical):
-        """Pure-Python pre-filter reference count map.
-
-        Strips every non-ACGT byte from each sequence (joining the flanks),
-        then slides a window over the cleaned sequence -- exactly the current
-        PyCounter pre-filter behavior, not the CLI skip-N behavior.
-        """
+        """Skip-N reference: a window with any non-ACGT byte is never counted."""
         counts = {}
         for raw_sequence in sequences:
-            sequence = "".join(
-                base for base in raw_sequence.upper() if base in "ACGT"
-            )
+            sequence = raw_sequence.upper()
             for i in range(len(sequence) - k + 1):
                 kmer = sequence[i : i + k]
+                if any(base not in "ACGT" for base in kmer):
+                    continue
                 if canonical:
                     kmer = min(kmer, cls._revcomp(kmer))
                 counts[kmer] = counts.get(kmer, 0) + 1
@@ -1332,12 +1373,23 @@ class TestPyCounterNReadPreFilterParity:
         ]
         path.write_text("\n".join(blocks) + "\n")
 
+    def test_fixture_still_exercises_d2_not_strip_and_join(self):
+        """D2 anti-softening guard for both N fixtures at k=21/canonical=True."""
+        for fixture in (self.N_READS, self.N_SEQUENCES):
+            strip_join = _strip_join_counts(fixture, 21, True)
+            skip_n = self._reference_counts(fixture, 21, True)
+            assert strip_join != skip_n, (
+                "D2 anti-softening guard: the N fixture no longer "
+                "distinguishes strip-and-join from skip-N at "
+                "k=21/canonical=True"
+            )
+
     @pytest.mark.parametrize("k", [21, 64])
     @pytest.mark.parametrize("canonical", [False, True])
-    def test_add_from_fastq_n_reads_keep_pre_filter_semantics(
+    def test_add_from_fastq_n_reads_follow_skip_n_semantics(
         self, tmp_path, k, canonical
     ):
-        """FASTQ N-reads must match the pre-filter reference (flanks joined)."""
+        """FASTQ N-reads must match the skip-N reference exactly (D2)."""
         fastq_file = tmp_path / "n_reads.fastq"
         self._write_fastq(fastq_file)
         expected = self._reference_counts(self.N_READS, k, canonical)
@@ -1346,9 +1398,8 @@ class TestPyCounterNReadPreFilterParity:
         counter.add_from_fastq(str(fastq_file))
 
         assert counter.get_all_counts() == expected, (
-            f"Phase 7 T-07-15: add_from_fastq adopted skip-N semantics "
-            f"instead of Python's retained pre-filter (k={k}, "
-            f"canonical={canonical})"
+            f"Phase 9 D2: add_from_fastq did not follow skip-N semantics "
+            f"(k={k}, canonical={canonical})"
         )
         stats = counter.get_stats()
         assert stats.total_kmers == sum(expected.values())
@@ -1356,10 +1407,10 @@ class TestPyCounterNReadPreFilterParity:
 
     @pytest.mark.parametrize("k", [21, 64])
     @pytest.mark.parametrize("canonical", [False, True])
-    def test_add_from_fasta_n_reads_keep_pre_filter_semantics(
+    def test_add_from_fasta_n_reads_follow_skip_n_semantics(
         self, tmp_path, k, canonical
     ):
-        """FASTA N-reads must match the pre-filter reference (flanks joined)."""
+        """FASTA N-reads must match the skip-N reference exactly (D2)."""
         fasta_file = tmp_path / "n_reads.fasta"
         self._write_fasta(fasta_file)
         expected = self._reference_counts(self.N_READS, k, canonical)
@@ -1368,9 +1419,8 @@ class TestPyCounterNReadPreFilterParity:
         counter.add_from_fasta(str(fasta_file))
 
         assert counter.get_all_counts() == expected, (
-            f"Phase 7 T-07-15: add_from_fasta adopted skip-N semantics "
-            f"instead of Python's retained pre-filter (k={k}, "
-            f"canonical={canonical})"
+            f"Phase 9 D2: add_from_fasta did not follow skip-N semantics "
+            f"(k={k}, canonical={canonical})"
         )
         stats = counter.get_stats()
         assert stats.total_kmers == sum(expected.values())
@@ -1378,8 +1428,8 @@ class TestPyCounterNReadPreFilterParity:
 
     @pytest.mark.parametrize("k", [21, 64])
     @pytest.mark.parametrize("canonical", [False, True])
-    def test_add_sequence_internal_n_keeps_pre_filter_semantics(self, k, canonical):
-        """add_sequence with internal Ns/whitespace matches the same reference."""
+    def test_add_sequence_internal_n_follows_skip_n_semantics(self, k, canonical):
+        """add_sequence with internal Ns/whitespace matches skip-N (D2)."""
         expected = self._reference_counts(self.N_SEQUENCES, k, canonical)
 
         counter = pyrustkmer.PyCounter(k, canonical=canonical, threads=1)
@@ -1387,8 +1437,8 @@ class TestPyCounterNReadPreFilterParity:
             counter.add_sequence(sequence)
 
         assert counter.get_all_counts() == expected, (
-            f"Phase 7 T-07-15: add_sequence adopted skip-N semantics instead "
-            f"of Python's retained pre-filter (k={k}, canonical={canonical})"
+            f"Phase 9 D2: add_sequence did not follow skip-N semantics "
+            f"(k={k}, canonical={canonical})"
         )
         stats = counter.get_stats()
         assert stats.total_kmers == sum(expected.values())
