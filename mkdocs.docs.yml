@@ -78,8 +78,10 @@ nav:
   - Home: index.md
   - Installation: installation.md
   - User Guide:
+      - Overview: user-guide/index.md
       - Quick Start: user-guide/quickstart.md
       - Concepts: user-guide/concepts.md
+      - N-read Semantics: user-guide/n-read-semantics.md
       - Examples: user-guide/examples.md
   - API Reference:
       - Overview: api-reference/overview.md
