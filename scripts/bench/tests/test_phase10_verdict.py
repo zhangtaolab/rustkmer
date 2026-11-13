@@ -18,6 +18,7 @@ Stdlib unittest only — no pytest.
 """
 
 import hashlib
+import inspect
 import json
 import shutil
 import tempfile
@@ -436,6 +437,111 @@ class TestWriteDoc(unittest.TestCase):
         self.addCleanup(shutil.rmtree, str(out.parent), True)
         p10.write_doc(doc, out)
         self.assertEqual(json.loads(out.read_text(encoding="utf-8")), doc)
+
+
+class TestMemoryModel(unittest.TestCase):
+    """The capacity-cliff CLI model and the conservative Python projection.
+
+    The CLI model is validated against three measured RSS points; the Python
+    projection is the measured 86 B/distinct single-call coefficient quoted
+    as the conservative two-call upper bound; the budget gate is inclusive at
+    equality and blocks one byte over.
+    """
+
+    MEASURED_POINTS = (
+        (229_694_874, 12.04e9),   # Phase 8 head-4M
+        (256_606_202, 17.52e9),   # 5M random slice
+        (537_770_176, 35.71e9),   # 20M random probe
+    )
+
+    def test_cli_model_reproduces_measured_points_within_five_percent(self):
+        for distinct, measured in self.MEASURED_POINTS:
+            projected = p10.cli_peak_bytes(distinct)
+            deviation = abs(projected - measured) / measured
+            self.assertLess(
+                deviation, 0.05,
+                f"distinct={distinct}: projected {projected} vs measured "
+                f"{measured} ({deviation:.2%})")
+
+    def test_python_projection_is_exactly_the_measured_coefficient(self):
+        self.assertEqual(p10.python_projection_bytes(1_050_000_000),
+                         86 * 1_050_000_000)
+        self.assertEqual(p10.PYTHON_BYTES_PER_DISTINCT, 86)
+
+    def test_memory_gate_equality_passes_and_one_byte_over_blocks(self):
+        budget = 110 * (1 << 30)
+        ok, detail = p10.memory_gate(budget, budget)
+        self.assertTrue(ok, "equality must pass")
+        self.assertIn("headroom", detail)
+        ok, detail = p10.memory_gate(budget + 1, budget)
+        self.assertFalse(ok, "one byte over must be blocked")
+        self.assertIn("deficit", detail)
+
+    def test_preflight_record_derives_the_decision(self):
+        """No caller can supply the projection or the decision."""
+        params = inspect.signature(p10.preflight_record).parameters
+        self.assertNotIn("projected_bytes", params)
+        self.assertNotIn("decision", params)
+
+        allowed = p10.preflight_record(21, 1_050_000_000, "cli-k21.json",
+                                       "e" * 64)
+        self.assertEqual(allowed["decision"], "PROCEED")
+        self.assertEqual(allowed["projected_bytes"],
+                         p10.python_projection_bytes(1_050_000_000))
+        self.assertEqual(allowed["budget_bytes"], p10.MEMORY_BUDGET_BYTES)
+        self.assertGreaterEqual(allowed["headroom_bytes"], 0)
+
+        blocked = p10.preflight_record(21, 2_000_000_000, "cli-k21.json",
+                                       "e" * 64)
+        self.assertEqual(blocked["decision"], "BLOCKED")
+        self.assertLess(blocked["headroom_bytes"], 0)
+
+
+class TestPreflightStage(unittest.TestCase):
+    """The preflight-python stage reads CLI docs and writes its decision."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+
+    def _cli_docs(self, distinct_by_k):
+        paths = []
+        for k, distinct in distinct_by_k.items():
+            doc = make_doc([make_arm(p10.ARM_RK_T16, "rustkmer", 16, 100.0,
+                                     unique=distinct, total=distinct * 2)],
+                           k=k, session="cli", mode="full")
+            path = self.tmp / f"cli-k{k}.json"
+            path.write_text(json.dumps(doc), encoding="utf-8")
+            paths.append(str(path))
+        return paths
+
+    def _run(self, docs, out):
+        with mock.patch.object(p10, "binary_provenance",
+                               return_value=fake_provenance()):
+            return p10.main(["--stage", "preflight-python",
+                             "--cli-docs", *docs, "--out", str(out)])
+
+    def test_proceed_writes_both_k_records_and_returns_zero(self):
+        docs = self._cli_docs({21: 1_050_000_000, 31: 1_200_000_000})
+        out = self.tmp / "preflight.json"
+        self.assertEqual(self._run(docs, out), p10.EXIT_OK)
+        doc = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(doc["kind"], "phase10-python-preflight")
+        self.assertEqual(doc["overall"], "PROCEED")
+        self.assertEqual({r["k"] for r in doc["records"]}, {21, 31})
+        for record in doc["records"]:
+            self.assertEqual(len(record["distinct_source_sha256"]), 64)
+            self.assertEqual(record["decision"], "PROCEED")
+
+    def test_blocked_projection_still_writes_the_record_and_returns_2(self):
+        docs = self._cli_docs({21: 2_000_000_000, 31: 2_000_000_000})
+        out = self.tmp / "preflight.json"
+        self.assertEqual(self._run(docs, out), p10.EXIT_INVALID)
+        doc = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(doc["overall"], "BLOCKED")
+        self.assertEqual({r["k"] for r in doc["records"]}, {21, 31})
+        for record in doc["records"]:
+            self.assertEqual(record["decision"], "BLOCKED")
 
 
 if __name__ == "__main__":
