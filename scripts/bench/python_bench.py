@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""PROF-04 Python counting benchmark (05-06).
+"""PROF-04 Python counting benchmark (05-06, Phase 9 comparison).
 
-Measures the sequential PyO3 file-counting pipeline
-(pyrustkmer.PyCounter.add_from_fastq, canonical=True, threads=1 — no rayon)
-under the OS-rusage protocol: every rep is a FRESH worker process measured
-via bench.measure([python, __file__, "--worker", ...]) so /usr/bin/time
-wall/RSS covers interpreter startup + extension import + the entire
-sequential count. There is no in-process wall clock anywhere in this file.
+Measures the PyO3 file-counting pipeline
+(pyrustkmer.PyCounter.add_from_fastq, canonical=True) under the OS-rusage
+protocol: every rep is a FRESH worker process measured via
+bench.measure([python, __file__, "--worker", ...]) so /usr/bin/time
+wall/RSS covers interpreter startup + extension import + the entire count.
+There is no in-process wall clock anywhere in this file. Workers accept
+--threads default|N (default "1"): the global rayon pool is first-call-wins,
+so the threads=1 isolation arm and the all-cores default arm must always be
+measured as separate fresh processes, never in one worker.
 
 Slice-mode baselines carry a parity-validated N-free control as the PRIMARY
 comparison basis (comparison_basis: "n-free-control"): the random subslice
@@ -14,12 +17,26 @@ is deterministically filtered into a sibling N-free FASTQ (drop whole
 4-line records whose sequence line contains N or n), CLI and Python counts
 are proven equal on those exact bytes BEFORE timing, and every control rep
 must reproduce those exact counts. Because the control contains no N bytes,
-CLI skip-N and Python strip-and-join semantics produce identical counts on
-it both before and after Phase 9's D2 unification — its exact counts are a
-parity invariant Phase 9 must preserve and its timing is the like-for-like
-win basis. The real-N arm is separately labeled evidence_class
-"timing-only-real-N-pre-D2": its exact counts are a pre-D2 record under
-strip-and-join and WILL change when D2 lands — never a post-D2 parity gate.
+CLI skip-N and Python semantics produce identical counts on it both before
+and after Phase 9's D2 unification — its exact counts are a parity invariant
+Phase 9 must preserve and its timing is the like-for-like win basis. The
+real-N arm is separately labeled timing-only post-D2 evidence: its exact
+counts are post-D2 skip-N values, not comparable to the pre-D2 committed
+baseline, and it is never a parity gate.
+
+--compare-baseline is the Phase 9 dev-host comparison mode. It requires
+slice mode and validates the committed baseline's identity (platform
+flavor, provenance platform, k/canonical, control-fingerprint shape and
+positive exact counts) before provisioning. Before ANY timing it re-proves
+CLI-vs-Python parity on the regenerated N-free control, requires that
+control's exact counts and sha256 to equal the committed baseline's, then
+measures BOTH the threads=1 and default-threads arms as fresh workers. The
+verdict comes only from recorded medians with locked inclusive thresholds:
+speedup_t1 = baseline_t1 / new_t1 must be >= 1.0 (non-regressive) and
+speedup_default = baseline_t1 / new_default must be >= 1.2 (the measured
+win), with no noise band. The artifact is written on PASS and on a genuine
+FAIL; this is dev-host evidence only and adds no CI gate (Phase 10 owns
+CI-class baselines).
 
 The measured extension must be freshly rebuilt from source (pyo3/README.md:
 env -u CONDA_PREFIX VIRTUAL_ENV=... maturin develop --release -m
@@ -32,11 +49,15 @@ measured binary, not the shim). A stale/shadowed module is an INVALID
 benchmark (exit 2), never a pytest-style skip.
 
 Exit codes are a contract:
-  0 — valid measurement (doc written, schema + provenance validated).
-  1 — RESERVED for Phase 9's baseline-comparison mode (never emitted here).
+  0 — valid measurement (doc written, schema + provenance validated) and,
+      in --compare-baseline mode, a PASS verdict.
+  1 — valid measurement whose --compare-baseline verdict is FAIL; the
+      artifact is STILL written with verdict.exit_code == 1. Never emitted
+      by a non-comparison run, never converted into a pass.
   2 — invalid: missing/broken extension import, zero counts, rep-count
       disagreement, shadowed/stale module, control parity mismatch,
-      malformed stats, provisioning or measurement failure.
+      malformed stats, baseline identity/fingerprint/exact-count guard
+      failure, provisioning or measurement failure. No artifact is written.
 
 Stdlib only; pyrustkmer is imported lazily inside the worker only, so the
 unit suite runs without PyO3/NumPy/pytest/the human dataset.
@@ -79,7 +100,7 @@ from scripts.bench.bench import (
 )
 
 EXIT_OK = 0
-EXIT_COMPARISON_RESERVED = 1  # Phase 9 baseline-comparison mode; never used here
+EXIT_COMPARISON_RESERVED = 1  # valid measurement, comparison verdict FAIL (artifact kept)
 EXIT_INVALID = 2
 
 HERE = Path(__file__).resolve().parent
@@ -94,13 +115,18 @@ HOST_CLASS = "dev-host Apple M4 Max (16 cores, 128 GiB)"
 BASELINE_SCOPE = "dev-host-local-comparison"
 COMPARISON_BASIS = "n-free-control"
 N_FREE_FILTER = "drop-records-with-N"
-REAL_N_EVIDENCE_CLASS = "timing-only-real-N-pre-D2"
+REAL_N_EVIDENCE_CLASS = "timing-only-real-N-post-D2"
 REAL_N_SEMANTICS_NOTE = (
-    "exact counts are a pre-D2 record under Python strip-and-join semantics "
-    "and WILL change when Phase 9 lands the D2 skip-N unification — "
-    "timing-only evidence, never a post-D2 parity gate"
+    "exact counts are post-D2 skip-N values, not comparable to the pre-D2 "
+    "committed baseline — timing-only evidence; the N-free control is the "
+    "only comparison basis"
 )
 CONTROL_EVIDENCE_CLASS = "parity-validated-n-free-control"
+# Locked comparison thresholds (inclusive boundaries, no noise band):
+# t1 must be non-regressive against the committed sequential baseline and the
+# default thread configuration must deliver the measured win.
+MIN_SPEEDUP_T1 = 1.0
+MIN_SPEEDUP_DEFAULT = 1.2
 HOST_NOTE = (
     "dev-host capture for Phase 9 same-host comparison; NOT a CI baseline — "
     "CI-class baselines bootstrap from CI runner artifacts "
@@ -112,6 +138,28 @@ def invalid(message):
     """Print an input/infra problem and exit 2 — never a measurement."""
     print(f"python_bench.py: {message}", file=sys.stderr)
     sys.exit(EXIT_INVALID)
+
+
+def parse_threads(text):
+    """Parse a --threads value: "default" -> None (all cores), else int >= 1.
+
+    PyO3's `PyCounter(threads=None)` resolves to all available cores — the
+    CLI's default. Any other value must be a positive integer literal; an
+    invalid configuration is a ValueError (exit 2 upstream), never a silent
+    fallback to 1.
+    """
+    if text == "default":
+        return None
+    if not isinstance(text, str):
+        raise ValueError(f"threads must be 'default' or an integer, got {text!r}")
+    try:
+        value = int(text)
+    except ValueError:
+        raise ValueError(
+            f"threads must be 'default' or an integer >= 1, got {text!r}")
+    if value < 1:
+        raise ValueError(f"threads must be >= 1, got {value}")
+    return value
 
 
 # --- pure helpers (unit-tested without PyO3) --------------------------------
@@ -258,6 +306,126 @@ def parity_counts(cli_stats, python_counts):
             "cli": cli, "python": py, "equal": True}
 
 
+def _control_arm_wall(control, suffix):
+    """The one arm of `control` whose name ends with `suffix`, its wall_s."""
+    arms = control.get("arms") if isinstance(control, dict) else None
+    if not isinstance(arms, list) or not arms:
+        raise ValueError("new doc has no n_free_control.arms list")
+    matches = [a for a in arms
+               if isinstance(a, dict)
+               and str(a.get("name", "")).endswith(suffix)]
+    if len(matches) != 1:
+        names = [a.get("name") for a in arms if isinstance(a, dict)]
+        raise ValueError(
+            f"expected exactly one control arm ending {suffix!r}, found "
+            f"{len(matches)} in {names}")
+    medians = matches[0].get("medians")
+    wall = medians.get("wall_s") if isinstance(medians, dict) else None
+    if (not isinstance(wall, (int, float)) or isinstance(wall, bool)
+            or wall <= 0):
+        raise ValueError(
+            f"control arm {matches[0].get('name')!r}: medians.wall_s must be "
+            f"a positive number, got {wall!r} — no timing observation")
+    return float(wall)
+
+
+def compare_to_baseline(baseline, new_doc):
+    """Locked comparison math: committed control median vs the two new arms.
+
+    `speedup_t1 = baseline_t1 / new_t1` must reach MIN_SPEEDUP_T1 (1.0,
+    non-regressive) and `speedup_default = baseline_t1 / new_default` must
+    reach MIN_SPEEDUP_DEFAULT (1.2, the measured win). Boundaries are
+    inclusive and there is no tolerance band. The verdict is computed only
+    from the recorded medians; missing/ambiguous arms are a ValueError
+    (exit 2 upstream), never a fabricated verdict.
+    """
+    control = baseline.get("n_free_control") if isinstance(baseline, dict) else None
+    arms = control.get("arms") if isinstance(control, dict) else None
+    if not isinstance(arms, list) or not arms:
+        raise ValueError("baseline has no n_free_control.arms")
+    medians = arms[0].get("medians") if isinstance(arms[0], dict) else None
+    baseline_t1 = medians.get("wall_s") if isinstance(medians, dict) else None
+    if (not isinstance(baseline_t1, (int, float))
+            or isinstance(baseline_t1, bool) or baseline_t1 <= 0):
+        raise ValueError(
+            f"baseline n_free_control.arms[0].medians.wall_s must be a "
+            f"positive number, got {baseline_t1!r}")
+    baseline_t1 = float(baseline_t1)
+
+    new_control = new_doc.get("n_free_control") if isinstance(new_doc, dict) else None
+    new_t1 = _control_arm_wall(new_control, "-n-free-control-t1")
+    new_default = _control_arm_wall(new_control, "-n-free-control-tdefault")
+
+    speedup_t1 = baseline_t1 / new_t1
+    speedup_default = baseline_t1 / new_default
+    passed = (speedup_t1 >= MIN_SPEEDUP_T1
+              and speedup_default >= MIN_SPEEDUP_DEFAULT)
+    return {
+        "baseline_wall_s": baseline_t1,
+        "new_t1_wall_s": new_t1,
+        "new_default_wall_s": new_default,
+        "speedup_t1": speedup_t1,
+        "speedup_default": speedup_default,
+        "min_speedup_t1": MIN_SPEEDUP_T1,
+        "min_speedup_default": MIN_SPEEDUP_DEFAULT,
+        "result": "PASS" if passed else "FAIL",
+    }
+
+
+def validate_baseline_identity(baseline, expected_flavor, host_platform, k,
+                               canonical):
+    """Reject a baseline captured on another host/configuration (exit 2).
+
+    A dev-host baseline is only comparable to a run with the same platform
+    flavor, provenance platform, k, canonical setting, control fingerprint
+    presence, and positive exact counts. No absolute numbers are hard-coded
+    here — the committed baseline file is the source of truth.
+    """
+    if not isinstance(baseline, dict):
+        raise ValueError("baseline must be a JSON object")
+    if baseline.get("platform") != expected_flavor:
+        raise ValueError(
+            f"baseline platform {baseline.get('platform')!r} != "
+            f"{expected_flavor!r} — absolute numbers never cross platforms")
+    provenance = baseline.get("provenance")
+    prov_platform = (provenance.get("platform")
+                     if isinstance(provenance, dict) else None)
+    if prov_platform != host_platform:
+        raise ValueError(
+            f"baseline provenance.platform {prov_platform!r} != "
+            f"{host_platform!r} — cross-host comparison is invalid")
+    params = baseline.get("params")
+    if not isinstance(params, dict):
+        raise ValueError("baseline has no params block")
+    if params.get("k") != k:
+        raise ValueError(
+            f"baseline k {params.get('k')!r} != {k!r}")
+    if params.get("canonical") is not canonical:
+        raise ValueError(
+            f"baseline canonical {params.get('canonical')!r} != "
+            f"{canonical!r}")
+    control = baseline.get("n_free_control")
+    if not isinstance(control, dict):
+        raise ValueError("baseline has no n_free_control block")
+    fingerprint_block = control.get("input_fingerprint")
+    sha = (fingerprint_block.get("sha256")
+           if isinstance(fingerprint_block, dict) else None)
+    if not isinstance(sha, str) or not sha.strip():
+        raise ValueError(
+            "baseline n_free_control.input_fingerprint.sha256 must be a "
+            "non-empty string")
+    exact = control.get("exact_counts")
+    if not isinstance(exact, dict):
+        raise ValueError("baseline has no n_free_control.exact_counts block")
+    for key in ("total_kmers", "unique_kmers"):
+        value = exact.get(key)
+        if (not isinstance(value, int) or isinstance(value, bool)
+                or value <= 0):
+            raise ValueError(
+                f"baseline n_free_control.exact_counts.{key} must be a "
+                f"positive integer, got {value!r}")
+
+
 def build_baseline(doc, control_block, flavor):
     """Assemble the dev-host baseline envelope from a validated run doc.
 
@@ -396,7 +564,8 @@ def _native_module_file(mod):
 
 
 def run_worker(args):
-    """One fresh-process sequential count; stats to --stats-out AND stdout."""
+    """One fresh-process count; stats to --stats-out AND stdout."""
+    threads = parse_threads(args.threads)
     try:
         import pyrustkmer
     except Exception as exc:
@@ -408,12 +577,13 @@ def run_worker(args):
             f"--release -m pyo3/Cargo.toml", file=sys.stderr)
         return EXIT_INVALID
     module_path = _native_module_file(pyrustkmer)
-    counter = pyrustkmer.PyCounter(args.k, canonical=True, threads=1)
+    counter = pyrustkmer.PyCounter(args.k, canonical=True, threads=threads)
     counter.add_from_fastq(str(args.input))
     st = counter.get_stats()
     payload = {
         "total_kmers": int(st.total_kmers),
         "unique_kmers": int(st.unique_kmers),
+        "threads": args.threads,
         "module_path": str(module_path),
         "module_mtime": os.path.getmtime(module_path),
         "python_version": platform.python_version(),
@@ -428,17 +598,21 @@ def run_worker(args):
 # --- controller --------------------------------------------------------------
 
 def measure_arm(args, info, input_path, scratch, arm_name, gap,
-                expected_counts=None):
+                expected_counts=None, threads_text="1"):
     """One discarded warmup + --reps fresh-worker measured reps on one input.
 
     Every run's wall/RSS comes from bench.measure of a FRESH worker process
-    (OS rusage — never an in-process clock). After each run the stats file
-    is validated (nonzero counts, module under site-packages) and the EXACT
-    counts are persisted in the rep record. Returns (arm_dict, exact_counts).
+    (OS rusage — never an in-process clock). Each worker gets its own
+    --threads value (`default|N`): the global rayon pool is first-call-wins,
+    so one worker process can only ever measure one thread configuration.
+    After each run the stats file is validated (nonzero counts, module under
+    site-packages) and the EXACT counts are persisted in the rep record.
+    Returns (arm_dict, exact_counts).
     """
     stats_path = scratch / f"{arm_name}.stats.json"
     worker_argv = [str(args.python), str(THIS_FILE), "--worker",
                    "--input", str(input_path), "--k", str(args.k),
+                   "--threads", str(threads_text),
                    "--stats-out", str(stats_path)]
 
     def one_run():
@@ -469,10 +643,13 @@ def measure_arm(args, info, input_path, scratch, arm_name, gap,
         gap()
     exact = check_rep_identity(reps, expected=pin)
     reduced = reduce_arm(reps)
+    threads_value = parse_threads(threads_text)
     arm = {
         "name": arm_name,
         "tool": "pyrustkmer",
-        "threads": 1,
+        # "default" records the all-cores configuration; a concrete int is
+        # the identical --threads value the workers were given. Never null.
+        "threads": "default" if threads_value is None else threads_value,
         "reps": reps,
         "medians": {
             "wall_s": reduced["median_wall_s"],
@@ -524,10 +701,24 @@ def run_controller(args):
                 f"--emit-baseline filename must be {expected_name} on this "
                 f"platform (got {Path(args.emit_baseline).name}) — absolute "
                 f"numbers never cross platforms")
+    if args.compare_baseline is not None:
+        if args.mode != "slice":
+            raise ValueError(
+                "--compare-baseline requires --mode slice — the N-free "
+                "control of a real random subslice is the only comparison "
+                "basis")
+        if args.emit_baseline is not None:
+            raise ValueError(
+                "--emit-baseline and --compare-baseline are mutually "
+                "exclusive — a comparison run never re-pins a baseline")
+        if not Path(args.compare_baseline).is_file():
+            raise ValueError(
+                f"--compare-baseline file not found: {args.compare_baseline}")
     if args.reps < 1:
         raise ValueError(f"--reps must be >= 1, got {args.reps}")
     if not 1 <= args.k <= 64:
         raise ValueError(f"--k must be in 1..64, got {args.k}")
+    threads_value = parse_threads(args.threads)
     if not Path(args.python).is_file():
         raise ValueError(f"--python interpreter not found: {args.python}")
     if args.mode == "slice":
@@ -548,7 +739,8 @@ def run_controller(args):
 
     # Cooldown accounting across EVERY run (warmups + measured reps, plus
     # the slice mode's extra parity warmup), so the thermal gap separates
-    # runs but never trails the last one.
+    # runs but never trails the last one. Compare mode measures two control
+    # arms (t1 + default) — the same two-arm shape as slice mode.
     runs_per_arm = 1 + args.reps
     total_runs = runs_per_arm * (2 if args.mode == "slice" else 1)
     if args.mode == "slice":
@@ -563,12 +755,17 @@ def run_controller(args):
 
     selection_manifest = None
     control_block = None
+    baseline = None
+    comparison = None
+    exit_code = EXIT_OK
+    compare = args.compare_baseline is not None
     if args.mode == "synthetic":
         input_path = scratch / "inputA.fq"
         generate_synthetic_input(args.reads, SYNTHETIC_LENGTH, SEED_A,
                                  input_path)
         arm, _ = measure_arm(args, info, input_path, scratch,
-                             f"py{args.k}-synthetic-t1", gap)
+                             f"py{args.k}-synthetic-t1", gap,
+                             threads_text=args.threads)
         arm["evidence_class"] = "synthetic-smoke"
         arms = [arm]
     else:
@@ -582,6 +779,12 @@ def run_controller(args):
         # --- parity-validated N-free control (primary comparison basis) ---
         control_path = scratch / "slice-nfree-control.fq"
         filter_counts = filter_n_free(input_path, control_path)
+        if compare:
+            with open(args.compare_baseline, encoding="utf-8") as fh:
+                baseline = json.load(fh)
+            validate_baseline_identity(
+                baseline, flavor, f"{sys.platform}-{platform.machine()}",
+                args.k, True)
         control_name = f"py{args.k}-n-free-control-t1"
         # The control's discarded warmup doubles as the Python side of the
         # pre-timing parity gate (thread_scaling's warmup-as-parity pattern).
@@ -606,33 +809,81 @@ def run_controller(args):
               f"(kept={filter_counts['kept_reads']} "
               f"dropped={filter_counts['dropped_reads']})")
 
-        control_arm, control_exact = measure_arm(
-            args, info, control_path, scratch, control_name, gap,
-            expected_counts=warmup_counts)
-        control_arm["evidence_class"] = CONTROL_EVIDENCE_CLASS
-        control_block = {
-            "input_fingerprint": fingerprint(control_path),
-            "source_selection_manifest": selection_manifest,
-            "kept_reads": filter_counts["kept_reads"],
-            "dropped_reads": filter_counts["dropped_reads"],
-            "filter": N_FREE_FILTER,
-            "parity_control": parity,
-            "exact_counts": control_exact,
-            "arms": [control_arm],
-            "cli_provenance": binary_provenance(args.rustkmer, "release"),
-        }
+        if compare:
+            # Pre-timing identity: the regenerated control must reproduce the
+            # committed baseline's exact counts AND its fingerprint. Either
+            # mismatch is an invalid measurement (exit 2), never a verdict.
+            expected_exact = baseline["n_free_control"]["exact_counts"]
+            if (warmup_counts["total_kmers"] != expected_exact["total_kmers"]
+                    or warmup_counts["unique_kmers"]
+                    != expected_exact["unique_kmers"]):
+                raise ValueError(
+                    f"control exact counts {warmup_counts} differ from the "
+                    f"committed baseline {expected_exact} — the N-free "
+                    f"control's counts are a parity invariant post-D2 "
+                    f"Python counting must preserve")
+            control_fp = fingerprint(control_path)["sha256"]
+            baseline_fp = baseline["n_free_control"]["input_fingerprint"]["sha256"]
+            if control_fp != baseline_fp:
+                raise ValueError(
+                    f"regenerated control fingerprint {control_fp} differs "
+                    f"from the committed baseline {baseline_fp} — "
+                    f"deterministic provisioning or the source input changed")
 
-        # --- real-N arm: timing-only pre-D2 evidence ---
-        arm, _ = measure_arm(args, info, input_path, scratch,
-                             f"py{args.k}-real-n-t1", gap)
-        arm["evidence_class"] = REAL_N_EVIDENCE_CLASS
-        arm["semantics_note"] = REAL_N_SEMANTICS_NOTE
-        arms = [arm]
+        if compare:
+            control_arm, control_exact = measure_arm(
+                args, info, control_path, scratch, control_name, gap,
+                expected_counts=warmup_counts, threads_text="1")
+            control_arm["evidence_class"] = CONTROL_EVIDENCE_CLASS
+            default_name = f"py{args.k}-n-free-control-tdefault"
+            default_arm, _ = measure_arm(
+                args, info, control_path, scratch, default_name, gap,
+                expected_counts=warmup_counts, threads_text="default")
+            default_arm["evidence_class"] = CONTROL_EVIDENCE_CLASS
+            control_block = {
+                "input_fingerprint": fingerprint(control_path),
+                "source_selection_manifest": selection_manifest,
+                "kept_reads": filter_counts["kept_reads"],
+                "dropped_reads": filter_counts["dropped_reads"],
+                "filter": N_FREE_FILTER,
+                "parity_control": parity,
+                "exact_counts": control_exact,
+                "arms": [control_arm, default_arm],
+                "cli_provenance": binary_provenance(args.rustkmer, "release"),
+            }
+            arms = [control_arm, default_arm]
+        else:
+            control_arm, control_exact = measure_arm(
+                args, info, control_path, scratch, control_name, gap,
+                expected_counts=warmup_counts, threads_text=args.threads)
+            control_arm["evidence_class"] = CONTROL_EVIDENCE_CLASS
+            control_block = {
+                "input_fingerprint": fingerprint(control_path),
+                "source_selection_manifest": selection_manifest,
+                "kept_reads": filter_counts["kept_reads"],
+                "dropped_reads": filter_counts["dropped_reads"],
+                "filter": N_FREE_FILTER,
+                "parity_control": parity,
+                "exact_counts": control_exact,
+                "arms": [control_arm],
+                "cli_provenance": binary_provenance(args.rustkmer, "release"),
+            }
+
+            # --- real-N arm: timing-only post-D2 evidence ---
+            arm, _ = measure_arm(args, info, input_path, scratch,
+                                 f"py{args.k}-real-n-t1", gap,
+                                 threads_text=args.threads)
+            arm["evidence_class"] = REAL_N_EVIDENCE_CLASS
+            arm["semantics_note"] = REAL_N_SEMANTICS_NOTE
+            arms = [arm]
 
     params = {
         "k": args.k,
         "canonical": True,
-        "threads": 1,
+        # Compare mode's baseline-comparable arm is threads=1; otherwise the
+        # controller's own --threads value is recorded honestly.
+        "threads": 1 if compare else (
+            "default" if threads_value is None else threads_value),
         "reps": args.reps,
         "cooldown_s": args.cooldown_s,
         "python": str(args.python),
@@ -644,10 +895,13 @@ def run_controller(args):
         params["slice_reads"] = args.slice_reads
         params["slice_seed"] = args.slice_seed
         params["input"] = str(args.input)
+    if compare:
+        params["threads_default"] = "default"
+        params["compare_baseline"] = str(args.compare_baseline)
 
     doc = {
         "schema_version": SCHEMA_VERSION,
-        "mode": args.mode,
+        "mode": "compare-baseline" if compare else args.mode,
         "params": params,
         "platform": {
             "system": system,
@@ -664,31 +918,59 @@ def run_controller(args):
         doc["selection_manifest"] = selection_manifest
     if control_block is not None:
         doc["n_free_control"] = control_block
+    if compare:
+        comparison = compare_to_baseline(baseline, doc)
+        exit_code = (EXIT_OK if comparison["result"] == "PASS"
+                     else EXIT_COMPARISON_RESERVED)
+        doc["comparison"] = comparison
+        doc["verdict"] = {"result": comparison["result"],
+                          "exit_code": exit_code}
+        doc["baseline"] = {
+            "path": str(args.compare_baseline),
+            "sha256": fingerprint(args.compare_baseline)["sha256"],
+            "created": baseline.get("created"),
+            "host_class": baseline.get("host_class"),
+            "comparison_basis": baseline.get("comparison_basis"),
+            "control_wall_s": comparison["baseline_wall_s"],
+            "exact_counts": baseline["n_free_control"]["exact_counts"],
+        }
+    # Exit 2 paths never reach this write: every guard above raises first.
+    # PASS and a genuine FAIL both land here — a FAIL keeps its artifact.
     write_json(doc, out_path)
     print(f"results written to {out_path}")
 
     if args.emit_baseline is not None:
-        baseline = build_baseline(doc, control_block, flavor)
-        write_json(baseline, args.emit_baseline)
+        baseline_doc = build_baseline(doc, control_block, flavor)
+        write_json(baseline_doc, args.emit_baseline)
         print(f"dev-host baseline written to {args.emit_baseline} "
               f"(scope={BASELINE_SCOPE}, basis={COMPARISON_BASIS})")
 
     for arm in arms:
         print(f"{arm['name']}: median wall {arm['medians']['wall_s']:.3f}s "
               f"unique={arm['unique_kmers']} total={arm['total_kmers']}")
-    return EXIT_OK
+    if compare:
+        print(f"COMPARISON VERDICT result={comparison['result']} "
+              f"speedup_t1={comparison['speedup_t1']!r} "
+              f"speedup_default={comparison['speedup_default']!r} "
+              f"min_speedup_t1={comparison['min_speedup_t1']!r} "
+              f"min_speedup_default={comparison['min_speedup_default']!r}")
+    return exit_code
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="PROF-04 sequential PyO3 counting benchmark "
-                    "(fresh-worker OS-rusage protocol).")
+        description="PROF-04 PyO3 counting benchmark (fresh-worker OS-rusage "
+                    "protocol); --compare-baseline adds the Phase 9 dev-host "
+                    "baseline verdict with the 0/1/2 exit contract.")
     parser.add_argument("--worker", action="store_true",
                         help="internal: run one fresh-process count")
     parser.add_argument("--input",
                         help="worker: plain FASTQ; controller: gz source")
     parser.add_argument("--k", type=int, default=21)
     parser.add_argument("--stats-out", help="worker: stats JSON destination")
+    parser.add_argument("--threads", default="1", type=str,
+                        help="worker/arm thread count: 'default' (all "
+                             "cores) or an integer >= 1")
     parser.add_argument("--python", default=str(DEFAULT_PYTHON),
                         help="interpreter with the freshly built extension")
     parser.add_argument("--mode", choices=("synthetic", "slice"),
@@ -704,6 +986,11 @@ def main(argv=None):
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--emit-baseline",
                         help="slice-mode: also write the dev-host baseline")
+    parser.add_argument("--compare-baseline",
+                        help="slice-mode: compare the N-free control medians "
+                             "against a committed dev-host baseline "
+                             "(exit 0 PASS, 1 valid FAIL with artifact, "
+                             "2 invalid)")
     args = parser.parse_args(argv)
 
     if args.worker:
