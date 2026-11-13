@@ -494,25 +494,25 @@ MAC_FOOTPRINT = re.compile(r"^\s*(\d+)\s+peak memory footprint\s*$")  # bytes
 
 ## Open Questions
 
-1. **What happens if the preflight projects the Python arm over budget?**
+1. **What happens if the preflight projects the Python arm over budget?** (RESOLVED — CONTEXT post-research decision "Python OOM is a hard gate with a user stop"; the three options are carried verbatim in Plan 10-04 task 1 and are the user's to choose)
    - What we know: the single-call coefficient is 86 B/distinct; the two-call model projects ~80–95 GB at D_union 1.05–1.2 B, with an OOM cliff near D_union ≈ 1.4–1.6 B. The CLI both-parts run measures D_union exactly before the Python arm starts.
    - What's unclear: whether the user would accept a scoped memory change or a non-full Python measurement if the projection exceeds the budget.
    - Recommendation: make the preflight a hard gate. If over budget, STOP and return an explicit user decision with three options: (a) record the Python full-scale verdict as BLOCKED by RAM (honest, no artifact claiming full scale); (b) authorize a scoped `CountResult::merge_into` drain change (drops the peak toward ~T(D_part)+DashMap(D), but does not eliminate the DashMap cost); (c) accept a single-part Python measurement explicitly labeled NOT full-scale. Do not silently choose any of these.
 
-2. **Is the t1 arm CLI-only, and how many reps?**
+2. **Is the t1 arm CLI-only, and how many reps?** (RESOLVED — CONTEXT post-research decision "The `t1` arm is CLI-only"; the locked 3-rep protocol applies to it, Plans 10-01/10-03 run it, and the verdict filter `threads == 16` excludes it)
    - What we know: CONTEXT says "jellyfish `-t 16`, rustkmer `--threads 16`. A `t1` arm is recorded alongside as scaling evidence." The 3-rep protocol is locked; t1 arms are excluded from the acceptance rule (otherwise a t1 run is compared against a t16 jellyfish run).
    - What's unclear: whether Python t1 is required (cost ~63 min/k at 3 reps) and whether t1 arms need all 3 reps.
    - Recommendation: CLI t1 only, 3 reps if the ~6 h total is acceptable; otherwise declare t1 evidence-grade with 1 measured rep in the plan (a surfaced decision, not a silent reduction). The verdict must filter `threads == 16`.
 
-3. **Extend `bench.py` or add a Phase-10 driver?**
+3. **Extend `bench.py` or add a Phase-10 driver?** (RESOLVED — Claude's Discretion plus Plan 10-01/10-02: a new `scripts/bench/phase10.py` controller; `bench.py` receives only the `parse_time_output` extension, and its v1.0 renderer/tests stay byte-identical)
    - What we know: `bench.py` already has the protocol, parity, provenance, disk guard, and renderer; its renderer is v1.0-specific and its v1.0 tests pin byte-identical output.
    - Recommendation: extend `bench.py` with new arm construction and a separate Phase-10 render function, leaving the v1.0 renderer and its tests untouched. Add `scripts/bench/tests/test_phase10_verdict.py` (Wave 0).
 
-4. **Which artifacts should be retained?**
+4. **Which artifacts should be retained?** (RESOLVED — Plans 10-02/10-03: record each `.rkdb`/`.jf` sha256 in the evidence, then delete the scratch databases after stats and shas are captured; nothing under `/tmp` is committed and the verdict never depends on the DBs)
    - What we know: `.rkdb` ≈ 20 B/distinct, `.jf` ≈ 10–12 B/distinct; both k values retained ≈ 70 GB; 242 GiB free.
    - Recommendation: record sha256 of each DB in the evidence, keep the k=21 pair (or neither) and delete the rest; never let scratch grow unbounded. The verdict artifact must not depend on the DBs after stats are captured.
 
-5. **Does the Phase-10 report replace `docs/benchmark-report.md`?**
+5. **Does the Phase-10 report replace `docs/benchmark-report.md`?** (RESOLVED — Plan 10-02 prohibitions and Plan 10-04: the phase renders a phase-local `10-BENCHMARK-REPORT.md`; `docs/benchmark-report.md` and the v1.0 renderer are never touched)
    - What we know: that file is the v1.0 milestone report (CRR2044018 substitute, k=31 headline) and its renderer is byte-identity-tested.
    - Recommendation: write a phase-local `10-BENCHMARK-REPORT.md`; do not overwrite the v1.0 report. If the project wants a v2 report in `docs/`, render it separately and state the provenance.
 
@@ -566,7 +566,7 @@ MAC_FOOTPRINT = re.compile(r"^\s*(\d+)\s+peak memory footprint\s*$")  # bytes
 | BENCH-V2-02 | Python full worker: two `add_from_fastq` calls accumulate exactly; stats validated; zero counts rejected | unit + integration | `python3 -m unittest scripts.bench.tests.test_python_full_arm` | ❌ Wave 0 |
 | BENCH-V2-02 | `max(rss, phys_footprint)` parsing (both lines; pipeline vs direct child) | unit (fixtures) | `python3 -m unittest scripts.bench.tests.test_time_parser` | ✅ extend existing |
 | BENCH-V2-02 | Report carries provenance, cache census, KMC3 descope, dev-host statement; re-render byte-identical | unit | `python3 -m unittest scripts.bench.tests.test_phase10_verdict.TestReport` | ❌ Wave 0 |
-| BENCH-V2-02 | Full k=21/k=31 verdict from recorded medians | manual-only (dev host; ~4–6 h) — the artifact IS the evidence | `python3 scripts/bench/bench.py --mode full --phase10 --input <dir> --k 21 ...` then `--k 31` | ❌ by design (milestone artifact) |
+| BENCH-V2-02 | Full k=21/k=31 verdict from recorded medians | manual-only (dev host; ~4–6 h) — the artifact IS the evidence | `python3 scripts/bench/phase10.py --stage cli --k 21 ...` and `--stage python --k 21 ...`, then the same at `--k 31`, then `--stage render ...` | ❌ by design (milestone artifact) |
 | BENCH-V2-02 | No CI baseline modified | repository check | `git status --porcelain scripts/bench/baselines/` → empty; `git diff --name-only -- scripts/bench/baselines/` → empty | ✅ existing |
 | BENCH-V2-02 | Provenance on every artifact | unit + artifact check | `validate_provenance` runs before write (`bench.py` `run_bench` pre-write validation; `python_bench.py` `write_json` at :756-765); the Phase-10 doc adds `provenance.python_module` | ✅ extend |
 | BENCH-V2-02 | KMC3 descoped, not silently omitted | unit (report text) + REQUIREMENTS.md | assert the rendered report contains the descope sentence; `grep -c "DESCOPED" .planning/REQUIREMENTS.md` = 1 | ✅ requirement text, ❌ report test (Wave 0) |
