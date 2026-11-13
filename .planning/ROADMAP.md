@@ -128,7 +128,13 @@ Plans:
   2. Every parallel/blocking PyO3 path uses `py.detach` with owned Send captures (no GIL deadlock under concurrent use); the extension is rebuilt (`maturin develop --release`) and version-asserted before every pytest run (stale `.so` shadowing is a known trap).
   3. Python output on N-containing reads matches the CLI skip-N semantics (D2): the PROF-05 differential re-run shows the chimeric-k-mer divergence eliminated, and the user-visible output change is documented — never silent (WR-04 precedent).
   4. The Python benchmark shows a measured wall-clock win against the committed Phase 5 sequential baseline, recorded with parity-before-timing and module provenance.
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+- [ ] 09-01-PLAN.md — Tracer: PyCounter through the shared engine, D2 raw-byte skip-N, `__version__` tripwire
+- [ ] 09-02-PLAN.md — `save_database` one parallel sort + sorted-input constructor + GIL release + byte identity
+- [ ] 09-03-PLAN.md — Dual-thread `--compare-baseline` verdict harness + unit suite + bench README
+- [ ] 09-04-PLAN.md — N-read differential `--previous` before/after + D2 docs page + README migration note
+- [ ] 09-05-PLAN.md — Final measured gates (unified differential, baseline comparison) + full battery evidence
 **Research flag**: none — the v1.0 shared-entry merge precedent (`merge_databases_to_path`) is the template; PyO3 detach patterns are in-repo.
 
 ### Phase 10: Benchmark Verdict
@@ -171,7 +177,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → (11 only i
 | 6. Parallelism Correctness & Hot Path | v2.0 | 5/5 | Complete    | 2026-11-12 |
 | 7. Shared Counting Engine | v2.0 | 4/4 | Complete    | 2026-11-13 |
 | 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 4/4 | Complete    | 2026-11-13 |
-| 9. Python Parity | v2.0 | 0/TBD | Not started | - |
+| 9. Python Parity | v2.0 | 0/5 | Planned | - |
 | 10. Benchmark Verdict | v2.0 | 0/TBD | Not started | - |
 | 11. Minimizer Partitioning & Memory Ceiling | v2.0 | 0/TBD | Not started (conditional — D3) | - |
 

@@ -1,0 +1,1 @@
+No external API integration: the detector matched the word "API" in "the public `PyCounter` API is frozen" — that is rustkmer's own in-tree Python surface, not an external service. This phase rewires the in-tree PyO3 wrapper onto the in-tree `rustkmer::count::CountEngine` and the in-tree `.rkdb` writer; it introduces no SDK, HTTP client, endpoint, or third-party service.
