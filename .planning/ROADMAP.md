@@ -152,17 +152,16 @@ Plans:
   3. The acceptance question is answered by measurement: rustkmer matches or beats jellyfish at k=21 (and k=31 under fair, matched-hash comparison). A YES closes BENCH-02 outright; a NO is recorded honestly and feeds the D3 trigger decision for Phase 11.
   4. CI baselines are regenerated only from the CI runner class; every verdict artifact carries binary/module provenance; the report states cold-cache limitations honestly (no-sudo warm-cache reality recorded, as in v1.0). Phase 10 records dev-host evidence only and writes no CI baseline.
 **Plans**: 4 plans
-
 **Wave 1**
 - [ ] 10-01-PLAN.md — Phase-10 controller tracer (four arms, both parts), `max(rss, footprint)` parser, memory projection model
 
-**Wave 2**
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 10-02-PLAN.md — Production `py-t16` arm, mechanical Phase-10 renderer with mandatory statements, slice-gate record with reference sha256 pin
 
-**Wave 3**
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 10-03-PLAN.md — Slice gate on the real dataset, CLI full-scale k=21 and k=31, Checkpoint 1 (blocking user decision)
 
-**Wave 4**
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 10-04-PLAN.md — Python memory preflight, Python full-scale sessions, verdict computed from recorded medians + Checkpoint 2 report
 
 **Research**: complete — `10-RESEARCH.md` (tool mechanics and harness seams verified locally; full-scale walls/RSS are labeled extrapolations converted to measurements by this phase's own preflight).
