@@ -1027,5 +1027,46 @@ class TestRealWorkerIntegration(unittest.TestCase):
             self.assertGreater(arm["unique_kmers"], 0)
 
 
+class TestWorkerArgumentGate(unittest.TestCase):
+    """The Phase-10 worker argv must reach run_worker unflattened.
+
+    The pre-Phase-10 gate rejected every invocation without `--input`; the
+    both-parts arm passes repeatable `--inputs` flags instead, so the gate
+    must accept that shape while still rejecting a worker with no input
+    source and no stats destination.
+    """
+
+    def test_repeatable_inputs_reach_run_worker(self):
+        p1 = "/data/part_001.fq.gz"
+        p2 = "/data/part_006.fq.gz"
+        stats_out = "/tmp/phase10/worker.stats.json"
+        with mock.patch.object(pb, "run_worker", return_value=0) as worker:
+            rc = pb.main(["--worker", "--inputs", p1, "--inputs", p2,
+                          "--k", "21", "--threads", "16",
+                          "--stats-out", stats_out])
+        self.assertEqual(rc, 0)
+        args = worker.call_args[0][0]
+        self.assertEqual(args.inputs, [p1, p2])
+        self.assertIsNone(args.input)
+
+    def test_worker_without_input_source_exits_2(self):
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            with mock.patch.object(pb, "run_worker") as worker:
+                with self.assertRaises(SystemExit) as caught:
+                    pb.main(["--worker", "--k", "21",
+                             "--stats-out", "/tmp/x.stats.json"])
+        self.assertEqual(caught.exception.code, pb.EXIT_INVALID)
+        self.assertIn("--inputs", err.getvalue())
+        worker.assert_not_called()
+
+    def test_worker_without_stats_out_exits_2(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with mock.patch.object(pb, "run_worker") as worker:
+                with self.assertRaises(SystemExit) as caught:
+                    pb.main(["--worker", "--inputs", "/data/part_001.fq.gz"])
+        self.assertEqual(caught.exception.code, pb.EXIT_INVALID)
+        worker.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
