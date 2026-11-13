@@ -672,6 +672,84 @@ impl RKDatabase {
         })
     }
 
+    /// Create an `RKDatabase` from k-mer pairs whose ascending order the
+    /// CALLER has already proven.
+    ///
+    /// This is the sorted-input sibling of [`Self::from_kmer_pairs`]: it
+    /// imports the pairs as [`KmerEntry`] values in the order given and marks
+    /// the header `sorted: true` **without performing any sort**. The caller
+    /// owns the ordering proof — this constructor neither checks nor repairs
+    /// the order it receives. It exists so a writer that has just sorted its
+    /// pairs (for example with `rayon::par_sort_unstable_by_key`) can hand
+    /// them to the single frozen header/entry writer without paying for a
+    /// second sort. It is the bridge used by the PyO3 `save_database` path.
+    ///
+    /// The returned shape matches [`Self::from_kmer_pairs`] exactly: same
+    /// header literal (`data_offset: 42`, `index_offset: 0`), the same
+    /// `total_kmers` meaning (the RECORD COUNT, i.e. `entries.len()`, per
+    /// IN-03 — **not** the sum of the counts), and the same entry vector.
+    ///
+    /// # Arguments
+    /// * `kmer_pairs` - Encoded k-mer/count pairs in ascending key order
+    /// * `kmer_size` - K-mer length stored in the header
+    /// * `canonical` - Whether canonical k-mers were counted
+    ///
+    /// # Returns
+    /// A database whose header claims `sorted: true` and whose entries are the
+    /// input pairs, unchanged and in caller order.
+    ///
+    /// # Panics
+    /// In debug builds only, panics if the input keys are not non-decreasing.
+    /// In release builds the ordering is a pure caller contract.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use rustkmer::database::format::RKDatabase;
+    ///
+    /// let mut pairs = vec![(2u128, 3u32), (5, 1), (9, 7)];
+    /// pairs.sort_by_key(|&(kmer, _)| kmer);
+    /// let db = RKDatabase::from_sorted_kmer_pairs(pairs, 21, true)?;
+    /// assert!(db.header.sorted);
+    /// # Ok::<(), rustkmer::error::ProcessingError>(())
+    /// ```
+    pub fn from_sorted_kmer_pairs(
+        kmer_pairs: Vec<(u128, u32)>,
+        kmer_size: u8,
+        canonical: bool,
+    ) -> crate::error::ProcessingResult<Self> {
+        // The caller owns the ordering proof. This assertion documents the
+        // contract and catches a broken caller in debug builds; it is compiled
+        // out in release, where the byte-equality tests are the gate.
+        debug_assert!(
+            kmer_pairs.windows(2).all(|pair| pair[0].0 <= pair[1].0),
+            "from_sorted_kmer_pairs requires caller-proven ascending order"
+        );
+
+        let entries: Vec<KmerEntry> = kmer_pairs
+            .into_iter()
+            .map(|(kmer, count)| KmerEntry::new(kmer, count))
+            .collect();
+
+        let header = DatabaseHeader {
+            magic: *crate::database::format::DATABASE_MAGIC,
+            version: crate::database::format::DATABASE_VERSION,
+            kmer_size,
+            total_kmers: entries.len() as u64,
+            canonical,
+            sorted: true,
+            data_offset: 42, // Standard header size for version 2
+            index_offset: 0,
+            unique_kmers: entries.len() as u64,
+            file_size: 0, // Will be calculated when writing
+        };
+
+        Ok(Self {
+            header,
+            entries,
+            file_path: None,
+        })
+    }
+
     /// Save database to file path
     pub fn to_file_path(&self, path: &std::path::Path) -> crate::error::ProcessingResult<()> {
         self.write_to_file(path)?;

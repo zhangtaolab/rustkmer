@@ -449,6 +449,13 @@ impl PyCounter {
     /// # Notes
     /// - Creates a sorted RKDB database for fast querying
     /// - Uses canonical k-mer encoding if enabled
+    /// - Sorts the k-mer snapshot exactly once with an in-place parallel
+    ///   unstable sort, then writes through the single frozen `.rkdb` v2
+    ///   header/entry writer — no second sort
+    /// - The whole sort + write runs with the GIL released, so other Python
+    ///   threads keep running during a large save (Phase 9, PY-01)
+    /// - The emitted bytes are identical to the CLI `count` output for the
+    ///   same input and thread-count independent
     /// - Database can be loaded using rustkmer.Database
     ///
     /// # Raises
@@ -462,50 +469,27 @@ impl PyCounter {
     /// from pyrustkmer import PyDatabase, LoadMode
     /// db = PyDatabase("output.rkdb", LoadMode.Preload)
     /// ```
-    fn save_database(&self, file_path: &Bound<'_, pyo3::types::PyString>) -> PyResult<()> {
-        use rustkmer::database::format::{DatabaseHeader, RKDatabase};
-        use std::fs::File;
-        use std::io::BufWriter;
+    fn save_database(
+        &self,
+        py: Python<'_>,
+        file_path: &Bound<'_, pyo3::types::PyString>,
+    ) -> PyResult<()> {
+        // CRITICAL (T-02-11 / Pitfall 4): extract ALL Python arguments into
+        // owned, `Send` Rust types BEFORE entering the detach closure. The
+        // closure cannot capture `&PyString` / `Bound<T>` / `PyObject` —
+        // rayon workers are OS threads without GIL access. The owned `String`
+        // path and the cloned `Arc<RustPyCounter>` are both `Send`.
+        let path_str = file_path.to_str()?.to_owned();
+        let counter = self.counter.clone();
 
-        let path_str = file_path.to_str()?;
-        let path = Path::new(path_str);
-
-        // Get all k-mer counts
-        let kmer_counts = self.counter.get_all_counts();
-
-        if kmer_counts.is_empty() {
-            return Err(PyErr::new::<PyValueError, _>(
-                "Cannot save empty database. Add k-mers first.",
-            ));
-        }
-
-        // Sort k-mers for binary search
-        let mut sorted_kmers: Vec<(u128, u32)> = kmer_counts;
-        sorted_kmers.sort_by_key(|&(k, _)| k);
-
-        // Create database
-        let kmer_size = self.counter.kmer_length() as u8;
-        let canonical = self.counter.canonical_mode();
-        let total_kmers = sorted_kmers.len() as u64;
-
-        let _header = DatabaseHeader::new(kmer_size, total_kmers, canonical);
-
-        let db =
-            RKDatabase::from_kmer_pairs(sorted_kmers, kmer_size, canonical, true).map_err(|e| {
-                PyErr::new::<PyValueError, _>(format!("Failed to create database: {}", e))
-            })?;
-
-        // Write to file
-        let file = File::create(path)
-            .map_err(|e| PyErr::new::<PyValueError, _>(format!("Failed to create file: {}", e)))?;
-
-        let mut writer = BufWriter::new(file);
-
-        db.write_to(&mut writer).map_err(|e| {
-            PyErr::new::<PyValueError, _>(format!("Failed to write database: {}", e))
-        })?;
-
-        Ok(())
+        // Release the GIL for the duration of the sort + write: sorting and
+        // writing hundreds of millions of entries while holding the GIL would
+        // block every Python thread for the whole save (PY-01). `PyErr` cannot
+        // be built without the GIL, so the closure returns the private `Send`
+        // error enum and it is mapped to `PyValueError` afterwards, keeping
+        // the four user-visible messages verbatim.
+        py.detach(move || save_database_on_counter(&counter, &path_str))
+            .map_err(|e: SaveDatabaseError| PyErr::new::<PyValueError, _>(e.to_string()))
     }
 
     /// Get statistics for the counter
@@ -683,5 +667,87 @@ fn count_file_into_counter(
     let mut engine = CountEngine::new(config)?;
     engine.count_file(Path::new(path), kind)?;
     engine.finish()?.merge_into(counter)?;
+    Ok(())
+}
+
+/// Failure modes of the detached `save_database` body.
+///
+/// The closure passed to `py.detach` runs without the GIL, so it cannot build
+/// a `PyErr`; it returns this private enum instead and the Python-facing
+/// method maps each variant to the exact `ValueError` message that existing
+/// callers already match on. Every payload is a `String`, so the enum is
+/// `Send` and legal as a detach return value.
+#[derive(Debug)]
+enum SaveDatabaseError {
+    /// The counter holds no k-mers, so there is nothing to write.
+    Empty,
+    /// Building the `RKDatabase` from the sorted snapshot failed.
+    Database(String),
+    /// Creating the output file failed.
+    CreateFile(String),
+    /// Writing (or flushing) the database failed.
+    Write(String),
+}
+
+impl std::fmt::Display for SaveDatabaseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => f.write_str("Cannot save empty database. Add k-mers first."),
+            Self::Database(e) => write!(f, "Failed to create database: {}", e),
+            Self::CreateFile(e) => write!(f, "Failed to create file: {}", e),
+            Self::Write(e) => write!(f, "Failed to write database: {}", e),
+        }
+    }
+}
+
+/// Save `counter`'s snapshot to `path` as a sorted `.rkdb` v2 database.
+///
+/// Phase 9 (PY-01): designed to run inside a `py.detach(..)` closure, so it
+/// takes only `Send` types. It snapshots the counter, returns `Empty` when
+/// there is nothing to write, sorts the pairs exactly once in place with
+/// rayon's parallel unstable sort, hands the caller-proven ascending order to
+/// the single frozen `format.rs` sorted-input constructor (which never sorts
+/// again), and writes through the frozen header/entry writers with an explicit
+/// final flush. Counter keys are unique, so the resulting order is a strict
+/// total order and the emitted bytes are thread-count independent.
+fn save_database_on_counter(
+    counter: &Arc<RustPyCounter>,
+    path: &str,
+) -> Result<(), SaveDatabaseError> {
+    use rayon::prelude::*;
+    use rustkmer::database::format::RKDatabase;
+    use std::fs::File;
+    use std::io::{BufWriter, Write};
+
+    // Snapshot order is whatever the sharded map iterates. The sort below is
+    // the ONLY sort performed anywhere on the save path.
+    let mut pairs = counter.get_all_counts();
+    if pairs.is_empty() {
+        return Err(SaveDatabaseError::Empty);
+    }
+
+    // Phase 9 (PY-01): one in-place parallel unstable sort — the Phase 8
+    // unstable/parallel mandate. No stable re-sort, no second sort downstream.
+    pairs.par_sort_unstable_by_key(|&(kmer, _)| kmer);
+
+    let db = RKDatabase::from_sorted_kmer_pairs(
+        pairs,
+        counter.kmer_length() as u8,
+        counter.canonical_mode(),
+    )
+    .map_err(|e| SaveDatabaseError::Database(e.to_string()))?;
+
+    let file =
+        File::create(Path::new(path)).map_err(|e| SaveDatabaseError::CreateFile(e.to_string()))?;
+    let mut writer = BufWriter::new(file);
+
+    db.write_to(&mut writer)
+        .map_err(|e| SaveDatabaseError::Write(e.to_string()))?;
+
+    // A failed final write must never be silent (T-08-04).
+    writer
+        .flush()
+        .map_err(|e| SaveDatabaseError::Write(e.to_string()))?;
+
     Ok(())
 }

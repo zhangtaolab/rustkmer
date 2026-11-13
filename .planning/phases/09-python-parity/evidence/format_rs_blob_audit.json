@@ -1,0 +1,47 @@
+{
+  "plan": "09-02",
+  "task": 1,
+  "generated_at_utc": "2026-11-13T01:50:03Z",
+  "pre_blob": "eb0d5bf29330301930d98d801480cf73d1cf826a",
+  "pre_blob_source": "Phase 8 whole-file pin (08-04-PLAN.md:159), re-verified against HEAD: git cat-file -p HEAD:src/database/format.rs | git hash-object --stdin",
+  "post_blob": "dedfd95a475c745c029f164e2a99fb150c665582",
+  "numstat": {
+    "insertions": 78,
+    "deletions": 0,
+    "path": "src/database/format.rs"
+  },
+  "pure_addition": {
+    "removed_lines": 0,
+    "diff_command": "git diff -U0 -- src/database/format.rs",
+    "added_region": "RKDatabase::from_sorted_kmer_pairs plus its doc comment"
+  },
+  "fixtures_untouched": true,
+  "fixtures_status_porcelain": "",
+  "golden_tests": [
+    {
+      "command": "cargo test --locked --test sorted_pairs_constructor_tests",
+      "exit_code": 0
+    },
+    {
+      "command": "cargo test --locked --test golden_sha256_tests",
+      "exit_code": 0
+    },
+    {
+      "command": "cargo test --locked --test golden_tests",
+      "exit_code": 0
+    }
+  ],
+  "later_verification": [
+    "rkdb_v2_byte_identity_tests",
+    "output_pipeline_tests"
+  ],
+  "later_verification_note": "09-05 final standing-gate battery re-runs the two byte suites this task did not execute: cargo test --locked --test rkdb_v2_byte_identity_tests and cargo test --locked --test output_pipeline_tests.",
+  "supersession": "The Phase 8 whole-file blob pin eb0d5bf29330301930d98d801480cf73d1cf826a is SUPERSEDED for src/database/format.rs only, by the pure-addition proof plus the re-run byte-contract tests recorded here. Every other Phase 8 pin remains in force: the Cargo.toml / Cargo.lock / pyo3/Cargo.toml / pyo3/Cargo.lock blobs, the frozen DatabaseHeader::write_to / KmerEntry::write_to / KmerEntry::read_from writers, the untouched from_kmer_pairs body, and the fixture manifest f010e42a (tests/fixtures/golden_manifest.sha256).",
+  "untouched_functions": [
+    "from_kmer_pairs",
+    "DatabaseHeader::write_to",
+    "KmerEntry::write_to",
+    "KmerEntry::read_from",
+    "RKDatabase::write_to"
+  ]
+}
