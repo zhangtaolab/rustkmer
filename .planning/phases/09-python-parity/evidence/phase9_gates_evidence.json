@@ -1,77 +1,102 @@
 {
-  "created": "2026-11-13T02:09:05.252292+00:00",
-  "fixture_manifest_sha256": "f010e42a213de6786ac67e2a6f9227485320e7ddfca4c6521cf019880786f25f",
-  "fixtures_verified": 12,
-  "format_rs_numstat": {
-    "deletions": 0,
-    "insertions": 78,
-    "path": "src/database/format.rs"
-  },
+  "schema_version": 1,
+  "created": "2026-11-13T03:02:51.968278+00:00",
+  "git_commit": "bf8a09f959fa288854af75c4e0cf5353744cf46a",
+  "git_dirty": false,
   "gates": [
     {
       "command": "cargo +1.82.0 clippy --locked --all-targets -- -D warnings",
       "exit_code": 0,
-      "summary": "MSRV clippy: root crate"
+      "summary": "Checking rustkmer v0.5.0 (/Users/forrest/GitHub/rustkmer)     Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.35s"
     },
     {
       "command": "cargo +1.82.0 clippy --locked --all-targets --manifest-path pyo3/Cargo.toml -- -D warnings",
       "exit_code": 0,
-      "summary": "MSRV clippy: pyo3 crate"
+      "summary": "Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.17s"
     },
     {
       "command": "cargo build --release --locked",
       "exit_code": 0,
-      "summary": "release build"
+      "summary": "warning: `rustkmer` (lib) generated 1 warning (run `cargo fix --lib -p rustkmer` to apply 1 suggestion)     Finished `release` profile [optimized] target(s) in 0.23s"
     },
     {
       "command": "cargo test --locked",
       "exit_code": 0,
-      "summary": "full Rust test suite"
+      "summary": "test result: ok. 18 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 7.59s"
     },
     {
       "command": "python3 -m unittest discover -s scripts/bench/tests -t .",
       "exit_code": 0,
-      "summary": "harness unittest discovery"
+      "summary": "report written to /var/folders/1q/2qhztsp1673fnqgrpblxnpd40000gn/T/tmpkc7slqzt/report.md report written to /var/folders/1q/2qhztsp1673fnqgrpblxnpd40000gn/T/tmp0fpmud5h/report.md report written to /var/folders/1q/2qhztsp1673fnqgrpblxnpd40000gn/T/tmpqdpra75r/report.md"
     },
     {
-      "command": "env -u CONDA_PREFIX VIRTUAL_ENV=$PWD/.venv313 PATH=$PWD/.venv313/bin:$PATH .venv313/bin/maturin develop --release --manifest-path pyo3/Cargo.toml",
+      "command": "env -u CONDA_PREFIX VIRTUAL_ENV=\"$PWD/.venv313\" PATH=\"$PWD/.venv313/bin:$PATH\" .venv313/bin/maturin develop --release --manifest-path pyo3/Cargo.toml",
       "exit_code": 0,
-      "summary": "rebuild extension in .venv313"
+      "summary": "\ud83d\udce6 Built wheel for CPython 3.13 to /var/folders/1q/2qhztsp1673fnqgrpblxnpd40000gn/T/.tmpzFuAdL/pyrustkmer-0.5.0-cp313-cp313-macosx_11_0_arm64.whl \u270f\ufe0f Setting installed package as editable \ud83d\udee0 Installed pyrustkmer-0.5.0"
     },
     {
-      "command": ".venv313/bin/python -c \"import pyrustkmer, tomllib; expected=tomllib.load(open('pyo3/pyproject.toml','rb'))['project']['version']; assert pyrustkmer.__version__==expected, (pyrustkmer.__version__, expected); print('version', pyrustkmer.__version__, pyrustkmer.__file__)\"",
+      "command": ".venv313/bin/python -c \"import pyrustkmer, tomllib; exp=tomllib.load(open(\\\"pyo3/pyproject.toml\\\",\\\"rb\\\"))[\\\"project\\\"][\\\"version\\\"]; assert pyrustkmer.__version__==exp, (pyrustkmer.__version__, exp); print(\\\"version\\\", pyrustkmer.__version__)\"",
       "exit_code": 0,
-      "summary": "pyrustkmer.__version__ equals pyproject version"
+      "summary": "version 0.5.0"
     },
     {
       "command": ".venv313/bin/python -m pytest pyo3/tests -q",
       "exit_code": 0,
-      "summary": "full pytest suite"
+      "summary": "pyo3/tests/test_version.py ..                                            [100%]  ======================= 179 passed, 63 skipped in 0.24s ========================"
     },
     {
       "command": "cargo test --locked --test golden_sha256_tests --test golden_tests --test rkdb_v2_byte_identity_tests --test output_pipeline_tests --test sorted_pairs_constructor_tests",
       "exit_code": 0,
-      "summary": "five frozen-output/constructor binaries"
+      "summary": "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
     }
   ],
-  "git_commit": "0271d8a8d6cfac96f403b02f93b1e6047122a3b6",
-  "git_dirty": false,
-  "measured_artifacts": {
-    ".planning/phases/09-python-parity/evidence/n_read_differential_d2.json": "1d9444deb74dd128d4b0acb8002890cb08a5a18c0df8f9cfc529468c3908ef1a",
-    ".planning/phases/09-python-parity/evidence/python_bench_after_d2.json": "817aad769066701bedd96da0bd76b708754697f734b16ce69b247f8b903495e1"
-  },
-  "phase8_pin_disposition": "whole-file src/database/format.rs pin superseded by pure-addition proof + green byte contract; all other Phase 8 pins remain in force",
   "pinned_blobs": {
-    "Cargo.lock": "7f24f3f3e789b6f35849699659168b023fac8a63",
     "Cargo.toml": "fb5c839564f2ae90e2a3c5ca4c26d86426bf09a5",
-    "pyo3/Cargo.lock": "6da3805fccdb15d6f7dd139c12492f7c29d577ab",
+    "Cargo.lock": "7f24f3f3e789b6f35849699659168b023fac8a63",
     "pyo3/Cargo.toml": "5b01979cf69e512a414791bcf66516f44f98d718",
-    "src/database/format.rs.post": "dedfd95a475c745c029f164e2a99fb150c665582",
-    "src/database/format.rs.pre": "eb0d5bf29330301930d98d801480cf73d1cf826a"
+    "pyo3/Cargo.lock": "6da3805fccdb15d6f7dd139c12492f7c29d577ab",
+    "src/database/format.rs.pre": "eb0d5bf29330301930d98d801480cf73d1cf826a",
+    "src/database/format.rs.post": "dedfd95a475c745c029f164e2a99fb150c665582"
   },
-  "pre_d2_red_artifact": {
-    "path": ".planning/phases/09-python-parity/evidence/n_read_differential_pre_d2_red.json",
-    "sha256": "8a611091fe961e2ac93857cb7dc17b5001b1aeea328e32778dfaab3d0da82a80"
+  "format_rs_numstat": {
+    "insertions": 78,
+    "deletions": 0,
+    "range": "2fc58cb..HEAD"
   },
-  "schema_version": 1
+  "fixture_manifest_sha256": "f010e42a213de6786ac67e2a6f9227485320e7ddfca4c6521cf019880786f25f",
+  "fixtures_verified": true,
+  "measured_artifacts": {
+    "n_read_differential_d2.json": "599036a085bf1247a96c245241fae6531bf4fba229ee8a5ef8fd40a2e9ed7577",
+    "python_bench_after_d2.json": "9988024aa820e84ce37eff24531089e8899be5ec98378ad528d1407f852bd0d7",
+    "pre_d2_red_observation.json": "1150c3fefdc41d90db88b5f9ca97d66e8a5f6fecc3017f768eeac85f15f88a4c",
+    "n_read_differential_pre_d2_red.json": "8a611091fe961e2ac93857cb7dc17b5001b1aeea328e32778dfaab3d0da82a80",
+    "format_rs_blob_audit.json": "88489b49bdf022dea05c7f09798e6b28c592555a5049b8c6af87862a5c141297"
+  },
+  "pre_d2_red_artifact": "evidence/pre_d2_red_observation.json",
+  "phase8_pin_disposition": {
+    "file": "src/database/format.rs",
+    "phase8_blob": "eb0d5bf29330301930d98d801480cf73d1cf826a",
+    "phase9_blob": "dedfd95a475c745c029f164e2a99fb150c665582",
+    "disposition": "superseded-for-this-file-only",
+    "proof": "pure addition \u2014 insertions > 0, deletions == 0; from_kmer_pairs and the header/entry writers untouched; golden/byte suites green",
+    "insertions": 78,
+    "deletions": 0
+  },
+  "review_fixes_revalidated": {
+    "commits": [
+      "72a8399",
+      "266492a",
+      "669e91f",
+      "af4d954",
+      "bf8a09f"
+    ],
+    "note": "All nine gates re-run on the post-fix tree and observed green; the differential and benchmark artifacts were regenerated on the shipped code.",
+    "known_flake": "scripts/bench/tests/test_verify_threads.py::TestNegativeControls::test_pre_engine_n_plus_one_stub_is_measured_red \u2014 pre-existing ~50% macOS `sample` race, file untouched by Phase 9"
+  },
+  "git_dirty_paths_outside_evidence": [],
+  "git_dirty_paths_at_write": [
+    "M .planning/phases/09-python-parity/evidence/n_read_differential_d2.json",
+    " M .planning/phases/09-python-parity/evidence/phase9_gates_evidence.json",
+    " M .planning/phases/09-python-parity/evidence/python_bench_after_d2.json"
+  ]
 }
