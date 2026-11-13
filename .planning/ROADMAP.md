@@ -27,7 +27,7 @@ Full detail: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md) · Summary
 - [x] **Phase 6: Parallelism Correctness & Hot Path** - Working --threads, thread-local counters with end reduction (no per-window atomics), rolling encode + bit-parallel revcomp (completed 2026-11-12)
 - [x] **Phase 7: Shared Counting Engine** - One src/count/engine.rs entry point: persistent workers, disjoint partitioned tables, overlapped producer/consumer (the ~3.5x lever) (completed 2026-11-13)
 - [x] **Phase 8: Output Pipeline & .rkdb v2 Parity** - Unstable/parallel sort + streaming write; golden byte-identity, both-consumer sortedness, full differential matrix (completed 2026-11-13)
-- [ ] **Phase 9: Python Parity** - PyCounter routed through the shared engine, D2 skip-N semantics documented, measured win vs the Phase 5 baseline
+- [x] **Phase 9: Python Parity** - PyCounter routed through the shared engine, D2 skip-N semantics documented, measured win vs the Phase 5 baseline (completed 2026-11-13)
 - [ ] **Phase 10: Benchmark Verdict** - Full human-scale jellyfish parity verdict on both surfaces + KMC3 exact-count comparison (BENCH-V2-01)
 - [ ] **Phase 11: Minimizer Partitioning & Memory Ceiling** - CONDITIONAL (D3): hand-rolled canonical minimizers + skew-controlled disk-backed bins — only if Stage A misses parity or a memory ceiling Stage A cannot meet
 
@@ -128,7 +128,7 @@ Plans:
   2. Every parallel/blocking PyO3 path uses `py.detach` with owned Send captures (no GIL deadlock under concurrent use); the extension is rebuilt (`maturin develop --release`) and version-asserted before every pytest run (stale `.so` shadowing is a known trap).
   3. Python output on N-containing reads matches the CLI skip-N semantics (D2): the PROF-05 differential re-run shows the chimeric-k-mer divergence eliminated, and the user-visible output change is documented — never silent (WR-04 precedent).
   4. The Python benchmark shows a measured wall-clock win against the committed Phase 5 sequential baseline, recorded with parity-before-timing and module provenance.
-**Plans**: 5/5 plans executed
+**Plans**: 5/5 plans complete
 Plans:
 **Wave 1**
 - [x] 09-01-PLAN.md — Tracer: PyCounter through the shared engine, D2 raw-byte skip-N, `__version__` tripwire
@@ -182,7 +182,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → (11 only i
 | 6. Parallelism Correctness & Hot Path | v2.0 | 5/5 | Complete    | 2026-11-12 |
 | 7. Shared Counting Engine | v2.0 | 4/4 | Complete    | 2026-11-13 |
 | 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 4/4 | Complete    | 2026-11-13 |
-| 9. Python Parity | v2.0 | 5/5 | In Progress | - |
+| 9. Python Parity | v2.0 | 5/5 | Complete    | 2026-11-13 |
 | 10. Benchmark Verdict | v2.0 | 0/TBD | Not started | - |
 | 11. Minimizer Partitioning & Memory Ceiling | v2.0 | 0/TBD | Not started (conditional — D3) | - |
 

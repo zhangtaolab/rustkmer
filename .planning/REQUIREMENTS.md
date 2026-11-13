@@ -39,8 +39,8 @@ Committed scope. Each maps to exactly one roadmap phase. MINIM-* are CONDITIONAL
 
 ### Python Parity (PY)
 
-- [ ] **PY-01**: `PyCounter` file methods route through the shared engine (no longer a sequential line loop); the public `PyCounter` API is frozen; every parallel/blocking path uses `py.detach` with owned Send captures; the `save_database` double-sort is fixed.
-- [ ] **PY-02**: The D2 skip-N semantics is implemented in Python and the output change for N-containing reads is documented; the Python benchmark shows a measured win against the PROF-04 baseline.
+- [x] **PY-01**: `PyCounter` file methods route through the shared engine (no longer a sequential line loop); the public `PyCounter` API is frozen; every parallel/blocking path uses `py.detach` with owned Send captures; the `save_database` double-sort is fixed.
+- [x] **PY-02**: The D2 skip-N semantics is implemented in Python and the output change for N-containing reads is documented; the Python benchmark shows a measured win against the PROF-04 baseline.
 
 ### Benchmark Verdict (BENCH)
 
@@ -100,8 +100,8 @@ Each requirement maps to exactly one phase. MINIM-* map to conditional Phase 11 
 | OUT-01 | Phase 8 | Complete |
 | OUT-02 | Phase 8 | Complete |
 | OUT-03 | Phase 8 | Complete |
-| PY-01 | Phase 9 | Pending |
-| PY-02 | Phase 9 | Pending |
+| PY-01 | Phase 9 | Complete |
+| PY-02 | Phase 9 | Complete |
 | BENCH-V2-01 | Phase 10 | Pending |
 | BENCH-V2-02 | Phase 10 | Pending |
 | MINIM-01 | Phase 11 (conditional — D3) | Pending (conditional) |
