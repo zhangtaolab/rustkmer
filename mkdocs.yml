@@ -50,6 +50,7 @@ nav:
   - User Guide:
     - user-guide/index.md
     - Counting k-mers: user-guide/counting-kmers.md
+    - N-read Semantics: user-guide/n-read-semantics.md
     - Querying Databases: user-guide/querying.md
     - Fuzzy Search: user-guide/fuzzy-search.md
     - Performance Tips: user-guide/performance-tips.md
