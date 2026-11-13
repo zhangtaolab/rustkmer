@@ -189,9 +189,13 @@ basis.
   --emit-baseline scripts/bench/baselines/python_bench_baseline.darwin.json
 ```
 
-`--emit-baseline` is slice-mode only and its filename must match the host
-flavor (`python_bench_baseline.darwin.json` / `.linux.json`), so a synthetic
-or mislabeled baseline cannot be committed as a real one. The committed
+`--emit-baseline` is slice-mode only, requires `--threads 1`, and its
+filename must match the host flavor (`python_bench_baseline.darwin.json` /
+`.linux.json`). The control arm's name is derived from the configuration
+actually measured, and comparison selects the baseline arm by identity — the
+single arm named `*-n-free-control-t1` whose recorded `threads` is `1` —
+never by list position. A synthetic, default-threads, or mislabeled baseline
+therefore cannot be committed or consumed as a real one. The committed
 baseline file is immutable history — never re-pin it to turn a comparison
 green.
 

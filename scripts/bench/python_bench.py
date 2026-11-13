@@ -162,6 +162,18 @@ def parse_threads(text):
     return value
 
 
+def threads_suffix(threads_text):
+    """Arm-name suffix that matches the ACTUAL thread configuration.
+
+    ``"1"`` -> ``"t1"``, ``"default"`` -> ``"tdefault"``, ``"N"`` -> ``"tN"``.
+    An arm whose name claims ``t1`` must have been measured at one thread
+    (WR-01): the suffix is derived from the configuration the workers are
+    actually given, never hard-coded.
+    """
+    value = parse_threads(threads_text)
+    return "tdefault" if value is None else f"t{value}"
+
+
 # --- pure helpers (unit-tested without PyO3) --------------------------------
 
 def baseline_filename(system_name):
@@ -329,6 +341,38 @@ def _control_arm_wall(control, suffix):
     return float(wall)
 
 
+def _arm_threads_is_one(arm):
+    """True when an arm records a real integer thread count of 1 (not bool)."""
+    threads = arm.get("threads")
+    return (isinstance(threads, int) and not isinstance(threads, bool)
+            and threads == 1)
+
+
+def _baseline_control_t1_arm(control):
+    """The committed baseline's unambiguous threads=1 control arm.
+
+    Selection is by IDENTITY — the name ends with ``-n-free-control-t1``
+    AND the arm records ``threads == 1`` — never by list position (WR-01).
+    A baseline whose only control arm was measured at another configuration
+    cannot supply ``speedup_t1``/``speedup_default`` and is invalid.
+    """
+    arms = control.get("arms") if isinstance(control, dict) else None
+    if not isinstance(arms, list) or not arms:
+        raise ValueError("baseline has no n_free_control.arms")
+    matches = [arm for arm in arms
+               if isinstance(arm, dict)
+               and str(arm.get("name", "")).endswith("-n-free-control-t1")
+               and _arm_threads_is_one(arm)]
+    if len(matches) != 1:
+        observed = [(arm.get("name"), arm.get("threads"))
+                    for arm in arms if isinstance(arm, dict)]
+        raise ValueError(
+            "baseline has no unambiguous threads=1 control arm (exactly one "
+            "arm named '*-n-free-control-t1' with threads == 1); observed "
+            f"{observed}")
+    return matches[0]
+
+
 def compare_to_baseline(baseline, new_doc):
     """Locked comparison math: committed control median vs the two new arms.
 
@@ -340,16 +384,14 @@ def compare_to_baseline(baseline, new_doc):
     (exit 2 upstream), never a fabricated verdict.
     """
     control = baseline.get("n_free_control") if isinstance(baseline, dict) else None
-    arms = control.get("arms") if isinstance(control, dict) else None
-    if not isinstance(arms, list) or not arms:
-        raise ValueError("baseline has no n_free_control.arms")
-    medians = arms[0].get("medians") if isinstance(arms[0], dict) else None
+    baseline_arm = _baseline_control_t1_arm(control)
+    medians = baseline_arm.get("medians")
     baseline_t1 = medians.get("wall_s") if isinstance(medians, dict) else None
     if (not isinstance(baseline_t1, (int, float))
             or isinstance(baseline_t1, bool) or baseline_t1 <= 0):
         raise ValueError(
-            f"baseline n_free_control.arms[0].medians.wall_s must be a "
-            f"positive number, got {baseline_t1!r}")
+            f"baseline control arm {baseline_arm.get('name')!r} "
+            f"medians.wall_s must be a positive number, got {baseline_t1!r}")
     baseline_t1 = float(baseline_t1)
 
     new_control = new_doc.get("n_free_control") if isinstance(new_doc, dict) else None
@@ -377,9 +419,10 @@ def validate_baseline_identity(baseline, expected_flavor, host_platform, k,
     """Reject a baseline captured on another host/configuration (exit 2).
 
     A dev-host baseline is only comparable to a run with the same platform
-    flavor, provenance platform, k, canonical setting, control fingerprint
-    presence, and positive exact counts. No absolute numbers are hard-coded
-    here — the committed baseline file is the source of truth.
+    flavor, provenance platform, k, canonical setting, an unambiguous
+    threads=1 control arm, control fingerprint presence, and positive exact
+    counts. No absolute numbers are hard-coded here — the committed baseline
+    file is the source of truth.
     """
     if not isinstance(baseline, dict):
         raise ValueError("baseline must be a JSON object")
@@ -407,6 +450,7 @@ def validate_baseline_identity(baseline, expected_flavor, host_platform, k,
     control = baseline.get("n_free_control")
     if not isinstance(control, dict):
         raise ValueError("baseline has no n_free_control block")
+    _baseline_control_t1_arm(control)
     fingerprint_block = control.get("input_fingerprint")
     sha = (fingerprint_block.get("sha256")
            if isinstance(fingerprint_block, dict) else None)
@@ -455,6 +499,7 @@ def build_baseline(doc, control_block, flavor):
     control_arms = control_block.get("arms")
     if not isinstance(control_arms, list) or not control_arms:
         raise ValueError("baseline n_free_control has no measured arms")
+    _baseline_control_t1_arm(control_block)
     for arm in control_arms:
         for rep in arm.get("reps", []):
             if (rep.get("total_kmers") != exact["total_kmers"]
@@ -719,6 +764,12 @@ def run_controller(args):
     if not 1 <= args.k <= 64:
         raise ValueError(f"--k must be in 1..64, got {args.k}")
     threads_value = parse_threads(args.threads)
+    if args.emit_baseline is not None and threads_value != 1:
+        raise ValueError(
+            "--emit-baseline requires --threads 1: the committed comparison "
+            f"basis is a threads=1 control arm (got {args.threads!r}) — an "
+            "arm named '-t1' measured at another configuration cannot be a "
+            "baseline")
     if not Path(args.python).is_file():
         raise ValueError(f"--python interpreter not found: {args.python}")
     if args.mode == "slice":
@@ -764,7 +815,8 @@ def run_controller(args):
         generate_synthetic_input(args.reads, SYNTHETIC_LENGTH, SEED_A,
                                  input_path)
         arm, _ = measure_arm(args, info, input_path, scratch,
-                             f"py{args.k}-synthetic-t1", gap,
+                             f"py{args.k}-synthetic-"
+                             f"{threads_suffix(args.threads)}", gap,
                              threads_text=args.threads)
         arm["evidence_class"] = "synthetic-smoke"
         arms = [arm]
@@ -785,7 +837,8 @@ def run_controller(args):
             validate_baseline_identity(
                 baseline, flavor, f"{sys.platform}-{platform.machine()}",
                 args.k, True)
-        control_name = f"py{args.k}-n-free-control-t1"
+        control_name = (f"py{args.k}-n-free-control-"
+                        f"{threads_suffix(args.threads)}")
         # The control's discarded warmup doubles as the Python side of the
         # pre-timing parity gate (thread_scaling's warmup-as-parity pattern).
         control_stats_path = scratch / f"{control_name}.stats.json"
@@ -871,7 +924,8 @@ def run_controller(args):
 
             # --- real-N arm: timing-only post-D2 evidence ---
             arm, _ = measure_arm(args, info, input_path, scratch,
-                                 f"py{args.k}-real-n-t1", gap,
+                                 f"py{args.k}-real-n-"
+                                 f"{threads_suffix(args.threads)}", gap,
                                  threads_text=args.threads)
             arm["evidence_class"] = REAL_N_EVIDENCE_CLASS
             arm["semantics_note"] = REAL_N_SEMANTICS_NOTE

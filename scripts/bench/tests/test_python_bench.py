@@ -159,7 +159,7 @@ def make_synthetic_baseline(control_wall=12.0, exact=None,
                                   "sha256": control_sha},
             "exact_counts": (exact if exact is not None
                              else {"total_kmers": 100, "unique_kmers": 90}),
-            "arms": [{"name": f"py{k}-n-free-control-t1",
+            "arms": [{"name": f"py{k}-n-free-control-t1", "threads": 1,
                       "medians": {"wall_s": control_wall}}],
         },
         "provenance": {"platform": host_platform},
@@ -419,6 +419,37 @@ class TestCompareToBaseline(unittest.TestCase):
         with self.assertRaises(ValueError):
             pb.compare_to_baseline(self.baseline, doc)
 
+    def test_baseline_arm_selected_by_identity_not_position(self):
+        """A default-threads arm at index 0 must never become baseline_t1."""
+        baseline = make_synthetic_baseline(control_wall=1.0)
+        baseline["n_free_control"]["arms"] = [
+            {"name": "py21-n-free-control-tdefault", "threads": "default",
+             "medians": {"wall_s": 1.0}},
+            {"name": "py21-n-free-control-t1", "threads": 1,
+             "medians": {"wall_s": 12.0}},
+        ]
+        result = pb.compare_to_baseline(
+            baseline, make_new_control_doc(12.0, 10.0))
+        self.assertEqual(result["baseline_wall_s"], 12.0)
+        self.assertEqual(result["result"], "PASS")
+
+    def test_t1_named_arm_measured_at_default_threads_raises(self):
+        """A '-t1' name with threads="default" is not a t1 comparison basis."""
+        self.baseline["n_free_control"]["arms"][0]["threads"] = "default"
+        with self.assertRaises(ValueError):
+            self.result(12.0, 10.0)
+
+    def test_t1_arm_without_threads_field_raises(self):
+        del self.baseline["n_free_control"]["arms"][0]["threads"]
+        with self.assertRaises(ValueError):
+            self.result(12.0, 10.0)
+
+    def test_two_t1_arms_are_ambiguous(self):
+        arms = self.baseline["n_free_control"]["arms"]
+        arms.append(dict(arms[0]))
+        with self.assertRaises(ValueError):
+            self.result(12.0, 10.0)
+
 
 class TestBaselineIdentityGuards(unittest.TestCase):
     """Every cross-host/config mismatch is a ValueError (exit 2 upstream)."""
@@ -475,6 +506,18 @@ class TestBaselineIdentityGuards(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.check(baseline)
 
+    def test_control_arm_measured_at_default_threads_raises(self):
+        baseline = self.fresh()
+        baseline["n_free_control"]["arms"][0]["threads"] = "default"
+        with self.assertRaises(ValueError):
+            self.check(baseline)
+
+    def test_control_arm_missing_threads_field_raises(self):
+        baseline = self.fresh()
+        del baseline["n_free_control"]["arms"][0]["threads"]
+        with self.assertRaises(ValueError):
+            self.check(baseline)
+
 
 class TestBuildBaseline(unittest.TestCase):
     """A slice-mode baseline without a parity-passing control is invalid."""
@@ -512,6 +555,13 @@ class TestBuildBaseline(unittest.TestCase):
 
     def test_control_rep_identity_violation_raises(self):
         control = make_control(reps=[make_rep(total=101)])
+        with self.assertRaises(ValueError):
+            pb.build_baseline(make_doc(), control, "darwin")
+
+    def test_control_arm_measured_at_default_threads_raises(self):
+        """A baseline can never be emitted from a non-t1 control arm."""
+        control = make_control()
+        control["arms"][0]["threads"] = "default"
         with self.assertRaises(ValueError):
             pb.build_baseline(make_doc(), control, "darwin")
 
@@ -706,6 +756,33 @@ class TestSliceController(ControllerHarness):
              "--out", str(self.out)])
         self.assertEqual(code, 2)
         self.assertIn("--input", err)
+
+    def test_emit_baseline_requires_one_thread(self):
+        """--emit-baseline must never label a non-t1 arm as the t1 basis."""
+        for threads in ("default", "4"):
+            with self.subTest(threads=threads):
+                baseline = self.baseline_path()
+                code, _, err = self.run_main(
+                    self.slice_argv("--threads", threads,
+                                    "--emit-baseline", str(baseline)),
+                    cli={"unique_kmers": 90, "total_kmers": 100})
+                self.assertEqual(code, 2)
+                self.assertIn("--threads 1", err)
+                self.assertFalse(baseline.exists())
+                self.assertFalse(self.out.exists())
+
+    def test_non_compare_arm_names_follow_actual_threads(self):
+        """Arm names derive from the measured configuration, not a literal."""
+        code, _, err = self.run_main(
+            self.slice_argv("--threads", "4"),
+            cli={"unique_kmers": 90, "total_kmers": 100})
+        self.assertEqual(code, 0, err)
+        doc = json.loads(self.out.read_text())
+        control_arm = doc["n_free_control"]["arms"][0]
+        self.assertTrue(control_arm["name"].endswith("-n-free-control-t4"))
+        self.assertEqual(control_arm["threads"], 4)
+        self.assertTrue(doc["arms"][0]["name"].endswith("-real-n-t4"))
+        self.assertEqual(doc["arms"][0]["threads"], 4)
 
 
 class TestCompareController(ControllerHarness):
