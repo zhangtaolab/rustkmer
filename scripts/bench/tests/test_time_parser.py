@@ -97,5 +97,56 @@ class TestMalformedInput(unittest.TestCase):
             parse_time_output("anything", "windows")
 
 
+class TestPeakFootprint(unittest.TestCase):
+    """`max(rss, phys_footprint)` accounting (10-RESEARCH Pitfall 5).
+
+    macOS `time -l` emits two memory lines: `maximum resident set size`
+    aggregates the waited-for child pipeline, while `peak memory footprint`
+    can describe only the direct child (a shell, for pipeline arms). The
+    project convention records the MAX of the two as the honest peak while
+    preserving the raw RSS bytes for schema compatibility.
+    """
+
+    # Verified pipeline shape (jellyfish gz arm): the RSS aggregates the
+    # pipeline; the footprint is the direct shell's ~1 MB.
+    PIPELINE = ("        1.02 real         0.00 user         0.00 sys\n"
+                "           526532608  maximum resident set size\n"
+                "             1294648  peak memory footprint\n")
+    # Verified direct-child shape (rustkmer): the two are close.
+    DIRECT = ("        2.34 real         2.00 user         0.30 sys\n"
+              "          1194852352  maximum resident set size\n"
+              "          1192199608  peak memory footprint\n")
+
+    def test_pipeline_shape_records_footprint_and_max(self):
+        """RSS is taken as-is; footprint parses; peak is the maximum."""
+        result = parse_time_output(self.PIPELINE, "darwin")
+        self.assertIn("peak_footprint_bytes", result)
+        self.assertEqual(result["peak_rss_bytes"], 526_532_608)
+        self.assertEqual(result["peak_footprint_bytes"], 1_294_648)
+        self.assertEqual(result["peak_bytes"], 526_532_608)
+
+    def test_direct_child_shape_uses_rss_max(self):
+        """A direct child's RSS (the larger line) is the recorded peak."""
+        result = parse_time_output(self.DIRECT, "darwin")
+        self.assertEqual(result["peak_rss_bytes"], 1_194_852_352)
+        self.assertEqual(result["peak_footprint_bytes"], 1_192_199_608)
+        self.assertEqual(result["peak_bytes"], 1_194_852_352)
+
+    def test_darwin_missing_footprint_line_raises(self):
+        """An RSS line without a footprint line is format drift: fail loud."""
+        text = ("        0.11 real         0.01 user         0.00 sys\n"
+                "            9601024  maximum resident set size\n")
+        with self.assertRaises(ValueError):
+            parse_time_output(text, "darwin")
+
+    def test_linux_has_no_footprint_and_peak_equals_rss(self):
+        """Linux `time -v` has no footprint line: None, and peak == RSS."""
+        text = (FIXTURES / "time_v_linux.txt").read_text()
+        result = parse_time_output(text, "linux")
+        self.assertIsNone(result["peak_footprint_bytes"])
+        self.assertEqual(result["peak_bytes"], result["peak_rss_bytes"])
+        self.assertEqual(result["peak_bytes"], 62384 * 1024)
+
+
 if __name__ == "__main__":
     unittest.main()
