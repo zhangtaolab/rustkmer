@@ -5,8 +5,8 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use rustkmer::count::{CountEngine, EngineConfig, SequenceKind};
 use rustkmer::hash::KmerCounter as RustPyCounter;
-use rustkmer::hash::LocalKmerCounts;
 use rustkmer::kmer::canonical::canonical_kmer_u128;
 use rustkmer::kmer::encoding::encode_kmer_bytes_u128;
 use rustkmer::kmer::extract::{for_each_window, WindowError};
@@ -105,12 +105,17 @@ impl PyCounterStats {
 #[pyclass(name = "PyCounter")]
 pub struct PyCounter {
     /// Internal Rust PyCounter, wrapped in `Arc` so it can be cloned into the
-    /// `py.allow_threads(..)` closures used by the heavy counting methods
+    /// `py.detach(..)` closures used by the heavy counting methods
     /// (`add_from_fastq` / `add_from_fasta`). `RustPyCounter` (a re-export of
     /// `rustkmer::hash::KmerCounter`) uses `dashmap::DashMap` for storage, which
     /// gives interior mutability — so incrementing counts through `&self` is
     /// sound under rayon's parallel workers (Phase 2, PCOUNT-03 / D-08).
     counter: Arc<RustPyCounter>,
+    /// Phase 9 (PY-01): resolved thread count. `KmerCounter::new` discards its
+    /// `_num_threads` argument (`src/hash/table.rs`), so the binding must
+    /// remember the value it resolved in `new` to size each per-call engine
+    /// config. Private: never exposed to Python, and no getter exists.
+    threads: usize,
 }
 
 #[pymethods]
@@ -208,6 +213,7 @@ impl PyCounter {
 
         Ok(Self {
             counter: Arc::new(counter),
+            threads: resolved_threads,
         })
     }
 
@@ -224,7 +230,7 @@ impl PyCounter {
     /// counter.add_kmer("ATGCGATGCATGCGATGCAT")
     /// ```
     // GIL not released: sub-millisecond workload (single k-mer encode +
-    // increment); the `py.allow_threads(..)` release/reacquire overhead would
+    // increment); the `py.detach` release/reacquire overhead would
     // exceed the benefit. Documented per RESEARCH Open Question 1.
     fn add_kmer(&self, kmer: &Bound<'_, pyo3::types::PyString>) -> PyResult<()> {
         let kmer_str = kmer.to_str()?;
@@ -263,54 +269,52 @@ impl PyCounter {
     /// Extract and add k-mers from a sequence string
     ///
     /// # Arguments
-    /// * `sequence` - DNA sequence string (may contain whitespace)
+    /// * `sequence` - DNA sequence string
     ///
     /// # Notes
-    /// - Invalid characters (N, etc.) are skipped
-    /// - K-mers spanning invalid characters are not counted
+    /// - Any length-k window containing a byte outside A/C/G/T
+    ///   (case-insensitive) — including `N`, `n`, whitespace, or any other
+    ///   byte — is skipped and never counted, matching the CLI skip-N
+    ///   semantics (Phase 9 D2)
+    /// - `get_stats().total_kmers` is therefore smaller on N-containing input
+    ///   by design: skipped windows never advance the total
     ///
     /// # Example
     /// ```python
     /// counter.add_sequence("ATGCGATGCATGCGATGCATGCGATGCAT")
     /// ```
     // GIL not released: short-sequence workload (a single string's k-mers);
-    // sub-millisecond for typical inputs. The `py.allow_threads(..)`
-    // release/reacquire overhead would exceed the benefit for anything but
-    // very long sequences, which should be loaded from a file via
-    // `add_from_fasta` / `add_from_fastq` instead (those DO release the GIL).
+    // sub-millisecond for typical inputs. The `py.detach` release/reacquire
+    // overhead would exceed the benefit for anything but very long sequences,
+    // which should be loaded from a file via `add_from_fasta` /
+    // `add_from_fastq` instead (those DO release the GIL).
     // Documented per RESEARCH Open Question 1.
     fn add_sequence(&self, sequence: &Bound<'_, pyo3::types::PyString>) -> PyResult<()> {
         let seq_str = sequence.to_str()?;
         let k = self.counter.kmer_length();
 
-        // Clean sequence: remove whitespace and keep only valid bases.
+        // Phase 9 (PY-02 / D2): feed the RAW bytes to the ONE shared
+        // extractor. It owns the non-ACGT rule — any length-k window
+        // containing a byte outside A/C/G/T is skipped and counted, never
+        // emitted — so the strip-and-join pre-filter that used to join the
+        // flanks around an `N` (or a whitespace byte) is gone. The resulting
+        // `total_kmers` drop on N-containing input is the ratified D2 change.
         //
-        // PHASE 7 / T-07-15: this non-ACGT pre-filter is the current Python
-        // contract and is deliberately retained until Phase 9 (D2). Removing
-        // the invalid bytes here joins the flanks around an `N`, so the shared
-        // extractor below sees pure ACGT and its skip-N semantics never fire.
-        // Python output on N-containing input is therefore unchanged by the
-        // extractor cutover.
-        let cleaned: Vec<u8> = seq_str
-            .bytes()
-            .filter(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T'))
-            .collect();
-
-        if cleaned.len() < k {
-            // Sequence too short for any k-mers
-            return Ok(());
-        }
-
         // ENGINE-03: window extraction goes through the ONE core extractor
         // (rolling for k <= 32, per-window u128 for 33..=64) instead of a
         // second local loop. The sink keeps the existing fail-loud overflow
         // contract: the first `u32::MAX` key aborts the pass and the error is
         // surfaced verbatim as a PyValueError.
-        for_each_window(&cleaned, k, self.counter.canonical_mode(), |value| {
-            self.counter.increment(value).map_err(|e| {
-                PyErr::new::<PyValueError, _>(format!("Failed to increment k-mer count: {}", e))
-            })
-        })
+        for_each_window(
+            seq_str.as_bytes(),
+            k,
+            self.counter.canonical_mode(),
+            |value| {
+                self.counter.increment(value).map_err(|e| {
+                    PyErr::new::<PyValueError, _>(format!("Failed to increment k-mer count: {}", e))
+                })
+            },
+        )
         .map_err(|error| match error {
             // Unreachable: `PyCounter::new` validates k to 1..=64 before the
             // counter exists. Map it to the same invalid-k message rather than
@@ -328,15 +332,18 @@ impl PyCounter {
     /// Read and process k-mers from a FASTA file
     ///
     /// # Arguments
-    /// * `file_path` - Path to FASTA file (supports .gz compression)
+    /// * `file_path` - Path to FASTA file (supports .gz/.bz2/.xz compression)
     ///
     /// # Notes
-    /// - Automatically detects and handles gzip compression (.gz)
-    /// - Invalid characters in sequences are skipped
+    /// - Counts through the shared `CountEngine`, the same engine and strict
+    ///   `bio` parser the CLI uses
+    /// - Any length-k window containing a byte outside A/C/G/T is skipped and
+    ///   never counted (Phase 9 D2 skip-N semantics)
+    /// - Malformed FASTA raises `ValueError` carrying the parse context
     /// - Headers are ignored
     ///
     /// # Raises
-    /// ValueError if file cannot be read
+    /// ValueError if the file cannot be read or parsed
     ///
     /// # Example
     /// ```python
@@ -349,28 +356,33 @@ impl PyCounter {
         file_path: &Bound<'_, pyo3::types::PyString>,
     ) -> PyResult<()> {
         // CRITICAL (T-02-11 / Pitfall 4): extract ALL Python arguments into
-        // owned, `Send` Rust types BEFORE entering the `allow_threads` closure.
-        // The closure cannot capture `&PyString` / `Bound<T>` / `PyObject` —
+        // owned, `Send` Rust types BEFORE entering the detach closure. The
+        // closure cannot capture `&PyString` / `Bound<T>` / `PyObject` —
         // rayon workers are OS threads without GIL access. `to_str()?.to_owned()`
         // yields an owned `String` (Send); the `Arc<RustPyCounter>` clone is
-        // likewise Send. The closure moves both.
+        // likewise Send; the resolved thread count is a plain `usize`. The
+        // closure moves all of them.
         let path_str = file_path.to_str()?.to_owned();
         let counter = self.counter.clone();
+        let threads = self.threads;
+        // Phase 9 (PY-01): bind the record kind to a local FIRST. Inlining
+        // the variant literal in the call pushes the line past rustfmt's
+        // 100-column width, which rewrites it into a block closure; the
+        // local-binding form is format-stable.
+        let kind = SequenceKind::Fasta;
 
-        // Release the GIL for the duration of the file read + per-record
-        // encode/canonicalize/increment work so rayon workers actually run in
-        // parallel (D-08, PCOUNT-03). Without this release the GIL would
-        // serialize the workers and the parallel speedup would not materialize.
+        // Release the GIL for the duration of the file read + counting so
+        // rayon workers actually run in parallel (D-08, PCOUNT-03). Without
+        // this release the GIL would serialize the workers and the parallel
+        // speedup would not materialize.
         //
         // API NOTE: pyo3 0.27.2 provides `Python::detach` as the canonical,
-        // non-deprecated GIL-release API. `Python::allow_threads` exists but is
-        // `#[deprecated(since = "0.26.0", note = "use Python::detach instead")]`
-        // in pyo3 0.27.2 (it delegates to `self.detach(f)`). The RESEARCH note
-        // that claimed `detach` is "0.28+ only" was factually inverted —
-        // `detach` is the recommended API in 0.27.2. Using `allow_threads`
-        // would fail the `-D warnings` FOUND-01 clippy gate. Both enforce the
-        // same `Ungil` (= effectively `Send`) bound on the closure.
-        py.detach(move || process_fasta_file_on_counter(&counter, &path_str))
+        // non-deprecated GIL-release API and enforces the `Ungil`
+        // (= effectively `Send`) bound on the closure, so a capture that is
+        // not `Send` is a compile error rather than a runtime hazard. The
+        // deprecated predecessor is deliberately not used: it would fail the
+        // `-D warnings` FOUND-01 clippy gate.
+        py.detach(move || count_file_into_counter(&counter, &path_str, kind, threads))
             .map_err(|e: rustkmer::ProcessingError| {
                 PyErr::new::<PyValueError, _>(format!("Failed to process FASTA: {}", e))
             })
@@ -379,15 +391,18 @@ impl PyCounter {
     /// Read and process k-mers from a FASTQ file
     ///
     /// # Arguments
-    /// * `file_path` - Path to FASTQ file (supports .gz compression)
+    /// * `file_path` - Path to FASTQ file (supports .gz/.bz2/.xz compression)
     ///
     /// # Notes
-    /// - Automatically detects and handles gzip compression (.gz)
-    /// - Invalid characters in sequences are skipped
+    /// - Counts through the shared `CountEngine`, the same engine and strict
+    ///   `bio` parser the CLI uses
+    /// - Any length-k window containing a byte outside A/C/G/T is skipped and
+    ///   never counted (Phase 9 D2 skip-N semantics)
+    /// - Malformed FASTQ raises `ValueError` carrying the parse context
     /// - Headers and quality strings are ignored
     ///
     /// # Raises
-    /// ValueError if file cannot be read
+    /// ValueError if the file cannot be read or parsed
     ///
     /// # Example
     /// ```python
@@ -400,22 +415,27 @@ impl PyCounter {
         file_path: &Bound<'_, pyo3::types::PyString>,
     ) -> PyResult<()> {
         // CRITICAL (T-02-11 / Pitfall 4): extract ALL Python arguments into
-        // owned, `Send` Rust types BEFORE entering the `allow_threads` closure.
-        // The closure cannot capture `&PyString` / `Bound<T>` / `PyObject` —
+        // owned, `Send` Rust types BEFORE entering the detach closure. The
+        // closure cannot capture `&PyString` / `Bound<T>` / `PyObject` —
         // rayon workers are OS threads without GIL access. `to_str()?.to_owned()`
         // yields an owned `String` (Send); the `Arc<RustPyCounter>` clone is
-        // likewise Send. The closure moves both.
+        // likewise Send; the resolved thread count is a plain `usize`. The
+        // closure moves all of them.
         let path_str = file_path.to_str()?.to_owned();
         let counter = self.counter.clone();
+        let threads = self.threads;
+        // Phase 9 (PY-01): bind the record kind to a local FIRST; see
+        // `add_from_fasta` for the rustfmt format-stability rationale.
+        let kind = SequenceKind::Fastq;
 
-        // Release the GIL for the duration of the file read + per-record
-        // encode/canonicalize/increment work so rayon workers actually run in
-        // parallel (D-08, PCOUNT-03). Without this release the GIL would
-        // serialize the workers and the parallel speedup would not materialize.
+        // Release the GIL for the duration of the file read + counting so
+        // rayon workers actually run in parallel (D-08, PCOUNT-03). Without
+        // this release the GIL would serialize the workers and the parallel
+        // speedup would not materialize.
         //
         // API NOTE: see `add_from_fasta` for the `py.detach` (not the
-        // deprecated `allow_threads`) rationale — pyo3 0.27.2.
-        py.detach(move || process_fastq_file_on_counter(&counter, &path_str))
+        // deprecated predecessor) rationale — pyo3 0.27.2.
+        py.detach(move || count_file_into_counter(&counter, &path_str, kind, threads))
             .map_err(|e: rustkmer::ProcessingError| {
                 PyErr::new::<PyValueError, _>(format!("Failed to process FASTQ: {}", e))
             })
@@ -641,188 +661,27 @@ impl PyCounter {
     }
 }
 
-/// Count all k-mers in `seq_bytes` into one file-level local accumulator.
+/// Count one FASTA/FASTQ file into `counter` through the shared engine.
 ///
-/// This is a free function (not a method on `PyCounter`) so it can be called
-/// from inside a `py.detach(move || { .. })` closure, which may only capture
-/// `Send` types. The closure clones the `Arc<RustPyCounter>` and moves it in,
-/// then the file helper passes its `&mut LocalKmerCounts` here.
+/// Phase 9 (PY-01): every `add_from_*` call builds a fresh per-call engine
+/// with `initial_capacity = 0` (the persistent counter already holds the
+/// capacity), counts the file with the same strict `bio` parser and skip-N
+/// extractor as the CLI, then folds the exact partition tables into the
+/// shared counter through the checked merge bridge. Open/parse errors return
+/// before the merge, so a failed call leaves the shared counter unchanged.
 ///
-/// **PAR-02:** the file helpers create ONE [`LocalKmerCounts`] per file call
-/// and merge it into the shared counter once at the end. That keeps the
-/// per-sequence hot loop off the shared table and removes the per-window
-/// `total_kmers` / `unique_kmers` atomics, exactly like the CLI path. The
-/// public `add_kmer` / `add_sequence` methods deliberately keep using the
-/// shared `increment` path so their behavior is unchanged.
-///
-/// **ENGINE-03:** window extraction goes through the ONE core
-/// [`rustkmer::kmer::extract::for_each_window`] — the same function the CLI and
-/// the engine use — which owns the rolling (k ≤ 32) / per-window u128
-/// (33..=64) split, skip accounting, and canonicalization. The file callers
-/// filter non-ACGT bytes before this helper, so its observable behavior for
-/// N-containing reads is unchanged (D2 stays Phase 9's job); the extractor's
-/// skipped count is still propagated to the local for completeness.
-///
-/// The extractor skips (and counts) any window containing a byte outside
-/// A/C/G/T after uppercasing, and counts a canonical-computation error as
-/// skipped on the wide path. The overflow semantics (error on `u32::MAX` per
-/// k-mer) are inherited verbatim from `LocalKmerCounts::increment`
-/// (PCOUNT-04), and the reduction is checked.
-fn process_sequence_into_local(
-    local: &mut LocalKmerCounts,
-    k: usize,
-    canonical: bool,
-    seq_bytes: &[u8],
-) -> Result<(), rustkmer::ProcessingError> {
-    let summary = for_each_window(seq_bytes, k, canonical, |value| {
-        local.increment(value).map_err(|e| {
-            rustkmer::ProcessingError::with_context("Failed to increment k-mer count", Box::new(e))
-        })
-    })
-    .map_err(|error| match error {
-        WindowError::InvalidK(invalid) => {
-            rustkmer::ProcessingError::from(rustkmer::KmerError::InvalidKmerSize(invalid as u32))
-        }
-        WindowError::Emit(error) => error,
-    })?;
-
-    for _ in 0..summary.skipped {
-        local.record_skipped();
-    }
-
-    Ok(())
-}
-
-/// Count all k-mers in a FASTA file (gzip/bzip2/xz/plain) against `counter`.
-///
-/// Designed to run inside a `py.detach(..)` closure: takes only `Send` types
-/// (an `&Arc<RustPyCounter>` and a `&str` path). Reads the file, decompresses
-/// it transparently if the extension is `.gz` / `.bz2` / `.xz` (WR-05:
-/// previously only `.gz` was detected; `.bz2` / `.xz` were silently
-/// mis-parsed), and accumulates each record's sequence into ONE file-local
-/// [`LocalKmerCounts`] (PAR-02). The local is merged into the shared counter
-/// once at the end, so the per-sequence loop touches no shared state.
-/// Errors are returned as `rustkmer::ProcessingError` so the caller (which
-/// holds the GIL again after `py.detach` returns) can map them to `PyErr`.
-fn process_fasta_file_on_counter(
+/// Designed to run inside a `py.detach(..)` closure: it takes only `Send`
+/// types (the `Arc<RustPyCounter>`, an owned path `&str`, the record kind,
+/// and the resolved thread count).
+fn count_file_into_counter(
     counter: &Arc<RustPyCounter>,
     path: &str,
+    kind: SequenceKind,
+    threads: usize,
 ) -> Result<(), rustkmer::ProcessingError> {
-    use rustkmer::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
-    use std::io::{BufRead, BufReader};
-
-    let path = Path::new(path);
-
-    // WR-05: route through the shared compression-aware opener (the same one
-    // the CLI path uses) so `.bz2` / `.xz` inputs are decompressed correctly.
-    // Previously this branch detected only `.gz` inline and silently fell
-    // through to raw-byte parsing for the other two formats.
-    let (file, _compression) = DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
-        rustkmer::ProcessingError::with_context("Failed to open FASTA file", Box::new(e))
-    })?;
-    let reader = BufReader::new(file);
-
-    let k = counter.kmer_length();
-    let canonical = counter.canonical_mode();
-    // PAR-02: one local per file call; merged once before returning.
-    let mut local = counter.new_local_counts();
-    let mut current_seq = Vec::new();
-
-    for line_result in reader.lines() {
-        let line = line_result.map_err(|e| {
-            rustkmer::ProcessingError::with_context("Failed to read FASTA line", Box::new(e))
-        })?;
-
-        let trimmed = line.trim();
-
-        if trimmed.starts_with('>') {
-            // Process previous sequence
-            if !current_seq.is_empty() && current_seq.len() >= k {
-                process_sequence_into_local(&mut local, k, canonical, &current_seq)?;
-            }
-            current_seq.clear();
-        } else {
-            // Collect sequence bases
-            current_seq.extend(
-                trimmed
-                    .bytes()
-                    .filter(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T')),
-            );
-        }
-    }
-
-    // Process last sequence
-    if !current_seq.is_empty() && current_seq.len() >= k {
-        process_sequence_into_local(&mut local, k, canonical, &current_seq)?;
-    }
-
-    // PAR-02: checked end-of-file reduction (the only shared-table touch).
-    counter.merge_local_counts(&local)?;
-
-    Ok(())
-}
-
-/// Count all k-mers in a FASTQ file (gzip/bzip2/xz/plain) against `counter`.
-///
-/// Designed to run inside a `py.detach(..)` closure: takes only `Send` types
-/// (an `&Arc<RustPyCounter>` and a `&str` path). Reads the file, decompresses
-/// it transparently if the extension is `.gz` / `.bz2` / `.xz` (WR-05:
-/// previously only `.gz` was detected; `.bz2` / `.xz` were silently
-/// mis-parsed), and accumulates each record's sequence into ONE file-local
-/// [`LocalKmerCounts`] (PAR-02). The local is merged into the shared counter
-/// once at the end, so the per-sequence loop touches no shared state.
-/// Errors are returned as `rustkmer::ProcessingError` so the caller (which
-/// holds the GIL again after `py.detach` returns) can map them to `PyErr`.
-fn process_fastq_file_on_counter(
-    counter: &Arc<RustPyCounter>,
-    path: &str,
-) -> Result<(), rustkmer::ProcessingError> {
-    use rustkmer::io::fastq::{CompressedFileReader, DefaultCompressedFileReader};
-    use std::io::{BufRead, BufReader};
-
-    let path = Path::new(path);
-
-    // WR-05: route through the shared compression-aware opener (the same one
-    // the CLI path uses) so `.bz2` / `.xz` inputs are decompressed correctly.
-    // Previously this branch detected only `.gz` inline and silently fell
-    // through to raw-byte parsing for the other two formats.
-    let (file, _compression) = DefaultCompressedFileReader::open_compressed(path).map_err(|e| {
-        rustkmer::ProcessingError::with_context("Failed to open FASTQ file", Box::new(e))
-    })?;
-    let reader = BufReader::new(file);
-
-    let k = counter.kmer_length();
-    let canonical = counter.canonical_mode();
-    // PAR-02: one local per file call; merged once before returning.
-    let mut local = counter.new_local_counts();
-    let mut line_num = 0;
-
-    for line_result in reader.lines() {
-        let line = line_result.map_err(|e| {
-            rustkmer::ProcessingError::with_context("Failed to read FASTQ line", Box::new(e))
-        })?;
-
-        line_num += 1;
-        let line_mod = line_num % 4;
-
-        // FASTQ format: line 1 = header (@...), line 2 = sequence, line 3 = +, line 4 = quality
-        if line_mod == 2 {
-            let trimmed = line.trim();
-
-            // Process sequence
-            let seq_bytes: Vec<u8> = trimmed
-                .bytes()
-                .filter(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T'))
-                .collect();
-
-            if seq_bytes.len() >= k {
-                process_sequence_into_local(&mut local, k, canonical, &seq_bytes)?;
-            }
-        }
-    }
-
-    // PAR-02: checked end-of-file reduction (the only shared-table touch).
-    counter.merge_local_counts(&local)?;
-
+    let config = EngineConfig::new(counter.kmer_length(), counter.canonical_mode(), threads, 0);
+    let mut engine = CountEngine::new(config)?;
+    engine.count_file(Path::new(path), kind)?;
+    engine.finish()?.merge_into(counter)?;
     Ok(())
 }

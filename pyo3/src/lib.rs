@@ -51,5 +51,9 @@ fn pyrustkmer(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyPrefixQueryMetrics>()?;
     m.add_class::<PyFormatter>()?;
     m.add_class::<RustKmerError>()?;
+    // Phase 9: `add` appends the name to `__all__`, which the maturin shim
+    // star-imports, so `pyrustkmer.__version__` exists on rebuilt extensions
+    // only. That makes it the stale-`.so` tripwire asserted by test_version.py.
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

@@ -1,0 +1,283 @@
+{
+  "canonical": true,
+  "cases": [
+    {
+      "cli": {
+        "distinct": 2,
+        "total": 10
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "87ac037e8a12aa9ff9dc958eb8cbf74c4195a3b50c444d123a07b63022a6d4f6",
+      "name": "control_no_n",
+      "python": {
+        "distinct": 2,
+        "total": 10
+      },
+      "python_only": [],
+      "reads": [
+        "ACGTACGTACGTACGTACGTACGTACGTAC"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 2,
+        "total": 9
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "a9db71f5fa15720c99376df13b5d8a185648db84a53cc95f95bd4327e33b1ae7",
+      "name": "n_at_first",
+      "python": {
+        "distinct": 2,
+        "total": 9
+      },
+      "python_only": [],
+      "reads": [
+        "NCGTACGTACGTACGTACGTACGTACGTAC"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 0,
+        "total": 0
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [
+        "ACGACGTACGTACGTACGTAC",
+        "ACGTACGACGTACGTACGTAC",
+        "ACGTACGTACGTACGTACGTC",
+        "ACGTACGTACGTACGTCGTAC",
+        "ACGTACGTACGTCGTACGTAC"
+      ],
+      "input_sha256": "99239ba82aa816efde110b21ac5d040ecf9d7665783bd3feb9ce6d9864c51c5e",
+      "name": "n_at_window_end",
+      "python": {
+        "distinct": 9,
+        "total": 9
+      },
+      "python_only": [
+        "ACGACGTACGTACGTACGTAC",
+        "ACGTACGACGTACGTACGTAC",
+        "ACGTACGTACGTACGTACGTC",
+        "ACGTACGTACGTACGTCGTAC",
+        "ACGTACGTACGTCGTACGTAC",
+        "CGACGTACGTACGTACGTACG",
+        "CGTACGACGTACGTACGTACG",
+        "TACGACGTACGTACGTACGTA",
+        "TACGTACGACGTACGTACGTA"
+      ],
+      "reads": [
+        "ACGTACGTACGTACGTACGTNCGTACGTAC"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 1,
+        "total": 1
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [
+        "ACGTACGTACGTACGTAGTAC",
+        "ACGTACGTACGTAGTACGTAC",
+        "ACGTACTACGTACGTACGTAC",
+        "ACTACGTACGTACGTACGTAC",
+        "CGTACGTACGTACGTACGTAG"
+      ],
+      "input_sha256": "cc89585892c2f5f3a55a805e4219769519768d8f483063e43601a7cb8c1634cf",
+      "name": "n_at_window_start",
+      "python": {
+        "distinct": 9,
+        "total": 9
+      },
+      "python_only": [
+        "ACGTACGTACGTACGTAGTAC",
+        "ACGTACGTACGTAGTACGTAC",
+        "ACGTACTACGTACGTACGTAC",
+        "ACTACGTACGTACGTACGTAC",
+        "CGTACGTACGTACGTACGTAG",
+        "CGTACGTACGTACGTAGTACG",
+        "TACGTACGTACGTACGTAGTA",
+        "TACGTACGTACGTAGTACGTA"
+      ],
+      "reads": [
+        "ACGTACGTACGTACGTACGTANGTACGTAC"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 2,
+        "total": 9
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "2f02cfc60b7d3162f458130729bb8f6bb57df7a551aa4af97e7567ec2e43067e",
+      "name": "n_at_last",
+      "python": {
+        "distinct": 2,
+        "total": 9
+      },
+      "python_only": [],
+      "reads": [
+        "ACGTACGTACGTACGTACGTACGTACGTAN"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 0,
+        "total": 0
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [
+        "ACGTACGTCGTACGTACTACG",
+        "ACGTAGTACGTACGACGTACG",
+        "ACTACGTACGTCGTACGTACT",
+        "CTACGTACGTCGTACGTACTA",
+        "GTACGTACGACGTACGTAGTA"
+      ],
+      "input_sha256": "eafe4dd2d650d0fb7a30b5a8893d58f291bcfcc2ac2ed720c78fee8a7a424e6f",
+      "name": "multiple_n",
+      "python": {
+        "distinct": 7,
+        "total": 7
+      },
+      "python_only": [
+        "ACGTACGTCGTACGTACTACG",
+        "ACGTAGTACGTACGACGTACG",
+        "ACTACGTACGTCGTACGTACT",
+        "CTACGTACGTCGTACGTACTA",
+        "GTACGTACGACGTACGTAGTA",
+        "GTACTACGTACGTCGTACGTA",
+        "GTAGTACGTACGACGTACGTA"
+      ],
+      "reads": [
+        "ACGTANGTACGTACGNACGTACGTANGTAC"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 0,
+        "total": 0
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [
+        "ACGTACGTACGTACGTAGTAC",
+        "ACGTACGTACGTAGTACGTAC",
+        "ACGTACGTACTACGTACGTAC",
+        "ACGTACTACGTACGTACGTAC",
+        "ACTACGTACGTACGTACGTAC"
+      ],
+      "input_sha256": "83f390e7cb35191ee53f9973d71386b8c35a793249c529ca6911e8cc56b44af7",
+      "name": "lowercase_n",
+      "python": {
+        "distinct": 9,
+        "total": 9
+      },
+      "python_only": [
+        "ACGTACGTACGTACGTAGTAC",
+        "ACGTACGTACGTAGTACGTAC",
+        "ACGTACGTACTACGTACGTAC",
+        "ACGTACTACGTACGTACGTAC",
+        "ACTACGTACGTACGTACGTAC",
+        "CGTACGTACGTACGTAGTACG",
+        "CGTACGTACGTAGTACGTACG",
+        "TACGTACGTACGTACGTAGTA",
+        "TACGTACGTACGTAGTACGTA"
+      ],
+      "reads": [
+        "ACGTACGTACnTACGTACGTACGTACGTAC"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 2,
+        "total": 8
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "a2f6d94e3d5e6eaabdd4708ecde140fd7b9f4c744c858ee8f146064639f5926e",
+      "name": "record_boundary",
+      "python": {
+        "distinct": 2,
+        "total": 8
+      },
+      "python_only": [],
+      "reads": [
+        "ACGTACGTACGTACGTACGTACGTN",
+        "NCGTACGTACGTACGTACGTACGTA"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 0,
+        "total": 0
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "365c3e07d35436700a7f6f70d5cb29303e9804746759bdffa0f89b3b6ffb47b0",
+      "name": "short_read",
+      "python": {
+        "distinct": 0,
+        "total": 0
+      },
+      "python_only": [],
+      "reads": [
+        "ACGTACGTACGTACG"
+      ]
+    }
+  ],
+  "created": "2026-11-13T01:39:05.078358+00:00",
+  "expectation": "unified",
+  "expected_semantics": {
+    "cli": "skip-N-windows",
+    "python": "strip-and-join-pre-Phase-9"
+  },
+  "k": 21,
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/.claude/worktrees/agent-a80dfb7a0cd66dd22/target/release/rustkmer",
+      "sha256": "b5542d08f7ddf5f1c3d268719f2180cf05a012b806505b0913de3854f7763c5b",
+      "size_bytes": 2966832
+    },
+    "build_profile": "release",
+    "created": "2026-11-13T01:39:05.133232+00:00",
+    "git_commit": "4c97787120bd8341176ca99a3f54b7bc6efb5032",
+    "git_dirty": true,
+    "module": {
+      "path": "/Users/forrest/GitHub/rustkmer/.venv313/lib/python3.13/site-packages/pyrustkmer/pyrustkmer.cpython-313-darwin.so",
+      "sha256": "8b9d8cdb43923a7573fe9693df1b7eced033895f792a3d3de77ab60839febcdd",
+      "size_bytes": 1497008
+    },
+    "platform": "darwin-arm64",
+    "python_executable": "/Users/forrest/GitHub/rustkmer/.claude/worktrees/agent-a80dfb7a0cd66dd22/.venv313/bin/python",
+    "python_version": "3.13.11",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)"
+  },
+  "schema_version": 1,
+  "totals": {
+    "cases": 9,
+    "cli_only_total": 0,
+    "count_delta_total": 0,
+    "divergent_cases": [
+      "n_at_window_end",
+      "n_at_window_start",
+      "multiple_n",
+      "lowercase_n"
+    ],
+    "python_only_total": 33
+  },
+  "verdict": {
+    "exit_code": 1,
+    "expect": "unified",
+    "result": "FAIL"
+  }
+}
