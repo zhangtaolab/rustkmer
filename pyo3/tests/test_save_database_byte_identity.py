@@ -20,9 +20,11 @@ rayon thread pool is process-global and first-call-wins — a ``threads=4``
 counter built after a ``threads=1`` counter in the same process would silently
 run on the first pool. A fresh process makes the arm's thread count real.
 
-Skips are build-infrastructure only: a missing release ``rustkmer`` binary or a
-missing committed fixture skips. A count/save failure or a sha256 mismatch
-never skips.
+Skips are build-infrastructure only and are split by arm (WR-03): the
+fixture-only Python arm needs just the committed fixture, so it runs in the
+CI pyo3 job (which never builds the root CLI); the CLI and 1-vs-N arms also
+need the release ``rustkmer`` binary and skip gracefully when it is absent.
+A count/save failure or a sha256 mismatch never skips.
 """
 
 import hashlib
@@ -87,12 +89,16 @@ def _write_golden_fasta(directory):
     return fasta
 
 
-def _require_build_artifacts():
-    """Skip only when the build infrastructure is absent, never on a failure."""
-    if not RUSTKMER.exists():
-        pytest.skip(f"release CLI binary absent (build infra): {RUSTKMER}")
+def _require_fixture():
+    """Skip only when the committed golden fixture is absent (build infra)."""
     if not FIXTURE.exists():
         pytest.skip(f"committed golden fixture absent (build infra): {FIXTURE}")
+
+
+def _require_cli():
+    """Skip only when the release CLI binary is absent (build infra)."""
+    if not RUSTKMER.exists():
+        pytest.skip(f"release CLI binary absent (build infra): {RUSTKMER}")
 
 
 def _run_python_arm(fasta, out, threads_arg):
@@ -123,10 +129,29 @@ def _run_cli_arm(fasta, out, threads_arg):
     )
 
 
+def test_fixture_only_arm_does_not_require_the_cli(monkeypatch):
+    """WR-03: the golden Python arm must not gate on the CLI binary.
+
+    The CI pyo3 job builds only the wheel; a fixture-only guard is what keeps
+    ``test_python_save_database_matches_golden`` running there.
+    """
+    monkeypatch.setattr(sys.modules[__name__], "RUSTKMER",
+                        Path("/nonexistent/target/release/rustkmer"))
+    _require_fixture()  # must not skip
+
+
+def test_cli_guard_skips_gracefully_when_the_binary_is_absent(monkeypatch):
+    """WR-03: CLI arms skip (not fail) when the release binary is absent."""
+    monkeypatch.setattr(sys.modules[__name__], "RUSTKMER",
+                        Path("/nonexistent/target/release/rustkmer"))
+    with pytest.raises(pytest.skip.Exception):
+        _require_cli()
+
+
 @pytest.mark.parametrize("threads_arg", ["1", "default"])
 def test_python_save_database_matches_golden(threads_arg, tmp_path):
     """PyCounter.save_database emits the golden bytes at threads=1 and default."""
-    _require_build_artifacts()
+    _require_fixture()
     fasta = _write_golden_fasta(tmp_path)
     out = tmp_path / f"python-{threads_arg}.rkdb"
 
@@ -145,7 +170,8 @@ def test_python_save_database_matches_golden(threads_arg, tmp_path):
 @pytest.mark.parametrize("threads_arg", ["1", "4", "default"])
 def test_cli_count_matches_golden(threads_arg, tmp_path):
     """CLI count emits the golden bytes at threads=1, 4, and default."""
-    _require_build_artifacts()
+    _require_cli()
+    _require_fixture()
     fasta = _write_golden_fasta(tmp_path)
     out = tmp_path / f"cli-{threads_arg}.rkdb"
 
@@ -162,7 +188,8 @@ def test_cli_count_matches_golden(threads_arg, tmp_path):
 
 def test_python_and_cli_arms_agree_1_vs_n(tmp_path):
     """The 1-vs-N invariant: every Python and CLI arm emits identical bytes."""
-    _require_build_artifacts()
+    _require_cli()
+    _require_fixture()
     fasta = _write_golden_fasta(tmp_path)
 
     shas = {}
