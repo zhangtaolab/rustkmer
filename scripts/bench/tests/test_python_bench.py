@@ -43,18 +43,33 @@ def fake_provenance(executable, build_profile):
 
 
 def make_fake_measure(module_path, total=100, unique=90, vary=False,
-                      write_stats=True):
+                      write_stats=True, threads_resolved=None):
     """Fake bench.measure: writes the worker stats file the controller reads
-    and returns deterministic wall/RSS (wall = 1.0 + call index)."""
+    and returns deterministic wall/RSS (wall = 1.0 + call index).
+
+    By default the fake models a binding that HONORS its thread
+    configuration: ``threads_resolved`` follows the worker's ``--threads``
+    argument (``default`` -> 16). Pass ``threads_resolved`` to model a
+    binding that ignores the request.
+    """
     calls = {"n": 0}
 
     def fake_measure(argv):
         i = calls["n"]
         calls["n"] += 1
         stats_out = Path(argv[argv.index("--stats-out") + 1])
+        requested = (argv[argv.index("--threads") + 1]
+                     if "--threads" in argv else "1")
+        if threads_resolved is not None:
+            resolved = threads_resolved
+        elif requested == "default":
+            resolved = 16
+        else:
+            resolved = int(requested)
         payload = {
             "total_kmers": total + (i if vary else 0),
             "unique_kmers": unique + (i if vary else 0),
+            "threads_resolved": resolved,
             "module_path": str(module_path),
             "module_mtime": 1794477430.0,
             "python_version": "3.13.11",
@@ -83,9 +98,11 @@ def build_gz_fixture(path, n_records=30):
     return path
 
 
-def make_rep(total=100, unique=90, module="/x/pyrustkmer.so", wall=1.0):
+def make_rep(total=100, unique=90, module="/x/pyrustkmer.so", wall=1.0,
+             threads_resolved=1):
     return {"wall_s": wall, "peak_rss_bytes": 1000, "total_kmers": total,
             "unique_kmers": unique, "module_path": module,
+            "threads_resolved": threads_resolved,
             "cache_state": "unavailable", "rep": 0}
 
 
@@ -249,6 +266,7 @@ class TestWorkerStatsValidation(unittest.TestCase):
 
     def payload(self, **over):
         base = {"total_kmers": 100, "unique_kmers": 90,
+                "threads_resolved": 1,
                 "module_path": str(self.module), "module_mtime": 1.0,
                 "python_version": "3.13.11"}
         base.update(over)
@@ -286,6 +304,35 @@ class TestWorkerStatsValidation(unittest.TestCase):
             pb.validate_worker_stats(
                 self.payload(module_path=str(shim)), self.site)
 
+    def test_resolved_threads_mismatch_raises(self):
+        """A binding that ignores --threads reports the wrong resolved count."""
+        with self.assertRaises(ValueError):
+            pb.validate_worker_stats(
+                self.payload(threads_resolved=16), self.site,
+                expected_threads=1)
+
+    def test_resolved_threads_match_passes(self):
+        counts = pb.validate_worker_stats(
+            self.payload(threads_resolved=1), self.site, expected_threads=1)
+        self.assertEqual(counts, {"total_kmers": 100, "unique_kmers": 90})
+
+    def test_missing_resolved_threads_raises(self):
+        payload = self.payload()
+        del payload["threads_resolved"]
+        with self.assertRaises(ValueError):
+            pb.validate_worker_stats(payload, self.site)
+
+    def test_zero_resolved_threads_raises(self):
+        with self.assertRaises(ValueError):
+            pb.validate_worker_stats(
+                self.payload(threads_resolved=0), self.site)
+
+    def test_default_expected_accepts_any_positive_resolution(self):
+        counts = pb.validate_worker_stats(
+            self.payload(threads_resolved=16), self.site,
+            expected_threads=None)
+        self.assertEqual(counts["unique_kmers"], 90)
+
 
 class TestRepIdentity(unittest.TestCase):
     """Cross-rep exact-count identity; disagreement is never averaged away."""
@@ -308,6 +355,11 @@ class TestRepIdentity(unittest.TestCase):
 
     def test_module_disagreement_raises(self):
         reps = [make_rep(), make_rep(module="/other/pyrustkmer.so")]
+        with self.assertRaises(ValueError):
+            pb.check_rep_identity(reps)
+
+    def test_thread_resolution_disagreement_raises(self):
+        reps = [make_rep(), make_rep(threads_resolved=16)]
         with self.assertRaises(ValueError):
             pb.check_rep_identity(reps)
 
@@ -692,6 +744,15 @@ class TestSyntheticController(ControllerHarness):
         self.assertEqual(code, 2)
         self.assertIn("slice-mode", err)
 
+    def test_binding_ignoring_threads_exits_2(self):
+        """A PyCounter that ignores --threads is never a valid measurement."""
+        code, _, err = self.run_main(
+            self.synthetic_argv(),
+            measure=make_fake_measure(self.module, threads_resolved=16))
+        self.assertEqual(code, 2)
+        self.assertIn("thread", err)
+        self.assertFalse(self.out.exists())
+
 
 class TestSliceController(ControllerHarness):
 
@@ -920,6 +981,18 @@ class TestCompareController(ControllerHarness):
             filter_counts=dict(self.FILTER))
         self.assertEqual(code, 2)
         self.assertIn("mutually exclusive", err)
+        self.assertFalse(self.out.exists())
+
+    def test_compare_rejects_non_default_threads(self):
+        """--threads must never be a silent no-op in compare mode (WR-02)."""
+        baseline = self.write_baseline()
+        code, _, err = self.run_main(
+            self.compare_argv(baseline, "--threads", "4"),
+            cli={"unique_kmers": 90, "total_kmers": 100},
+            fingerprint_value=self.CONTROL_SHA,
+            filter_counts=dict(self.FILTER))
+        self.assertEqual(code, 2)
+        self.assertIn("--threads", err)
         self.assertFalse(self.out.exists())
 
 

@@ -26,8 +26,13 @@ baseline, and it is never a parity gate.
 
 --compare-baseline is the Phase 9 dev-host comparison mode. It requires
 slice mode and validates the committed baseline's identity (platform
-flavor, provenance platform, k/canonical, control-fingerprint shape and
-positive exact counts) before provisioning. Before ANY timing it re-proves
+flavor, provenance platform, k/canonical, the single unambiguous threads=1
+control arm, control-fingerprint shape and positive exact counts) before
+provisioning. The mode always measures the threads=1 and default arms
+itself, so `--threads` must stay at its default `1`; each worker's resolved
+thread count (reported by the binding as `get_stats().threads`) is
+validated against the configuration its arm requested before any verdict
+is computed. Before ANY timing it re-proves
 CLI-vs-Python parity on the regenerated N-free control, requires that
 control's exact counts and sha256 to equal the committed baseline's, then
 measures BOTH the threads=1 and default-threads arms as fresh workers. The
@@ -231,17 +236,21 @@ def filter_n_free(src, dst):
     return {"kept_reads": kept, "dropped_reads": dropped}
 
 
-def validate_worker_stats(payload, site_prefix):
+def validate_worker_stats(payload, site_prefix, expected_threads=None):
     """Validate one worker stats payload; return its exact counts.
 
     Raises ValueError on missing fields, non-positive/non-integer counts,
-    or a module that does not resolve under the interpreter's site-packages
+    a module that does not resolve under the interpreter's site-packages
     prefix as a native extension (a stale/shadowed module elsewhere — or a
     bare Python shim with no native bytes — is an invalid benchmark,
-    T-05-11).
+    T-05-11), or a resolved thread count that disagrees with the arm's
+    requested configuration (``expected_threads``; None means the all-cores
+    default). ``threads_resolved`` is the binding's OWN resolved count
+    (``get_stats().threads``), so a PyCounter that ignores ``threads``
+    cannot produce a valid measurement (WR-02).
     """
     for key in ("total_kmers", "unique_kmers", "module_path", "module_mtime",
-                "python_version"):
+                "python_version", "threads_resolved"):
         if key not in payload:
             raise ValueError(f"worker stats missing field {key!r}")
     for key in ("total_kmers", "unique_kmers"):
@@ -250,6 +259,17 @@ def validate_worker_stats(payload, site_prefix):
             raise ValueError(
                 f"worker stats {key}={value!r} — a zero/invalid count is a "
                 f"silent input failure, never a measurement")
+    resolved = payload["threads_resolved"]
+    if (not isinstance(resolved, int) or isinstance(resolved, bool)
+            or resolved < 1):
+        raise ValueError(
+            f"worker stats threads_resolved={resolved!r} — the binding must "
+            f"report a positive resolved thread count")
+    if expected_threads is not None and resolved != expected_threads:
+        raise ValueError(
+            f"worker resolved {resolved} rayon threads but the arm requested "
+            f"{expected_threads} — the binding ignored its thread "
+            f"configuration; the measurement is invalid")
     module = Path(payload["module_path"]).resolve()
     prefix = Path(site_prefix).resolve()
     if not module.is_relative_to(prefix):
@@ -285,6 +305,12 @@ def check_rep_identity(reps, expected=None):
         raise ValueError(
             f"rep module disagreement: {sorted(modules)} — the measured "
             f"extension changed mid-run")
+    thread_counts = {r.get("threads_resolved") for r in reps}
+    if len(thread_counts) != 1:
+        raise ValueError(
+            f"rep thread-count disagreement: "
+            f"{sorted(thread_counts, key=str)} — the resolved worker "
+            f"configuration changed mid-run")
     total, unique = next(iter(seen))
     exact = {"total_kmers": total, "unique_kmers": unique}
     if expected is not None and (
@@ -629,6 +655,8 @@ def run_worker(args):
         "total_kmers": int(st.total_kmers),
         "unique_kmers": int(st.unique_kmers),
         "threads": args.threads,
+        # Observed, not requested: the binding's own resolved rayon count.
+        "threads_resolved": int(st.threads),
         "module_path": str(module_path),
         "module_mtime": os.path.getmtime(module_path),
         "python_version": platform.python_version(),
@@ -659,6 +687,7 @@ def measure_arm(args, info, input_path, scratch, arm_name, gap,
                    "--input", str(input_path), "--k", str(args.k),
                    "--threads", str(threads_text),
                    "--stats-out", str(stats_path)]
+    requested_threads = parse_threads(threads_text)
 
     def one_run():
         if stats_path.exists():
@@ -670,9 +699,11 @@ def measure_arm(args, info, input_path, scratch, arm_name, gap,
                 f"worker run")
         with open(stats_path, encoding="utf-8") as fh:
             payload = json.load(fh)
-        counts = validate_worker_stats(payload, info["site_prefix"])
+        counts = validate_worker_stats(
+            payload, info["site_prefix"], expected_threads=requested_threads)
         rep.update(counts)
         rep["module_path"] = payload["module_path"]
+        rep["threads_resolved"] = payload["threads_resolved"]
         return rep, counts
 
     warmup_rep, warmup_counts = one_run()
@@ -688,13 +719,15 @@ def measure_arm(args, info, input_path, scratch, arm_name, gap,
         gap()
     exact = check_rep_identity(reps, expected=pin)
     reduced = reduce_arm(reps)
-    threads_value = parse_threads(threads_text)
+    resolved_threads = reps[0]["threads_resolved"]
     arm = {
         "name": arm_name,
         "tool": "pyrustkmer",
         # "default" records the all-cores configuration; a concrete int is
         # the identical --threads value the workers were given. Never null.
-        "threads": "default" if threads_value is None else threads_value,
+        # threads_resolved is the OBSERVED value reported by the binding.
+        "threads": "default" if requested_threads is None else requested_threads,
+        "threads_resolved": resolved_threads,
         "reps": reps,
         "medians": {
             "wall_s": reduced["median_wall_s"],
@@ -770,6 +803,11 @@ def run_controller(args):
             f"basis is a threads=1 control arm (got {args.threads!r}) — an "
             "arm named '-t1' measured at another configuration cannot be a "
             "baseline")
+    if args.compare_baseline is not None and threads_value != 1:
+        raise ValueError(
+            "--compare-baseline always measures the threads=1 and default "
+            f"arms itself; leave --threads at its default '1' (got "
+            f"{args.threads!r})")
     if not Path(args.python).is_file():
         raise ValueError(f"--python interpreter not found: {args.python}")
     if args.mode == "slice":
@@ -853,7 +891,8 @@ def run_controller(args):
         with open(control_stats_path, encoding="utf-8") as fh:
             warmup_payload = json.load(fh)
         warmup_counts = validate_worker_stats(warmup_payload,
-                                              info["site_prefix"])
+                                              info["site_prefix"],
+                                              expected_threads=1)
         cli_db = scratch / "nfree-control-cli.rkdb"
         cli_st = cli_count_counts(control_path, args.k, args.rustkmer, cli_db)
         parity = parity_counts(cli_st, warmup_counts)

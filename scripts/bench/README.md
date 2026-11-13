@@ -213,7 +213,13 @@ locked inclusive thresholds:
 - `speedup_default` = baseline t1 median / new default median, must be
   `>= 1.2x` (the measured win).
 
-There is no noise band. Both arms are always reported.
+There is no noise band. Both arms are always reported. Compare mode
+measures both arms itself, so `--threads` must stay at its default `1`;
+any other value exits 2 instead of being silently ignored. Every worker
+reports the binding's own resolved rayon count (`get_stats().threads`, the
+`threads_resolved` field in the arm), and the arm is invalid unless that
+observed count matches the configuration the arm requested — a `PyCounter`
+that ignores its `threads` argument can never produce a PASS.
 
 ```bash
 .venv313/bin/python scripts/bench/python_bench.py --mode slice \
@@ -228,11 +234,13 @@ Exit contract: `0 = PASS, 1 = valid FAIL (artifact kept), 2 = invalid (no artifa
 A valid measurement is written on PASS and on a genuine FAIL; every
 invalid path exits 2 with no artifact. The identity guards that exit 2 are:
 a platform-flavor mismatch, a `provenance.platform` mismatch, a k/canonical
-mismatch, a baseline without a control fingerprint or positive exact counts,
-a pre-timing exact-count mismatch, and a regenerated-control fingerprint
-mismatch. The artifact carries both measured arms, the `comparison` and
-`verdict` blocks, the baseline record (path, sha256, control median, exact
-counts), and full provenance.
+mismatch, a baseline without exactly one unambiguous threads=1 control arm,
+a baseline without a control fingerprint or positive exact counts,
+a pre-timing exact-count mismatch, a regenerated-control fingerprint
+mismatch, and a worker whose resolved thread count disagrees with its arm's
+requested configuration. The artifact carries both measured arms, the
+`comparison` and `verdict` blocks, the baseline record (path, sha256,
+control median, exact counts), and full provenance.
 
 This is dev-host evidence only: it adds no CI comparison gate, because no
 CI-class baseline exists. Phase 10 owns CI-class baselines (see "Python

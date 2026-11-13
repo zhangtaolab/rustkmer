@@ -26,6 +26,13 @@ pub struct PyCounterStats {
     pub canonical_mode: bool,
     /// Estimated memory usage in bytes
     pub memory_usage: usize,
+    /// Resolved rayon worker count the counter was constructed with.
+    ///
+    /// Phase 9 (WR-02) diagnostics: the benchmark harness uses this to prove
+    /// the requested `threads` configuration was actually applied instead of
+    /// trusting the controller's requested string. Read-only observation —
+    /// it is a statistic of the counter, not a `PyCounter` member.
+    pub threads: usize,
 }
 
 #[pymethods]
@@ -55,10 +62,15 @@ impl PyCounterStats {
         self.memory_usage
     }
 
+    #[getter]
+    fn threads(&self) -> usize {
+        self.threads
+    }
+
     fn __repr__(&self) -> String {
         format!(
-            "PyCounterStats(total_kmers={}, unique_kmers={}, kmer_length={}, canonical_mode={}, memory_usage={})",
-            self.total_kmers, self.unique_kmers, self.kmer_length, self.canonical_mode, self.memory_usage
+            "PyCounterStats(total_kmers={}, unique_kmers={}, kmer_length={}, canonical_mode={}, memory_usage={}, threads={})",
+            self.total_kmers, self.unique_kmers, self.kmer_length, self.canonical_mode, self.memory_usage, self.threads
         )
     }
 }
@@ -114,7 +126,9 @@ pub struct PyCounter {
     /// Phase 9 (PY-01): resolved thread count. `KmerCounter::new` discards its
     /// `_num_threads` argument (`src/hash/table.rs`), so the binding must
     /// remember the value it resolved in `new` to size each per-call engine
-    /// config. Private: never exposed to Python, and no getter exists.
+    /// config. Reported read-only through `get_stats().threads` (Phase 9
+    /// WR-02) so the benchmark can verify the configuration actually applied;
+    /// `PyCounter`'s own public surface stays unchanged.
     threads: usize,
 }
 
@@ -501,6 +515,7 @@ impl PyCounter {
     /// - kmer_length: K-mer length
     /// - canonical_mode: Whether canonical mode is enabled
     /// - memory_usage: Estimated memory usage in bytes
+    /// - threads: Resolved rayon worker count (requested `threads` applied)
     ///
     /// # Example
     /// ```python
@@ -520,6 +535,7 @@ impl PyCounter {
             kmer_length,
             canonical_mode,
             memory_usage,
+            threads: self.threads,
         }
     }
 
