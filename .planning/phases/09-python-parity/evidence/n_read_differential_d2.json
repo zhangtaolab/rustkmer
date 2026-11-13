@@ -1,0 +1,326 @@
+{
+  "before": {
+    "cases": {
+      "control_no_n": {
+        "cli": {
+          "distinct": 2,
+          "total": 10
+        },
+        "python": {
+          "distinct": 2,
+          "total": 10
+        }
+      },
+      "lowercase_n": {
+        "cli": {
+          "distinct": 0,
+          "total": 0
+        },
+        "python": {
+          "distinct": 9,
+          "total": 9
+        }
+      },
+      "multiple_n": {
+        "cli": {
+          "distinct": 0,
+          "total": 0
+        },
+        "python": {
+          "distinct": 7,
+          "total": 7
+        }
+      },
+      "n_at_first": {
+        "cli": {
+          "distinct": 2,
+          "total": 9
+        },
+        "python": {
+          "distinct": 2,
+          "total": 9
+        }
+      },
+      "n_at_last": {
+        "cli": {
+          "distinct": 2,
+          "total": 9
+        },
+        "python": {
+          "distinct": 2,
+          "total": 9
+        }
+      },
+      "n_at_window_end": {
+        "cli": {
+          "distinct": 0,
+          "total": 0
+        },
+        "python": {
+          "distinct": 9,
+          "total": 9
+        }
+      },
+      "n_at_window_start": {
+        "cli": {
+          "distinct": 1,
+          "total": 1
+        },
+        "python": {
+          "distinct": 9,
+          "total": 9
+        }
+      },
+      "record_boundary": {
+        "cli": {
+          "distinct": 2,
+          "total": 8
+        },
+        "python": {
+          "distinct": 2,
+          "total": 8
+        }
+      },
+      "short_read": {
+        "cli": {
+          "distinct": 0,
+          "total": 0
+        },
+        "python": {
+          "distinct": 0,
+          "total": 0
+        }
+      }
+    },
+    "expectation": "divergence",
+    "path": ".planning/phases/05-measurement-regression-harness/n_read_differential.json",
+    "sha256": "6d929a4519059f445e9beb8062b86d1e5a455c04797e75b177798fe1447b6b32",
+    "totals": {
+      "cases": 9,
+      "cli_only_total": 0,
+      "count_delta_total": 0,
+      "divergent_cases": [
+        "n_at_window_end",
+        "n_at_window_start",
+        "multiple_n",
+        "lowercase_n"
+      ],
+      "python_only_total": 33
+    }
+  },
+  "canonical": true,
+  "cases": [
+    {
+      "cli": {
+        "distinct": 2,
+        "total": 10
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "87ac037e8a12aa9ff9dc958eb8cbf74c4195a3b50c444d123a07b63022a6d4f6",
+      "name": "control_no_n",
+      "python": {
+        "distinct": 2,
+        "total": 10
+      },
+      "python_only": [],
+      "reads": [
+        "ACGTACGTACGTACGTACGTACGTACGTAC"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 2,
+        "total": 9
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "a9db71f5fa15720c99376df13b5d8a185648db84a53cc95f95bd4327e33b1ae7",
+      "name": "n_at_first",
+      "python": {
+        "distinct": 2,
+        "total": 9
+      },
+      "python_only": [],
+      "reads": [
+        "NCGTACGTACGTACGTACGTACGTACGTAC"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 0,
+        "total": 0
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "99239ba82aa816efde110b21ac5d040ecf9d7665783bd3feb9ce6d9864c51c5e",
+      "name": "n_at_window_end",
+      "python": {
+        "distinct": 0,
+        "total": 0
+      },
+      "python_only": [],
+      "reads": [
+        "ACGTACGTACGTACGTACGTNCGTACGTAC"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 1,
+        "total": 1
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "cc89585892c2f5f3a55a805e4219769519768d8f483063e43601a7cb8c1634cf",
+      "name": "n_at_window_start",
+      "python": {
+        "distinct": 1,
+        "total": 1
+      },
+      "python_only": [],
+      "reads": [
+        "ACGTACGTACGTACGTACGTANGTACGTAC"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 2,
+        "total": 9
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "2f02cfc60b7d3162f458130729bb8f6bb57df7a551aa4af97e7567ec2e43067e",
+      "name": "n_at_last",
+      "python": {
+        "distinct": 2,
+        "total": 9
+      },
+      "python_only": [],
+      "reads": [
+        "ACGTACGTACGTACGTACGTACGTACGTAN"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 0,
+        "total": 0
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "eafe4dd2d650d0fb7a30b5a8893d58f291bcfcc2ac2ed720c78fee8a7a424e6f",
+      "name": "multiple_n",
+      "python": {
+        "distinct": 0,
+        "total": 0
+      },
+      "python_only": [],
+      "reads": [
+        "ACGTANGTACGTACGNACGTACGTANGTAC"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 0,
+        "total": 0
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "83f390e7cb35191ee53f9973d71386b8c35a793249c529ca6911e8cc56b44af7",
+      "name": "lowercase_n",
+      "python": {
+        "distinct": 0,
+        "total": 0
+      },
+      "python_only": [],
+      "reads": [
+        "ACGTACGTACnTACGTACGTACGTACGTAC"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 2,
+        "total": 8
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "a2f6d94e3d5e6eaabdd4708ecde140fd7b9f4c744c858ee8f146064639f5926e",
+      "name": "record_boundary",
+      "python": {
+        "distinct": 2,
+        "total": 8
+      },
+      "python_only": [],
+      "reads": [
+        "ACGTACGTACGTACGTACGTACGTN",
+        "NCGTACGTACGTACGTACGTACGTA"
+      ]
+    },
+    {
+      "cli": {
+        "distinct": 0,
+        "total": 0
+      },
+      "cli_only": [],
+      "count_deltas": [],
+      "example_chimeras": [],
+      "input_sha256": "365c3e07d35436700a7f6f70d5cb29303e9804746759bdffa0f89b3b6ffb47b0",
+      "name": "short_read",
+      "python": {
+        "distinct": 0,
+        "total": 0
+      },
+      "python_only": [],
+      "reads": [
+        "ACGTACGTACGTACG"
+      ]
+    }
+  ],
+  "created": "2026-11-13T02:02:09.445558+00:00",
+  "expectation": "unified",
+  "expected_semantics": {
+    "cli": "skip-N-windows",
+    "python": "skip-N-windows"
+  },
+  "k": 21,
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/.claude/worktrees/agent-ac5329e6b7f83d994/target/release/rustkmer",
+      "sha256": "8f38d20c2e3dc77dfc0ef80c9a2475613da1aa7ad131bd240d5ec74fc87c3d23",
+      "size_bytes": 2966832
+    },
+    "build_profile": "release",
+    "created": "2026-11-13T02:02:09.501976+00:00",
+    "git_commit": "c571a2dc942e5bed3cb3b1a77ca53016cc8999f6",
+    "git_dirty": true,
+    "module": {
+      "path": "/Users/forrest/GitHub/rustkmer/.venv313/lib/python3.13/site-packages/pyrustkmer/pyrustkmer.cpython-313-darwin.so",
+      "sha256": "a8ef57724e74a030af8f291147892019246980d003bc827fdb8a0f440a1748eb",
+      "size_bytes": 1597808
+    },
+    "platform": "darwin-arm64",
+    "python_executable": "/Users/forrest/GitHub/rustkmer/.claude/worktrees/agent-ac5329e6b7f83d994/.venv313/bin/python",
+    "python_version": "3.13.11",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)"
+  },
+  "schema_version": 1,
+  "totals": {
+    "cases": 9,
+    "cli_only_total": 0,
+    "count_delta_total": 0,
+    "divergent_cases": [],
+    "python_only_total": 0
+  },
+  "verdict": {
+    "exit_code": 0,
+    "expect": "unified",
+    "result": "PASS"
+  }
+}
