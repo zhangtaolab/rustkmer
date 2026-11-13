@@ -28,7 +28,7 @@ Full detail: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md) · Summary
 - [x] **Phase 7: Shared Counting Engine** - One src/count/engine.rs entry point: persistent workers, disjoint partitioned tables, overlapped producer/consumer (the ~3.5x lever) (completed 2026-11-13)
 - [x] **Phase 8: Output Pipeline & .rkdb v2 Parity** - Unstable/parallel sort + streaming write; golden byte-identity, both-consumer sortedness, full differential matrix (completed 2026-11-13)
 - [x] **Phase 9: Python Parity** - PyCounter routed through the shared engine, D2 skip-N semantics documented, measured win vs the Phase 5 baseline (completed 2026-11-13)
-- [ ] **Phase 10: Benchmark Verdict** - Full human-scale jellyfish parity verdict on both surfaces + KMC3 exact-count comparison (BENCH-V2-01)
+- [ ] **Phase 10: Benchmark Verdict** - Full human-scale jellyfish parity verdict on both surfaces (BENCH-V2-02; BENCH-V2-01 KMC3 descoped 2026-11-13)
 - [ ] **Phase 11: Minimizer Partitioning & Memory Ceiling** - CONDITIONAL (D3): hand-rolled canonical minimizers + skew-controlled disk-backed bins — only if Stage A misses parity or a memory ceiling Stage A cannot meet
 
 ## Phase Details
@@ -143,16 +143,29 @@ Plans:
 **Research flag**: none — the v1.0 shared-entry merge precedent (`merge_databases_to_path`) is the template; PyO3 detach patterns are in-repo.
 
 ### Phase 10: Benchmark Verdict
-**Goal**: The milestone's acceptance question is answered with honest, reproducible measurement at full human scale on both surfaces — the jellyfish parity verdict plus the KMC3 exact-count comparison as second reference.
+**Goal**: The milestone's acceptance question is answered with honest, reproducible measurement at full human scale on both surfaces — the jellyfish parity verdict from medians of counterbalanced reps, with every claim drawn from recorded evidence. (KMC3 is out of scope: BENCH-V2-01 was descoped by user decision on 2026-11-13.)
 **Depends on**: Phase 8 AND Phase 9 (both surfaces proven correct before any verdict; never run this phase before them)
-**Requirements**: BENCH-V2-01, BENCH-V2-02
+**Requirements**: BENCH-V2-02 (BENCH-V2-01 descoped 2026-11-13 — no KMC3 binary is downloaded, installed, or executed; the verdict artifact states the descope explicitly)
 **Success Criteria** (what must be TRUE):
-  1. A KMC3 3.2.4 comparison runs with exact-count configuration (`-ci1 -cx4294967295 -cs4294967295`, matched threads/canonical, agreed `-m`; official mac.arm64 tarball, `ulimit -n 2048`); count parity on the measured input passes BEFORE any timing; temp-disk usage is recorded; the harness degrades gracefully when KMC3 is absent.
+  1. BENCH-V2-01 is recorded as descoped, not silently omitted: the verdict artifact and the report state the 2026-11-13 user decision, and no KMC3 binary is downloaded, installed, or executed anywhere in the phase.
   2. A full human-scale jellyfish parity verdict is produced on BOTH surfaces — slice gate green at every step before the full run — from medians of counterbalanced reps with honest per-rep cache_state, the verdict computed from the recorded medians.
   3. The acceptance question is answered by measurement: rustkmer matches or beats jellyfish at k=21 (and k=31 under fair, matched-hash comparison). A YES closes BENCH-02 outright; a NO is recorded honestly and feeds the D3 trigger decision for Phase 11.
-  4. CI baselines are regenerated only from the CI runner class; every verdict artifact carries binary/module provenance; the report states cold-cache limitations honestly (no-sudo warm-cache reality recorded, as in v1.0).
-**Plans**: TBD
-**Research flag**: `--research-phase` recommended — re-verify KMC3 exact-flag behavior at run time against the pinned 3.2.4 release (source checked was master); install + `ulimit` + temp-disk accounting on macOS.
+  4. CI baselines are regenerated only from the CI runner class; every verdict artifact carries binary/module provenance; the report states cold-cache limitations honestly (no-sudo warm-cache reality recorded, as in v1.0). Phase 10 records dev-host evidence only and writes no CI baseline.
+**Plans**: 4 plans
+
+**Wave 1**
+- [ ] 10-01-PLAN.md — Phase-10 controller tracer (four arms, both parts), `max(rss, footprint)` parser, memory projection model
+
+**Wave 2**
+- [ ] 10-02-PLAN.md — Production `py-t16` arm, mechanical Phase-10 renderer with mandatory statements, slice-gate record with reference sha256 pin
+
+**Wave 3**
+- [ ] 10-03-PLAN.md — Slice gate on the real dataset, CLI full-scale k=21 and k=31, Checkpoint 1 (blocking user decision)
+
+**Wave 4**
+- [ ] 10-04-PLAN.md — Python memory preflight, Python full-scale sessions, verdict computed from recorded medians + Checkpoint 2 report
+
+**Research**: complete — `10-RESEARCH.md` (tool mechanics and harness seams verified locally; full-scale walls/RSS are labeled extrapolations converted to measurements by this phase's own preflight).
 
 ### Phase 11: Minimizer Partitioning & Memory Ceiling
 **Goal**: (If triggered) counting peak RAM is bounded to the largest bucket via hand-rolled canonical minimizer partitioning with disk-backed bins — the memory-ceiling / KMC3-RAM lever — while exact counts and `.rkdb` v2 byte-identity survive.
@@ -183,7 +196,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → (11 only i
 | 7. Shared Counting Engine | v2.0 | 4/4 | Complete    | 2026-11-13 |
 | 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 4/4 | Complete    | 2026-11-13 |
 | 9. Python Parity | v2.0 | 5/5 | Complete    | 2026-11-13 |
-| 10. Benchmark Verdict | v2.0 | 0/TBD | Not started | - |
+| 10. Benchmark Verdict | v2.0 | 0/4 | Planned | - |
 | 11. Minimizer Partitioning & Memory Ceiling | v2.0 | 0/TBD | Not started (conditional — D3) | - |
 
 ## Backlog
