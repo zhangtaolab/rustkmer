@@ -41,6 +41,8 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 - ✓ Bounded-memory merge: header-only admission control (96 B/k-mer in-memory charge), streaming / prefix-cache routing, RAII temp lifecycle + TTL sweep, shared entry point for CLI and `PyDatabase.merge` — v1.0 (Phase 3, MERGE-01..04)
 - ✓ Dense `u64` counting storage for k ≤ 32 (~0.52× table bytes/entry measured on 4M-entry counters) with `.rkdb` v2 byte-identical and canonicalization parity proven — v1.0 (Phase 3, DENSE-01..03)
 - ✓ Counting competitive with Jellyfish2 at human scale, k=31: 494 s @ 55.2 GiB vs 843 s @ 84.0 GiB — faster (−41%) AND leaner (−34% RSS); k=21 measured ~5x slower, accepted as a known gap at close — v1.0 (Phase 4, BENCH-02 partial)
+- ✓ Exact-count preservation proof: 508 Rust tests + 179 pytest + 398 harness tests green, 1-vs-N and old-vs-new differentials identical across k/canonical/threads, `.rkdb` v2 byte-identical (sha256 `0976f29c…` CLI, `a5da813e…` golden) — v2.0 (Phases 6-8, plus Phase 9 for the Python surface; PY-01)
+- ✓ Python surface reaches structural parity with the CLI counting engine: `PyCounter.add_from_fasta/add_from_fastq` count through the shared `CountEngine`, D2 skip-N unified (9/9 differential cells equal, 0 divergence, 33 chimeric k-mers eliminated), `save_database` sorts once under `py.detach`, public `PyCounter` API frozen at 12 names, measured 2.35x (threads=1) / 8.71x (default threads) against the committed Phase 5 sequential baseline — v2.0 (Phase 9, PY-01..02)
 
 ### Active
 
@@ -49,7 +51,6 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 - [ ] k=21 counting parity with Jellyfish2 at human scale — match or beat (closes BENCH-02 outright); approach chosen from profiling evidence; candidate direction minimizer/signature partitioning (MINIM-01..03 staged in the v1.0 requirements archive)
 - [ ] Root-cause profiling of the k=21 ~5x gap on the real workload — evidence before architecture (hashing overhead hypothesis from the Chorus3 small-k direct-address-vs-DashMap result needs validation on rustkmer's exact-u32 workload)
 - [ ] KMC3 benchmark comparison (BENCH-V2-01) — the disk-backed, memory-efficient gold standard as a second validation reference
-- [ ] Exact-count preservation proof — optimized counting stays byte-identical to the current counter (1-vs-N differentials + committed golden baselines, PCOUNT-04 discipline)
 - [ ] Backlog 999.1–999.3 (pyo3 `build.rs` link args, stale site-packages `pyrustkmer` shadowing, `deferred-items.md` stale sweep claim) — opportunistic, only if touched by the perf work
 
 ### Out of Scope
@@ -117,6 +118,7 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 | Phase 6 delivered the parallelism lever: `--threads` fixed + thread-local counters + rolling encode | Measured on a fresh 1.82 binary: real 4M slice t1 142.54s → 57.16s (ratio 0.401), t4 34.98s / t16 26.96s; synthetic t1 18.77→13.59s; scaling gate GREEN (t4 1.63x, t16 2.02x); counts byte-exact; per-worker-local peak RSS rose (slice t4/t16 25 GiB vs 17 GiB) — the partitioned-memory cost is explicitly assigned to Phase 7's engine design | ✅ Exceeded the phase goal (verification 20/20 after a concurrent-total gap fix) |
 | Phase 7 shared engine: persistent workers + 64 hash-range partitions + overlapped producer, one `for_each_window` extractor | Measured (independent re-execution): real 4M slice t1 57.16→36.92s, t4 34.98→17.76s, t16 26.96→23.83s; synthetic t1 13.59→6.42s; peak RSS ~17.96 GB (down from 25 GiB — partitioned scheme); t1/t4/t16 `.rkdb` sha256 identical; exact pinned parity. Honest finding: the count phase is now PRODUCER-BOUND (single producer ≈99.9997% of parallel wall) — parallel extraction is the documented future lever; the slice wall is now dominated by output sort/write (Phase 8) | ✅ Verified 12/12 (2N+1 gate exact with reachable RED control) |
 | Phase 8 output pipeline: in-place parallel unstable sort + streaming write through the frozen writer | Measured (independent re-execution): real 4M slice t1/t4/t16 36.92/17.76/23.83 → 31.82/10.15/9.31s; sort delta 8.91→1.70s (0.19x); sorted RSS 17.97→12.04 GB; `.rkdb` sha256 `0976f29c…` unchanged across t1/t4/t16 and pre/post; 12 pre-refactor goldens byte-identical; four-arm differential + both binary-search consumers + mutation-RED (ordering/duplication/overflow). Frozen format.rs/fixtures/manifests untouched | ✅ Verified 16/16 (OUT-01..03 complete) |
+| Phase 9 Python parity: one shared engine, D2 skip-N, sort-once save, frozen API | Measured on the shipped tree: differential 9/9 cases equal with 0 divergence (33 Python-only chimeric k-mers eliminated); `--compare-baseline` PASS at speedup_t1 2.35x / speedup_default 8.71x vs the committed Phase 5 sequential baseline (N-free control exact counts 129,579,577 / 73,476,107 preserved); public `PyCounter` frozen at 12 names; `format.rs` grew by pure addition (78/0). Review found 0 critical / 4 warnings / 8 info; the 4 warnings were fixed and every gate + evidence artifact regenerated on the post-fix tree | ✅ Verified 38/38 (PY-01..02 complete) |
 
 ## Evolution
 
@@ -136,4 +138,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-13 after Phase 8 (Output Pipeline & .rkdb v2 Parity)*
+*Last updated: 2026-11-13 after Phase 9 (Python Parity)*

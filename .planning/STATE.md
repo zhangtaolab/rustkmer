@@ -23,16 +23,16 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-11)
+See: .planning/PROJECT.md (updated 2026-11-13)
 
 **Core value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools (KMC / Jellyfish class), from both the CLI and Python.
-**Current focus:** Phase 9 — Python Parity
+**Current focus:** Phase 10 — Benchmark Verdict
 
 ## Current Position
 
 Phase: 10 — Benchmark Verdict
 Current Plan: Not started
-Total Plans in Phase: 5
+Total Plans in Phase: 0 (not planned yet)
 Status: Ready to plan
 Last activity: 2026-11-13 — Phase 9 complete, transitioned to Phase 10
 
@@ -179,6 +179,11 @@ Recent decisions affecting current work:
 - [Phase 8]: Post-change output-stage compare re-ran on the final tree: GREEN with sorted 10.41 s vs 18.73 s, sort delta 1.70 s (0.191x), sha256 0976f29c unchanged, sorted RSS 12.04 GB vs 17.97 GB
 - [Phase 8]: Slice arms 31.82/10.15/9.31 s vs Phase 7 36.92/17.76/23.83 s at 12.04/12.04/12.05 GB RSS; all three .rkdb hash to 0976f29c, so output bytes are thread-count independent at 229M keys
 - [Phase 8]: Final battery green with the writer frozen at blob eb0d5bf2 and the golden manifest at f010e42a; anti-softening current==HEAD==(workflow 0, README 2, thread_scaling.py 2), expected-failure wording zero
+- [Phase 09]: Per-call `CountEngine` (no cached engine on `PyCounter`); the `threads` count is a private field because `KmerCounter::new` discards it; engine `initial_capacity = 0` so repeated calls do not re-reserve per partition
+- [Phase 09]: D2 skip-N removed every Python non-ACGT pre-filter, including `add_sequence` — whitespace now breaks a window instead of joining flanks. Each rewritten pre-D2 test class carries an explicit `_strip_join_counts != _reference_counts` assertion so a mere expectation flip cannot pass
+- [Phase 09]: `save_database` sorts once with `par_sort_unstable_by_key` then calls the new pure-addition `RKDatabase::from_sorted_kmer_pairs` (format.rs +78/−0) under `py.detach`; the Phase 8 whole-file blob pin `eb0d5bf2…` is superseded for that one file only, with the pure-addition proof and green golden/byte suites as the replacement evidence
+- [Phase 09]: The Python benchmark verdict is identity-guarded, not positional — exactly one `*-n-free-control-t1` arm with a real `threads == 1`, and the worker's resolved rayon count is checked against the arm (read-only `PyCounterStats.threads`, preserving the 12-name frozen `PyCounter` surface). Compare mode rejects any `--threads` other than 1
+- [Phase 09]: Measured on the shipped tree: 9/9 differential cells equal, 0 divergence, 33 chimeric k-mers eliminated; `speedup_t1 2.35x` / `speedup_default 8.71x` vs the committed Phase 5 sequential baseline with the N-free control exact counts preserved
 
 ### Pending Todos
 
@@ -188,7 +193,10 @@ None yet.
 
 - [Carried W1, OPEN] Unpushed local dev commits lack remote CI validation (memmap2 floor, Cargo.lock tracking, --locked CI, MSRV declaration, clippy fixes). Push dev to resolve.
 - [Resolved 05-02] Rust 1.80.0 + clippy installed locally; remaining MSRV blocker is locked dependency compatibility, recorded below.
-- [v2.0 research] Stage-A-achieves-parity is a MEDIUM-confidence extrapolation — the slice gates after Phases 6-8 must validate it; a miss feeds the D3 trigger decision (Phase 11).
+- [v2.0 research] Stage-A-achieves-parity is a MEDIUM-confidence extrapolation — Phase 9 measured the Python arm at 2.35x/8.71x on the slice; the full-scale verdict is Phase 10's job and still feeds the D3 trigger decision (Phase 11).
+- [Phase 9, OPEN] Security audit never ran for phase 9 (`SECURITY.md` absent). Phase 9 shipped under a plan-level threat model only — run `/gsd-secure-phase 9` before the milestone audit if that coverage is required.
+- [Phase 9, OPEN] 8 Info-severity review findings remain in `09-REVIEW.md` (info only; the verifier confirmed none weakens a must-have). Notable: `--previous` accepts any structurally valid differential without a pre-D2 sha pin; `save_database`'s snapshot is not documented as non-linearizable.
+- [Environment, OPEN] `scripts/bench/tests/test_verify_threads.py::TestNegativeControls::test_pre_engine_n_plus_one_stub_is_measured_red` is a pre-existing ~50% macOS `sample`-race flake; the file is untouched by Phases 5-9. A shared `target/` across git worktrees can also bake a deleted `CARGO_MANIFEST_DIR` into test binaries — purge artifacts containing the stale path before trusting a red result.
 - [Carried] Phase-04 review findings IN-06/07/09 deferred (triage 261111-spz: 11 fixed / 4 already-fixed / 3 deferred); backlog 999.1-999.3 opportunistic only if touched by the perf work.
 - [Resolved quick 261112-jwl] User approved raising MSRV to 1.82 for the unchanged locked graph; `69a82cf` carries the policy and `23967d5` the sole behavior-preserving clippy fix. Rust 1.82.0 root build/root clippy/PyO3 clippy all exited 0; WINDOWS 19/20 are fixed.
 
