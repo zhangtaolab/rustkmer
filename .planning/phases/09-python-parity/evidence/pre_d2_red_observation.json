@@ -1,0 +1,29 @@
+{
+  "command": ".venv313/bin/python scripts/bench/n_read_differential.py --expect-unified --rustkmer target/release/rustkmer --out .planning/phases/09-python-parity/evidence/n_read_differential_pre_d2_red.json",
+  "exit_code": 1,
+  "expected_semantics": {
+    "cli": "skip-N-windows",
+    "python": "strip-and-join-pre-Phase-9"
+  },
+  "git_head": "4c97787120bd8341176ca99a3f54b7bc6efb5032",
+  "pre_change_module": {
+    "path": "/Users/forrest/GitHub/rustkmer/.venv313/lib/python3.13/site-packages/pyrustkmer/pyrustkmer.cpython-313-darwin.so",
+    "sha256": "8b9d8cdb43923a7573fe9693df1b7eced033895f792a3d3de77ab60839febcdd"
+  },
+  "pre_change_version_attribute": null,
+  "red_artifact": ".planning/phases/09-python-parity/evidence/n_read_differential_pre_d2_red.json",
+  "red_artifact_sha256": "8a611091fe961e2ac93857cb7dc17b5001b1aeea328e32778dfaab3d0da82a80",
+  "schema_version": 1,
+  "totals": {
+    "cases": 9,
+    "cli_only_total": 0,
+    "count_delta_total": 0,
+    "divergent_cases": [
+      "n_at_window_end",
+      "n_at_window_start",
+      "multiple_n",
+      "lowercase_n"
+    ],
+    "python_only_total": 33
+  }
+}
