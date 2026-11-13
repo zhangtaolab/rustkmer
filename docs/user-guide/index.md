@@ -5,6 +5,7 @@ This comprehensive guide covers all aspects of using RustKmer for genomic analys
 ## Guide Overview
 
 - **[Counting k-mers](counting-kmers.md)** - Complete guide to k-mer counting operations
+- **[N-read Semantics](n-read-semantics.md)** - How non-ACGT bases affect counts
 - **[Querying Databases](querying.md)** - Database operations and querying strategies
 - **[Fuzzy Search](fuzzy-search.md)** - Pattern matching and advanced search techniques
 - **[Performance Tips](performance-tips.md)** - Optimization strategies and best practices

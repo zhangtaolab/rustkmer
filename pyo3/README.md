@@ -306,6 +306,48 @@ The following warnings don't affect functionality:
 
 ## Migration Guide
 
+### Phase 9: Python counting now skips N-containing windows
+
+Python counting (`add_sequence`, `add_from_fasta`, `add_from_fastq`) now
+applies the CLI's skip-N semantics (D2): every length-k window containing a
+non-ACGT byte is skipped and never counted, and windows never span record
+boundaries. The previous behavior stripped non-ACGT bases and joined the
+flanks, creating chimeric k-mers.
+
+The user-visible change, measured by the N-read differential on the same
+nine-case fixture at k=21:
+
+- The Python nine-case total drops from **70** to **37**, matching the CLI's
+  **37**.
+- **33** chimeric k-mers are eliminated, concentrated in the four affected
+  cases `n_at_window_end`, `n_at_window_start`, `multiple_n`, and
+  `lowercase_n`; the N-free control is unchanged at 2 distinct / 10 total.
+
+`total_kmers` is therefore smaller on N-containing reads — by design, not
+data loss. The removed k-mers were artifacts of joining bases across a
+skipped position, and the old total is not preserved by adding flank-joined
+windows back.
+
+Whitespace and every other non-ACGT byte now break windows instead of being
+stripped: `PyCounter(7).add_sequence("ACG TACG ACGT")` counts nothing.
+
+FASTA/FASTQ parsing now uses the strict shared parser, so malformed input
+raises `ValueError` carrying the parse context instead of being silently
+misparsed. There is no new API and no Python-visible skipped-window counter.
+
+`pyrustkmer.__version__` is now exported, so a stale extension is easy to
+spot. Rebuild the extension after upgrading:
+
+```bash
+env -u CONDA_PREFIX VIRTUAL_ENV="$PWD/.venv313" PATH="$PWD/.venv313/bin:$PATH" .venv313/bin/maturin develop --release --manifest-path pyo3/Cargo.toml
+```
+
+Then confirm the version in that interpreter:
+
+```bash
+.venv313/bin/python -c "import pyrustkmer; print(pyrustkmer.__version__)"
+```
+
 ### Upgrading from v0.4.0 to v0.4.1
 
 **Old API (Still works but deprecated):**
