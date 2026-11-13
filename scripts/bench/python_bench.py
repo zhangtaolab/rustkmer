@@ -635,8 +635,20 @@ def _native_module_file(mod):
 
 
 def run_worker(args):
-    """One fresh-process count; stats to --stats-out AND stdout."""
+    """One fresh-process count; stats to --stats-out AND stdout.
+
+    Inputs arrive either as the single ``--input`` path (every pre-Phase-10
+    caller) or as repeatable ``--inputs`` flags (the Phase-10 both-parts
+    arm): each path gets its own ``add_from_fastq`` call in argv order inside
+    THIS process, so the two split parts accumulate into one counter.
+    """
     threads = parse_threads(args.threads)
+    paths = list(args.inputs) if args.inputs else (
+        [args.input] if args.input else [])
+    if not paths:
+        print("python_bench.py: --worker requires --input or at least one "
+              "--inputs", file=sys.stderr)
+        return EXIT_INVALID
     try:
         import pyrustkmer
     except Exception as exc:
@@ -649,7 +661,8 @@ def run_worker(args):
         return EXIT_INVALID
     module_path = _native_module_file(pyrustkmer)
     counter = pyrustkmer.PyCounter(args.k, canonical=True, threads=threads)
-    counter.add_from_fastq(str(args.input))
+    for path in paths:
+        counter.add_from_fastq(str(path))
     st = counter.get_stats()
     payload = {
         "total_kmers": int(st.total_kmers),
@@ -660,6 +673,7 @@ def run_worker(args):
         "module_path": str(module_path),
         "module_mtime": os.path.getmtime(module_path),
         "python_version": platform.python_version(),
+        "inputs": [str(path) for path in paths],
     }
     with open(args.stats_out, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, indent=2)
@@ -1059,6 +1073,10 @@ def main(argv=None):
                         help="internal: run one fresh-process count")
     parser.add_argument("--input",
                         help="worker: plain FASTQ; controller: gz source")
+    parser.add_argument("--inputs", action="append", default=None,
+                        help="worker: repeatable Phase-10 both-parts input "
+                             "(one --inputs per split part, counted in argv "
+                             "order in one fresh process)")
     parser.add_argument("--k", type=int, default=21)
     parser.add_argument("--stats-out", help="worker: stats JSON destination")
     parser.add_argument("--threads", default="1", type=str,
@@ -1087,8 +1105,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if args.worker:
-        if args.input is None or args.stats_out is None:
-            invalid("--worker requires --input and --stats-out")
+        if args.stats_out is None:
+            invalid("--worker requires --stats-out")
+        if not args.inputs and args.input is None:
+            invalid("--worker requires --input or at least one --inputs")
         return run_worker(args)
     try:
         return run_controller(args)
