@@ -45,9 +45,11 @@ Python 3.11+ stdlib only — no third-party imports.
 import argparse
 import hashlib
 import json
+import os
 import platform
 import statistics
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,21 +63,29 @@ if __package__ in (None, ""):
 from scripts.bench import python_bench
 from scripts.bench.bench import (
     DEFAULT_COOLDOWN_S,
+    DEFAULT_DISK_FLOOR_GB,
     DEFAULT_HASH_SIZE,
     DEFAULT_RUSTKMER,
+    REPO_ROOT,
     SCHEMA_VERSION,
     BenchmarkConfig,
     attempt_cache_purge,
     binary_provenance,
+    check_disk_floor,
     default_decompressor,
     fingerprint,
+    gate_parity_reference,
+    gather_inputs,
     harness_source_commit,
     jellyfish_count_cmd,
     jellyfish_stats,
     measure,
+    provision_slice,
     provision_synthetic,
     reduce_arm,
+    run_parity,
     rustkmer_count_cmd,
+    slice_kind_for,
     stats,
     validate_provenance,
     validate_schema,
@@ -122,6 +132,23 @@ PINNED_SOURCE_SHA256 = (
 PARITY_HASH_SIZE = "2G"
 REFERENCE_SHA256 = (
     "9826bd59c51e34be520c6fca008aea304fb69232f6887cc808b93c4f49ac8a96")
+# PRE-RUN CLI projection basis: the research upper estimate for the union
+# distinct count. This is a projection input, never a measurement — the
+# document records `basis: "research-upper-estimate"`.
+CLI_PREFLIGHT_DISTINCT = 1_200_000_000
+SLICE_GATE_K_VALUES = (21, 31)
+LIVE_PARITY_ONLY = "live-parity-only (no pinned k=31 slice reference)"
+PINNED_REFERENCE_GATE = "pinned-reference"
+
+# The five mandatory report literals asserted verbatim by this plan's tests
+# and by the Plan 10-04 final gate. Keep them exact and case-sensitive.
+REPORT_LITERALS = (
+    "BENCH-V2-01",
+    "partially satisfied",
+    "Dev-host evidence only",
+    "scaling evidence",
+    "equality",
+)
 
 SYNTHETIC_READS = 200_000
 DEFAULT_K = 21
@@ -190,6 +217,11 @@ def build_arm_specs(inputs, k, rustkmer, python, scratch, include):
     if ARM_PY_T16 in names:
         info = python_bench.interpreter_info(str(python))
         site_prefix = info["site_prefix"]
+        if not isinstance(site_prefix, str) or not site_prefix.strip():
+            raise ValueError(
+                "the --python interpreter reported no site_prefix — the "
+                "measured module cannot be proven to live in the measured "
+                "interpreter's site-packages")
     specs = []
     for name in names:
         threads = 1 if name == ARM_RK_T1 else ACCEPTANCE_THREADS
@@ -248,9 +280,8 @@ def rep_peak_bytes(rep):
     return max(rep["peak_rss_bytes"], rep.get("peak_footprint_bytes") or 0)
 
 
-def run_rounds(specs, reps, cooldown_s, measure_fn=measure,
-               purge_fn=attempt_cache_purge, sleep_fn=time.sleep,
-               on_rep=None):
+def run_rounds(specs, reps, cooldown_s, measure_fn=None, purge_fn=None,
+               sleep_fn=None, on_rep=None):
     """Warmups + counterbalanced measured rounds; return {arm: [rep dicts]}.
 
     One discarded warmup per TOOL (the first spec of that tool) runs before
@@ -258,10 +289,19 @@ def run_rounds(specs, reps, cooldown_s, measure_fn=measure,
     rustkmer warmup covers the tool. Each measured rep records its honest
     cache_state, round and arm_order. For a pyrustkmer spec the stale stats
     file is deleted before the run, the fresh payload is validated through
-    python_bench.validate_worker_stats with the spec's site_prefix, and the
-    exact counts plus module identity are attached — a py run that leaves no
-    stats file is invalid, never synthesized.
+    python_bench.validate_worker_stats with the spec's site_prefix, the
+    payload's input list must equal the spec's two-part list IN ORDER, and
+    the exact counts plus module identity are attached — a py run that
+    leaves no stats file is invalid, never synthesized.
+
+    The injectable seams default to the module-level primitives at CALL time
+    (not at definition time), so a test can patch `phase10.measure` /
+    `phase10.attempt_cache_purge` / `time.sleep` and still drive the real
+    stage entry points.
     """
+    measure_fn = measure if measure_fn is None else measure_fn
+    purge_fn = attempt_cache_purge if purge_fn is None else purge_fn
+    sleep_fn = time.sleep if sleep_fn is None else sleep_fn
     if reps < 1:
         raise ValueError(f"reps must be >= 1, got {reps}")
     names = [spec["name"] for spec in specs]
@@ -301,7 +341,15 @@ def run_rounds(specs, reps, cooldown_s, measure_fn=measure,
             counts = python_bench.validate_worker_stats(
                 payload, spec["site_prefix"],
                 expected_threads=spec["threads"])
+            payload_inputs = [str(part) for part in payload.get("inputs") or []]
+            spec_inputs = [str(part) for part in spec["inputs"]]
+            if payload_inputs != spec_inputs:
+                raise ValueError(
+                    f"py arm {spec['name']!r} reported inputs "
+                    f"{payload_inputs!r} but the arm measured {spec_inputs!r} "
+                    f"— both parts must be counted once each, in argv order")
             rep.update(counts)
+            rep["inputs"] = payload_inputs
             rep["module_path"] = payload["module_path"]
             rep["module_mtime"] = payload.get("module_mtime")
             rep["threads_resolved"] = payload["threads_resolved"]
@@ -350,12 +398,115 @@ def arm_medians(reps):
     }
 
 
+def finalize_python_arm(name, reps, expected=None):
+    """The py arm's strict end-of-session reduction.
+
+    `check_rep_identity` is a HARD failure on any rep-count, module, or
+    resolved-thread disagreement (never averaged away); the arm then carries
+    the nested medians plus the exact counts and the per-rep measured
+    module/input identity. `db_sha256` is null because the Python arm writes
+    no database — the measured artifact is the worker payload.
+    """
+    exact = python_bench.check_rep_identity(reps, expected=expected)
+    first = reps[0]
+    return {
+        "name": name,
+        "tool": "pyrustkmer",
+        "threads": first["threads_resolved"],
+        "inputs": list(first.get("inputs") or []),
+        "reps": reps,
+        "medians": arm_medians(reps),
+        "unique_kmers": exact["unique_kmers"],
+        "total_kmers": exact["total_kmers"],
+        "db_sha256": None,
+    }
+
+
+def _single_arm(doc, name, label):
+    """The one arm named `name` in `doc`, or ValueError on absence/ambiguity."""
+    matches = [arm for arm in doc.get("arms", [])
+               if isinstance(arm, dict) and arm.get("name") == name]
+    if len(matches) != 1:
+        observed = [arm.get("name") for arm in doc.get("arms", [])
+                    if isinstance(arm, dict)]
+        raise ValueError(
+            f"{label}: expected exactly one arm {name!r}, found "
+            f"{len(matches)} in {observed}")
+    return matches[0]
+
+
+def _exact_counts(arm, label):
+    """The arm's positive exact (unique, total) pair, or ValueError."""
+    unique = arm.get("unique_kmers")
+    total = arm.get("total_kmers")
+    for key, value in (("unique_kmers", unique), ("total_kmers", total)):
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ValueError(
+                f"{label}: {key}={value!r} must be a positive integer — a "
+                f"zero count is a silent input failure, never a measurement")
+    return unique, total
+
+
+def assert_session_parity(doc, *arm_names):
+    """Every named arm must report the SAME positive exact counts.
+
+    A mismatch means the arms did not count the same bytes (or the worker
+    dropped a part) — a hard failure, never averaged. Returns the parity
+    block describing the agreed counts.
+    """
+    names = list(arm_names)
+    if len(names) < 2:
+        raise ValueError("assert_session_parity needs at least two arms")
+    observed = {}
+    for name in names:
+        arm = _single_arm(doc, name, "session parity")
+        observed[name] = _exact_counts(arm, f"session parity arm {name!r}")
+    reference_name = names[0]
+    reference = observed[reference_name]
+    for name in names[1:]:
+        if observed[name] != reference:
+            raise ValueError(
+                f"session parity mismatch: {reference_name} counts "
+                f"{reference} vs {name} counts {observed[name]} — the arms "
+                f"counted different bytes on the same measured input")
+    return {"arms": names, "unique_kmers": reference[0],
+            "total_kmers": reference[1], "equal": True}
+
+
+def assert_cross_session_jellyfish(cli_doc, python_doc):
+    """The two sessions' jellyfish arms must agree on counts AND input bytes.
+
+    The jellyfish reference is re-measured in each session; identical counts
+    prove both sessions counted the same bytes. A difference is a hard
+    failure because a venv/run-chain change would silently invalidate the
+    cross-session comparison.
+    """
+    cli_arm = _single_arm(cli_doc, ARM_JF_T16, "cross-session cli")
+    python_arm = _single_arm(python_doc, ARM_JF_T16, "cross-session python")
+    cli_counts = _exact_counts(cli_arm, "cross-session cli jellyfish")
+    python_counts = _exact_counts(python_arm, "cross-session python jellyfish")
+    if cli_counts != python_counts:
+        raise ValueError(
+            f"cross-session jellyfish counts differ: cli {cli_counts} vs "
+            f"python {python_counts} — the two sessions counted different "
+            f"bytes")
+    cli_fp = cli_doc.get("input_fingerprint")
+    python_fp = python_doc.get("input_fingerprint")
+    if cli_fp != python_fp:
+        raise ValueError(
+            "cross-session input fingerprint differs between the CLI and "
+            f"Python sessions: {cli_fp!r} vs {python_fp!r}")
+    return {"cli": cli_counts, "python": python_counts,
+            "input_fingerprint": cli_fp, "equal": True}
+
+
 def build_arms(specs, reps_by_arm, rustkmer):
     """Reduce measured reps to arm records with exact nonzero counts.
 
     Counts come from the producer of the bytes: `rustkmer stats` for the CLI
     arms, `jellyfish stats` for the reference arm, and the validated worker
-    payloads for the Python arm. A zero count is invalid, never a measurement.
+    payloads for the Python arm (through the strict `finalize_python_arm`).
+    A zero count is invalid, never a measurement.
     """
     arms = []
     for spec in specs:
@@ -363,8 +514,12 @@ def build_arms(specs, reps_by_arm, rustkmer):
         if not reps:
             raise ValueError(f"arm {spec['name']!r} has zero successful reps")
         if spec["tool"] == "pyrustkmer":
-            exact = python_bench.check_rep_identity(reps)
-        elif spec["tool"] == "jellyfish":
+            arm = finalize_python_arm(spec["name"], reps)
+            if not arm["inputs"]:
+                arm["inputs"] = list(spec["inputs"])
+            arms.append(arm)
+            continue
+        if spec["tool"] == "jellyfish":
             jf = jellyfish_stats(spec["out"])
             exact = {"unique_kmers": jf["distinct"], "total_kmers": jf["total"]}
         else:
@@ -375,9 +530,7 @@ def build_arms(specs, reps_by_arm, rustkmer):
             raise ValueError(
                 f"arm {spec['name']!r}: zero counts {exact} after the reps — "
                 f"silent input failure, never a measurement")
-        db_sha256 = None
-        if spec["tool"] != "pyrustkmer":
-            db_sha256 = fingerprint(spec["out"])["sha256"]
+        db_sha256 = fingerprint(spec["out"])["sha256"]
         arms.append({
             "name": spec["name"],
             "tool": spec["tool"],
@@ -555,6 +708,35 @@ def assemble_doc(mode, session, k, params, inputs, arms, scratch, provenance,
 def write_doc(doc, out_path):
     """Validate schema AND provenance, then write — invalid docs never land."""
     validate_schema(doc)
+    validate_provenance(doc)
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
+    return out
+
+
+def python_session_provenance(args, module_path):
+    """Python-session provenance: the interpreter + module, plus the CLI.
+
+    The Python artifact must name BOTH measured surfaces: the native module
+    that produced the Python number (sha256 of the actual `.so` bytes) and
+    the CLI binary used as the session's parity reference.
+    """
+    info = python_bench.interpreter_info(str(args.python))
+    prov = python_bench.build_provenance(args, info, module_path)
+    prov["cli_binary"] = binary_provenance(args.rustkmer, "release")
+    return prov
+
+
+def write_evidence_doc(doc, out_path):
+    """Validate provenance, then write an evidence (non-results) document.
+
+    Used by the slice-gate record: its shape is a `kind` document, not the
+    results schema, so `validate_schema` does not apply — but no artifact
+    may reach disk without complete provenance (T-10-06).
+    """
     validate_provenance(doc)
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -918,6 +1100,283 @@ def run_preflight_python(args):
     return EXIT_OK if overall == "PROCEED" else EXIT_INVALID
 
 
+# --- full-scale sessions (plans 10-03/10-04) --------------------------------
+
+def _stage_paths(args):
+    out_path = Path(args.out)
+    scratch = Path(args.scratch) if args.scratch else out_path.parent / "scratch"
+    scratch.mkdir(parents=True, exist_ok=True)
+    return out_path, scratch
+
+
+def _resolve_two_parts(data_dir):
+    """The complete read-1 set: exactly the two split parts, sorted."""
+    inputs = [Path(p) for p in gather_inputs(str(data_dir))]
+    if len(inputs) != 2:
+        raise ValueError(
+            f"the full-scale stages require exactly two split parts under "
+            f"{data_dir}, found {len(inputs)} — both parts are ONE measured "
+            f"input list, never two half-size arms")
+    return inputs
+
+
+def _stage_params(k, reps, cooldown_s):
+    """The pinned params sub-shape Plans 10-03/10-04 assert by key."""
+    return {
+        "k": k,
+        "canonical": True,
+        "threads": ACCEPTANCE_THREADS,
+        "reps": reps,
+        "cooldown_s": cooldown_s,
+        "hash_size": DEFAULT_HASH_SIZE,
+        "arm_order": list(ARM_ORDER),
+    }
+
+
+def _stage_schedule(specs, reps):
+    return {
+        "policy": "round-robin-rotation",
+        "warmup_order": list(TOOL_WARMUP_ORDER),
+        "rounds": rotation_schedule([spec["name"] for spec in specs], reps),
+    }
+
+
+def _cli_preflight():
+    """The PRE-RUN CLI projection at the research upper estimate.
+
+    `basis` is recorded as `research-upper-estimate` so a projection can
+    never be mistaken for a measurement; the decision is derived through
+    `memory_gate`, never caller-supplied.
+    """
+    projected = cli_peak_bytes(CLI_PREFLIGHT_DISTINCT)
+    ok, detail = memory_gate(projected)
+    return {
+        "basis": "research-upper-estimate",
+        "distinct_assumed": CLI_PREFLIGHT_DISTINCT,
+        "projected_bytes": projected,
+        "budget_bytes": MEMORY_BUDGET_BYTES,
+        "decision": "PROCEED" if ok else "BLOCKED",
+        "model": "cli-16B-slot-32B-pair-64-partitions",
+        "detail": detail,
+    }
+
+
+def run_cli_session(args):
+    """Full-scale CLI session: `rk-t16`, `rk-t1` and `jf-t16` over both parts.
+
+    The disk floor and the PRE-RUN projection are checked BEFORE any measured
+    run; the post-arm exact counts are read once per arm; the two rustkmer
+    databases must be byte-identical; the scratch databases are deleted after
+    their sha256 is recorded. Any failure exits 2 with no artifact.
+    """
+    out_path, scratch = _stage_paths(args)
+    try:
+        inputs = _resolve_two_parts(args.data_dir)
+        check_disk_floor(scratch, DEFAULT_DISK_FLOOR_GB)
+        preflight = _cli_preflight()
+        if preflight["decision"] != "PROCEED":
+            raise ValueError(
+                f"pre-run CLI projection blocked: {preflight['detail']}")
+        specs = build_arm_specs(
+            inputs, args.k, args.rustkmer, args.python, scratch,
+            [ARM_RK_T16, ARM_RK_T1, ARM_JF_T16])
+        reps_by_arm = run_rounds(specs, args.reps, args.cooldown_s)
+        for reps in reps_by_arm.values():
+            for rep in reps:
+                validate_rep_memory(rep)
+        arms = build_arms(specs, reps_by_arm, args.rustkmer)
+        rk_shas = {arm["db_sha256"] for arm in arms
+                   if arm["tool"] == "rustkmer"}
+        if len(rk_shas) != 1 or None in rk_shas:
+            raise ValueError(
+                f"rustkmer arms recorded unequal database sha256 values "
+                f"{sorted(str(sha) for sha in rk_shas)} — t16 and t1 must "
+                f"produce identical .rkdb bytes")
+        doc = assemble_doc(
+            mode="full", session="cli", k=args.k,
+            params=_stage_params(args.k, args.reps, args.cooldown_s),
+            inputs=inputs, arms=arms, scratch=scratch,
+            provenance=build_session_provenance(args, arms),
+            extra={"preflight": preflight,
+                   "schedule": _stage_schedule(specs, args.reps)})
+        assert_session_parity(doc, ARM_RK_T16, ARM_RK_T1, ARM_JF_T16)
+        for spec in specs:
+            out = Path(spec["out"])
+            if out.exists():
+                out.unlink()
+        write_doc(doc, out_path)
+    except Exception as exc:  # noqa: BLE001 — invalid session, never a verdict
+        print(f"phase10.py: {exc}", file=sys.stderr)
+        return EXIT_INVALID
+    for arm in arms:
+        medians = arm["medians"]
+        print(f"{arm['name']}: median wall {medians['wall_s']!r}s "
+              f"peak_bytes {medians['peak_bytes']!r} reps {len(arm['reps'])}")
+    return EXIT_OK
+
+
+def _load_slice_gate_doc(path):
+    """Read the slice-gate artifact and assert it is still the pinned gate."""
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    if doc.get("kind") != "phase10-slice-gate":
+        raise ValueError(
+            f"pre-gate {path} is kind={doc.get('kind')!r}, not "
+            f"'phase10-slice-gate'")
+    matches = [gate for gate in doc.get("gates", [])
+               if isinstance(gate, dict) and gate.get("k") == 21]
+    if len(matches) != 1:
+        raise ValueError(
+            f"pre-gate {path}: expected exactly one k=21 gate, found "
+            f"{len(matches)}")
+    gate = matches[0]
+    for key in ("distinct", "total"):
+        if gate.get(key) != PINNED_HEAD4M[key]:
+            raise ValueError(
+                f"pre-gate {path}: k=21 gate {key}={gate.get(key)!r} != "
+                f"pinned {PINNED_HEAD4M[key]!r} — this is not the pinned "
+                f"head-4M reference gate")
+    reference = gate.get("parity_reference")
+    if (not isinstance(reference, dict)
+            or reference.get("sha256") != REFERENCE_SHA256):
+        raise ValueError(
+            f"pre-gate {path}: k=21 gate does not carry the pinned reference "
+            f"sha256 {REFERENCE_SHA256}")
+    return doc
+
+
+def _load_python_preflight(path, k):
+    """Read the preflight record for `k` and re-derive its decision."""
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    if doc.get("kind") != "phase10-python-preflight":
+        raise ValueError(
+            f"preflight {path} is kind={doc.get('kind')!r}, not "
+            f"'phase10-python-preflight'")
+    matches = [record for record in doc.get("records", [])
+               if isinstance(record, dict) and record.get("k") == k]
+    if len(matches) != 1:
+        raise ValueError(
+            f"preflight {path}: expected exactly one record for k={k}, "
+            f"found {len(matches)}")
+    record = matches[0]
+    distinct = record.get("distinct")
+    projected = record.get("projected_bytes")
+    budget = record.get("budget_bytes")
+    if (not isinstance(distinct, int) or isinstance(distinct, bool)
+            or distinct <= 0):
+        raise ValueError(f"preflight {path}: distinct={distinct!r} invalid")
+    if (not isinstance(budget, int) or isinstance(budget, bool)
+            or budget <= 0):
+        raise ValueError(f"preflight {path}: budget_bytes={budget!r} invalid")
+    model_projection = python_projection_bytes(distinct)
+    if projected != model_projection:
+        raise ValueError(
+            f"preflight {path}: projected_bytes={projected!r} != the model's "
+            f"{model_projection} — a tampered projection cannot gate the "
+            f"Python arm")
+    ok, detail = memory_gate(projected, budget)
+    want = "PROCEED" if ok else "BLOCKED"
+    if record.get("decision") != want:
+        raise ValueError(
+            f"preflight {path}: decision={record.get('decision')!r} but the "
+            f"model derives {want!r} ({detail})")
+    if want != "PROCEED":
+        raise ValueError(
+            f"preflight {path}: Python projection BLOCKED ({detail}) — the "
+            f"Python arm must not run; this is a user stop, never a silent "
+            f"skip")
+    for key in ("distinct_source", "distinct_source_sha256"):
+        value = record.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"preflight {path}: {key} missing")
+    return record
+
+
+def run_python_session(args):
+    """Full-scale Python session: `jf-t16` and `py-t16` over both parts.
+
+    Consumes committed evidence only after pinning its sha256: the slice-gate
+    artifact must still carry the pinned k=21 counts, and the preflight
+    record's projection/decision is re-derived. Every rep is a fresh
+    interpreter validated by the `py-t16` branch of `run_rounds`; the session
+    is parity-checked internally and against the committed CLI document. The
+    scratch `.jf` is deleted after its sha256 is recorded.
+    """
+    if not args.pre_gate:
+        invalid("the python stage requires --pre-gate <10-slice-gate.json>")
+    if not args.preflight:
+        invalid("the python stage requires --preflight "
+                "<10-python-preflight.json>")
+    if not args.cli_doc:
+        invalid("the python stage requires --cli-doc <the matching CLI "
+                "document>")
+    out_path, scratch = _stage_paths(args)
+    try:
+        inputs = _resolve_two_parts(args.data_dir)
+        check_disk_floor(scratch, DEFAULT_DISK_FLOOR_GB)
+        _load_slice_gate_doc(args.pre_gate)
+        preflight = _load_python_preflight(args.preflight, args.k)
+        cli_doc = load_cli_document(args.cli_doc)
+        if _doc_k(cli_doc) != args.k:
+            raise ValueError(
+                f"--cli-doc {args.cli_doc} is k={_doc_k(cli_doc)} but the "
+                f"Python session measures k={args.k}")
+        specs = build_arm_specs(
+            inputs, args.k, args.rustkmer, args.python, scratch,
+            [ARM_JF_T16, ARM_PY_T16])
+        reps_by_arm = run_rounds(specs, args.reps, args.cooldown_s)
+        for reps in reps_by_arm.values():
+            for rep in reps:
+                validate_rep_memory(rep)
+        arms = build_arms(specs, reps_by_arm, args.rustkmer)
+        py_arm = next(arm for arm in arms if arm["name"] == ARM_PY_T16)
+        doc = assemble_doc(
+            mode="full", session="python", k=args.k,
+            params=_stage_params(args.k, args.reps, args.cooldown_s),
+            inputs=inputs, arms=arms, scratch=scratch,
+            provenance=python_session_provenance(
+                args, py_arm["reps"][0]["module_path"]),
+            extra={
+                "pre_gate": {
+                    "path": str(args.pre_gate),
+                    "sha256": file_sha256(args.pre_gate),
+                },
+                "memory_preflight": {
+                    "decision": preflight["decision"],
+                    "distinct": preflight["distinct"],
+                    "projected_bytes": preflight["projected_bytes"],
+                    "budget_bytes": preflight["budget_bytes"],
+                    "headroom_bytes": (preflight["budget_bytes"]
+                                       - preflight["projected_bytes"]),
+                    "observed_peak_bytes": py_arm["medians"]["peak_bytes"],
+                    "source": preflight["distinct_source"],
+                    "source_sha256": preflight["distinct_source_sha256"],
+                },
+                "cross_session": {
+                    "cli_doc": str(args.cli_doc),
+                    "cli_doc_sha256": file_sha256(args.cli_doc),
+                },
+                "schedule": _stage_schedule(specs, args.reps),
+            })
+        assert_session_parity(doc, ARM_JF_T16, ARM_PY_T16)
+        assert_cross_session_jellyfish(cli_doc, doc)
+        for spec in specs:
+            if spec["tool"] == "jellyfish":
+                out = Path(spec["out"])
+                if out.exists():
+                    out.unlink()
+        write_doc(doc, out_path)
+    except Exception as exc:  # noqa: BLE001 — invalid session, never a verdict
+        print(f"phase10.py: {exc}", file=sys.stderr)
+        return EXIT_INVALID
+    for arm in arms:
+        medians = arm["medians"]
+        print(f"{arm['name']}: median wall {medians['wall_s']!r}s "
+              f"peak_bytes {medians['peak_bytes']!r} reps {len(arm['reps'])}")
+    return EXIT_OK
+
+
 # --- CLI --------------------------------------------------------------------
 
 STAGES = ("synthetic", "slice-gate", "cli", "python", "render",
@@ -951,6 +1410,15 @@ def build_parser():
     parser.add_argument("--cli-docs", nargs="+", default=None,
                         help="preflight-python: the two full-mode CLI "
                              "documents (k=21 and k=31)")
+    parser.add_argument("--cli-doc", default=None,
+                        help="python stage: the matching full-mode CLI "
+                             "document (same k)")
+    parser.add_argument("--pre-gate", default=None,
+                        help="python stage: the slice-gate artifact "
+                             "(10-slice-gate.json)")
+    parser.add_argument("--preflight", default=None,
+                        help="python stage: the Python preflight artifact "
+                             "(10-python-preflight.json)")
     return parser
 
 
@@ -968,7 +1436,11 @@ def main(argv=None):
         return run_synthetic(args)
     if args.stage == "preflight-python":
         return run_preflight_python(args)
-    invalid(f"stage {args.stage!r} not implemented in plan 10-01")
+    if args.stage == "cli":
+        return run_cli_session(args)
+    if args.stage == "python":
+        return run_python_session(args)
+    invalid(f"stage {args.stage!r} not implemented in plan 10-02")
     return EXIT_INVALID
 
 

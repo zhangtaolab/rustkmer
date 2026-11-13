@@ -225,6 +225,7 @@ class RoundsFixture(unittest.TestCase):
                 "module_path": str(self.module),
                 "module_mtime": 1.0,
                 "python_version": "3.13.11",
+                "inputs": [PART_1, PART_2],
             }
             stats_path.write_text(json.dumps(payload), encoding="utf-8")
         index = len(self.calls)
