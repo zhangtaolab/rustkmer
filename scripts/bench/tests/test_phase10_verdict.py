@@ -36,6 +36,7 @@ if __package__ in (None, ""):
 
 from scripts.bench import phase10 as p10
 from scripts.bench import python_bench as pb
+from scripts.bench.bench import validate_provenance
 
 PART_1 = "/data/part_001.fq.gz"
 PART_2 = "/data/part_006.fq.gz"
@@ -786,6 +787,182 @@ class TestReport(unittest.TestCase):
         self.assertEqual(code, p10.EXIT_INVALID)
         self.assertFalse(verdict_out.exists())
         self.assertFalse(report_out.exists())
+
+
+class TestSliceGateRecord(unittest.TestCase):
+    """The slice-gate stage pins the reference and labels k=31 honestly."""
+
+    REAL_PART_1 = "CRR1936095_r1.part_001.fq.gz"
+    REAL_PART_2 = "CRR1936095_r1.part_006.fq.gz"
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+        self.out = self.tmp / "10-slice-gate.json"
+        self.gate_calls = []
+
+    def make_data(self, names=(None, None)):
+        data = self.tmp / "data"
+        data.mkdir()
+        for name in names:
+            if name:
+                (data / name).write_bytes(b"part-bytes")
+        return data
+
+    def make_fingerprint(self, reference_sha=p10.REFERENCE_SHA256):
+        def fake_fingerprint(path):
+            resolved = Path(path)
+            if resolved == p10.PARITY_REFERENCE:
+                return {"path": str(resolved), "size_bytes": 123,
+                        "sha256": reference_sha}
+            return {
+                "path": str(resolved),
+                "size_bytes": resolved.stat().st_size,
+                "sha256": hashlib.sha256(str(resolved).encode()).hexdigest(),
+            }
+        return fake_fingerprint
+
+    def run_stage(self, data, reference_sha=p10.REFERENCE_SHA256,
+                  parity_side_effect=None):
+        def fake_provision(resolved_inputs, slice_reads, scratch):
+            slice_path = Path(scratch) / "slice-0.fq"
+            slice_path.write_bytes(b"slice-bytes")
+            return [slice_path, slice_path]
+
+        def fake_run_parity(slice_path, k, threads, rustkmer, scratch,
+                            hash_size=None):
+            if parity_side_effect is not None:
+                return parity_side_effect(k)
+            return {"distinct": 1000 + k, "total": 2000 + k}
+
+        def fake_gate(counts, path, source_sha256, slice_kind, reads, k,
+                      canonical, selection=None):
+            self.gate_calls.append({"counts": counts, "path": path,
+                                    "source_sha256": source_sha256,
+                                    "slice_kind": slice_kind, "reads": reads,
+                                    "k": k, "canonical": canonical})
+            return {"expected": {"distinct": counts["distinct"],
+                                 "total": counts["total"]}}
+
+        patches = [
+            mock.patch.object(p10, "provision_slice",
+                              side_effect=fake_provision),
+            mock.patch.object(p10, "run_parity",
+                              side_effect=fake_run_parity),
+            mock.patch.object(p10, "gate_parity_reference",
+                              side_effect=fake_gate),
+            mock.patch.object(p10, "fingerprint",
+                              side_effect=self.make_fingerprint(reference_sha)),
+            mock.patch.object(p10, "binary_provenance",
+                              side_effect=lambda *_a, **_k: fake_provenance()),
+        ]
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.ExitStack() as stack:
+            for patch in patches:
+                stack.enter_context(patch)
+            stack.enter_context(contextlib.redirect_stdout(out))
+            stack.enter_context(contextlib.redirect_stderr(err))
+            try:
+                code = p10.main(["--stage", "slice-gate",
+                                 "--data-dir", str(data),
+                                 "--out", str(self.out),
+                                 "--scratch", str(self.tmp / "scratch"),
+                                 "--rustkmer",
+                                 "/repo/target/release/rustkmer"])
+            except SystemExit as exc:
+                code = exc.code
+        return code, err.getvalue()
+
+    def test_record_carries_both_k_gates_and_pins_the_reference(self):
+        data = self.make_data((self.REAL_PART_1, self.REAL_PART_2))
+        code, err = self.run_stage(data)
+        self.assertEqual(code, p10.EXIT_OK, err)
+        doc = json.loads(self.out.read_text(encoding="utf-8"))
+        self.assertEqual(doc["kind"], "phase10-slice-gate")
+        self.assertEqual(doc["phase"], 10)
+        validate_provenance(doc)
+        gates = {gate["k"]: gate for gate in doc["gates"]}
+        self.assertEqual(set(gates), {21, 31})
+        reference = gates[21]["parity_reference"]
+        self.assertIsNotNone(reference)
+        self.assertEqual(reference["path"],
+                         "scripts/bench/baselines/slice_parity.crr1936095.json")
+        self.assertEqual(reference["sha256"], p10.REFERENCE_SHA256)
+        self.assertEqual(gates[21]["reference_gate"], p10.PINNED_REFERENCE_GATE)
+        self.assertIsNone(gates[31]["parity_reference"])
+        self.assertEqual(gates[31]["reference_gate"], p10.LIVE_PARITY_ONLY)
+        for k, gate in gates.items():
+            self.assertEqual(gate["slice_recipe"]["k"], k)
+            self.assertEqual(gate["slice_recipe"]["slice_selection"], "head")
+            self.assertEqual(gate["slice_recipe"]["slice_reads"],
+                             p10.PINNED_SLICE_READS)
+            self.assertEqual(gate["slice_recipe"]["hash_size"],
+                             p10.PARITY_HASH_SIZE)
+            self.assertEqual(gate["slice_recipe"]["source_sha256"],
+                             doc["input_fingerprint"][0]["sha256"])
+            self.assertEqual(gate["distinct"], 1000 + k)
+            self.assertEqual(gate["total"], 2000 + k)
+        self.assertEqual(len(doc["input_fingerprint"]), 2)
+        # The k=21 gate is bound to the SOURCE part, not the slice.
+        self.assertEqual(len(self.gate_calls), 1)
+        call = self.gate_calls[0]
+        self.assertEqual(call["k"], 21)
+        self.assertEqual(call["reads"], p10.PINNED_SLICE_READS)
+        self.assertEqual(call["slice_kind"],
+                         p10.slice_kind_for("head", p10.PINNED_SLICE_READS))
+
+    def test_compression_suffix_is_stripped_before_the_token_match(self):
+        self.assertEqual(
+            p10.strip_compression_suffix("CRR1936095_r1.part_001.fq.gz"),
+            "CRR1936095_r1.part_001")
+        self.assertEqual(
+            p10.strip_compression_suffix("CRR1936095_r1.part_006.fastq.gz"),
+            "CRR1936095_r1.part_006")
+        self.assertIsNone(p10.strip_compression_suffix("part_001.fq"))
+
+    def test_reference_sha_mismatch_exits_2_with_no_artifact(self):
+        data = self.make_data((self.REAL_PART_1, self.REAL_PART_2))
+        code, err = self.run_stage(data, reference_sha="0" * 64)
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertIn("refusing to consume a modified reference", err)
+        self.assertFalse(self.out.exists())
+
+    def test_one_part_directory_exits_2(self):
+        data = self.make_data((self.REAL_PART_1, None))
+        code, _err = self.run_stage(data)
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertFalse(self.out.exists())
+
+    def test_three_part_directory_exits_2(self):
+        data = self.make_data((self.REAL_PART_1, self.REAL_PART_2,
+                               "CRR1936095_r1.part_007.fq.gz"))
+        code, _err = self.run_stage(data)
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertFalse(self.out.exists())
+
+    def test_wrong_part_name_exits_2(self):
+        data = self.make_data(("CRR1936095_r1.part_002.fq.gz",
+                               self.REAL_PART_2))
+        code, _err = self.run_stage(data)
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertFalse(self.out.exists())
+
+    def test_reversed_parts_are_rejected(self):
+        """gather_inputs sorts a directory, so pin the ORDER check directly."""
+        data = self.make_data((self.REAL_PART_1, self.REAL_PART_2))
+        first, second = sorted(data.iterdir())
+        with self.assertRaises(ValueError):
+            p10.require_split_parts([second, first])
+
+    def test_parity_mismatch_propagates_and_writes_nothing(self):
+        data = self.make_data((self.REAL_PART_1, self.REAL_PART_2))
+
+        def parity_failure(k):
+            raise SystemExit(p10.EXIT_NO)
+
+        code, _err = self.run_stage(data, parity_side_effect=parity_failure)
+        self.assertEqual(code, p10.EXIT_NO)
+        self.assertFalse(self.out.exists())
 
 
 if __name__ == "__main__":

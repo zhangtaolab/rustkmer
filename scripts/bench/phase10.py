@@ -1526,6 +1526,149 @@ def run_preflight_python(args):
     return EXIT_OK if overall == "PROCEED" else EXIT_INVALID
 
 
+# --- slice gate (stage built here; executed against real data in plan 10-03) -
+
+_COMPRESSION_SUFFIXES = (".fastq.gz", ".fq.gz")
+_SPLIT_PART_TOKENS = (".part_001", ".part_006")
+
+
+def strip_compression_suffix(name):
+    """The basename minus a trailing `.fq.gz`/`.fastq.gz`, else None.
+
+    The real split parts are `CRR1936095_r1.part_001.fq.gz` and
+    `CRR1936095_r1.part_006.fq.gz`: the part token lives BEFORE the
+    compression suffix, so the suffix must be stripped first or a token
+    match against the full name can never succeed.
+    """
+    for suffix in _COMPRESSION_SUFFIXES:
+        if name.endswith(suffix):
+            return name[:-len(suffix)]
+    return None
+
+
+def require_split_parts(inputs):
+    """Exactly part_001 then part_006, matched on the stripped stem."""
+    paths = [Path(p) for p in inputs]
+    if len(paths) != 2:
+        raise ValueError(
+            f"the slice gate requires exactly the two split parts, got "
+            f"{len(paths)}: {[str(path) for path in paths]}")
+    stems = []
+    for path in paths:
+        stem = strip_compression_suffix(path.name)
+        if stem is None:
+            raise ValueError(
+                f"split part {path} is not a .fq.gz/.fastq.gz file — the "
+                f"part token is matched on the compression-stripped stem")
+        stems.append(stem)
+    if not (stems[0].endswith(_SPLIT_PART_TOKENS[0])
+            and stems[1].endswith(_SPLIT_PART_TOKENS[1])):
+        raise ValueError(
+            f"expected the two parts to end with .part_001 then .part_006 "
+            f"after stripping the compression suffix; got {stems!r}")
+    return paths
+
+
+def build_slice_gate_doc(inputs, rustkmer, scratch, k_values=(21, 31)):
+    """Provision the head-4M slice ONCE and record both k gates.
+
+    k=21 is gated against the committed pinned reference, whose sha256 is
+    re-checked BEFORE consumption (a modified reference exits 2 with no
+    artifact). k=31 has no pinned slice reference, so it is recorded as an
+    explicitly labeled live-parity-only gate; no expectation is invented and
+    the k=21 counts are never reused. The slice is provisioned from the
+    FIRST part only, and the reference is bound to the SOURCE part's
+    fingerprint, not the slice's.
+    """
+    paths = require_split_parts(inputs)
+    scratch = Path(scratch)
+    scratch.mkdir(parents=True, exist_ok=True)
+    fingerprints = [fingerprint(path) for path in paths]
+    source_sha256 = fingerprints[0]["sha256"]
+    slices = provision_slice([paths[0]], PINNED_SLICE_READS, scratch)
+    slice_path = Path(slices[0])
+    reference_sha256 = fingerprint(PARITY_REFERENCE)["sha256"]
+    if reference_sha256 != REFERENCE_SHA256:
+        raise ValueError(
+            f"parity reference sha256 {reference_sha256} != pinned "
+            f"{REFERENCE_SHA256} — refusing to consume a modified reference")
+    try:
+        reference_rel = str(PARITY_REFERENCE.relative_to(REPO_ROOT))
+    except ValueError:
+        reference_rel = str(PARITY_REFERENCE)
+    gates = []
+    for k in k_values:
+        if k not in SLICE_GATE_K_VALUES:
+            raise ValueError(
+                f"the slice gate only records k={SLICE_GATE_K_VALUES}, "
+                f"got {k}")
+        counts = run_parity(slice_path, k, ACCEPTANCE_THREADS, rustkmer,
+                            scratch, hash_size=PARITY_HASH_SIZE)
+        recipe = {
+            "mode": "slice",
+            "k": k,
+            "canonical": True,
+            "threads": ACCEPTANCE_THREADS,
+            "hash_size": PARITY_HASH_SIZE,
+            "slice_selection": "head",
+            "slice_reads": PINNED_SLICE_READS,
+            "source_sha256": source_sha256,
+        }
+        if k == 21:
+            gate_parity_reference(
+                counts, str(PARITY_REFERENCE), source_sha256,
+                slice_kind_for("head", PINNED_SLICE_READS),
+                PINNED_SLICE_READS, 21, True)
+            parity_reference = {"path": reference_rel,
+                                "sha256": reference_sha256}
+            reference_gate = PINNED_REFERENCE_GATE
+        else:
+            parity_reference = None
+            reference_gate = LIVE_PARITY_ONLY
+        gates.append({
+            "k": k,
+            "slice_recipe": recipe,
+            "distinct": counts["distinct"],
+            "total": counts["total"],
+            "parity_reference": parity_reference,
+            "reference_gate": reference_gate,
+        })
+    doc = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": "phase10-slice-gate",
+        "phase": PHASE,
+        "gates": gates,
+        "input_fingerprint": fingerprints,
+        "created": datetime.now(timezone.utc).isoformat(),
+        "provenance": binary_provenance(rustkmer, "release"),
+    }
+    validate_provenance(doc)
+    return doc
+
+
+def run_slice_gate(args):
+    """Resolve the split directory, build the gate record, write it once.
+
+    Input-shape and reference-pin problems return EXIT_INVALID with no
+    artifact. A live parity mismatch (exit 1) or an invalid reference (exit
+    2) is raised by the bench primitives themselves and propagates.
+    """
+    out_path = Path(args.out)
+    scratch = Path(args.scratch) if args.scratch else out_path.parent / "scratch"
+    try:
+        inputs = [Path(p) for p in gather_inputs(str(args.data_dir))]
+        doc = build_slice_gate_doc(inputs, args.rustkmer, scratch)
+    except Exception as exc:  # noqa: BLE001 — invalid gate, never a verdict
+        print(f"phase10.py: {exc}", file=sys.stderr)
+        return EXIT_INVALID
+    write_evidence_doc(doc, out_path)
+    for gate in doc["gates"]:
+        print(f"SLICE GATE k={gate['k']} distinct={gate['distinct']} "
+              f"total={gate['total']} reference={gate['reference_gate']}")
+    print(f"slice gate record written to {out_path}")
+    return EXIT_OK
+
+
 # --- full-scale sessions (plans 10-03/10-04) --------------------------------
 
 def _stage_paths(args):
@@ -1867,6 +2010,8 @@ def main(argv=None):
         return run_synthetic(args)
     if args.stage == "preflight-python":
         return run_preflight_python(args)
+    if args.stage == "slice-gate":
+        return run_slice_gate(args)
     if args.stage == "cli":
         return run_cli_session(args)
     if args.stage == "python":
