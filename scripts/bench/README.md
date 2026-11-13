@@ -156,20 +156,29 @@ python3 scripts/bench/contention_bench.py \
 
 ### Python-surface benchmark (PROF-04)
 
-The installed `pyrustkmer` `.so` is prebuilt — rebuild from source before
-capture, with `CONDA_PREFIX` unset and the interpreter's virtualenv pinned to
-`.venv313`:
+The installed `pyrustkmer` `.so` is prebuilt — rebuild from source before any
+Python-surface run (benchmark, differential, or pytest), with `CONDA_PREFIX`
+unset and the interpreter's virtualenv pinned to `.venv313`:
 
 ```bash
 env -u CONDA_PREFIX VIRTUAL_ENV="$PWD/.venv313" PATH="$PWD/.venv313/bin:$PATH" \
   .venv313/bin/maturin develop --release -m pyo3/Cargo.toml
-.venv313/bin/python -c "import pyrustkmer; print(pyrustkmer.__file__)"
+.venv313/bin/python -c "import pyrustkmer; print(pyrustkmer.__version__, pyrustkmer.__file__)"
 ```
 
+Every Python command in this README uses `.venv313/bin/python`: the system
+interpreter has no `pyrustkmer` installed.
+
 Each measured rep is a FRESH worker process under `/usr/bin/time` (no
-in-process clock). Slice mode proves CLI-vs-Python parity on an N-free
-control BEFORE timing and commits the dev-host baseline from that control;
-the real-N arm is separately labeled `timing-only-real-N-pre-D2`.
+in-process clock), and each worker takes its own `--threads` value
+(`default|N`) — the global rayon pool is first-call-wins, so the threads=1
+configuration and the default (all-cores) configuration must never share a
+process. Slice mode proves CLI-vs-Python parity on an N-free control BEFORE
+timing and commits the dev-host baseline from that control. The real-N arm
+is separately labeled `timing-only-real-N-post-D2`: its counts are post-D2
+skip-N values and are not comparable to the pre-D2 committed baseline — it
+is timing-only evidence, and the N-free control is the only comparison
+basis.
 
 ```bash
 .venv313/bin/python scripts/bench/python_bench.py \
@@ -182,25 +191,77 @@ the real-N arm is separately labeled `timing-only-real-N-pre-D2`.
 
 `--emit-baseline` is slice-mode only and its filename must match the host
 flavor (`python_bench_baseline.darwin.json` / `.linux.json`), so a synthetic
-or mislabeled baseline cannot be committed as a real one.
+or mislabeled baseline cannot be committed as a real one. The committed
+baseline file is immutable history — never re-pin it to turn a comparison
+green.
+
+#### Baseline comparison mode (Phase 9, dev-host only)
+
+`--compare-baseline` re-proves the N-free control BEFORE any timing: CLI-vs-
+Python parity on the same bytes, the committed baseline's exact counts, and
+the regenerated control's sha256. It then measures BOTH the `threads=1`
+engine-isolation arm and the default-threads user arm as fresh worker
+processes, and computes the verdict only from the recorded medians with
+locked inclusive thresholds:
+
+- `speedup_t1` = baseline t1 median / new t1 median, must be `>= 1.0x`
+  (non-regressive against the committed sequential baseline);
+- `speedup_default` = baseline t1 median / new default median, must be
+  `>= 1.2x` (the measured win).
+
+There is no noise band. Both arms are always reported.
+
+```bash
+.venv313/bin/python scripts/bench/python_bench.py --mode slice \
+  --input /Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz \
+  --slice-reads 1000000 --slice-seed 20261112 --reps 3 \
+  --python .venv313/bin/python --rustkmer target/release/rustkmer \
+  --compare-baseline scripts/bench/baselines/python_bench_baseline.darwin.json \
+  --out scripts/bench/scratch/python_bench_compare.json
+```
+
+Exit contract: `0 = PASS, 1 = valid FAIL (artifact kept), 2 = invalid (no artifact)`.
+A valid measurement is written on PASS and on a genuine FAIL; every
+invalid path exits 2 with no artifact. The identity guards that exit 2 are:
+a platform-flavor mismatch, a `provenance.platform` mismatch, a k/canonical
+mismatch, a baseline without a control fingerprint or positive exact counts,
+a pre-timing exact-count mismatch, and a regenerated-control fingerprint
+mismatch. The artifact carries both measured arms, the `comparison` and
+`verdict` blocks, the baseline record (path, sha256, control median, exact
+counts), and full provenance.
+
+This is dev-host evidence only: it adds no CI comparison gate, because no
+CI-class baseline exists. Phase 10 owns CI-class baselines (see "Python
+baseline classes and the CI bootstrap" below).
 
 ### N-read differential (PROF-05)
 
-`n_read_differential.py` records the CLI-vs-Python divergence on N-containing
-reads (CLI skips N-windows; Python strips N and joins flanks → chimeric
-k-mers). The no-N control must be exactly equal. Exit **0** measured verdict,
-**1** unexpected result, **2** invalid input. This is record-only evidence:
-neither surface's semantics is changed.
+`n_read_differential.py` records the CLI-vs-Python differential on
+N-containing reads. Phase 9's D2 unification landed the CLI's skip-N
+semantics on the Python surface too: after D2 both surfaces skip every
+length-k window containing a non-ACGT byte, so no chimeric flank-joined
+k-mers survive. The no-N control must be exactly equal. Exit **0** measured
+verdict, **1** unexpected result, **2** invalid input. The historical
+pre-D2 capture below is kept as provenance for the committed Phase 5
+artifact; that artifact
+(`.planning/phases/05-measurement-regression-harness/n_read_differential.json`,
+sha256 `6d929a45…`) is immutable and must never be overwritten by a re-run.
 
 ```bash
-python3 scripts/bench/n_read_differential.py \
-  --out .planning/phases/05-measurement-regression-harness/n_read_differential.json
+# Historical pre-D2 provenance re-record (scratch only — never the committed
+# Phase 5 artifact):
+.venv313/bin/python scripts/bench/n_read_differential.py \
+  --out scripts/bench/scratch/n_read_differential_pre_d2_record.json
 
-# Phase 9 re-run AFTER the D2 skip-N unification lands: every case must be
-# equal (same command plus --expect-unified; exit 0 required)
-python3 scripts/bench/n_read_differential.py --expect-unified \
-  --out .planning/phases/05-measurement-regression-harness/n_read_differential.json
+# Phase 9 re-run AFTER the D2 skip-N unification: every case must be equal
+# (exit 0 required). The output is NEW Phase 9 evidence; it never lands on
+# the committed Phase 5 artifact.
+.venv313/bin/python scripts/bench/n_read_differential.py --expect-unified --previous .planning/phases/05-measurement-regression-harness/n_read_differential.json --rustkmer target/release/rustkmer --out .planning/phases/09-python-parity/evidence/n_read_differential_d2.json
 ```
+
+`--expect-unified` is the Phase 9 mode: every divergent cell must become
+zero, and the before/after block built from `--previous` supplies the
+pre-D2 counts.
 
 ### Golden capture (Phase 8 input)
 
