@@ -45,6 +45,11 @@ Out of scope: KMC3 (any form), CI-class baseline regeneration, minimizer/disk-ba
 - How the verdict report is rendered (markdown from recorded medians).
 - Whether the Python full-scale arm reuses the Phase 9 `--compare-baseline` machinery or a phase-10-specific path.
 
+### Post-Research Decisions (2026-11-13, after the research report)
+- **Python OOM is a hard gate with a user stop.** Run the CLI full-scale arm first to obtain the measured distinct count; recompute the Python arm's memory budget from that measured value; if it projects over budget, STOP and ask the user. Never skip the Python arm silently, never auto-modify the engine to make it fit, and never report a blocked arm as a result.
+- **The `t1` arm is CLI-only.** Roughly +9 minutes per rep, excluded from the acceptance rule, recorded as scaling evidence. No Python `t1` arm.
+- **Two checkpoints.** First checkpoint: harness built + memory preflight + slice gate green + CLI full-scale measured. Second checkpoint: Python full-scale + the verdict. Do not run the Python arm or compute the verdict before the first checkpoint has been reported.
+
 </decisions>
 
 <code_context>
