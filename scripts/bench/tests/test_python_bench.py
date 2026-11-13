@@ -133,6 +133,49 @@ def make_control(reps=None):
     }
 
 
+def make_synthetic_baseline(control_wall=12.0, exact=None,
+                            control_sha="e" * 64, platform_flavor=None,
+                            provenance_platform=None, k=21, canonical=True):
+    """A minimal committed-baseline envelope for the comparison guards.
+
+    Shape mirrors scripts/bench/baselines/python_bench_baseline.darwin.json;
+    the absolute numbers are synthetic (the real guard must not hard-code
+    the committed file's values).
+    """
+    flavor = (platform_flavor if platform_flavor is not None
+              else pb.baseline_filename(platform.system())[1])
+    host_platform = (provenance_platform if provenance_platform is not None
+                     else f"{sys.platform}-{platform.machine()}")
+    return {
+        "schema_version": 1,
+        "platform": flavor,
+        "created": "2026-11-12T00:00:00+00:00",
+        "host_class": "dev-host Apple M4 Max (16 cores, 128 GiB)",
+        "comparison_basis": "n-free-control",
+        "params": {"k": k, "canonical": canonical, "threads": 1,
+                   "slice_reads": 20, "slice_seed": 7},
+        "n_free_control": {
+            "input_fingerprint": {"path": "control.fq", "size_bytes": 10,
+                                  "sha256": control_sha},
+            "exact_counts": (exact if exact is not None
+                             else {"total_kmers": 100, "unique_kmers": 90}),
+            "arms": [{"name": f"py{k}-n-free-control-t1",
+                      "medians": {"wall_s": control_wall}}],
+        },
+        "provenance": {"platform": host_platform},
+    }
+
+
+def make_new_control_doc(t1_wall, default_wall):
+    """The two measured control arms a comparison run produces."""
+    return {"n_free_control": {"arms": [
+        {"name": "py21-n-free-control-t1",
+         "medians": {"wall_s": t1_wall}},
+        {"name": "py21-n-free-control-tdefault",
+         "medians": {"wall_s": default_wall}},
+    ]}}
+
+
 class TestNFreeFilter(unittest.TestCase):
     """Deterministic drop-records-with-N filter, 4-line record integrity."""
 
@@ -313,6 +356,126 @@ class TestBaselineNaming(unittest.TestCase):
             pb.baseline_filename("Windows")
 
 
+class TestParseThreads(unittest.TestCase):
+    """--threads accepts 'default' or an integer >= 1, nothing else."""
+
+    def test_default_maps_to_none(self):
+        self.assertIsNone(pb.parse_threads("default"))
+
+    def test_integer_values(self):
+        self.assertEqual(pb.parse_threads("1"), 1)
+        self.assertEqual(pb.parse_threads("4"), 4)
+
+    def test_invalid_values_raise(self):
+        for bad in ("0", "-1", "1.5", "DEFault", ""):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    pb.parse_threads(bad)
+
+
+class TestCompareToBaseline(unittest.TestCase):
+    """Locked speedup math: inclusive 1.0x / 1.2x, no noise band."""
+
+    def setUp(self):
+        self.baseline = make_synthetic_baseline(control_wall=12.0)
+
+    def result(self, t1_wall, default_wall):
+        return pb.compare_to_baseline(
+            self.baseline, make_new_control_doc(t1_wall, default_wall))
+
+    def test_threshold_equality_passes(self):
+        result = self.result(12.0, 10.0)
+        self.assertEqual(result["result"], "PASS")
+        self.assertEqual(result["speedup_t1"], 1.0)
+        self.assertEqual(result["speedup_default"], 1.2)
+        self.assertEqual(result["baseline_wall_s"], 12.0)
+        self.assertEqual(result["new_t1_wall_s"], 12.0)
+        self.assertEqual(result["new_default_wall_s"], 10.0)
+        self.assertEqual(result["min_speedup_t1"], 1.0)
+        self.assertEqual(result["min_speedup_default"], 1.2)
+
+    def test_one_ulp_below_t1_threshold_fails(self):
+        self.assertEqual(
+            self.result(12.000000000000002, 10.0)["result"], "FAIL")
+
+    def test_one_ulp_below_default_threshold_fails(self):
+        self.assertEqual(
+            self.result(12.0, 10.000000000000002)["result"], "FAIL")
+
+    def test_t1_regression_fails(self):
+        self.assertEqual(self.result(13.0, 10.0)["result"], "FAIL")
+
+    def test_default_below_threshold_fails(self):
+        self.assertEqual(self.result(12.0, 10.5)["result"], "FAIL")
+
+    def test_missing_arm_raises(self):
+        doc = make_new_control_doc(12.0, 10.0)
+        del doc["n_free_control"]["arms"][1]
+        with self.assertRaises(ValueError):
+            pb.compare_to_baseline(self.baseline, doc)
+
+    def test_non_positive_median_raises(self):
+        doc = make_new_control_doc(0.0, 10.0)
+        with self.assertRaises(ValueError):
+            pb.compare_to_baseline(self.baseline, doc)
+
+
+class TestBaselineIdentityGuards(unittest.TestCase):
+    """Every cross-host/config mismatch is a ValueError (exit 2 upstream)."""
+
+    def setUp(self):
+        self.flavor = pb.baseline_filename(platform.system())[1]
+        self.host = f"{sys.platform}-{platform.machine()}"
+
+    def fresh(self):
+        return make_synthetic_baseline(platform_flavor=self.flavor,
+                                       provenance_platform=self.host)
+
+    def check(self, baseline):
+        return pb.validate_baseline_identity(
+            baseline, self.flavor, self.host, 21, True)
+
+    def test_valid_baseline_passes(self):
+        self.check(self.fresh())
+
+    def test_platform_flavor_mismatch_raises(self):
+        baseline = self.fresh()
+        baseline["platform"] = ("linux" if self.flavor == "darwin"
+                                else "darwin")
+        with self.assertRaises(ValueError):
+            self.check(baseline)
+
+    def test_provenance_platform_mismatch_raises(self):
+        baseline = self.fresh()
+        baseline["provenance"]["platform"] = "linux-x86_64"
+        with self.assertRaises(ValueError):
+            self.check(baseline)
+
+    def test_k_mismatch_raises(self):
+        baseline = self.fresh()
+        baseline["params"]["k"] = 31
+        with self.assertRaises(ValueError):
+            self.check(baseline)
+
+    def test_canonical_mismatch_raises(self):
+        baseline = self.fresh()
+        baseline["params"]["canonical"] = False
+        with self.assertRaises(ValueError):
+            self.check(baseline)
+
+    def test_missing_fingerprint_sha_raises(self):
+        baseline = self.fresh()
+        baseline["n_free_control"]["input_fingerprint"]["sha256"] = ""
+        with self.assertRaises(ValueError):
+            self.check(baseline)
+
+    def test_zero_exact_count_raises(self):
+        baseline = self.fresh()
+        baseline["n_free_control"]["exact_counts"]["total_kmers"] = 0
+        with self.assertRaises(ValueError):
+            self.check(baseline)
+
+
 class TestBuildBaseline(unittest.TestCase):
     """A slice-mode baseline without a parity-passing control is invalid."""
 
@@ -327,7 +490,7 @@ class TestBuildBaseline(unittest.TestCase):
         self.assertIn("M4 Max", baseline["host_class"])
         self.assertEqual(baseline["platform"], "darwin")
         self.assertEqual(baseline["arms"][0]["evidence_class"],
-                         "timing-only-real-N-pre-D2")
+                         "timing-only-real-N-post-D2")
         self.assertIs(baseline["n_free_control"]["parity_control"]["equal"],
                       True)
 
@@ -373,7 +536,8 @@ class ControllerHarness(unittest.TestCase):
                      "site_prefix": str(self.site)}
         self.out = self.root / "run.json"
 
-    def run_main(self, argv, measure=None, cli=None):
+    def run_main(self, argv, measure=None, cli=None, fingerprint_value=None,
+                 filter_counts=None):
         patches = [
             mock.patch.object(pb, "interpreter_info", return_value=self.info),
             mock.patch.object(pb, "maturin_version",
@@ -389,6 +553,14 @@ class ControllerHarness(unittest.TestCase):
         if cli is not None:
             patches.append(mock.patch.object(pb, "cli_count_counts",
                                              return_value=cli))
+        if fingerprint_value is not None:
+            patches.append(mock.patch.object(
+                pb, "fingerprint",
+                return_value={"path": "mocked-input", "size_bytes": 10,
+                              "sha256": fingerprint_value}))
+        if filter_counts is not None:
+            patches.append(mock.patch.object(pb, "filter_n_free",
+                                             return_value=filter_counts))
         out, err = io.StringIO(), io.StringIO()
         with contextlib.ExitStack() as stack:
             for patch in patches:
@@ -492,7 +664,7 @@ class TestSliceController(ControllerHarness):
         self.assertEqual(control["kept_reads"] + control["dropped_reads"], 20)
         self.assertGreater(control["dropped_reads"], 0)
         self.assertEqual(doc["arms"][0]["evidence_class"],
-                         "timing-only-real-N-pre-D2")
+                         "timing-only-real-N-post-D2")
         self.assertIn("semantics_note", doc["arms"][0])
         # The committed baseline envelope.
         base = json.loads(baseline.read_text())
@@ -534,6 +706,144 @@ class TestSliceController(ControllerHarness):
              "--out", str(self.out)])
         self.assertEqual(code, 2)
         self.assertIn("--input", err)
+
+
+class TestCompareController(ControllerHarness):
+    """--compare-baseline through main(): exit 0/1/2 and artifact policy.
+
+    The fake measure's wall times are 1.0 + call index, so with --reps 3 the
+    t1 arm's measured reps are 3/4/5 s (median 4.0) and the default arm's
+    are 7/8/9 s (median 8.0). A baseline control median of 12.0 therefore
+    yields speedups 3.0 / 1.5 (PASS); 8.0 yields 2.0 / 1.0 (default FAIL).
+    """
+
+    CONTROL_SHA = "e" * 64
+    FILTER = {"kept_reads": 15, "dropped_reads": 5}
+
+    def write_baseline(self, **over):
+        kwargs = {"control_sha": self.CONTROL_SHA}
+        kwargs.update(over)
+        doc = make_synthetic_baseline(**kwargs)
+        path = self.root / "baseline.json"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        return path
+
+    def compare_argv(self, baseline_path, *extra):
+        return self.slice_argv("--compare-baseline", str(baseline_path),
+                               *extra)
+
+    def run_compare(self, baseline_path, cli=None):
+        return self.run_main(
+            self.compare_argv(baseline_path),
+            cli=(cli if cli is not None
+                 else {"unique_kmers": 90, "total_kmers": 100}),
+            fingerprint_value=self.CONTROL_SHA,
+            filter_counts=dict(self.FILTER))
+
+    def test_pass_writes_valid_doc_and_exits_0(self):
+        baseline = self.write_baseline(control_wall=12.0)
+        code, out, err = self.run_compare(baseline)
+        self.assertEqual(code, 0, err)
+        doc = json.loads(self.out.read_text())
+        validate_schema(doc)
+        validate_provenance(doc)
+        self.assertEqual(doc["mode"], "compare-baseline")
+        self.assertEqual([a["name"] for a in doc["arms"]],
+                         ["py21-n-free-control-t1",
+                          "py21-n-free-control-tdefault"])
+        self.assertEqual([a["threads"] for a in doc["arms"]], [1, "default"])
+        self.assertEqual(doc["comparison"]["result"], "PASS")
+        self.assertEqual(doc["comparison"]["speedup_t1"], 3.0)
+        self.assertEqual(doc["comparison"]["speedup_default"], 1.5)
+        self.assertEqual(doc["verdict"], {"result": "PASS", "exit_code": 0})
+        self.assertEqual(doc["baseline"]["control_wall_s"], 12.0)
+        self.assertEqual(doc["baseline"]["sha256"], self.CONTROL_SHA)
+        self.assertEqual(doc["params"]["compare_baseline"], str(baseline))
+        self.assertEqual(doc["params"]["threads_default"], "default")
+        control = doc["n_free_control"]
+        self.assertEqual(control["kept_reads"], 15)
+        self.assertEqual(control["dropped_reads"], 5)
+        self.assertEqual(len(control["arms"]), 2)
+        self.assertIs(control["parity_control"]["equal"], True)
+        for arm in doc["arms"]:
+            self.assertNotEqual(arm.get("evidence_class"),
+                                pb.REAL_N_EVIDENCE_CLASS)
+        self.assertIn("COMPARISON VERDICT result=PASS", out)
+
+    def test_fail_exits_1_and_keeps_artifact(self):
+        baseline = self.write_baseline(control_wall=8.0)
+        code, out, err = self.run_compare(baseline)
+        self.assertEqual(code, 1, err)
+        self.assertTrue(self.out.is_file())
+        doc = json.loads(self.out.read_text())
+        validate_schema(doc)
+        validate_provenance(doc)
+        self.assertEqual(doc["comparison"]["result"], "FAIL")
+        self.assertEqual(doc["comparison"]["speedup_t1"], 2.0)
+        self.assertEqual(doc["comparison"]["speedup_default"], 1.0)
+        self.assertEqual(doc["verdict"], {"result": "FAIL", "exit_code": 1})
+        self.assertIn("COMPARISON VERDICT result=FAIL", out)
+
+    def test_wrong_platform_baseline_exits_2_without_artifact(self):
+        other = ("linux" if pb.baseline_filename(platform.system())[1]
+                 == "darwin" else "darwin")
+        baseline = self.write_baseline(platform_flavor=other)
+        code, _, err = self.run_compare(baseline)
+        self.assertEqual(code, 2)
+        self.assertIn("platform", err)
+        self.assertFalse(self.out.exists())
+
+    def test_exact_count_mismatch_exits_2_without_artifact(self):
+        baseline = self.write_baseline(
+            exact={"total_kmers": 101, "unique_kmers": 90})
+        code, _, err = self.run_compare(baseline)
+        self.assertEqual(code, 2)
+        self.assertIn("exact counts", err)
+        self.assertFalse(self.out.exists())
+
+    def test_control_fingerprint_mismatch_exits_2_without_artifact(self):
+        baseline = self.write_baseline(control_sha="f" * 64)
+        code, _, err = self.run_compare(baseline)
+        self.assertEqual(code, 2)
+        self.assertIn("fingerprint", err)
+        self.assertFalse(self.out.exists())
+
+    def test_missing_baseline_file_exits_2_without_artifact(self):
+        code, _, err = self.run_compare(self.root / "absent-baseline.json")
+        self.assertEqual(code, 2)
+        self.assertIn("not found", err)
+        self.assertFalse(self.out.exists())
+
+    def test_unparseable_baseline_exits_2_without_artifact(self):
+        baseline = self.root / "broken-baseline.json"
+        baseline.write_text("{ not json", encoding="utf-8")
+        code, _, err = self.run_compare(baseline)
+        self.assertEqual(code, 2)
+        self.assertFalse(self.out.exists())
+
+    def test_compare_requires_slice_mode(self):
+        baseline = self.write_baseline()
+        code, _, err = self.run_main(
+            self.synthetic_argv("--compare-baseline", str(baseline)),
+            cli={"unique_kmers": 90, "total_kmers": 100},
+            fingerprint_value=self.CONTROL_SHA,
+            filter_counts=dict(self.FILTER))
+        self.assertEqual(code, 2)
+        self.assertIn("slice", err)
+        self.assertFalse(self.out.exists())
+
+    def test_compare_and_emit_baseline_are_mutually_exclusive(self):
+        baseline = self.write_baseline()
+        name, _ = pb.baseline_filename(platform.system())
+        code, _, err = self.run_main(
+            self.compare_argv(baseline, "--emit-baseline",
+                              str(self.root / name)),
+            cli={"unique_kmers": 90, "total_kmers": 100},
+            fingerprint_value=self.CONTROL_SHA,
+            filter_counts=dict(self.FILTER))
+        self.assertEqual(code, 2)
+        self.assertIn("mutually exclusive", err)
+        self.assertFalse(self.out.exists())
 
 
 @unittest.skipUnless(
