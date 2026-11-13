@@ -130,10 +130,15 @@ Plans:
   4. The Python benchmark shows a measured wall-clock win against the committed Phase 5 sequential baseline, recorded with parity-before-timing and module provenance.
 **Plans**: 5 plans
 Plans:
+**Wave 1**
 - [ ] 09-01-PLAN.md — Tracer: PyCounter through the shared engine, D2 raw-byte skip-N, `__version__` tripwire
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 09-02-PLAN.md — `save_database` one parallel sort + sorted-input constructor + GIL release + byte identity
 - [ ] 09-03-PLAN.md — Dual-thread `--compare-baseline` verdict harness + unit suite + bench README
 - [ ] 09-04-PLAN.md — N-read differential `--previous` before/after + D2 docs page + README migration note
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 09-05-PLAN.md — Final measured gates (unified differential, baseline comparison) + full battery evidence
 **Research flag**: none — the v1.0 shared-entry merge precedent (`merge_databases_to_path`) is the template; PyO3 detach patterns are in-repo.
 
