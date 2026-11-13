@@ -151,12 +151,12 @@ Plans:
   2. A full human-scale jellyfish parity verdict is produced on BOTH surfaces — slice gate green at every step before the full run — from medians of counterbalanced reps with honest per-rep cache_state, the verdict computed from the recorded medians.
   3. The acceptance question is answered by measurement: rustkmer matches or beats jellyfish at k=21 (and k=31 under fair, matched-hash comparison). A YES closes BENCH-02 outright; a NO is recorded honestly and feeds the D3 trigger decision for Phase 11.
   4. CI baselines are regenerated only from the CI runner class; every verdict artifact carries binary/module provenance; the report states cold-cache limitations honestly (no-sudo warm-cache reality recorded, as in v1.0). Phase 10 records dev-host evidence only and writes no CI baseline.
-**Plans**: 1/4 plans executed
+**Plans**: 2/4 plans executed
 **Wave 1**
 - [x] 10-01-PLAN.md — Phase-10 controller tracer (four arms, both parts), `max(rss, footprint)` parser, memory projection model
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 10-02-PLAN.md — Production `py-t16` arm, mechanical Phase-10 renderer with mandatory statements, slice-gate record with reference sha256 pin
+- [x] 10-02-PLAN.md — Production `py-t16` arm, mechanical Phase-10 renderer with mandatory statements, slice-gate record with reference sha256 pin
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 10-03-PLAN.md — Slice gate on the real dataset, CLI full-scale k=21 and k=31, Checkpoint 1 (blocking user decision)
@@ -195,7 +195,7 @@ Phases execute in numeric order: 5 → 6 → 7 → 8 → 9 → 10 → (11 only i
 | 7. Shared Counting Engine | v2.0 | 4/4 | Complete    | 2026-11-13 |
 | 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 4/4 | Complete    | 2026-11-13 |
 | 9. Python Parity | v2.0 | 5/5 | Complete    | 2026-11-13 |
-| 10. Benchmark Verdict | v2.0 | 1/4 | In Progress | - |
+| 10. Benchmark Verdict | v2.0 | 2/4 | In Progress | - |
 | 11. Minimizer Partitioning & Memory Ceiling | v2.0 | 0/TBD | Not started (conditional — D3) | - |
 
 ## Backlog
