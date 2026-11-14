@@ -225,6 +225,6 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Re-run the stale verification gates for Phases 5, 6, 7 and 9 (`/gsd-execute-phase <N>` resumes at the verification gates) — their verifier digests went stale when Phases 9/10 changed shared harness files
+- Re-verification of Phases 5/6/7/9 completed 2026-11-14 — all `passed` (12/12, 20/20, 12/12, 38/38); every phase's verifier digest is current
 - Milestone audit → complete → cleanup (Phase 11 does not execute; MINIM-01..03 deferred)
 - Optional: run `/gsd-secure-phase 9` and `/gsd-secure-phase 10` if SECURITY.md coverage is required for the milestone audit
