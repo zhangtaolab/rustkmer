@@ -351,6 +351,11 @@ or inapplicable (no artifact written). The disk-floor guard keeps its own
 exit **3**. The `render` stage publishes the verdict and the report
 atomically: on exit 2 neither destination exists.
 
+`render` and `preflight-python` consume recorded JSON only. Their
+`provenance` block is the MEASURED CLI provenance carried by the source
+documents, so neither stage needs a local release binary or Rust toolchain —
+a clean checkout can mechanically re-render the committed verdict.
+
 The Phase-10 verdict artifacts are **dev-host evidence only**: no CI-class
 baseline is regenerated, written, or modified, and a dev-host number must
 never be copied into a CI baseline slot. Every file under

@@ -1437,6 +1437,10 @@ def run_render(args):
     Neither destination exists on EXIT_INVALID; both exist on EXIT_OK/EXIT_NO.
     The verdict document's `provenance.created` is its only varying field and
     the report never includes it, so the report alone is byte-comparable.
+
+    The stage consumes recorded JSON only: its provenance is the MEASURED CLI
+    provenance carried by the source documents, so no local release binary or
+    Rust toolchain is required to re-render the verdict (WR-04).
     """
     if not args.docs:
         invalid("the render stage requires --docs <the four result documents>")
@@ -1468,7 +1472,7 @@ def run_render(args):
             "dev_host_only": True,
             "kmc3_executed": False,
             "ci_baseline_written": False,
-            "provenance": binary_provenance(args.rustkmer, "release"),
+            "provenance": _measured_provenance(docs, "render"),
         }
         validate_provenance(verdict_doc)
         report_text = render_report_text(docs)
@@ -1621,6 +1625,35 @@ def run_synthetic(args):
 
 # --- python preflight stage (plan 10-04 dependency) -------------------------
 
+def _measured_provenance(docs, label):
+    """The measured CLI provenance block (never a render-time binary).
+
+    The `render` and `preflight-python` stages consume recorded JSON only;
+    they must not require a local release binary or Rust toolchain (WR-04).
+    The artifact therefore attributes the binary that actually produced the
+    source measurements. Every cli-session source document must name the same
+    measured binary bytes.
+    """
+    cli_docs = sorted((doc for doc in docs if doc.get("session") == "cli"),
+                      key=_doc_k)
+    if not cli_docs:
+        raise ValueError(
+            f"{label}: a cli-session source document is required to "
+            f"attribute the measured binary")
+    provenance = cli_docs[0].get("provenance")
+    if not isinstance(provenance, dict):
+        raise ValueError(f"{label}: source document carries no provenance")
+    binary = provenance.get("binary")
+    for doc in cli_docs[1:]:
+        other = (doc.get("provenance") or {}).get("binary")
+        if other != binary:
+            raise ValueError(
+                f"{label}: source documents name different measured binaries "
+                f"({binary!r} vs {other!r}) — the artifact cannot attribute "
+                f"one measured CLI binary")
+    return provenance
+
+
 def load_cli_document(path):
     """Load, validate and return one full-mode CLI results document."""
     with open(path, encoding="utf-8") as fh:
@@ -1635,15 +1668,22 @@ def load_cli_document(path):
 
 
 def preflight_records(paths, budget_bytes=MEMORY_BUDGET_BYTES):
-    """Build one preflight_record per consumed CLI document."""
+    """Build one preflight_record per consumed CLI document.
+
+    Returns `(records, provenance)`: the provenance is the measured CLI
+    block from the consumed documents, so the artifact never depends on a
+    render-time binary (WR-04).
+    """
     if len(paths) != 2:
         raise ValueError(
             f"preflight-python consumes exactly the two CLI documents "
             f"(k=21 and k=31), got {len(paths)}")
     records = []
+    docs = []
     seen_k = set()
     for path in paths:
         doc = load_cli_document(path)
+        docs.append(doc)
         k = _doc_k(doc)
         if k in seen_k:
             raise ValueError(f"duplicate k={k} among the CLI documents")
@@ -1663,14 +1703,14 @@ def preflight_records(paths, budget_bytes=MEMORY_BUDGET_BYTES):
                 f"positive integer")
         records.append(preflight_record(
             k, distinct, str(path), file_sha256(path), budget_bytes))
-    return records
+    return records, _measured_provenance(docs, "preflight-python")
 
 
 def run_preflight_python(args):
     """Project the Python peak from the measured CLI distinct count."""
     if not args.cli_docs:
         invalid("the preflight-python stage requires --cli-docs <two paths>")
-    records = preflight_records(args.cli_docs)
+    records, provenance = preflight_records(args.cli_docs)
     overall = ("PROCEED" if all(r["decision"] == "PROCEED" for r in records)
                else "BLOCKED")
     doc = {
@@ -1680,7 +1720,7 @@ def run_preflight_python(args):
         "created": datetime.now(timezone.utc).isoformat(),
         "records": records,
         "overall": overall,
-        "provenance": binary_provenance(args.rustkmer, "release"),
+        "provenance": provenance,
     }
     validate_provenance(doc)
     out = Path(args.out)

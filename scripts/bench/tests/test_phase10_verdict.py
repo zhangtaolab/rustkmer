@@ -599,6 +599,22 @@ class TestPreflightStage(unittest.TestCase):
         for record in doc["records"]:
             self.assertEqual(record["decision"], "BLOCKED")
 
+    def test_preflight_needs_no_local_release_binary(self):
+        """The projection consumes the CLI documents' provenance, not a build."""
+        docs = self._cli_docs({21: 1_050_000_000, 31: 1_200_000_000})
+        out = self.tmp / "preflight.json"
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), \
+                contextlib.redirect_stderr(stderr):
+            code = p10.main([
+                "--stage", "preflight-python", "--cli-docs", *docs,
+                "--out", str(out),
+                "--rustkmer", str(self.tmp / "no-such-rustkmer")])
+        self.assertEqual(code, p10.EXIT_OK, stderr.getvalue())
+        doc = json.loads(out.read_text(encoding="utf-8"))
+        validate_provenance(doc)
+        self.assertEqual(doc["provenance"]["binary"]["sha256"], "a" * 64)
+
 
 class TestReport(unittest.TestCase):
     """The Phase-10 renderer: deterministic, literal-bearing, order-pinned.
@@ -860,6 +876,27 @@ class TestReport(unittest.TestCase):
         self.assertIn("pinned k values", err)
         self.assertFalse(verdict_out.exists())
         self.assertFalse(report_out.exists())
+
+    def test_render_stage_needs_no_local_release_binary(self):
+        """Re-rendering consumes JSON only — no local build/toolchain needed."""
+        paths = self.write_docs(self.full_k_docs())
+        verdict_out = self.tmp / "10-verdict.json"
+        report_out = self.tmp / "10-BENCHMARK-REPORT.md"
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            try:
+                code = p10.main([
+                    "--stage", "render", "--docs", *paths,
+                    "--verdict-out", str(verdict_out),
+                    "--out", str(report_out),
+                    "--rustkmer", str(self.tmp / "no-such-rustkmer")])
+            except SystemExit as exc:
+                code = exc.code
+        self.assertEqual(code, p10.EXIT_OK, err.getvalue())
+        self.assertTrue(verdict_out.exists())
+        self.assertTrue(report_out.exists())
+        verdict = json.loads(verdict_out.read_text(encoding="utf-8"))
+        self.assertEqual(verdict["provenance"]["binary"]["sha256"], "a" * 64)
 
     def test_render_stage_labels_provenance_by_session_not_by_position(self):
         docs = [python_doc(k=21), cli_doc(k=21),
