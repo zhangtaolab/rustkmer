@@ -8,7 +8,7 @@
     "upper_bound": "ceil(86.5 * distinct)",
     "supersedes": "python-86B-per-distinct-conservative-two-call-upper-bound (the 86 B model in use when the Python session ran)",
     "decision_unchanged": true,
-    "note": "Re-derived from the committed CLI documents under the corrected true upper bound; the projection is larger than the historical 86 B value but both k still PROCEED under the pinned 118111600640-byte budget. The Python session documents retain their historical memory_preflight blocks, which record what the gate computed at run time. No measurement was re-run and no measured value changed."
+    "note": "Re-derived from the committed CLI documents under the corrected true upper bound; the projection is larger than the historical 86 B value but both k still PROCEED under the pinned 118111600640-byte budget. The Python session documents retain their historical memory_preflight blocks, which record what the gate computed at run time. Those blocks and their cross_session blocks pin the pre-WR-01 CLI-document bytes (757c923a... / 90804c50...); the historical bytes are preserved verbatim under evidence/historical_cli_k21.json and evidence/historical_cli_k31.json for pin verification, and the corrected current CLI documents (f76cb1c6... / 1ebf2b8c...) are the current render inputs. No measurement was re-run and no measured value changed."
   },
   "created": "2026-11-14T03:35:07.277749+00:00",
   "records": [

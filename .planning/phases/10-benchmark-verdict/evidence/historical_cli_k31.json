@@ -1,0 +1,233 @@
+{
+  "schema_version": 1,
+  "mode": "full",
+  "phase": 10,
+  "session": "cli",
+  "params": {
+    "k": 31,
+    "canonical": true,
+    "threads": 16,
+    "reps": 3,
+    "cooldown_s": 5,
+    "hash_size": "10G",
+    "arm_order": [
+      "rk-t16",
+      "rk-t1",
+      "jf-t16",
+      "py-t16"
+    ]
+  },
+  "platform": {
+    "system": "Darwin",
+    "release": "25.6.0",
+    "machine": "arm64",
+    "python": "3.13.11"
+  },
+  "created": "2026-11-13T13:14:27.981498+00:00",
+  "input_fingerprint": [
+    {
+      "path": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+      "size_bytes": 2785381389,
+      "sha256": "dae91042e42c1a0562a2bda66b7a3409665cddc87e702d99b922e44160c1b0de"
+    },
+    {
+      "path": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz",
+      "size_bytes": 2785388289,
+      "sha256": "b197f16c31dd34094858adcb25f811194f532ed3ce95523df6ae709f2a37f07e"
+    }
+  ],
+  "arms": [
+    {
+      "name": "rk-t16",
+      "tool": "rustkmer",
+      "threads": 16,
+      "inputs": [
+        "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+        "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz"
+      ],
+      "reps": [
+        {
+          "wall_s": 148.63,
+          "peak_rss_bytes": 73579839488,
+          "peak_footprint_bytes": 73523269784,
+          "peak_bytes": 73579839488,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 147.08,
+          "peak_rss_bytes": 73577611264,
+          "peak_footprint_bytes": 73523073104,
+          "peak_bytes": 73577611264,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 2
+        },
+        {
+          "wall_s": 146.74,
+          "peak_rss_bytes": 73577529344,
+          "peak_footprint_bytes": 73523384568,
+          "peak_bytes": 73577529344,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 1
+        }
+      ],
+      "medians": {
+        "wall_s": 147.08,
+        "peak_rss_bytes": 73577611264,
+        "peak_bytes": 73577611264,
+        "cv_wall_pct": 0.6831203256188717,
+        "cv_warning": false
+      },
+      "unique_kmers": 1146353600,
+      "total_kmers": 8275694030,
+      "db_sha256": "c2b974d905b9877589c99ea19964b5cd0b8d85f5e62ef1a8add26318949b1362"
+    },
+    {
+      "name": "rk-t1",
+      "tool": "rustkmer",
+      "threads": 1,
+      "inputs": [
+        "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+        "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz"
+      ],
+      "reps": [
+        {
+          "wall_s": 472.57,
+          "peak_rss_bytes": 73562554368,
+          "peak_footprint_bytes": 73515651200,
+          "peak_bytes": 73562554368,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 476.29,
+          "peak_rss_bytes": 73562587136,
+          "peak_footprint_bytes": 73515585592,
+          "peak_bytes": 73562587136,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 474.31,
+          "peak_rss_bytes": 73562570752,
+          "peak_footprint_bytes": 73515683992,
+          "peak_bytes": 73562570752,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 2
+        }
+      ],
+      "medians": {
+        "wall_s": 474.31,
+        "peak_rss_bytes": 73562570752,
+        "peak_bytes": 73562570752,
+        "cv_wall_pct": 0.3923543656755856,
+        "cv_warning": false
+      },
+      "unique_kmers": 1146353600,
+      "total_kmers": 8275694030,
+      "db_sha256": "c2b974d905b9877589c99ea19964b5cd0b8d85f5e62ef1a8add26318949b1362"
+    },
+    {
+      "name": "jf-t16",
+      "tool": "jellyfish",
+      "threads": 16,
+      "inputs": [
+        "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+        "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz"
+      ],
+      "reps": [
+        {
+          "wall_s": 1377.62,
+          "peak_rss_bytes": 94494949376,
+          "peak_footprint_bytes": 1294648,
+          "peak_bytes": 94494949376,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 2
+        },
+        {
+          "wall_s": 1380.92,
+          "peak_rss_bytes": 94492409856,
+          "peak_footprint_bytes": 1278240,
+          "peak_bytes": 94492409856,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 1450.67,
+          "peak_rss_bytes": 94494605312,
+          "peak_footprint_bytes": 1278240,
+          "peak_bytes": 94494605312,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 0
+        }
+      ],
+      "medians": {
+        "wall_s": 1380.92,
+        "peak_rss_bytes": 94494605312,
+        "peak_bytes": 94494605312,
+        "cv_wall_pct": 2.940396257603544,
+        "cv_warning": false
+      },
+      "unique_kmers": 1146353600,
+      "total_kmers": 8275694030,
+      "db_sha256": "853a855b50d357e4445fa3242f7e6938b7ed3dd66ab2ba4be30dc85a436e6843"
+    }
+  ],
+  "scratch": "/tmp/rustkmer-phase10/scratch",
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/.claude/worktrees/agent-a24abbc9a0da37b75/target/release/rustkmer",
+      "size_bytes": 2966832,
+      "sha256": "8f38d20c2e3dc77dfc0ef80c9a2475613da1aa7ad131bd240d5ec74fc87c3d23"
+    },
+    "git_commit": "e47f6ca9a44ad243312757fd8a3e1aa93ddc032e",
+    "git_dirty": false,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-13T13:14:27.981082+00:00"
+  },
+  "preflight": {
+    "basis": "research-upper-estimate",
+    "distinct_assumed": 1200000000,
+    "projected_bytes": 73159738368,
+    "budget_bytes": 118111600640,
+    "decision": "PROCEED",
+    "model": "cli-16B-slot-32B-pair-64-partitions",
+    "detail": "projected 73159738368 bytes <= budget 118111600640 bytes (44951862272 bytes headroom)"
+  },
+  "schedule": {
+    "policy": "round-robin-rotation",
+    "warmup_order": [
+      "rustkmer",
+      "jellyfish",
+      "pyrustkmer"
+    ],
+    "rounds": [
+      [
+        "rk-t16",
+        "rk-t1",
+        "jf-t16"
+      ],
+      [
+        "rk-t1",
+        "jf-t16",
+        "rk-t16"
+      ],
+      [
+        "jf-t16",
+        "rk-t16",
+        "rk-t1"
+      ]
+    ]
+  }
+}

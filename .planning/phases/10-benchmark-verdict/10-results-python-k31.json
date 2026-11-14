@@ -215,11 +215,15 @@
     "headroom_bytes": 19525191040,
     "observed_peak_bytes": 73847406592,
     "source": ".planning/phases/10-benchmark-verdict/10-results-full-k31.json",
-    "source_sha256": "90804c50822dfeb2cbad1d37e413fd07a0fb3471cd776ce40ceff4347b96b5d2"
+    "source_sha256": "90804c50822dfeb2cbad1d37e413fd07a0fb3471cd776ce40ceff4347b96b5d2",
+    "committed_copy": ".planning/phases/10-benchmark-verdict/evidence/historical_cli_k31.json",
+    "supersession_note": "source_sha256 pins the historical CLI-document bytes the run-time gate consumed; the WR-01 warmup-order metadata correction changed that document's bytes. The corrected current file (sha256 1ebf2b8c0d07c15a00519e52d99c5ab2bd52d50757e74bc921c8fc91194df819) is the current render input, and the historical bytes are preserved verbatim under committed_copy for pin verification. No measured value changed."
   },
   "cross_session": {
     "cli_doc": ".planning/phases/10-benchmark-verdict/10-results-full-k31.json",
-    "cli_doc_sha256": "90804c50822dfeb2cbad1d37e413fd07a0fb3471cd776ce40ceff4347b96b5d2"
+    "cli_doc_sha256": "90804c50822dfeb2cbad1d37e413fd07a0fb3471cd776ce40ceff4347b96b5d2",
+    "committed_copy": ".planning/phases/10-benchmark-verdict/evidence/historical_cli_k31.json",
+    "supersession_note": "cli_doc_sha256 pins the historical CLI-document bytes this session consumed; the corrected current document (sha256 1ebf2b8c0d07c15a00519e52d99c5ab2bd52d50757e74bc921c8fc91194df819) is the current render input, and the historical bytes are preserved verbatim under committed_copy for pin verification. No measured value changed."
   },
   "schedule": {
     "policy": "round-robin-rotation",

@@ -749,6 +749,46 @@ class TestCommittedPreflightArtifact(unittest.TestCase):
             self.assertEqual(len(sha256), 64)
 
 
+class TestCommittedHistoricalCliEvidence(unittest.TestCase):
+    """WR-06: the Python documents' historical CLI pins stay verifiable.
+
+    The Python session documents pin the pre-WR-01 CLI-document bytes, which
+    the metadata-only warmup correction replaced. Those historical bytes are
+    committed verbatim under `evidence/` and each pin names its copy, so the
+    sha256 a session recorded can be re-checked from a clean checkout instead
+    of being recoverable only from git history.
+    """
+
+    PHASE_DIR = (Path(__file__).resolve().parents[3] / ".planning" / "phases"
+                 / "10-benchmark-verdict")
+
+    def test_each_historical_pin_matches_its_committed_copy(self):
+        for k in p10.SLICE_GATE_K_VALUES:
+            with self.subTest(k=k):
+                doc = json.loads(
+                    (self.PHASE_DIR / f"10-results-python-k{k}.json")
+                    .read_text(encoding="utf-8"))
+                preflight = doc["memory_preflight"]
+                cross = doc["cross_session"]
+                self.assertEqual(preflight["committed_copy"],
+                                 cross["committed_copy"])
+                copy_path = Path(p10.REPO_ROOT) / preflight["committed_copy"]
+                self.assertTrue(copy_path.is_file(), copy_path)
+                digest = hashlib.sha256(copy_path.read_bytes()).hexdigest()
+                self.assertEqual(digest, preflight["source_sha256"])
+                self.assertEqual(digest, cross["cli_doc_sha256"])
+                self.assertEqual(preflight["source"], cross["cli_doc"])
+                current = Path(p10.REPO_ROOT) / preflight["source"]
+                current_sha = hashlib.sha256(current.read_bytes()).hexdigest()
+                self.assertNotEqual(
+                    current_sha, digest,
+                    "the named CLI document must be the corrected superseding "
+                    "document; the historical bytes are the committed copy")
+                self.assertIn("historical", preflight["supersession_note"])
+                self.assertIn("historical", cross["supersession_note"])
+                self.assertIn(current_sha, cross["supersession_note"])
+
+
 class TestReport(unittest.TestCase):
     """The Phase-10 renderer: deterministic, literal-bearing, order-pinned.
 
