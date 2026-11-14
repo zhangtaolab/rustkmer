@@ -395,6 +395,29 @@ class TestVerdictBlock(unittest.TestCase):
         with self.assertRaises(ValueError):
             p10.verdict_block(21, cli, python_doc())
 
+    def test_non_finite_median_is_invalid(self):
+        """Infinity must never satisfy `tool <= jellyfish`; NaN is no median."""
+        for bad in (float("inf"), float("nan")):
+            cli = cli_doc()
+            for arm in cli["arms"]:
+                if arm["name"] == p10.ARM_RK_T16:
+                    arm["medians"]["wall_s"] = bad
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                p10.verdict_block(21, cli, python_doc())
+
+    def test_surface_result_rejects_non_finite_inputs(self):
+        for bad in (float("inf"), float("nan")):
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                p10.surface_result(bad, 100.0)
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                p10.surface_result(100.0, bad)
+
+    def test_non_finite_rep_wall_is_invalid(self):
+        for bad in (float("inf"), float("nan")):
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                p10.validate_rep_memory({"wall_s": bad, "peak_rss_bytes": 10,
+                                         "peak_bytes": 10})
+
     def test_ambiguous_arm_is_invalid(self):
         cli = cli_doc()
         cli["arms"].append(make_arm(p10.ARM_RK_T16, "rustkmer", 16, 50.0))
@@ -769,6 +792,32 @@ class TestReport(unittest.TestCase):
             self.full_docs(k=21))
         self.assertEqual(code, p10.EXIT_INVALID)
         self.assertIn("pinned k values", err)
+        self.assertFalse(verdict_out.exists())
+        self.assertFalse(report_out.exists())
+
+    def test_render_stage_rejects_non_finite_json_values(self):
+        """`Infinity`/`NaN` literals never pass the render validation."""
+        for bad in (float("inf"), float("nan")):
+            with self.subTest(value=bad):
+                docs = self.full_k_docs()
+                for arm in docs[0]["arms"]:
+                    if arm["name"] == p10.ARM_RK_T16:
+                        arm["medians"]["wall_s"] = bad
+                code, verdict_out, report_out, _out, err = self.run_render(
+                    docs)
+                self.assertEqual(code, p10.EXIT_INVALID, err)
+                self.assertIn("finite", err)
+                self.assertFalse(verdict_out.exists())
+                self.assertFalse(report_out.exists())
+
+    def test_render_stage_rejects_non_finite_rep_values(self):
+        docs = self.full_k_docs()
+        for arm in docs[0]["arms"]:
+            if arm["name"] == p10.ARM_RK_T16:
+                arm["reps"][0]["wall_s"] = float("inf")
+        code, verdict_out, report_out, _out, err = self.run_render(docs)
+        self.assertEqual(code, p10.EXIT_INVALID, err)
+        self.assertIn("finite", err)
         self.assertFalse(verdict_out.exists())
         self.assertFalse(report_out.exists())
 

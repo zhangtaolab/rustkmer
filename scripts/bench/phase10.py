@@ -45,6 +45,7 @@ Python 3.11+ stdlib only — no third-party imports.
 import argparse
 import hashlib
 import json
+import math
 import os
 import platform
 import statistics
@@ -547,13 +548,27 @@ def build_arms(specs, reps_by_arm, rustkmer):
 
 
 def validate_rep_memory(rep):
-    """Every measured rep must carry honest, positive memory fields."""
+    """Every measured rep must carry honest, positive, FINITE memory fields.
+
+    `value <= 0` alone is not enough: `NaN` and `+inf` both compare False
+    against zero, and Python's `json.load` accepts the non-standard `NaN` /
+    `Infinity` literals from a committed document. A non-finite measurement
+    is invalid (exit 2), never a number that can enter a median.
+    """
     for field in ("wall_s", "peak_rss_bytes", "peak_bytes"):
         value = rep.get(field)
         if (not isinstance(value, (int, float)) or isinstance(value, bool)
-                or value <= 0):
+                or not math.isfinite(value) or value <= 0):
             raise ValueError(
-                f"rep field {field}={value!r} must be a positive number")
+                f"rep field {field}={value!r} must be a positive finite number")
+    footprint = rep.get("peak_footprint_bytes")
+    if footprint is not None and (
+            not isinstance(footprint, (int, float))
+            or isinstance(footprint, bool)
+            or not math.isfinite(footprint) or footprint < 0):
+        raise ValueError(
+            f"rep field peak_footprint_bytes={footprint!r} must be a "
+            f"non-negative finite number")
     if rep["peak_bytes"] < rep["peak_rss_bytes"]:
         raise ValueError(
             f"rep peak_bytes={rep['peak_bytes']!r} is below the recorded "
@@ -566,7 +581,16 @@ def surface_result(tool_median, jellyfish_median):
     """Match-or-beat rule: `tool <= jellyfish` is YES; equality is a match.
 
     There is no tolerance band and no re-roll — a NO is a recorded outcome.
+    Both inputs must be finite numbers: `Infinity <= Infinity` and comparisons
+    involving `NaN` must never decide a verdict.
     """
+    for label, value in (("tool", tool_median),
+                         ("jellyfish", jellyfish_median)):
+        if (not isinstance(value, (int, float)) or isinstance(value, bool)
+                or not math.isfinite(value)):
+            raise ValueError(
+                f"surface_result: {label} median {value!r} must be a finite "
+                f"number")
     return "YES" if float(tool_median) <= float(jellyfish_median) else "NO"
 
 
@@ -595,10 +619,10 @@ def _acceptance_arm(doc, name, label, k):
     medians = arm.get("medians")
     wall = medians.get("wall_s") if isinstance(medians, dict) else None
     if (not isinstance(wall, (int, float)) or isinstance(wall, bool)
-            or wall <= 0):
+            or not math.isfinite(wall) or wall <= 0):
         raise ValueError(
             f"k={k}: arm {name!r} in the {label} document has a non-positive "
-            f"median wall {wall!r}")
+            f"or non-finite median wall {wall!r}")
     return float(wall)
 
 
@@ -633,6 +657,12 @@ def verdict_block(k, cli_doc, python_doc):
                 and arm.get("threads") == 1):
             medians = arm.get("medians")
             wall = medians.get("wall_s") if isinstance(medians, dict) else None
+            if (isinstance(wall, (int, float)) and not isinstance(wall, bool)
+                    and not math.isfinite(wall)):
+                raise ValueError(
+                    f"k={k}: scaling arm {ARM_RK_T1} median wall {wall!r} "
+                    f"is not finite — a recorded scaling number must be a "
+                    f"real measurement")
             if (isinstance(wall, (int, float)) and not isinstance(wall, bool)
                     and wall > 0):
                 scaling = {"arm": ARM_RK_T1, "threads": 1,
@@ -874,10 +904,27 @@ def _report_arm_row(arm):
     peak = medians.get("peak_bytes")
     for label, value in (("median wall", wall), ("median peak_bytes", peak)):
         if (not isinstance(value, (int, float)) or isinstance(value, bool)
-                or value <= 0):
+                or not math.isfinite(value) or value <= 0):
             raise ValueError(
                 f"render: arm {name!r} {label}={value!r} must be a positive "
-                f"number")
+                f"finite number")
+    for rep in reps:
+        if not isinstance(rep, dict):
+            raise ValueError(f"render: arm {name!r} has a non-object rep")
+        rep_wall = rep.get("wall_s")
+        if (not isinstance(rep_wall, (int, float))
+                or isinstance(rep_wall, bool)
+                or not math.isfinite(rep_wall) or rep_wall <= 0):
+            raise ValueError(
+                f"render: arm {name!r} rep wall_s={rep_wall!r} must be a "
+                f"positive finite number")
+        rep_peak = rep_peak_bytes(rep)
+        if (not isinstance(rep_peak, (int, float))
+                or isinstance(rep_peak, bool)
+                or not math.isfinite(rep_peak) or rep_peak <= 0):
+            raise ValueError(
+                f"render: arm {name!r} rep peak={rep_peak!r} must be a "
+                f"positive finite number")
     unique, total = _exact_counts(arm, f"render arm {name!r}")
     walls = " / ".join(repr(rep.get("wall_s")) for rep in reps)
     warn = " `[cv_warning]`" if medians.get("cv_warning") else ""
