@@ -357,11 +357,15 @@ unrelated `.fq.gz` files exits 2 before any measurement.
 
 Exit contract (shared with the rest of `scripts/bench/`): **0** valid result
 or measured YES, **1** a genuine measured NO (artifacts kept), **2** invalid
-or inapplicable (no artifact written). The disk-floor guard keeps its own
-exit **3**. The `render` stage publishes the verdict and the report
-atomically: on exit 2 no NEW destination is written, and any pre-existing
-artifact is restored untouched (a failed re-render never destroys the
-previously published verdict/report).
+or inapplicable (no artifact written) — with ONE documented exception:
+`preflight-python` always writes its PROCEED/BLOCKED decision record, so a
+BLOCKED projection writes the record and then exits **2**. The decision is
+the evidence a later reader or stage must see; the record carries no
+measurement. Every other stage's exit 2 writes no artifact. The disk-floor
+guard keeps its own exit **3**. The `render` stage publishes the verdict and
+the report atomically: on exit 2 no NEW destination is written, and any
+pre-existing artifact is restored untouched (a failed re-render never
+destroys the previously published verdict/report).
 
 `render` and `preflight-python` consume recorded JSON only. Their
 `provenance` block is the MEASURED CLI provenance carried by the source
