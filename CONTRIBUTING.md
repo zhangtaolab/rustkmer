@@ -29,6 +29,8 @@ maturin develop --release
 pytest
 ```
 
+`maturin develop` installs into the active virtualenv. If a conda environment is active, deactivate it or `unset CONDA_PREFIX` first — otherwise maturin targets the conda interpreter instead of the venv.
+
 See [docs/guides/development.md](docs/guides/development.md) for the full local-development workflow and [docs/guides/testing.md](docs/guides/testing.md) for the test layout and conventions.
 
 ## Build and test commands
@@ -46,22 +48,23 @@ These are the gates run by the `CI` workflow (`.github/workflows/ci.yml`), trigg
 
 CI runs the Python test suite: the `pyo3-pytest` job on all three operating systems builds the wheel (`maturin build`), installs it, and runs `pytest tests/ --cov=pyrustkmer --cov-report=term-missing --cov-fail-under=80` from `pyo3/` — the 80% coverage gate is passed on the command line there and lives only in CI. Local `pytest` in `pyo3/` runs plain with no forced coverage flags: the `pyo3/pyproject.toml` addopts are only `-v`. Running `cd pyo3 && pytest` locally before a PR that touches the bindings is still recommended.
 
-A separate `Benchmark` workflow (`.github/workflows/benchmark.yml`) also runs on every pull request and push to `dev`/`main`, on Linux and macOS. It builds the release binary, runs the harness unit tests (`python3 -m unittest discover -s scripts/bench/tests -t .`), runs the synthetic benchmark (`python3 scripts/bench/bench.py --mode synthetic --out results.json`), and compares wall-time and RSS against the committed baselines in `scripts/bench/baselines/` via `scripts/bench/compare.py`, gating on RSS only — wall-time breaches are advisory (`--wall-advisory`). Run the same scripts locally after performance-sensitive changes; see [docs/guides/benchmarking.md](docs/guides/benchmarking.md).
+A separate `Benchmark` workflow (`.github/workflows/benchmark.yml`) also runs on every pull request and push to `dev`/`main`, on Linux and macOS. It builds the release binary, runs the harness unit tests (`python3 -m unittest discover -s scripts/bench/tests -t .`), runs the synthetic benchmark (`python3 scripts/bench/bench.py --mode synthetic --out results.json`), and gates in two ways: `scripts/bench/compare.py` compares wall-time and peak RSS against the committed per-platform baselines in `scripts/bench/baselines/` (RSS is the hard axis at 15%; wall-time breaches are advisory under `--wall-advisory`), and `scripts/bench/thread_scaling.py` is a standing gate requiring both the t4 and t16 speedups to reach the default 1.3 (`--min-speedup`). The Python-surface benchmark (`scripts/bench/python_bench.py`) also runs and uploads its results, but has no compare gate yet. Run the same scripts locally after performance-sensitive changes; see [docs/guides/benchmarking.md](docs/guides/benchmarking.md).
 
-There is no `continue-on-error` on any CI job — a failing gate fails the PR.
+No gate step in `ci.yml` or `benchmark.yml` uses `continue-on-error`, `|| true`, or a conditional skip — a failing gate fails the PR.
 
 ## Coding standards
 
 - **Rust formatting and linting**: default `cargo fmt` and `cargo clippy --all-targets -- -D warnings`, both enforced in CI (`fmt` on Ubuntu, clippy on all three operating systems).
 - **Rust documentation**: every module starts with a `//!` block and every public item carries `///` docs using the `# Arguments` / `# Returns` / `# Errors` / `# Raises` / `# Examples` section convention. Doctests must compile — they run under `cargo test`.
-- **Python style** (for code under `pyo3/`): `black` with line length 88 (target `py311`) and `mypy` with strict settings, both configured in `pyo3/pyproject.toml`; `isort` with the black profile is configured in `.pre-commit-config.yaml`. Docstrings follow Google style.
+- **Python style** (for code under `pyo3/`): `black` with line length 88 (target `py311`) and `mypy` with strict settings, both configured in `pyo3/pyproject.toml`; `isort` uses the black profile (`.pre-commit-config.yaml`). None of these run in CI, and the pre-commit black/isort/pydocstyle/docformatter hooks are scoped to a `python/` tree that is not present in this repository, so they do not cover `pyo3/` — run those tools manually against `pyo3/` before submitting. Docstrings follow Google style.
 - **Pre-commit hooks** (`pre-commit install`): trailing-whitespace, end-of-file, YAML/JSON/TOML validity, merge-conflict markers, case conflicts, and large-file checks.
 
 ## Pull requests
 
-- Target the `dev` branch — it is the working branch and the repository default; `main` receives promoted states.
+- Target the `dev` branch — it is the working branch and the repository default (`origin/HEAD` points at `origin/dev`). `main` is the promotion branch referenced by both CI workflows, though `origin` currently carries only `dev` and `0.5`.
+- No branch-naming scheme is enforced; choose a descriptive name for your branch.
 - Use conventional commit messages: `type(scope): subject` (e.g. `feat(query): ...`, `fix(cli): ...`, `docs: ...`, `test: ...`), one logical change per commit.
-- All CI gates listed above must pass on all three operating systems before review; the `Benchmark` workflow is a gate as well.
+- The gates in the table above must pass on Ubuntu, macOS, and Windows, and the `Benchmark` workflow must pass on Linux and macOS, before review.
 - Add tests alongside behavior changes: Rust tests next to the code / in `tests/` via `cargo test`, binding tests in `pyo3/tests/` via `pytest`.
 - Keep the `.rkdb` on-disk format and the public CLI / Python APIs backward-compatible unless the tradeoff is discussed explicitly in the PR description.
 - Version bumps are release-time concerns: root `Cargo.toml`, `pyo3/Cargo.toml`, and `pyo3/pyproject.toml` versions must stay in sync (`scripts/sync_versions.sh`) — don't bump them in feature PRs.

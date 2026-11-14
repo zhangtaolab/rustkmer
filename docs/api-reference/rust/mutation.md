@@ -25,7 +25,7 @@ Nucleotide bases for mutations
 #### generate_mutation_variants
 
 ```rust
-pub fn generate_mutation_variants(sequence: &str, mutation_distance: usize) -> FuzzyResult<Vec<String>> {
+pub fn generate_mutation_variants(sequence: &str, mutation_distance: usize, max_variants: Option<usize>) -> FuzzyResult<Vec<String>> {
 ```
 
 Generate mutation variants for a k-mer
@@ -44,7 +44,7 @@ Vector of mutation variants (including original sequence)
 ```
 use rustkmer::fuzzy::mutation::generate_mutation_variants;
 
-let variants = generate_mutation_variants("ATGCGATGCTAGCG", 1).unwrap();
+let variants = generate_mutation_variants("ATGCGATGCTAGCG", 1, None).unwrap();
 assert!(variants.len() > 13); // Original + single mutations
 assert!(variants.contains(&"ATGCGATGCTAGCG".to_string())); // Original
 ```
@@ -78,7 +78,7 @@ Check if two sequences are within mutation tolerance
 #### generate_mutation_variants_iterative
 
 ```rust
-pub fn generate_mutation_variants_iterative(sequence: &str, mutation_distance: usize) -> FuzzyResult<Vec<String>> {
+pub fn generate_mutation_variants_iterative(sequence: &str, mutation_distance: usize, max_variants: Option<usize>) -> FuzzyResult<Vec<String>> {
 ```
 
 Generate mutation variants using iterative approach

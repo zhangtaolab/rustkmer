@@ -21,4 +21,4 @@ Additional processing error constructors for convenience
 
 ---
 
-*Source: [`error.rs`](../../../error.rs)*
+*Source: [`error.rs`](../../../src/error.rs)*

@@ -153,7 +153,7 @@ docker pull rustkmer/rustkmer:latest
 
 # 运行容器
 docker run -v $(pwd):/data rustkmer/rustkmer:latest \
-  count -k 21 -o /data/output.rkdb /data/input.fasta
+  count -k 21 -i /data/input.fasta -o /data/output.rkdb
 ```
 
 ## 快速开始
@@ -409,7 +409,7 @@ gdb target/debug/rustkmer
 
 ```bash
 cd rustkmer
-git pull origin main
+git pull origin dev
 cargo build --release
 sudo cp target/release/rustkmer /usr/local/bin/
 ```

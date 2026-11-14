@@ -229,8 +229,8 @@ for i, (kmer, count) in enumerate(top_10, 1):
     print(f"{i:2d}. {kmer}: {count:,}")
 
 # Get specific k-mer count
-kmer_count = counter.get_count("ATCGATCGATCGATCGATCG")
-print(f"ATCGATCGATCGATCGATCG: {kmer_count}")
+kmer_count = counter.get_count("ATCGATCGATCGATCGATCGA")
+print(f"ATCGATCGATCGATCGATCGA: {kmer_count}")
 ```
 
 ### Frequency Distribution

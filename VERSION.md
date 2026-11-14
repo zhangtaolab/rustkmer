@@ -32,8 +32,8 @@ Use the provided sync script to ensure versions stay in sync:
 # Check if versions are in sync
 ./scripts/sync_versions.sh
 
-# Or set a specific version
-./scripts/sync_versions.sh 0.5.0
+# If versions differ, PyO3 is updated to match the CLI version
+# (the script takes no version argument; the version comes from Cargo.toml)
 ```
 
 ### Manual Update

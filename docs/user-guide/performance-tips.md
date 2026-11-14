@@ -27,9 +27,9 @@ rustkmer count -k 31 -i input.fa -o output.rkdb
 ```
 
 **Memory Usage Guidelines:**
-- **k=13**: ~1GB per 1M k-mers
-- **k=21**: ~4GB per 1M k-mers
-- **k=31**: ~8GB per 1M k-mers
+- **k=13**: ~36 MB per 1M distinct k-mers (modelled); ~75-80 B per distinct k-mer measured end-to-end
+- **k=21**: ~36 MB per 1M distinct k-mers (modelled); same u64-keyed table as k=13, so the measured cost stays ~80 B per distinct k-mer
+- **k=31**: ~36 MB per 1M distinct k-mers (modelled); k=31 still uses a u64 key (k <= 32), so memory does not scale up from k=13
 
 ### Database Format Options
 ```bash
@@ -298,7 +298,7 @@ if __name__ == "__main__":
 ### Querying Performance
 | Database Type | Load Time | Query Speed | Memory Usage |
 |---------------|-----------|-------------|--------------|
-| Unsorted (`--no-sort`) | Fast | ~50,000 q/s | Low |
+| Unsorted (`--no-sort`) | Preload required before any query | O(n) linear scan, no binary search | Full database must be in memory |
 | Sorted (default) | Medium | ~200,000 q/s | Medium |
 
 ### File Format Performance

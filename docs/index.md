@@ -173,7 +173,7 @@ fuzzy = PyFuzzyQuery(db)
 results = fuzzy.query_fuzzy("ATNNGTANN", max_mutations=2)
 
 # The fuzzy search finds k-mers matching the pattern within the specified distance
-for result in results:
+for result in results.matches:
     print(f"K-mer: {result.kmer}, Count: {result.count}, Distance: {result.distance}")
 ```
 
@@ -202,7 +202,7 @@ We welcome contributions! Please see our [Contributing Guide](https://github.com
 
 ### Development Setup
 ```bash
-git clone https://github.com/rustkmer/rustkmer
+git clone https://github.com/zhangtaolab/rustkmer
 cd rustkmer
 cargo build
 cargo test

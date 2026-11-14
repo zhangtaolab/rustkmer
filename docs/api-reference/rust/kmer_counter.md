@@ -54,6 +54,7 @@ pub struct PyCounterStats {
     pub kmer_length: usize,
     pub canonical_mode: bool,
     pub memory_usage: usize,
+    pub threads: usize,
 }
 ```
 
@@ -142,7 +143,7 @@ fn get_stats(&self) -> PyCounterStats {
 ```
 
 Get statistics for the counter (`total_kmers`, `unique_kmers`,
-`kmer_length`, `canonical_mode`, `memory_usage`).
+`kmer_length`, `canonical_mode`, `memory_usage`, `threads`).
 
 #### PyCounter::get_count
 
@@ -207,6 +208,7 @@ Returns
 #[getter] fn kmer_length(&self) -> usize
 #[getter] fn canonical_mode(&self) -> bool
 #[getter] fn memory_usage(&self) -> usize
+#[getter] fn threads(&self) -> usize
 ```
 
 #### PyCounterStats::\_\_repr\_\_
@@ -216,7 +218,7 @@ fn __repr__(&self) -> String {
 ```
 
 Returns
-`PyCounterStats(total_kmers=..., unique_kmers=..., kmer_length=..., canonical_mode=..., memory_usage=...)`.
+`PyCounterStats(total_kmers=..., unique_kmers=..., kmer_length=..., canonical_mode=..., memory_usage=..., threads=...)`.
 
 ---
 

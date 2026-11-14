@@ -26,7 +26,7 @@ Represents a single matched k-mer within the mutation tolerance. Instances are p
 - `kmer` (str): The matched k-mer sequence found in the database
 - `count` (int): Number of occurrences of this k-mer in the database
 - `distance` (Optional[int]): Hamming distance from the query pattern (`None` when not applicable; exact matches also carry `None`, so it is never 0)
-- `match_type` (str): How the match was produced — `"exact"`, `"wildcard_expansion[...]"`, `"mutation_tolerance[...]"`, or `"length_normalization"`
+- `match_type` (str): How the match was produced. Currently always `"exact"` — the Rust engine tags every database hit as an exact match, so the `"wildcard_expansion[...]"`, `"mutation_tolerance[...]"`, and `"length_normalization"` mappings in the binding are not reached
 - `mutation_positions` (List[int]): Positions involved in the wildcard expansion or mutations (empty for plain exact matches)
 
 **Example:**
@@ -42,7 +42,7 @@ Contains all matches for a single fuzzy query operation.
 
 **Attributes:**
 - `query_kmer` (str): The upper-cased query pattern
-- `exact_match` (Optional[PyFuzzyMatch]): The exact match, if one was found
+- `exact_match` (Optional[PyFuzzyMatch]): The first hit whose `match_type` is `"exact"` in sorted variant order. Since every hit is tagged `"exact"`, this is the first returned hit — not necessarily the query k-mer — and is `None` only when no hits were found
 - `matches` (List[PyFuzzyMatch]): All matches, exact and fuzzy
 - `total_matches` (int): Sum of the counts of all matched k-mers (total abundance, not the number of matches)
 - `mutation_tolerance` (int): The mutation tolerance used for the query
@@ -199,9 +199,11 @@ The database's k-mer size, as read when the engine was constructed.
 ### Combinatorial Explosion
 
 The number of possible variants grows combinatorially with mutation tolerance. For a k-mer of length k:
-- Distance 1: k × 3 variants
-- Distance 2: k² × 3² variants
-- Distance 3: k³ × 3³ variants
+- Distance 1: C(k,1) × 3 = k × 3 variants
+- Distance 2: C(k,2) × 3² variants
+- Distance 3: C(k,3) × 3³ variants
+
+(`C(k,d)` is the binomial coefficient: mutation positions are chosen without regard to order, so distance 2 for a 20-mer yields 1710 variants, not 3600.)
 
 Keep the tolerance low and use `max_results` to bound the generated variant count (exceeding it raises `TooManyVariants`):
 

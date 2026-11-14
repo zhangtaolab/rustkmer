@@ -31,14 +31,14 @@ rustkmer fuzzy-query database.rkdb "AAANNNAAA" -m 0
 ```bash
 # 检查生成的变体数量
 rustkmer fuzzy-query database.rkdb "AAAANNN" --profile -q
-# 输出会显示: "Generated 64 variants" (效率低下)
+# 输出会显示: "Variants Generated: 64" (效率低下)
 ```
 
 ### 2. **使用 dump + grep (效率极低)**
 ```bash
 # 导出全部数据然后过滤 (不推荐，内存和时间消耗巨大)
 rustkmer dump database.rkdb | grep "^AAAA" > prefix_matches.txt
-rustkmer dump database.rkdb | grep "AAA$" > suffix_matches.txt
+rustkmer dump database.rkdb | cut -f1 | grep "AAA$" > suffix_matches.txt
 ```
 
 ### 3. **临时Python脚本解决方案**

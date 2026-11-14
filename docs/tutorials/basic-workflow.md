@@ -61,11 +61,11 @@ ATCGATCGATCGATCGATCGATCGATCGATCGATCG
 
     # Create query file with k-mers we want to test
     queries = [
-        "ATCGATCGATCGATCGATCG",  # Should be present (repeated)
+        "ATCGATCGATCGATCGATCGA",  # Should be present (repeated)
         "GCTAGCTAGCTAGCTAGCTAG",  # Should be present (repeated)
-        "TTTTTTTTTTTTTTTTTTTT",  # Should be present
-        "CCCCCCCCCCCCCCCCCCCCCC",  # Should be present
-        "AAAAAAAAAAAAAAAAAAAA",  # Should NOT be present
+        "TTTTTTTTTTTTTTTTTTTTT",  # Should be present
+        "CCCCCCCCCCCCCCCCCCCCC",  # Should be present
+        "AAAAAAAAAAAAAAAAAAAAA",  # Should NOT be present
     ]
 
     with open("tutorial_queries.txt", "w") as f:
@@ -154,10 +154,10 @@ Counting Results:
    Uniqueness ratio: 0.1959
 
 Top 10 Most Frequent K-mers:
-    1. ATCGATCGATCGATCGATCG: 9
+    1. ATCGATCGATCGATCGATCGA: 9
     2. GCTAGCTAGCTAGCTAGCTAG: 6
     3. TTTTTTTTTTTTTTTTTTTTT: 4
-    4. CCCCCCCCCCCCCCCCCCCC: 4
+    4. CCCCCCCCCCCCCCCCCCCCC: 4
    ...
 ```
 
@@ -480,10 +480,10 @@ After running the complete workflow, you should have:
 
 ### Expected Query Results
 ```
-Found: ATCGATCGATCGATCGATCG: 9        (Most frequent)
+Found: ATCGATCGATCGATCGATCGA: 9        (Most frequent)
 Found: GCTAGCTAGCTAGCTAGCTAG: 6       (Frequent)
 Found: TTTTTTTTTTTTTTTTTTTTT: 4       (Moderate)
-Found: CCCCCCCCCCCCCCCCCCCC: 4        (Moderate)
+Found: CCCCCCCCCCCCCCCCCCCCC: 4        (Moderate)
 Not found: AAAAAAAAAAAAAAAAAAAAA: 0   (Not present)
 ```
 

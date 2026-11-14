@@ -158,7 +158,7 @@ Hybrid-pattern query supporting spacer notation such as `ATAC{N5}ACAC`.
 
 **Raises:**
 - `ValueError`: If the database is not loaded or available
-- `RuntimeError`: If the pattern is empty or invalid, or the hybrid query fails
+- `RuntimeError`: If the pattern is invalid or the hybrid query fails. An empty pattern is treated as an empty prefix and returns an empty `dict`
 
 #### `extract_by_prefix(prefix) -> Dict[str, str]`
 

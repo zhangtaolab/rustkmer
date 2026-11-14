@@ -57,7 +57,7 @@ result = db.query_exact("ATCGATCGATCGATCGATCGATCGATCGATC")
 print(f"K-mer appears {result.count} times")
 
 # Batch queries (returns a dict mapping each k-mer to its result)
-sequences = ["ATCGATCGATCGATCGATCGATCGATCGATC", "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGC"]
+sequences = ["ATCGATCGATCGATCGATCGATCGATCGATC", "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCT"]
 results = db.query_exact_batch(sequences)
 for seq, res in results.items():
     print(f"{seq}: {res.count}")
@@ -142,7 +142,7 @@ print(f"  Total k-mers: {stats.total_kmers:,}")
 print(f"  Unique k-mers: {stats.unique_kmers:,}")
 
 # 4. Perform some queries (k-mers must be 31 characters for k=31)
-test_kmers = ["ATCGATCGATCGATCGATCGATCGATCGATC", "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGC"]
+test_kmers = ["ATCGATCGATCGATCGATCGATCGATCGATC", "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCT"]
 print("\nQuery Results:")
 for kmer in test_kmers:
     result = db.query_exact(kmer)
@@ -150,7 +150,7 @@ for kmer in test_kmers:
 
 # 5. Fuzzy search example
 fq = PyFuzzyQuery(db)
-fuzzy_results = fq.query_fuzzy("ATGNNNGTATCGATCGATCGATCGATCGAT", max_mutations=2)
+fuzzy_results = fq.query_fuzzy("ATGNNNGTATCGATCGATCGATCGATCGATC", max_mutations=2)
 print(f"\nFuzzy search found {fuzzy_results.total_matches} matches")
 ```
 

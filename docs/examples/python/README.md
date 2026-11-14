@@ -130,7 +130,7 @@ except ValueError as e:
     print(e)                  # K-mer length 4 does not match database k-mer size 31
 ```
 
-(`RustKmerError` is exported for catching errors raised by the Rust core with `message` and `error_type` attributes.)
+(`RustKmerError` is exported as a plain class with `message` and `error_type` attributes, but the bindings never raise it — error paths raise the built-in exceptions shown above.)
 
 ## Integration Snippets
 

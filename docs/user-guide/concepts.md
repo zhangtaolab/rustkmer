@@ -207,8 +207,10 @@ except ValueError as e:
     print(f"Error: {e}")
 ```
 
-The module also exports a `RustKmerError` exception class (with `message`
-and `error_type` attributes) for library-level failures.
+The module also exports a `RustKmerError` class (with `message` and
+`error_type` attributes). It is a regular Python class, not an exception
+type: the library does not raise it, so `except RustKmerError` will not
+catch library failures.
 
 ### Common Issues
 1. **Invalid k-mer size**: Must be 1-64

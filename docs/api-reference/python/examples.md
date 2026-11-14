@@ -285,7 +285,7 @@ def analyze_fuzzy_queries():
     test_kmers = [
         "ATCG" * (k // 4) + "ATC"[: k % 4],  # balanced
         "A" * k,                              # low complexity
-        "GC" * ((k + 1) // 2),                # high GC
+        ("GC" * ((k + 1) // 2))[:k],          # high GC
         "T" * k,                              # homopolymer
     ]
 

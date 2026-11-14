@@ -109,8 +109,8 @@ rustkmer query genome_k21.rkdb --sequence queries.fa -o results.txt
 # 从文本文件读取 k-mer（每行一个）
 rustkmer query genome_k21.rkdb --batch kmers.txt
 
-# 通配符查询：N 匹配 A/T/C/G
-rustkmer fuzzy-query genome_k21.rkdb "ATNNGTA"
+# 通配符查询：N 匹配 A/T/C/G（模式长度需与 k 一致，最多相差 3）
+rustkmer fuzzy-query genome_k21.rkdb "ATNNGTACGTACGTACGTACG"
 
 # 突变容忍查询（汉明距离上限 2）
 rustkmer fuzzy-query genome_k21.rkdb "ATCGATCGATCGATCGATCGA" -m 2
@@ -118,6 +118,8 @@ rustkmer fuzzy-query genome_k21.rkdb "ATCGATCGATCGATCGATCGA" -m 2
 # 批量模糊查询并输出 CSV
 rustkmer fuzzy-query-batch genome_k21.rkdb -s patterns.txt -o results.csv -f csv --include-headers
 ```
+
+模糊查询的模式长度需与数据库 k 值匹配：CLI 允许相差不超过 3（不足时用 `N` 补齐、超出时截断），Python 绑定要求严格相等。
 
 ### 前缀与混合查询
 
@@ -161,7 +163,7 @@ print(len(matches))
 
 # 模糊查询
 fuzzy = PyFuzzyQuery(db)
-result = fuzzy.query_fuzzy("ATNNGTA", max_mutations=0)
+result = fuzzy.query_fuzzy("ATNNGTACGTACGTACGTACG", max_mutations=0)
 print(result.total_matches)
 for match in result.get_top_matches(5):
     print(match.kmer, match.count)
@@ -172,7 +174,7 @@ for match in result.get_top_matches(5):
 | 模式 | 行为 | 适用场景 |
 |------|------|----------|
 | `LoadMode.Preload` | 构建 `BTreeMap` k-mer 缓存，查询最快 | 小/中数据库、频繁查询 |
-| `LoadMode.MemoryMapped` | 保留文件句柄、不构建额外 k-mer 缓存，按直接文件 I/O 访问 | 大数据库、内存敏感 |
+| `LoadMode.MemoryMapped` | 打开文件句柄、不构建 `BTreeMap` 缓存；数据库仍在构造时完整载入。精确查询在此模式下未实现，`query_exact` 返回 `found=False` | 数据库导出/遍历；需要精确查询时改用 `Preload` 或 `Lazy` |
 | `LoadMode.Lazy` | 构建排序索引用于二分搜索 | 查询较少、超大数据库 |
 
 ## 命令参考
@@ -264,7 +266,7 @@ rustkmer merge -i <DB1> <DB2> [...] -o <OUTPUT> [OPTIONS]
 rustkmer fuzzy-query <DATABASE> <QUERY> [OPTIONS]
 ```
 
-- `<QUERY>`：可包含 `N` 通配符
+- `<QUERY>`：可包含 `N` 通配符；长度与数据库 k 值最多相差 3（不足补 `N`、超出截断）
 - `-m, --mutations <N>`：最大汉明距离，默认 `0`
 - `-M, --max-variants <N>`：最大变体生成数，默认 `10000`
 - `-b, --batch-size <N>`：批处理大小，默认 `1000`
@@ -398,7 +400,7 @@ CI 回归门禁（`.github/workflows/benchmark.yml`）在 `ubuntu-latest` 和 `m
 | 类型 | 作用 |
 |------|------|
 | `PyCounter` | 计数 k-mer，支持从序列、FASTA、FASTQ 读入并保存 `.rkdb` |
-| `PyDatabase` | 加载数据库并执行精确、批量、前缀、模糊查询 |
+| `PyDatabase` | 加载数据库并执行精确、批量、前缀查询；`query_fuzzy` 为占位实现，模糊查询请用 `PyFuzzyQuery` |
 | `PyFuzzyQuery` | 通配符/突变容忍查询引擎 |
 | `PyPrefixQuery` | 前缀查询引擎；`query_prefix` 返回 `dict[str, str]` |
 | `PyExtendedPrefixQuery` | 带性能指标的前缀/混合查询引擎 |
@@ -413,7 +415,7 @@ CI 回归门禁（`.github/workflows/benchmark.yml`）在 `ubuntu-latest` 和 `m
 - `db.query_exact(kmer)` → `PyQueryResult`（`kmer`、`count`、`found`）
 - `db.query_exact_batch(kmers)` → `dict[str, PyQueryResult]`
 - `db.query_prefix(prefix)` → `PyPrefixQueryResult`（`total_matches`、`matches`、`query_time_ms`）
-- `fuzzy.query_fuzzy(pattern, max_mutations)` → `PyFuzzyResult`（`total_matches`、`get_top_matches(limit)`）
+- `fuzzy.query_fuzzy(pattern, max_mutations)` → `PyFuzzyResult`（`total_matches`、`get_top_matches(limit)`）；`pattern` 长度必须严格等于数据库 k 值
 
 Python 绑定测试位于 `pyo3/tests/`，运行方式：
 

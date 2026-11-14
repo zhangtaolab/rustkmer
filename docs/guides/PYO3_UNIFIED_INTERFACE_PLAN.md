@@ -48,7 +48,7 @@ results = engine.query_hybrid("AAAAAAAAAAAAAAAAAAAAA{N7}AAAAAAAAAAAAAAAAAAAAAAAA
   - `fuzzy_query()` - 模糊查询
   - `query_prefix_batch()` - 批量前缀查询
   - `query_hybrid_batch()` - 批量混合查询
-  - `fuzzy_query_batch()` - 批量模糊查询
+  - <!-- VERIFY: `fuzzy_query_batch()` is a proposed method not present in the codebase — `pyo3/src/database.rs` defines only `query_prefix_batch` and `query_hybrid_batch`; the only fuzzy batch helper is the CLI `execute_fuzzy_query_batch` (`src/cli/commands/fuzzy.rs:224`) --> 批量模糊查询
   - `parse_pattern()` - 解析混合模式
 
 #### 1.2 统一数据库加载机制

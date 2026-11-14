@@ -38,7 +38,7 @@ Processed 2 k-mers, found 2 with non-zero counts
 ### Query every k-mer of a sequence file
 
 ```bash
-# Extracts each k-mer from the FASTA/FASTQ file and looks it up
+# Extracts each k-mer from the FASTA file and looks it up
 rustkmer query demo.rkdb -s demo.fa
 ```
 

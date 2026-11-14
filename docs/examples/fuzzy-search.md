@@ -97,9 +97,9 @@ rustkmer fuzzy-query demo.rkdb ATCGATCNNAT -m 0
 rustkmer fuzzy-query demo.rkdb ATCGATCNNAT -m 1
 ```
 
-Pattern rules (enforced by the CLI and the Python layer alike):
+Pattern rules:
 
-- The pattern length must equal the database k-mer size.
+- The Python layer requires the pattern length to equal the database k-mer size and raises `ValueError` otherwise. The CLI is more lenient: it pads shorter queries with `N` (or uses every k-length substring of longer queries) when the difference is at most 3 bases, and rejects larger mismatches.
 - Only `A`, `T`, `C`, `G`, and `N` are allowed; anything else is rejected.
 
 ## 3. Mutation Tolerance (Hamming Distance)
@@ -232,7 +232,7 @@ for m in tolerant.get_top_matches(10):
 - Variant generation dominates cost: with `-m 2` on k=31 the engine generates `C(31,0)*3^0 + C(31,1)*3^1 + C(31,2)*3^2 = 1 + 93 + 4185` variants. Raise `-M` only if you need them all.
 - `--profile` prints per-stage timings for a single query.
 - The Python `PyFuzzyQuery` reloads the database file per query; for many queries prefer one `fuzzy-query-batch` (CLI) run or reuse patterns in a single session.
-- `max_results` on `query_fuzzy` caps returned matches without changing variant generation.
+- `max_results` on `query_fuzzy` is forwarded as the query's `max_variants` combinatorial-explosion guard: if expansion would exceed the cap, the query returns zero matches (status `CombinatorialExplosion`) rather than truncating the result list. It defaults to `None` (no cap).
 
 ## Runnable Example Scripts
 

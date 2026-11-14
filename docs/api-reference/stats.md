@@ -33,7 +33,7 @@ Total number of k-mers recorded in the database header.
 Number of unique k-mer sequences in the database.
 
 ### `file_size: int`
-Size of the database file in bytes.
+Size of the database file in bytes. **Note:** the RKDB v2 header does not serialize a file-size field (`DatabaseHeader::write_to` omits it and `read_from` sets it to `0`), so `PyDatabase.get_stats()` currently reports `0` for any database loaded from a file.
 
 ### `is_sorted: bool`
 Whether the database entries are stored in sorted order (sorted databases enable binary-search queries).
@@ -54,7 +54,7 @@ Convert the statistics to a JSON string.
 stats = db.get_stats()
 print(stats.to_json())
 # Output: {"kmer_size": 31, "total_kmers": 1000000, "unique_kmers": 1000000,
-#          "file_size": 20000042, "is_sorted": true, "canonical": true}
+#          "file_size": 0, "is_sorted": true, "canonical": true}
 ```
 
 ### `to_csv() -> str`
@@ -79,7 +79,7 @@ String representation listing all attributes.
 ```python
 print(db.get_stats())
 # Output: PyDatabaseStats(kmer_size=31, total_kmers=1000000, unique_kmers=1000000,
-#         file_size=20000042, is_sorted=True, canonical=True)
+#         file_size=0, is_sorted=true, canonical=true)
 ```
 
 ## PyCounterStats

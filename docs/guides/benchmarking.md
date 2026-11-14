@@ -72,6 +72,8 @@ Key flags (all defined in `bench.py`'s argparse — no others exist):
 | `--threads` | `os.cpu_count()` | Thread count passed to rustkmer |
 | `--reads` | `200000` | Reads per synthetic input |
 | `--slice-reads` | `1000000` | Reads per slice in slice mode |
+| `--slice-selection` | `head` | Slice provisioning policy: `head` (first-N, byte-compatible) or `random` (seeded reservoir random-record subslice with a sidecar selection manifest) |
+| `--slice-seed` | `20261112` | RNG seed for `--slice-selection random` |
 | `--reps` | `1` | Repetitions per arm; `>= 2` engages the fair-comparison protocol |
 | `--hash-size` | `10G` | Jellyfish `-s` initial hash size (generous by default; must match `^\d+[KMG]?$`; recorded in results) |
 | `--cooldown-s` | `5` | Cooldown sleep between measured runs (thermal/order-bias defense) |
@@ -80,6 +82,8 @@ Key flags (all defined in `bench.py`'s argparse — no others exist):
 | `--skip-merge` | off | Omit the merge arm |
 | `--rustkmer` | `target/release/rustkmer` | Path to the release binary |
 | `--parity-only` | off | Run only the count-parity gate (see below) |
+| `--parity-reference` | none | After a live parity pass, gate against the fingerprint-bound reference record at this path (count mismatch exit 1; unbound/ambiguous/missing recipe exit 2); requires `--parity-only` |
+| `--capture-parity-reference` | none | After a live parity pass, append a reference record to this path (the head-4M recipe asserts the pinned constants first); requires `--parity-only` |
 | `--render-report` + `--results` | none | Render the milestone Markdown report from committed results JSONs |
 
 Exit codes: `0` success; `1` harness failure (failed measured command, parity mismatch, self-check violation — the top-level handler prints `bench.py: <reason>`); `2` jellyfish requested but missing, or an argparse usage error; `3` disk-floor abort in full mode.
@@ -115,7 +119,7 @@ Single-rep runs (`--reps 1`, the CI path) measure rustkmer-only arms and need no
 
 ## Cold-cache methodology
 
-Before every measured rep the harness attempts a cache purge and **records the honest outcome** per rep (`cache_state`), rather than claiming cold cache by configuration intent:
+Under the multi-rep comparison protocol (`--reps >= 2`) the harness attempts a cache purge before every measured rep and **records the honest outcome** per rep (`cache_state`), rather than claiming cold cache by configuration intent. Single-rep runs (`--reps 1`, the CI path) perform no purge and emit no `cache_state` field:
 
 | Condition | `cache_state` |
 |-----------|---------------|

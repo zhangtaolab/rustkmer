@@ -13,7 +13,7 @@ RustKmer provides a powerful command line interface (CLI) for all k-mer operatio
 cargo install rustkmer
 
 # Or build from source
-git clone https://github.com/rustkmer/rustkmer.git
+git clone https://github.com/zhangtaolab/rustkmer.git
 cd rustkmer
 cargo build --release
 ```
@@ -164,7 +164,7 @@ rustkmer query database.rkdb -b kmer_list.txt
 ```bash
 # Simple output (results print to stdout by default)
 rustkmer query database.rkdb "ATCGATCGATCGATCGATCG"
-# Output: ATCGATCGATCGATCGATCG: 42
+# Output: ATCGATCGATCGATCGATCG<TAB>42
 
 # Write results to a file instead of stdout
 rustkmer query database.rkdb -b queries.txt -o results.txt

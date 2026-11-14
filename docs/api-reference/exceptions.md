@@ -90,8 +90,10 @@ except PermissionError as e:
 | `PyDatabase(path, load_mode)` | `FileNotFoundError`, `ValueError` |
 | `PyDatabase.query_exact` / `query_exact_batch` / `exists` | `ValueError` |
 | `PyDatabase.query_prefix` / `query_prefix_batch` / `query_hybrid` | `ValueError`, `RuntimeError` |
-| `PyDatabase.extract_by_prefix` / `extract_by_pattern` / `parse_pattern` | `ValueError`, `RuntimeError` |
-| `PyDatabase.dump` / `export_all_kmers` | `ValueError` |
+| `PyDatabase.extract_by_prefix` / `extract_by_pattern` | `ValueError`, `RuntimeError` |
+| `PyDatabase.parse_pattern` | `ValueError` |
+| `PyDatabase.dump` | None |
+| `PyDatabase.export_all_kmers` | `ValueError` |
 | `PyDatabase.export_to_file` / `export_to_json` / `export_to_csv` | `PermissionError`, `RuntimeError` |
 | `PyDatabase.merge(...)` | `ValueError`, `FileNotFoundError`, `RuntimeError` |
 | `PyCounter(...)` | `ValueError` |

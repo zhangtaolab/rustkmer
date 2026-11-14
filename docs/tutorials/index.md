@@ -91,7 +91,7 @@ Each RustKmer tutorial includes:
 ## Prerequisites
 
 ### Basic Requirements
-- **Python 3.11+** (for the `pyrustkmer` package) or **Rust 1.80+** (for the CLI)
+- **Python 3.11+** (for the `pyrustkmer` package) or **Rust 1.82+** (for the CLI)
 - **Command line familiarity**
 - **Basic genomic data understanding** (FASTA/FASTQ)
 

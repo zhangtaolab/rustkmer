@@ -1660,8 +1660,8 @@ def parallel_query_batch(databases, queries):
 
 1. **Import Errors**:
    ```bash
-   # Check installation (the module is pyrustkmer; there is no __version__
-   # attribute, so verify by importing the main classes)
+   # Check installation (the module is pyrustkmer; rebuilt extensions export
+   # __version__, so verify by importing the main classes)
    python -c "from pyrustkmer import PyCounter, PyDatabase, PyFuzzyQuery, LoadMode; print('OK')"
    ```
 

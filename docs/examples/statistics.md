@@ -52,7 +52,7 @@ Count	Frequency
 16	2
 ```
 
-Read it as: 22 k-mers occur once, 2 occur twice, and so on — the classic error-tail shape. `--max-bins N` (default 1000) caps histogram resolution for very deep databases, and `--approximate` switches to a faster streaming median estimate.
+Read it as: 22 k-mers occur once, 2 occur twice, and so on — the classic error-tail shape. `--max-bins N` (default 1000) caps histogram resolution for very deep databases, `--approximate` is accepted but currently has no effect — the median is always computed with a TDigest.
 
 ## 3. Machine-Readable Output (CLI)
 
@@ -112,13 +112,13 @@ db = PyDatabase("demo.rkdb", LoadMode.Preload)
 stats = db.get_stats()           # PyDatabaseStats
 
 print(stats.kmer_size)       # 11
-print(stats.total_kmers)     # 92 (sum of counts, from the header)
+print(stats.total_kmers)     # 29 (record count of distinct k-mers stored in the header — not the sum of counts)
 print(stats.unique_kmers)    # 29
 print(stats.is_sorted)       # True
 print(stats.canonical)       # False
 print(stats.file_size)       # size recorded in the header (may be 0 for CLI-built files)
 
-print(db.database_info())    # dict: path, kmer_size, is_loaded, totals, load_mode
+print(db.database_info())    # dict keys: database_path, kmer_size, is_loaded, total_kmers, unique_kmers, load_mode
 ```
 
 Note: `file_size` comes from the database header; databases written by the CLI may record `0` there — use `os.path.getsize(db.path)` for the on-disk size.

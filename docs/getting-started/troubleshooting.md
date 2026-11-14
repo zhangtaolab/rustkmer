@@ -262,10 +262,10 @@ else:
     print(f"✅ Database contains {stats.total_kmers} k-mers")
 ```
 
-3. **Check k-mer format (uppercase only):**
+3. **Check k-mer format:**
 ```python
-test_kmer = "atcgatcgatcgatcgatcg"  # Wrong case
-test_kmer = test_kmer.upper()  # Correct
+# Lowercase is accepted — query_exact uppercases the input internally
+test_kmer = "atcgatcgatcgatcgatcg"
 result = db.query_exact(test_kmer)
 ```
 
@@ -331,8 +331,8 @@ fuzzy = PyFuzzyQuery(db)
 result = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGAT", max_mutations=1)
 print(f"Found {result.total_matches} matches")
 
-# Equivalent one-shot form directly on the database:
-result = db.query_fuzzy("ATCGATCGATCGATCGATCGAT", max_mutations=1)
+# Note: PyDatabase.query_fuzzy is currently a placeholder that returns an
+# empty result (total_matches == 0). Use PyFuzzyQuery.query_fuzzy for real results.
 
 # CLI equivalent:
 # rustkmer fuzzy-query database.rkdb "ATCGATCGATCGATCGATCGAT" -m 1
@@ -440,11 +440,10 @@ kernel32.SetDllDirectoryW(None)
 
 **Python:**
 ```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
+# Note: pyrustkmer does not bridge Rust logs to Python's logging module, so
+# logging.basicConfig() will not surface debug output from the bindings.
 counter = PyCounter(21, canonical=True)
-counter.add_from_fasta("input.fa")  # Will show debug info
+counter.add_from_fasta("input.fa")
 ```
 
 **CLI:**

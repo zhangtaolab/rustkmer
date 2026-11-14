@@ -127,7 +127,7 @@ See [Exceptions](exceptions.md) for the full mapping.
 
 ## Version Compatibility
 
-- **Rust**: Requires Rust 1.80+ stable
+- **Rust**: Requires Rust 1.82+ stable (MSRV declared in both `Cargo.toml` and `pyo3/Cargo.toml`)
 - **Python**: Requires Python 3.11+ (`requires-python = ">=3.11"` in `pyo3/pyproject.toml`)
 - **Package version**: 0.5.0 (kept in sync across `Cargo.toml`, `pyo3/Cargo.toml`, and `pyo3/pyproject.toml`)
 - **Database format**: `.rkdb` binary format, version 2

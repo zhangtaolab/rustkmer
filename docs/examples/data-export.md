@@ -153,7 +153,7 @@ print(f"{len(entries)} unique k-mers, {total} total observations")
 ## Runnable Example Scripts
 
 - `examples/bash/01_counting.sh` — counting plus a `dump -o` export walkthrough (older CLI flags elsewhere in the script; prefer the flags shown here)
-- `examples/python/integration_pandas.py` — pandas/matplotlib analysis patterns (drafted against an older API; see [python/README.md](python/README.md) for the verified imports)
+- `docs/examples/python/integration_pandas.py` — pandas/matplotlib analysis patterns (drafted against an older API; see [python/README.md](python/README.md) for the verified imports)
 
 ## Next Steps
 

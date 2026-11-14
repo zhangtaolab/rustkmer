@@ -114,7 +114,7 @@ Inspect the database and look up a k-mer that exists in the sample:
 ./target/release/rustkmer query demo_k21.rkdb CTAAACCCTAAACCCTAAACC
 ```
 
-The query prints one tab-separated `kmer<TAB>count` line:
+The result is written to stdout as one tab-separated `kmer<TAB>count` line; the `Querying ...` and `Query completed successfully` messages are diagnostics on stderr:
 
 ```text
 CTAAACCCTAAACCCTAAACC	9

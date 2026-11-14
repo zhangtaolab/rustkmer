@@ -33,7 +33,7 @@ Extract all k-mers from a DNA sequence using sliding window
 use rustkmer::kmer::operations::extract_kmers;
 
 let kmers = extract_kmers("ATGCGAT", 3).unwrap();
-assert_eq!(kmers.len(), 6); // "ATG", "TGC", "GCG", "CGA", "GAT", "ATG"
+assert_eq!(kmers.len(), 5); // "ATG", "TGC", "GCG", "CGA", "GAT" (5 sliding windows)
 ```
 
 #### extract_kmers_filter_ambiguous

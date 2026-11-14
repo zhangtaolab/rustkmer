@@ -62,7 +62,7 @@ print(f"加载模式: {db.load_mode}")              # ✅ 已验证
   - 从PyPrefixQuery迁移到统一PyDatabase接口
   - 展示query_hybrid功能
   - 添加批量查询示例
-  - 增加性能监控代码
+  - 增加数据库信息展示和模式解析示例
 
 - **文件**: `examples/python/unified_query_example.py` (新建)
 - **功能展示**:

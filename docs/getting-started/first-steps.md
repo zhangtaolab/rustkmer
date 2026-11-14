@@ -107,7 +107,7 @@ db = PyDatabase("sample_k21.rkdb", LoadMode.Preload)
 
 # Query specific k-mers
 test_kmers = [
-    "ATCGATCGATCGATCGATCGAT",
+    "ATCGATCGATCGATCGATCGA",
     "GCTAGCTAGCTAGCTAGCTAG",
     "CCCCCCCCCCCCCCCCCCCCC"  # This won't exist
 ]
@@ -136,11 +136,11 @@ print(f"   Unique k-mers: {stats.unique_kmers:,}")
 echo "🔍 Querying k-mers with RustKmer CLI..."
 
 # Exact match query
-rustkmer query sample_k21.rkdb ATCGATCGATCGATCGATCGAT
+rustkmer query sample_k21.rkdb ATCGATCGATCGATCGATCGA
 
 # Batch query from file
 cat > queries.txt << EOF
-ATCGATCGATCGATCGATCGAT
+ATCGATCGATCGATCGATCGA
 GCTAGCTAGCTAGCTAGCTAG
 CCCCCCCCCCCCCCCCCCCCC
 EOF
@@ -167,7 +167,7 @@ db = PyDatabase("sample_k21.rkdb", LoadMode.Preload)
 
 # Try some wildcard patterns using PyFuzzyQuery
 patterns = [
-    "ATCGATCGATCGATCGATCGAT",  # Original k-mer
+    "ATCGATCGATCGATCGATCGA",  # Original k-mer
 ]
 
 print("🔍 Fuzzy searching with wildcards...")
@@ -189,7 +189,7 @@ from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 db = PyDatabase("sample_k21.rkdb", LoadMode.Preload)
 
 # Original k-mer with some distance tolerance
-original = "ATCGATCGATCGATCGATCGAT"
+original = "ATCGATCGATCGATCGATCGA"
 
 print("🎯 Distance-based fuzzy searching...")
 fuzzy = PyFuzzyQuery(db)
@@ -273,11 +273,11 @@ counter.save_database("data.rkdb")
 
 # Querying
 db = PyDatabase("data.rkdb", LoadMode.Preload)
-result = db.query_exact("ATCGATCGATCGATCGATCGAT")
+result = db.query_exact("ATCGATCGATCGATCGATCGA")
 
 # Fuzzy querying
 fuzzy = PyFuzzyQuery(db)
-fuzzy_results = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGAT", max_mutations=1)
+fuzzy_results = fuzzy.query_fuzzy("ATCGATCGATCGATCGATCGA", max_mutations=1)
 
 stats = db.get_stats()
 ```
@@ -288,7 +288,7 @@ stats = db.get_stats()
 rustkmer count -k 21 -i data.fa -o data.rkdb --canonical
 
 # Querying
-rustkmer query data.rkdb ATCGATCGATCGATCGATCGAT
+rustkmer query data.rkdb ATCGATCGATCGATCGATCGA
 rustkmer query data.rkdb -b queries.txt
 
 # Fuzzy querying (wildcards with 'N', mutations with -m)

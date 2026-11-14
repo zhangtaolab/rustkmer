@@ -29,7 +29,7 @@ In this section, you'll:
 
 ## Before You Begin
 
-- **System Requirements**: Python 3.11+ or Rust 1.80+
+- **System Requirements**: Python 3.11+ or Rust 1.82+
 - **Data Format**: FASTA/FASTQ files (compressed supported)
 - **Memory**: 4GB+ RAM recommended for large genomes
 - **Storage**: Additional space for database files
@@ -60,7 +60,7 @@ Let's get started with [Installation](installation.md)!
 
 The `pyrustkmer` module is the Python entry point to the same Rust core the CLI uses — both read and write the same `.rkdb` database files. The quick test snippet above assumes the module is already installed; here is the shortest path from a fresh clone to a working module.
 
-**Requirements:** Python 3.11 or newer and a Rust 1.80+ toolchain (`pyo3/pyproject.toml` sets `requires-python = ">=3.11"`; the extension is compiled from source with maturin).
+**Requirements:** Python 3.11 or newer and a Rust 1.82+ toolchain (`pyo3/pyproject.toml` sets `requires-python = ">=3.11"`; the extension is compiled from source with maturin).
 
 ```bash
 # 1. Create and activate a virtual environment

@@ -1,7 +1,7 @@
 # 流式 Merge 方案设计
 
 ## 背景
-当前 `merge_databases` 将所有数据库完全加载到内存，无法处理大数据库。
+`merge_databases` 现在通过 `resolve_merge_route` 按估算内存选择路由（内存 / 流式 / 前缀缓存）。超出预算的大型数据库走流式（`Streaming`）或前缀缓存（`PrefixCache`）路由，无需将输入数据库整体加载到内存。
 
 ## 目标
 实现流式 merge，支持处理超出内存限制的大型数据库。
@@ -28,7 +28,7 @@
 > （`src/database/streaming_merge.rs`）将这一职责并入 `ExternalMerger::sort_database`——
 > 由它把数据库分块排序后写入临时块文件，再经 `merge_sorted_chunks` 合并。
 
-### 3. ExternalMerge
+### 3. ExternalMerger
 使用最小堆合并多个有序文件流
 
 ### 4. TempFileManager
@@ -59,20 +59,20 @@ pub struct ExternalMerger {
 }
 
 impl ExternalMerger {
-    pub fn merge_sorted_files(&self) -> Result<Vec<KmerEntry>>;
+    pub fn merge_sorted_chunks(&mut self) -> Result<StreamingMergeIterator, ProcessingError>;
 }
 ```
 
 ### Step 3: 集成到 merge_databases
 根据内存限制自动选择策略：
 - 小数据集 → InMemory
-- 大数据集 → Streaming (ExternalMerge)
+- 大数据集 → Streaming (ExternalMerger)
 
 ## 性能优化
 1. 批量读写减少 I/O 次数
 2. 使用 `BinaryHeap` 进行高效的多路合并
 3. 临时文件使用缓冲写入
-4. 支持并行处理不同数据库的分块读取
+4. 注意：多个输入数据库的分块读取目前按顺序逐库进行（`sort_database` 逐个路径调用）；流式合并本身未使用 rayon，rayon 并行仅用于前缀缓存路由的桶合并
 
 ## 内存估算
 - 每个 k-mer: 20 字节

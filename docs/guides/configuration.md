@@ -102,7 +102,7 @@ These are read by the shipped CLI/lib code paths independently of `ConfigManager
 | `PYTHON_LIB_DIR` | Not read by any code path | `.cargo/config.toml` mentions it only in commented-out examples, so setting it has no effect; no build script, manifest, source file, or helper script reads it |
 | `HOME`, `XDG_CONFIG_HOME` | `ConfigManager` file discovery | Location of `.rustkmerrc` |
 
-The benchmark harness (`scripts/bench/bench.py`) additionally reads `RUSTKMER_BENCH_MODE` and `RUSTKMER_BENCH_INPUT` to select the input mode/inputs when the corresponding CLI flags are omitted; see the [benchmarking guide](benchmarking.md) for that resolution ladder. No other runtime environment variables are read by the crate.
+The benchmark harness (`scripts/bench/bench.py`) additionally reads `RUSTKMER_BENCH_MODE` and `RUSTKMER_BENCH_INPUT` to select the input mode/inputs when the corresponding CLI flags are omitted; see the [benchmarking guide](benchmarking.md) for that resolution ladder. The opt-in Python-benchmark integration test (`scripts/bench/tests/test_python_bench.py`) runs only when `RUSTKMER_PYBENCH_VENV` points at a freshly built virtualenv and is skipped otherwise; it is not read by any shipped binary. No other runtime environment variables are read by the crate.
 
 ## Required vs optional settings
 
@@ -110,7 +110,7 @@ The benchmark harness (`scripts/bench/bench.py`) additionally reads `RUSTKMER_BE
 
 - `ConfigManager::validate_config` reports (does not throw until surfaced by the caller): `memory_limit`, `mmap_threshold`, `page_size`, and `hash_size` must be non-zero; `default_k` must be 1–64; `threads` must not exceed 256; `extension` must be non-empty.
 - The `count` command rejects `--threads < 1` ("--threads must be >= 1", collected in `Commands::validate_input` in `src/cli/args.rs`) and k-mer sizes outside 1–64 (`KmerError::InvalidKmerSize`).
-- The `merge` command returns an error for an unparseable `--max-memory` value (e.g. `Invalid memory limit 'abc': Invalid number: abc`).
+- The `merge` command returns an error for an unparseable `--max-memory` value (e.g. `Invalid memory limit 'abc': Invalid number: ABC` — `parse_memory_size` trims and upper-cases the value before parsing, so the echoed number is upper-case).
 
 ## Defaults
 
@@ -149,7 +149,7 @@ To vary settings per environment, use one of the mechanisms the code actually su
 
 1. **Environment variables in the runner** — set `RUSTKMER_*` (and `RAYON_NUM_THREADS` / `RUST_LOG`) in each environment's shell, CI job, or container definition. These override the config file for `ConfigManager` consumers and are read directly where noted above.
 2. **Distinct config files** — library consumers can load an explicit file with `ConfigManager::with_config_file("/path/to/staging.rustkmerrc")`; the CLI never loads a config file, so its per-environment differences must come from flags and environment variables.
-3. **Per-invocation CLI flags** — highest precedence for the options they expose (for example `--threads`, `--max-memory`, `--merge-mode`, `RUST_LOG`).
+3. **Per-invocation CLI flags** — highest precedence for the options they expose (for example `--threads`, `--max-memory`, `--merge-mode`).
 
 Because the CLI does not read `.rustkmerrc`, any environment-specific defaults used by pipelines must be passed as flags or environment variables at invocation time.
 
@@ -212,7 +212,7 @@ RUST_LOG=warn rustkmer merge ...                                 # warnings and 
 | `DATABASE_MAGIC` | `b"RKDB"` | 4-byte file magic |
 | `DATABASE_VERSION` | `2` | On-disk format version (u16) |
 
-Layout: a 42-byte header followed by 20-byte entries (16-byte u128 k-mer + 4-byte u32 count), written little-endian via `byteorder`. Readers reject any header `data_offset` other than 42 with an error (`load_entries` in `src/database/query.rs` and `DatabaseHeader::validate` in `src/database/format.rs`). The `[database]` config section (`extension`, `format_version`, `compression`, `indexing`) only affects library-side defaults — on-disk constants are compiled in.
+Layout: a 42-byte header followed by 20-byte entries (16-byte u128 k-mer + 4-byte u32 count), written little-endian via `byteorder`. Readers reject any header `data_offset` other than 42 with an error (`DatabaseQuery::open`/`load_entries` in `src/database/query.rs`; `DatabaseHeader::validate`, `RKDatabase::from_file_path`, and `RKDatabase::read_header_of` in `src/database/format.rs`). The `[database]` config section (`extension`, `format_version`, `compression`, `indexing`) is exposed through `GlobalConfig`, but no CLI, reader, or writer code path reads these fields today — on-disk format constants are compiled in.
 
 ## Build-time configuration
 

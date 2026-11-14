@@ -36,8 +36,8 @@ python -c "from pyrustkmer import PyDatabase; print('pyrustkmer ready')"
 - Use `maturin develop` (no `--release`) for faster debug-iteration builds. `maturin develop` always installs into the **active** virtualenv (maturin 1.x has no `--python` flag); activate the venv for the interpreter you want, and if conda is active, deactivate it or `unset CONDA_PREFIX` so maturin does not target the conda environment instead.
 - `numpy` is a declared runtime dependency of `pyrustkmer` (`pyo3/pyproject.toml`); installing it in the venv as shown above avoids import failures regardless of how the build backend resolves dependencies.
 - The `dev` optional-dependency group in `pyo3/pyproject.toml` pins the Python tooling (pytest, pytest-cov, pytest-benchmark, black, flake8, mypy, pyo3-build-config); the `performance`, `docs`, and `jupyter` groups also live there.
-- The two crates keep **separate build state**: the root crate builds into `target/`, the bindings crate into `pyo3/target/` (each has its own `Cargo.lock`). Run build/lint/test commands from the directory of the crate you are touching.
-- `scripts/test_current.sh` and `scripts/test_all_envs.sh` automate the build-wheel → install → validate loop across local Python 3.11/3.12/3.13 environments, but they hardcode the original author's conda paths — adjust them before reuse on another machine. (`pyo3/build_with_python.sh` is similar: a macOS debug-linking helper with hardcoded local paths; prefer `maturin develop`.)
+- The two crates keep **separate build state**: the root crate builds into `target/`, the bindings crate into `pyo3/target/` (each has its own `Cargo.lock`). The root is not a Cargo workspace, so run build/lint/test/fmt commands from the directory of the crate you are touching.
+- `scripts/test_current.sh` and `scripts/test_all_envs.sh` automate the build-wheel → install → validate loop across local Python 3.11/3.12/3.13 environments, but they hardcode the original author's conda paths and still validate via the old `rustkmer_pyo3` import name (the module is now `pyrustkmer`) — fix both before reuse on another machine. (`pyo3/build_with_python.sh` is an older macOS debug-linking helper with the same hardcoded paths and stale import; prefer `maturin develop`.)
 
 No `.env` files or required environment variables exist; see the [configuration guide](configuration.md) for the `.rustkmerrc` file, `RUSTKMER_*` variables, and thread/memory configuration.
 
@@ -47,9 +47,10 @@ No `.env` files or required environment variables exist; see the [configuration 
 |---------|-------|-------------|
 | `cargo build` | root | Debug build of the `rustkmer` library + CLI binary |
 | `cargo build --release` | root | Optimized binary (`target/release/rustkmer`) |
-| `cargo fmt --all` | root | Format all crates with default rustfmt settings (no `rustfmt.toml`) |
+| `cargo fmt --all` | root | Format the root crate with default rustfmt settings (no `rustfmt.toml`); since `pyo3/` is a separate package rather than a workspace member, it is not included — run `cargo fmt` inside `pyo3/` separately |
+| `cargo fmt --check` | `pyo3/` | Formatting check for the bindings crate (not run by CI — the `rustfmt` job only checks the root crate) |
 | `cargo clippy --all-targets -- -D warnings` | root | Lint gate — warnings are errors (CI runs the same with `--locked`) |
-| `cargo test` | root | Rust unit + integration tests; `tests/` defines 29 Cargo test targets (e.g. `merge_routing_tests`, `dense_differential_tests`, `golden_sha256_tests`, `merge_bounded_memory_tests`) plus shared modules under `tests/` (CI adds `--locked`) |
+| `cargo test` | root | Rust unit + integration tests; `tests/` has 29 auto-discovered test targets (28 named suites plus the `mod` target that wires shared helper trees), e.g. `merge_routing_tests`, `dense_differential_tests`, `golden_sha256_tests`, `merge_bounded_memory_tests` (CI adds `--locked`) |
 | `cargo test --test cjk_check` | root | CJK string-literal gate (see [Code style](#code-style)) |
 | `cargo clippy --all-targets -- -D warnings` | `pyo3/` | Lint gate for the bindings crate (CI runs the same with `--locked`) |
 | `maturin develop --release` | `pyo3/` | Build and install `pyrustkmer` into the active venv |
@@ -72,13 +73,13 @@ See the [testing guide](testing.md) for the full test layout, per-suite commands
 
 ### Rust
 
-- **rustfmt** with default settings (no `rustfmt.toml` or `clippy.toml` exists). Run `cargo fmt --all` locally; CI gates with `cargo fmt --all --check`.
+- **rustfmt** with default settings (no `rustfmt.toml` or `clippy.toml` exists). Run `cargo fmt --all` locally; CI gates with `cargo fmt --all --check`. The `rustfmt` job runs at the repo root and therefore covers only the root crate — `pyo3/` is a separate package and its formatting is not CI-gated.
 - **clippy** must pass with `-D warnings` on both crates, on Ubuntu, macOS, and Windows.
 - Edition 2021; standard conventions — fallible library functions return `ProcessingResult<T>` / `Result<T, KmerError>`, CLI entry points use `anyhow::Result`, PyO3 methods return `PyResult<T>`.
 
 ### CJK string-literal gate
 
-`tests/cjk_check.rs` parses every `.rs` file in `src/` (excluding `src/cli/`) and `pyo3/src/` (excluding git-tracked dead backup files) with `syn` and fails if **any string literal** contains a CJK code point (Han, Hiragana, Katakana, Hangul). Emoji and Latin are allowed, and comments are not scanned. In practice: keep user-facing and log strings in `src/` and `pyo3/src/` ASCII/English; run `cargo test --test cjk_check` when adding messages.
+`tests/cjk_check.rs` parses every `.rs` file in `src/` (excluding `src/cli/`) and `pyo3/src/` (excluding git-tracked dead backup files) with `syn` and fails if **any string literal** contains a CJK code point (Han, Hiragana, Katakana, Hangul). Emoji and Latin are allowed, and comments (including doc comments) are not scanned. In practice: keep user-facing and log strings in `src/` and `pyo3/src/` ASCII/English; run `cargo test --test cjk_check` when adding messages.
 
 ### Python
 
@@ -86,16 +87,16 @@ Tooling is configured in `pyo3/pyproject.toml`: **black** (line length 88, py311
 
 ### pre-commit
 
-`.pre-commit-config.yaml` installs hygiene hooks (trailing-whitespace [excluding `.md`], end-of-file fixer, YAML/JSON/TOML checks, merge-conflict and case-conflict guards, large-file guard) plus black/isort/pydocstyle/docformatter scoped to `python/`. A local docstring-coverage hook (`pydocstyle ... --count`) is configured to warn only, not block the commit. Install with `pre-commit install` if you work in that tree.
+`.pre-commit-config.yaml` installs hygiene hooks (trailing-whitespace [excluding `.md`], end-of-file fixer, YAML/JSON/TOML checks, merge-conflict and case-conflict guards, large-file guard). The black/isort/pydocstyle/docformatter hooks and the local docstring-coverage hook are all scoped to `python/` — a directory that does not exist in this repository (Python code lives in `pyo3/`) — so they match no files. Install with `pre-commit install` if you want the hygiene checks; for binding code, use the `pyo3/pyproject.toml` tool configs directly (black with line length 88, mypy strict).
 
 ## Branch conventions
 
 - **`dev` is the working/default branch**: `origin/HEAD` points at `origin/dev`, and [CONTRIBUTING.md](https://github.com/zhangtaolab/rustkmer/blob/dev/CONTRIBUTING.md) says to target PRs at `dev` (`main` receives promoted states). Both `.github/workflows/ci.yml` and `.github/workflows/benchmark.yml` trigger on pull requests and direct pushes to `dev` and `main`; at the time of writing, origin also carries a `0.5` branch and has no `main` branch.
-- No branch-naming scheme is documented (CONTRIBUTING.md defines none; no PR template exists). Commit messages in history follow Conventional-Commits-style prefixes such as `docs:`, `chore:`, and `type(scope):`; matching that style is customary, not enforced.
+- **No branch-naming scheme is mandated** — CONTRIBUTING.md says to choose a descriptive name. Commit messages should follow Conventional Commits (`type(scope): subject`, e.g. `feat(query): ...`, `docs: ...`, `test: ...`) with one logical change per commit; history follows this style, and no CI step enforces the message format.
 
 ## Pull request process
 
-There is no PR template; the requirements are enforced by CI, not a checklist.
+There is no PR template (and no issue templates); the requirements are enforced by CI, not a checklist.
 
 1. **Open the PR against `dev`** (or `main` for release-oriented changes).
 2. **The `CI` workflow must be fully green** — every job is a hard gate with no `continue-on-error` or skipped steps (stated in the header comment of `.github/workflows/ci.yml`):

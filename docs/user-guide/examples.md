@@ -285,7 +285,7 @@ print("Wildcard searches:")
 wildcard_patterns = ["ATCGATCGATCGATCGATCGN", "NCGAATCGATCGATCGATCGA", "ATGNNNTAATCGATCGATCGA"]
 for pattern in wildcard_patterns:
     results = fuzzy.query_fuzzy(pattern, max_mutations=0)
-    print(f"Pattern '{pattern}': {results.total_matches} matches")
+    print(f"Pattern '{pattern}': {len(results.matches)} matches, {results.total_matches} total occurrences")
     for match in results.matches[:5]:  # Show first 5
         print(f"  {match.kmer}: {match.count}")
 ```
@@ -347,12 +347,12 @@ for category, pattern_list in patterns.items():
     for pattern in pattern_list:
         fuzzy_results = fuzzy.query_fuzzy(pattern, max_mutations=1)
         if fuzzy_results.total_matches > 0:
-            print(f"  {pattern}: {fuzzy_results.total_matches} similar sequences")
+            print(f"  {pattern}: {len(fuzzy_results.matches)} similar sequences, {fuzzy_results.total_matches} total occurrences")
 ```
 
 ## Performance Optimization
 
-### Memory-Mapped Database Access
+### Preload vs Lazy Loading
 
 ```python
 from pyrustkmer import PyDatabase, LoadMode
@@ -361,18 +361,18 @@ import time
 # Compare memory usage
 large_db = "very_large_database.rkdb"
 
-# Without memory mapping (loads everything)
-print("Without memory mapping:")
+# Preload mode (loads all entries into an in-memory cache)
+print("Preload mode:")
 start_time = time.time()
 db1 = PyDatabase(large_db, LoadMode.Preload)
 
 load_time1 = time.time() - start_time
 print(f"  Load time: {load_time1:.2f} seconds")
 
-# With memory mapping (direct file access)
-print("\nWith memory mapping:")
+# Lazy mode (sorted entry index with binary search)
+print("\nLazy mode:")
 start_time = time.time()
-db2 = PyDatabase(large_db, LoadMode.MemoryMapped)
+db2 = PyDatabase(large_db, LoadMode.Lazy)
 
 load_time2 = time.time() - start_time
 print(f"  Load time: {load_time2:.2f} seconds")
@@ -381,20 +381,20 @@ print(f"  Load time: {load_time2:.2f} seconds")
 test_kmers = ["ATCGATCGATCGATCGATCGA", "GCTAGCTAGCTAGCTAGCTAG", "CCCCCCCCCCCCCCCCCCCCC"]
 print("\nQuery performance:")
 
-# Time queries without memory mapping
+# Time queries in Preload mode
 start_time = time.time()
 for kmer in test_kmers:
     db1.query_exact(kmer)
 time1 = time.time() - start_time
 
-# Time queries with memory mapping
+# Time queries in Lazy mode
 start_time = time.time()
 for kmer in test_kmers:
     db2.query_exact(kmer)
 time2 = time.time() - start_time
 
-print(f"  Without memory mapping: {time1*1000:.2f} ms")
-print(f"  With memory mapping: {time2*1000:.2f} ms")
+print(f"  Preload mode: {time1*1000:.2f} ms")
+print(f"  Lazy mode: {time2*1000:.2f} ms")
 ```
 
 ### Optimal Thread Configuration
@@ -621,7 +621,7 @@ def complete_genomics_workflow(input_dir, output_dir):
 
     pattern = "ATCGATCGATCGATCGATCGATCGATCGATN"  # Find sequences with this pattern
     fuzzy_results = fq.query_fuzzy(pattern, max_mutations=0)
-    print(f"\nFuzzy search for '{pattern}': {fuzzy_results.total_matches} matches")
+    print(f"\nFuzzy search for '{pattern}': {len(fuzzy_results.matches)} matches, {fuzzy_results.total_matches} total occurrences")
 
     # 8. Save results
     results = {

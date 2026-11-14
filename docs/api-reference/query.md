@@ -77,7 +77,7 @@ String representation of the result.
 ```python
 result = db.query_exact("ATCGATCGATCGATCGATCG")
 print(result)
-# Output: PyQueryResult(kmer='ATCGATCGATCGATCGATCG', count=42, found=True)
+# Output: PyQueryResult(kmer='ATCGATCGATCGATCGATCG', count=42, found=true)
 ```
 
 ## Usage Examples

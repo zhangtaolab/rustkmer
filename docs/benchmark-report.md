@@ -1,6 +1,6 @@
 # rustkmer vs Jellyfish2 — milestone benchmark report
 
-*Mechanically rendered from the committed results JSONs by `scripts/bench/bench.py --render-report`. Every measurement below is read from those JSONs — the renderer contains no measurement literals — and re-rendering reproduces this file byte-for-byte, so a hand-edited number is detectable (BENCH-02/T-04-07).*
+*Mechanically rendered from the committed results JSONs by `scripts/bench/bench.py --render-report`. Every measurement below is read from those JSONs — the renderer contains no measurement literals — and re-rendering with the harness at the recorded commit reproduces this file byte-for-byte, so a hand-edited number is detectable (BENCH-02/T-04-07). Since this report was rendered, `scripts/bench/bench.py` has advanced to commit `d6a5857c250defa509dffc8b9fbdd1947462867f` (2026-11-13); a re-render with the current harness would emit that commit on the harness-provenance line instead of the recorded `78e5eec409f0fede27e69167357f82a630b096f2`.*
 
 ## Dataset provenance
 
@@ -93,12 +93,12 @@
 
 ### Input fingerprints (size + sha256 per file, as recorded)
 
-- mode=full k=31: `/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz` (2,637,234,342 bytes) sha256 `131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9`
-- mode=full k=31: `/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz` (2,637,234,342 bytes) sha256 `131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9`
-- mode=full k=21: `/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz` (2,637,234,342 bytes) sha256 `131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9`
-- mode=full k=21: `/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz` (2,637,234,342 bytes) sha256 `131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9`
+- mode=full k=31: `/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz` (2,637,234,342 bytes) sha256 `131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9` — recorded fingerprint; input no longer present on disk (verified 2026-11-14)
+- mode=full k=31: `/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz` (2,637,234,342 bytes) sha256 `131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9` — recorded fingerprint; input no longer present on disk (verified 2026-11-14)
+- mode=full k=21: `/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz` (2,637,234,342 bytes) sha256 `131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9` — recorded fingerprint; input no longer present on disk (verified 2026-11-14)
+- mode=full k=21: `/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz` (2,637,234,342 bytes) sha256 `131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9` — recorded fingerprint; input no longer present on disk (verified 2026-11-14)
 - mode=slice k=31: `scripts/bench/scratch/slice-0.fq` (359,504,511 bytes) sha256 `2dd773f99f0207144d2ed8a3c9564fd5e9ac0c4783873f1b7f88fd3696369520`
-- mode=slice k=31: `scripts/bench/scratch/slice-1.fq` (359,504,511 bytes) sha256 `1c0d213e1be5742152e5456d841df8295d29ac291e35f2b0b46f8ed09c3e22b4`
+- mode=slice k=31: `scripts/bench/scratch/slice-1.fq` (359,504,511 bytes) sha256 `1c0d213e1be5742152e5456d841df8295d29ac291e35f2b0b46f8ed09c3e22b4` — recorded fingerprint; scratch file no longer present on disk (verified 2026-11-14)
 
 ### Harness provenance
 
@@ -112,4 +112,4 @@
 
 ---
 
-*Generated file — do not edit by hand. Regenerate with `python3 scripts/bench/bench.py --render-report --results <jsons> --out docs/benchmark-report.md`; the evidence JSONs are committed beside this report under `.planning/phases/04-benchmark-validation/`.
+*Generated file — do not edit by hand. Regenerate with `python3 scripts/bench/bench.py --render-report --results <jsons> --out docs/benchmark-report.md`; the evidence JSONs are committed beside this report under `.planning/milestones/v1.0-phases/04-benchmark-validation/`.

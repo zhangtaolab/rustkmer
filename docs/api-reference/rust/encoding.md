@@ -49,8 +49,8 @@ Encode a DNA sequence into a packed bit representation
 use rustkmer::kmer::encoding::encode_kmer;
 
 let encoded = encode_kmer("ATGC").unwrap();
-// ATGC -> 00110110 (A=00, T=11, G=10, C=01)
-assert_eq!(encoded, 0b00110110);
+// ATGC -> 00111001 (A=00, T=11, G=10, C=01)
+assert_eq!(encoded, 0b00111001);
 ```
 
 #### encode_kmer_bytes

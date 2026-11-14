@@ -9,9 +9,9 @@
 
 ---
 
-## 🔴 完全缺失的功能
+## 🟢 已完整实现的功能
 
-### 1. **count** - 完整的 K-mer 计数工具 ❌
+### 1. **count** - 完整的 K-mer 计数工具 ✅
 
 **CLI 功能**:
 - 从序列文件统计 k-mer 生成数据库
@@ -33,7 +33,7 @@
 
 ---
 
-### 2. **dump** - 数据库导出功能 ❌
+### 2. **dump** - 数据库导出功能 ✅
 
 **CLI 功能**:
 - `rustkmer dump database.rkdb -o output.txt`
@@ -268,7 +268,7 @@ rustkmer prefix-query database.rkdb -p AAA --min-count 5 --max-count 500
 results = db.query_prefix("AAA")
 
 # 需要手动过滤
-filtered = {k: v for k, v in results.items() if 5 <= v <= 500}
+filtered = {k: int(v) for k, v in results.matches.items() if 5 <= int(v) <= 500}
 
 ❌ 无内置过滤参数
 ❌ 需要后处理
@@ -479,7 +479,7 @@ rustkmer dump database.rkdb -o output.txt
 ### 5. fuzzy-query - 模糊查询
 ```bash
 rustkmer fuzzy-query database.rkdb "ANNNNNN" -m 2
-rustkmer fuzzy-query database.rkdb "ATA{N5}ACAC" --position-mutations "0,6:1"
+rustkmer fuzzy-query database.rkdb "ATANNNNNACAC" --position-mutations "0,6:1"
 ```
 
 ### 6. fuzzy-query-batch - 批量模糊查询

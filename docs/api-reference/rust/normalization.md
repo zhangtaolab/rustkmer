@@ -42,7 +42,7 @@ assert!(variants.contains(&"ATGCGATGCTAGN".to_string()));
 
 // Query longer than k-mer size (15mer for 13mer database)
 let variants = generate_normalized_variants("ATGCGATGCTAGCGT", 13).unwrap();
-assert!(variants.len(), 3); // All possible 13mer substrings
+assert_eq!(variants.len(), 3); // All possible 13mer substrings
 ```
 
 #### generate_padded_variants

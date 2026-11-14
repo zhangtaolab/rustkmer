@@ -131,7 +131,7 @@ rustkmer prefix-query database.rkdb -p "AAAAA" --format csv --output results.csv
 | Pure Prefix | `AAAANNN` | `prefix-query` |
 | Hybrid | `AAANNNAAA` | `prefix-query` (truncated) |
 | Complex | `AANNNCCC` | `fuzzy-query` |
-| Suffix | `NNNAAA` | `suffix-query` |
+| Suffix | `NNNAAA` | Rust library API `rustkmer::database::suffix_query` (no CLI command) |
 
 ### Performance Expectations
 

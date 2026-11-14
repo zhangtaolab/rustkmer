@@ -156,7 +156,7 @@ The core loop of these scripts: scan for `N` runs, build prefix/hybrid patterns 
 
 ## 9. Error Type from the Rust Core
 
-Errors raised by the Rust core can be caught via the exported `RustKmerError` class, which carries `message` and `error_type` attributes. Boundary validation surfaces as standard built-in exceptions instead:
+The exported `RustKmerError` class carries `message` and `error_type` attributes, but it is not an `Exception` subclass and the bindings never raise it — do not use it in `except` clauses. Errors raised by `pyrustkmer` methods are standard Python built-in exceptions:
 
 ```python
 from pyrustkmer import PyDatabase, LoadMode

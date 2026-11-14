@@ -71,7 +71,7 @@ for kmer, result in batch_results.items():
 #### 1. 简单版本 (`simple_prefix_query.py`)
 
 ```bash
-# 脚本内置数据库路径与混合模式查询，不接受命令行参数
+# 可选参数：第一个为数据库路径（默认内置测试数据库），第二个为混合模式（默认 A{N<k-2>}C）
 python3 examples/python/simple_prefix_query.py
 ```
 
@@ -357,7 +357,7 @@ db = PyDatabase("~/Data/data/kmer/K19/R1_001.rkdb", LoadMode.Preload)
 
 # 查询以 AAAAAAAA 开头的 k-mers
 prefix_results = db.query_prefix("AAAAAAAA")
-print(f"找到 {len(prefix_results)} 个以 AAAAAAAA 开头的 k-mers")
+print(f"找到 {prefix_results.total_matches} 个以 AAAAAAAA 开头的 k-mers")
 
 # 混合搜索
 hybrid_results = db.query_hybrid("AAAAAAAA{N5}AAAAAA")
@@ -531,7 +531,7 @@ PyO3统一接口已成功实现，显著提升了内存效率和API一致性：
 🔍 精确查询: GCCGCGG -> found=True, count=1
 📦 批量查询: 处理了 2 个查询
 📊 数据库统计: kmer_size=7, total_kmers=4318
-💾 内存使用: {'cache_size': 4318, 'memory_bytes': 138176}
+💾 内存使用: {'cache_size': '4318', 'mode': 'preload'}
 
 🎯 统一接口功能验证:
   ✅ 精确查询 (query)

@@ -92,7 +92,7 @@ Matches found: 1,247
 Memory block: [1250, 1300) - 50 k-mers
 Database sorted: true
 Optimization enabled: Yes
-Performance gain: ~10-50x vs fuzzy-query for hybrid patterns
+Performance gain: ~10-100x vs fuzzy-query for prefix patterns
 ```
 
 ### 3. Count Filtering
@@ -209,7 +209,7 @@ Error: Invalid characters in prefix: ATCN
 ```bash
 # Pattern longer than k-mer size
 $ rustkmer prefix-query db.rkdb -p "ATCGATCG{N10}GCTA"
-Error: Pattern length (18) does not match k-mer size (15)
+Error: Pattern length (22) does not match k-mer size (15)
 
 # Solution: Adjust pattern to match database k-mer size
 ```

@@ -18,7 +18,7 @@ CI enforces the Rust suite, the Python binding suite, and the benchmark harness 
 
 - Framework: cargo's built-in test harness. `cargo test` compiles every `tests/*.rs` file as its own binary, runs `#[cfg(test)]` modules (45 files under `src/` contain them), and runs doc tests.
 - Doc tests: runnable examples live in `src/fuzzy/mod.rs` (module-level example) and `src/database/format.rs` (`RKDatabase::from_sorted_kmer_pairs`). The module-level example in `src/lib.rs` is marked `rust,ignore` because it needs a real FASTA file.
-- Property-based testing: `proptest` 1.5 (`[dev-dependencies]` in `Cargo.toml`), used by `tests/dense_proptest_tests.rs` and `tests/count_engine_tests.rs`.
+- Property-based testing: `proptest` 1.5 (`[dev-dependencies]` in `Cargo.toml`), used by `tests/dense_proptest_tests.rs`, `tests/count_engine_tests.rs`, and `tests/output_differential_matrix_tests.rs`.
 - Benchmarks: `criterion` 0.5 is a dev-dependency, but the `[[bench]]` target (`python_cli_comparison`) is commented out in `Cargo.toml`, so `cargo bench` has no active targets. Performance measurement lives in the separate `scripts/bench/` harness — see the [Benchmarking Guide](benchmarking.md).
 - No setup beyond a Rust 1.82+ stable toolchain (`rust-version = "1.82"` in both `Cargo.toml` manifests): `cargo test` works from a fresh clone.
 
@@ -45,7 +45,7 @@ pip install --no-index --find-links target/wheels pyrustkmer
 ```
 
 - The maintainer scripts `scripts/test_current.sh` and `scripts/test_all_envs.sh` build and install the wheel across local conda environments. They hardcode a `/Users/forrest/miniconda3` path, so they are not portable. Both unset `VIRTUAL_ENV` and `CONDA_PREFIX` before invoking maturin; an active conda environment can otherwise interfere with the build.
-- Import guards differ by file: 6 of the 11 test modules start with `try: import pyrustkmer` / `except ImportError: pytest.skip(..., allow_module_level=True)`. `test_version.py` deliberately has no guard, so a missing or stale extension fails instead of skipping. `test_pyo3_simple.py` receives classes through the `pyo3_module` fixture in `pyo3/tests/conftest.py` (which skips when the module is unavailable). `test_core.py`, `test_export.py`, and `test_import.py` import `pyrustkmer` directly inside test bodies, so a missing extension surfaces as a failure rather than a clean skip.
+- Import guards differ by file: 6 of the 11 test modules start with `try: import pyrustkmer` / `except ImportError: pytest.skip(..., allow_module_level=True)` — the counter (`test_counter.py`, `test_counter_simple.py`, `test_counter_concurrency.py`), database-merge (`test_database_merge.py`), public-API (`test_public_api.py`), and byte-identity (`test_save_database_byte_identity.py`) suites. `test_version.py` deliberately has no guard, so a missing or stale extension fails instead of skipping. `test_pyo3_simple.py` uses the `pyo3_module` fixture in `pyo3/tests/conftest.py` (which skips when the module is unavailable) for its core-class tests while importing `pyrustkmer` directly elsewhere. `test_core.py`, `test_export.py`, and `test_import.py` import `pyrustkmer` directly inside test bodies, so a missing extension surfaces as a failure rather than a clean skip.
 
 ### Benchmark harness — stdlib unittest
 
@@ -253,7 +253,7 @@ Exit codes carry the verdict: 0 within thresholds, 1 regression (the PR fails), 
 
 ### `docs.yml` — documentation build
 
-Triggered by pushes to `main`, version tags, and PRs touching `docs/**`, `python/**`, `mkdocs.yml`, `mkdocs.docs.yml`, or `.pydocstylerc`. It builds the MkDocs site with `--strict` and deploys to GitHub Pages; it does not run the test suites.
+Triggered by pushes to `main`, version tags, PRs touching `docs/**`, `python/**`, `mkdocs.yml`, `mkdocs.docs.yml`, or `.pydocstylerc`, and manual `workflow_dispatch`. The `build-docs` job builds the MkDocs site with `--strict` and deploys to GitHub Pages on `main`/tags; a dependent `test-docs` job checks key pages and a clean `--strict` rebuild. It does not run the test suites.
 
 ### What CI does not run
 
@@ -264,7 +264,7 @@ Triggered by pushes to `main`, version tags, and PRs touching `docs/**`, `python
 ## Fixtures and test data
 
 - **`tests/fixtures/`** — 12 golden `.rkdb` files (k21/k32/k64 × canonical/non-canonical × sorted/unsorted) with `golden_manifest.sha256` (12 entries), plus `legacy_v2_offset42.rkdb`, FASTA inputs (`ambiguous_test.fasta`, `k33/k48/k64_test.fasta`), and the `parallel_count_baseline/` directory (6 JSON baselines). `tests/fixtures/kmers/` holds JSON k-mer fixtures intended for Python API tests, but no test or script currently references them — only the directory README describes them. Treat everything here as read-only ground truth — see the golden-baselines rule above.
-- **`test_data/`** (repo root) — shared datasets: `databases/*.rkdb` (`tiny_test`/`small_test`/`medium_test`/`large_test`, `small_test_k33_C`, prefix/merge/perf databases), `sequences/`, `kmers/`, `generate_test_data.py` to regenerate them, and `verify_git_tracking.py`.
+- **`test_data/`** (repo root) — shared datasets: `databases/*.rkdb` (`tiny_test`/`small_test`/`medium_test`/`large_test`, `small_test_k33_C`, prefix/merge/perf databases), `sequences/`, `kmers/`, `example_usage.py`, `generate_test_data.py` to regenerate them, `verify_git_tracking.py`, and a README.
 - **pyo3 fixture caveat** — `pyo3/tests/conftest.py` resolves its session fixtures to `<repo>/python/tests/test_data`, which does not exist in the repository. Tests depending on `tiny_db_path`-style fixtures `pytest.skip` when the file is absent. Point the fixture at `test_data/databases/` (which contains the expected file names) if you need those tests to execute.
 
 ## Legacy Python trees

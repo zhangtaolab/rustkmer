@@ -19,7 +19,7 @@
 - **CPU**: 64位处理器，至少2核心
 - **内存**: 4GB RAM (8GB+推荐用于大型数据集)
 - **磁盘空间**: 2GB可用空间
-- **Rust**: 1.80.0+ stable版本
+- **Rust**: 1.82.0+ stable版本
 
 ### 推荐配置
 
@@ -276,7 +276,7 @@ pip show pyrustkmer
 
 ```bash
 # 更新源码
-git pull origin main
+git pull origin dev
 
 # 重新编译
 cargo build --release

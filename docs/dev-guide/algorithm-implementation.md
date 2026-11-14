@@ -236,7 +236,7 @@ if end_n == n_count - 1 {
 // AAANNNAAA 模式: start_n = 3, end_n = 5, pattern_len = 9
 // 判断条件: start_n > 0 && end_n < pattern_len - 1
 if start_n > 0 && end_n < pattern_len - 1 {
-    let prefix = &pattern[..start_n];       // 提取 "AA"
+    let prefix = &pattern[..start_n];       // 提取 "AAA"
     let suffix = &pattern[end_n + 1..];     // 提取 "AAA"
     return Ok(QueryStrategy {
         strategy_type: StrategyType::HybridMatching,
@@ -345,7 +345,7 @@ fn extract_with_hybrid_strategy(
 ### 4.4 变体生成策略执行
 ```rust
 fn extract_with_variant_strategy(
-    database: &RKDatabase,
+    _database: &RKDatabase,  // 当前未使用
     pattern: &str,
     n_positions: &[usize],
     total_variants: usize,
@@ -358,13 +358,18 @@ fn extract_with_variant_strategy(
     // 2. 生成所有变体
     let variants = generate_variants(pattern, n_positions)?;
     
-    // 3. 查询每个变体
-    let mut matches = Vec::new();
-    for variant in variants {
-        let result = database.query_kmer(&variant)?;
-        if let Some(count) = result {
-            matches.push((variant, count as u64));
-        }
+    // 3. 查询每个变体（尚未实现）
+    //    当前实现直接返回空的 matches，变体查询逻辑以注释形式保留：
+    //    let mut matches = Vec::new();
+    //    for variant in variants {
+    //        let result = database.query_kmer(&variant)?;
+    //        if let Some(count) = result {
+    //            matches.push((variant, count as u64));
+    //        }
+    //    }
+    let matches = Vec::new();
+    for _variant in variants {
+        // 待实现：将变体与数据库查询集成
     }
     
     Ok(matches)
@@ -428,9 +433,9 @@ fn extract_with_variant_strategy(
 // 判断: 3 > 0 && 5 < 9-1 → 混合匹配策略
 
 // 执行步骤:
-// 1. 提取前缀: "AA"
+// 1. 提取前缀: "AAA"
 // 2. 提取后缀: "AAA"
-// 3. 前缀查询: 获取所有以"AA"开头的k-mer
+// 3. 前缀查询: 获取所有以"AAA"开头的k-mer
 // 4. 双重过滤: 同时检查后缀和N位置匹配
 ```
 

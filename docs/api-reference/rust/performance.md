@@ -98,13 +98,7 @@ pub fn optimal_batch_size(&self, variant_count: usize) -> usize {
 
 Get optimal batch size based on system characteristics
 
-#### should_use_parallel
-
-```rust
-pub fn should_use_parallel(&self, variant_count: usize) -> bool {
-```
-
-Determine if parallel processing should be used
+<!-- VERIFY: PerformanceOptimizer::should_use_parallel is not defined in src/fuzzy/performance.rs and was not found anywhere in the codebase -->
 
 #### optimal_thread_count
 

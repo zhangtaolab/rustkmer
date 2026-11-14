@@ -7,7 +7,7 @@ This guide walks through the fundamental RustKmer operations with both the Rust 
 
 ### Rust CLI
 
-- Rust 1.80+ stable toolchain
+- Rust 1.82+ stable toolchain
 - Build the binary: `cargo build --release` (produces `target/release/rustkmer`)
 
 ### Python API
@@ -153,7 +153,7 @@ stats = db.get_stats()
 print(f"k={stats.kmer_size} unique={stats.unique_kmers} sorted={stats.is_sorted}")
 
 # Additional metadata as a plain dict
-print(db.database_info())       # path, kmer_size, load_mode, totals
+print(db.database_info())       # database_path, kmer_size, is_loaded, total_kmers, unique_kmers, load_mode
 print(db.get_memory_usage())    # per-mode memory information
 ```
 
@@ -261,7 +261,7 @@ rustkmer count -k 11 -i nope.fasta -o out.rkdb # error: file not found
 ## 7. Performance Tips
 
 - **Threads**: pass `--threads N` to `count` (CLI) or `threads=N` to `PyCounter` (Python). For the CLI, precedence is: flag beats `RUSTKMER_THREADS` beats `RAYON_NUM_THREADS` beats all cores. The Python binding does not read those environment variables — `threads=None` uses all available cores.
-- **Load modes**: `LoadMode.Preload` gives the fastest exact queries at the highest memory cost; `LoadMode.Lazy` binary-searches sorted entries; `LoadMode.MemoryMapped` keeps only a file handle.
+- **Load modes**: `LoadMode.Preload` gives the fastest exact queries at the highest memory cost; `LoadMode.Lazy` binary-searches sorted entries; `LoadMode.MemoryMapped` still loads the full database into memory, and `query_exact` currently returns 0 in that mode.
 - **Batch queries**: `query_exact_batch` (Python) or `-b queries.txt` (CLI) amortizes database loading over many lookups.
 - **Canonical mode** roughly halves the database for strand-agnostic analyses.
 - **Unsorted output**: `count --no-sort` skips the sort step when you only need counts, not fast lookups.

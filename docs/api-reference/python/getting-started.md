@@ -9,7 +9,7 @@ This guide will help you get started with the rustkmer Python API (`pyrustkmer`)
 
 - Python >= 3.11
 - `numpy >= 1.21` (installed automatically as a dependency)
-- For building from source: a Rust 1.80+ stable toolchain and `maturin`
+- For building from source: a Rust 1.82+ stable toolchain and `maturin`
 
 ### Install from PyPI
 
@@ -38,7 +38,7 @@ maturin develop --release
 
 ### Verify Installation
 
-The module does not export a `__version__` attribute; verify the installation by running a tiny counting round-trip:
+The module exports a `__version__` attribute (matching the package version); verify the installation by running a tiny counting round-trip:
 
 ```python
 from pyrustkmer import PyCounter
@@ -150,7 +150,7 @@ counter_stranded = PyCounter(31, canonical=False)
 | Mode | Behavior | Best for |
 |------|----------|----------|
 | `LoadMode.Preload` | All k-mers cached in memory | Fastest repeated queries |
-| `LoadMode.MemoryMapped` | Direct file I/O, entry access by index | Large databases, bounded memory |
+| `LoadMode.MemoryMapped` | Direct file I/O, entry access by index | Larger databases; memory still scales with database size |
 | `LoadMode.Lazy` | Sorted index with binary-search lookups | Large databases, slower queries |
 
 ```python
@@ -461,7 +461,7 @@ if __name__ == "__main__":
 2. **`FileNotFoundError`** — check the database path passed to `PyDatabase`.
 3. **`ValueError: K-mer length ... does not match database k-mer size ...`** — query strings must be exactly `db.kmer_size` characters long.
 4. **`ValueError: Invalid k-mer size`** — `PyCounter` accepts k-mer lengths from 1 to 64 only.
-5. **Memory pressure on large databases** — open with `LoadMode.Lazy` or `LoadMode.MemoryMapped`, and prefer `export_to_file` over materializing results in Python.
+5. **Memory pressure on large databases** — every load mode materializes the full database in memory when `PyDatabase` opens it, so `LoadMode.Lazy` and `LoadMode.MemoryMapped` do not reduce memory use; prefer `export_to_file` over materializing results in Python and work with smaller or partitioned databases.
 
 ### Getting Help
 

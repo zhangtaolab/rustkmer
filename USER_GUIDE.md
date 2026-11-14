@@ -37,7 +37,7 @@ cargo run --release -- query genome.rkdb --sequence queries.fa -o results.txt
 ### 系统要求
 
 - **操作系统**: Linux, macOS, Windows
-- **Rust版本**: 1.80+ (推荐使用最新稳定版)
+- **Rust版本**: 1.82+ (推荐使用最新稳定版)
 - **内存**: 建议8GB+用于大型基因组
 - **存储**: 足够空间存储数据库文件
 
@@ -130,7 +130,7 @@ Options:
   -d, --directory <DIR>           处理目录中的所有文件
       --threads <THREADS>         线程数量 [default: 使用全部CPU核心]
       --size <SIZE>               哈希表大小 [default: 1000000]
-  -o, --output <FILE>             输出数据库文件 (必须)
+  -o, --output <FILE>             输出数据库文件 (可选；省略时不写输出文件)
   -C, --canonical                 规范化k-mer计数
       --sort                      创建排序数据库 (推荐)
       --no-sort                   创建非排序数据库

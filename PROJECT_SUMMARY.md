@@ -169,7 +169,7 @@ db.fuzzy_query()    # → 推荐使用 db.query_fuzzy()
 - **docs/guides/FINAL_UNIFIED_INTERFACE_REPORT.md**: 统一接口最终实现报告
 - **docs/guides/UNIFIED_INTERFACE_IMPLEMENTATION_REPORT.md**: 实现细节报告
 - **docs/guides/PYO3_UNIFIED_INTERFACE_PLAN.md**: PyO3 绑定计划
-- **analysis_current_naming.md**: 命名分析文档（历史工作笔记，未提交至仓库，文件已不存在）
+- **analysis_current_naming.md**: 命名分析文档（历史工作笔记，曾提交至仓库后于 fd13b02 删除，当前工作树中不存在）
 
 #### 3. 开发文档
 - **AGENTS.md**: 开发指南和 Agent 规范
@@ -177,8 +177,8 @@ db.fuzzy_query()    # → 推荐使用 db.query_fuzzy()
 - **docs/guides/DOCUMENTATION_UPDATE_REPORT.md**: 文档更新报告
 
 #### 4. 测试文档
-- **pyo3_examples_test_report.md**: PyO3 示例测试报告（历史工作笔记，未提交至仓库，文件已不存在）
-- **unified_naming_proposal.md**: 统一命名方案（历史工作笔记，未提交至仓库，文件已不存在）
+- **pyo3_examples_test_report.md**: PyO3 示例测试报告（历史工作笔记，曾提交至仓库后于 fd13b02 删除，当前工作树中不存在）
+- **unified_naming_proposal.md**: 统一命名（历史工作笔记，曾提交至仓库后于 fd13b02 删除，当前工作树中不存在）
 
 ### 文档统计
 
@@ -232,7 +232,7 @@ db.fuzzy_query()    # → 推荐使用 db.query_fuzzy()
 
 #### 1. pip 安装（推荐）
 ```bash
-pip install rustkmer
+pip install pyrustkmer
 ```
 
 #### 2. 源码安装

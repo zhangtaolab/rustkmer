@@ -311,7 +311,7 @@ rustkmer prefix-query sars_k19.rkdb -p "ATCG{N3}GTAC" --output variants.txt
 ```bash
 cd rustkmer/pyo3
 cargo build --release
-export PYTHONPATH="$PWD/target/debug:$PYTHONPATH"
+maturin develop --release
 ```
 
 ### 基本使用

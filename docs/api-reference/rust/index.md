@@ -51,7 +51,7 @@ use rustkmer::KmerCounter;
 let counter = KmerCounter::new(21, true, 1000000, 4)?;
 
 // Count k-mers from a file
-counter.count_file("genome.fa")?;
+counter.increment(rustkmer::kmer::encode_kmer_u128("ATGCGTACGTTAGCTAGCTAG")?)?; // for whole files, see rustkmer::count::CountEngine::count_file
 
 // Get statistics
 let total = counter.total_kmers();

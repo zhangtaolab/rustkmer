@@ -144,7 +144,6 @@ Error: Invalid characters in prefix: ATCN
    - Fixed N position calculation logic
    - Fixed pattern passing between functions
    - Enhanced error messages
-   - Improved debugging output
 
 2. **src/cli/commands/prefix.rs**
    - Removed debug output code
@@ -153,7 +152,7 @@ Error: Invalid characters in prefix: ATCN
 ## Recommendations
 
 ### For Users
-1. Use the verbose mode (`--verbose`) to see detailed pattern parsing information
+1. Use the verbose mode (`--verbose`) to see performance profiling information: query time, match count, memory block range, sorted status, and optimization status
 2. Ensure hybrid patterns match the database k-mer size exactly
 3. Use only A, T, C, G characters in prefix and suffix sections
 

@@ -385,18 +385,17 @@ performance = benchmark_batch_queries("genome_k21.rkdb", test_queries)
 ```python
 from pyrustkmer import PyDatabase, LoadMode
 
-# Strategy 1: Memory-mapped (direct file access, good for large databases)
-db = PyDatabase("large_database.rkdb", LoadMode.MemoryMapped)
-# Lower memory footprint, direct file access
-
-# Strategy 2: Preloaded (good for many queries)
+# Strategy 1: Preloaded (good for many queries)
 db = PyDatabase("database.rkdb", LoadMode.Preload)
 # Load entire database into memory
 # Maximum query speed, higher memory usage
 
-# Strategy 3: Lazy (sorted index, binary-search lookups)
+# Strategy 2: Lazy (sorted index, binary-search lookups)
 db = PyDatabase("database.rkdb", LoadMode.Lazy)
 # Sorted index with on-demand binary-search lookups
+
+# Note: LoadMode.MemoryMapped does not implement query_exact(); every lookup
+# reports count 0 / found False. Use Preload or Lazy for exact queries.
 ```
 
 ### Query Optimization Tips
@@ -413,10 +412,10 @@ def optimize_query_performance(db_path, query_count):
         db = PyDatabase(db_path, LoadMode.Preload)
         loading_strategy = "preload"
     else:
-        # For fewer queries, use direct file access
-        print("   Strategy: Use memory-mapped access")
-        db = PyDatabase(db_path, LoadMode.MemoryMapped)
-        loading_strategy = "memory_mapped"
+        # For fewer queries, use lazy loading with binary-search lookups
+        print("   Strategy: Use lazy loading")
+        db = PyDatabase(db_path, LoadMode.Lazy)
+        loading_strategy = "lazy"
 
     return db, loading_strategy
 ```
@@ -756,7 +755,7 @@ def memory_efficient_querying(db_path, queries, batch_size=1000):
 
     results = []
 
-    db = PyDatabase(db_path, LoadMode.MemoryMapped)  # Direct file access, efficient
+    db = PyDatabase(db_path, LoadMode.Lazy)  # Sorted index, binary-search lookups
 
     for i in range(0, len(queries), batch_size):
         batch = queries[i:i+batch_size]
