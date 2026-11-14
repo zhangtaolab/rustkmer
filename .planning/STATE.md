@@ -4,18 +4,18 @@ milestone: v2.0
 milestone_name: k=21 Counting Parity
 current_phase: 10
 current_phase_name: Benchmark Verdict
-current_plan: Not started
+current_plan: 10-04
 status: executing
-stopped_at: Phase 9 complete, ready to plan Phase 10
-last_updated: "2026-11-13T09:24:07.752Z"
-last_activity: 2026-11-13
-last_activity_desc: Phase 9 complete, transitioned to Phase 10
-state_head: a86225e861f5d46d7baa85ab4ba74e01a80d5e9f
+stopped_at: Phase 10 wave 3 complete — Checkpoint 1 approved (proceed); wave 4 (10-04 Python full-scale + verdict) is next
+last_updated: "2026-11-14T00:00:00.000Z"
+last_activity: 2026-11-14
+last_activity_desc: Phase 10 Checkpoint 1 approved (proceed) after CLI full-scale evidence
+state_head: 9d2e6c0
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 29
-  completed_plans: 25
+  completed_plans: 28
   percent: 71
 ---
 
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-11-13)
 
 ## Current Position
 
-Phase: 10 (Benchmark Verdict) — READY TO EXECUTE
-Current Plan: Not started
+Phase: 10 (Benchmark Verdict) — EXECUTING (wave 3 of 4 complete)
+Current Plan: 10-04 (Python full-scale arms + verdict + report)
 Total Plans in Phase: 4
-Status: Ready to execute
-Last activity: 2026-11-13 — Phase 9 complete, transitioned to Phase 10
+Status: Checkpoint 1 approved (proceed) 2026-11-14; wave 4 may run
+Last activity: 2026-11-14 — Checkpoint 1 approved after CLI full-scale evidence (k=21 144.69 s vs 194.85 s; k=31 147.08 s vs 1380.92 s)
 
 Progress: [███████░░░] 71% (v2.0)
 
@@ -217,11 +217,12 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-13T03:30:00Z
-Stopped at: Phase 9 complete, ready to plan Phase 10
+Last session: 2026-11-14T00:00:00Z
+Stopped at: Phase 10 wave 3 complete — Checkpoint 1 approved (proceed); wave 4 next
 Resume file: None
 
 ## Operator Next Steps
 
-- Plan Phase 10 (Benchmark Verdict): full human-scale jellyfish parity verdict on both surfaces + the KMC3 exact-count comparison (BENCH-V2-01, BENCH-V2-02)
+- Execute Phase 10 wave 4 (10-04): Python memory preflight → Python full-scale k=21 and k=31 (each after a slice-gate re-run, same-session jellyfish) → verdict + `10-BENCHMARK-REPORT.md` → Checkpoint 2
+- After Checkpoint 2: Phase 10 code review, verification, transition; the D3 decision (whether Phase 11 runs) is returned to the user — Phase 11 is never auto-triggered
 - Optional before the milestone audit: run `/gsd-secure-phase 9` (no SECURITY.md was produced for phase 9)

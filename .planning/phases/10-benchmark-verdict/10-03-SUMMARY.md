@@ -88,7 +88,9 @@ coverage:
 
 duration: 3h20m
 completed: 2026-11-13
-status: halted
+checkpoint_1_decision: proceed
+checkpoint_1_decided: 2026-11-14
+status: complete
 ---
 
 # Phase 10 Plan 03: Slice gate + CLI full-scale sessions at k=21 and k=31
@@ -120,7 +122,7 @@ Each task was committed atomically:
 2. **Task 2: CLI full-scale session k=21** — `e47f6ca` (feat)
 3. **Task 3: CLI full-scale session k=31** — `d0dcc59` (feat)
 
-_Note: Task 4 is the blocking-human checkpoint; its outcome is recorded below once the user selects._
+_Note: Task 4 was the blocking-human checkpoint; the user selected **proceed** on 2026-11-14 and the outcome is recorded below._
 
 ## Files Created
 
@@ -177,9 +179,13 @@ Both parts fingerprinted: part_001 `2,785,381,389 B` sha256 `dae91042…`; part_
 - **Python surface:** **PENDING.** Plan 10-04 has not run; no Python YES/NO is stated, projected, or implied. Only the projection and its PROCEED reading are reported.
 - **KMC3:** BENCH-V2-01 was descoped on 2026-11-13 by user decision; no KMC3 binary was downloaded, installed, or executed. Its absence is intentional.
 
-### Awaiting
+### Checkpoint 1 outcome — **PROCEED**
 
-**Selection: AWAITING USER DECISION — `proceed` or `hold`.** Plan 10-04 (Python full-scale arm + verdict + report) must not start until this is recorded above and in the plan's checkpoint task.
+**Selection: `proceed`** (recorded 2026-11-14). The user reviewed the measured CLI evidence and authorized Plan 10-04: the Python memory preflight (re-derived from the measured distinct counts), the Python full-scale sessions at k=21 and k=31 (each after a slice-gate re-run), and the verdict + report render.
+
+- Both Python projections are PROCEED from the measured counts (71.87 GiB / 91.82 GiB vs the 110 GiB budget), so the hard OOM gate does not trigger a stop at preflight.
+- The Python surface remains **PENDING** until Plan 10-04's sessions produce measured medians; no Python YES/NO is stated here.
+- Plan 10-04 may start.
 
 ## Deviations from Plan
 
@@ -255,7 +261,7 @@ None — no external service configuration required.
 
 ---
 *Phase: 10-benchmark-verdict*
-*Completed: 2026-11-13 (halted at Checkpoint 1)*
+*Completed: 2026-11-13 (Checkpoint 1 approved 2026-11-14 — proceed)*
 
 ## Self-Check: PASSED
 
