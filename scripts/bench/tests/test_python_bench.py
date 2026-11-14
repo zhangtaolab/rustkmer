@@ -409,6 +409,60 @@ class TestRepIdentity(unittest.TestCase):
             pb.check_rep_identity(reps)
 
 
+class TestMeasureArmModuleIdentity(unittest.TestCase):
+    """one_run attaches the measured .so identity so the guard is not inert."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.site = self.root / "site-packages"
+        self.site.mkdir()
+        self.module = self.site / "pyrustkmer.cpython-313-darwin.so"
+        self.module.write_bytes(b"fake native bytes")
+        self.info = {"executable": sys.executable, "version": "3.13.11",
+                     "site_prefix": str(self.site)}
+
+    def _args(self):
+        return mock.Mock(reps=2, python=sys.executable, k=21, threads="1")
+
+    def _fake_measure(self, rebuild_between_runs):
+        base = make_fake_measure(self.module)
+        calls = {"n": 0}
+
+        def fake(argv):
+            result = base(argv)
+            if rebuild_between_runs:
+                calls["n"] += 1
+                # Same path, different measured bytes — exactly what a
+                # mid-session `maturin develop` does to the extension.
+                self.module.write_bytes(
+                    b"rebuilt native bytes " + str(calls["n"]).encode())
+            return result
+
+        return fake
+
+    def _measure(self, fake_measure):
+        with mock.patch.object(pb, "measure", side_effect=fake_measure), \
+                mock.patch.object(pb, "attempt_cache_purge",
+                                  return_value="unavailable"):
+            return pb.measure_arm(self._args(), self.info,
+                                  Path("input.fq"), self.root, "py-t1",
+                                  lambda: None, threads_text="1")
+
+    def test_reps_record_the_measured_module_sha_and_mtime(self):
+        arm, _counts = self._measure(self._fake_measure(False))
+        expected_sha = pb.fingerprint(self.module)["sha256"]
+        for rep in arm["reps"]:
+            self.assertEqual(rep["module_sha256"], expected_sha)
+            self.assertEqual(rep["module_mtime"], 1794477430.0)
+
+    def test_same_path_rebuild_between_reps_changes_the_identity_tuple(self):
+        with self.assertRaises(ValueError) as ctx:
+            self._measure(self._fake_measure(True))
+        self.assertIn("module identity disagreement", str(ctx.exception))
+
+
 class TestParityCounts(unittest.TestCase):
     """CLI-vs-Python parity on the same bytes, before any timing."""
 

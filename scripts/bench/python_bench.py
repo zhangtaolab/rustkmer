@@ -770,6 +770,13 @@ def measure_arm(args, info, input_path, scratch, arm_name, gap,
         rep.update(counts)
         rep["module_path"] = payload["module_path"]
         rep["threads_resolved"] = payload["threads_resolved"]
+        # The measured extension's identity is (path, measured bytes, mtime).
+        # Recording the sha256 HERE — not only in phase10.run_rounds — is what
+        # makes check_rep_identity's rebuild guard live on this controller:
+        # without it every rep contributes (path, None, None) and a same-path
+        # rebuild mid-session passes (WR-03/WR-07).
+        rep["module_mtime"] = payload["module_mtime"]
+        rep["module_sha256"] = fingerprint(payload["module_path"])["sha256"]
         return rep, counts
 
     warmup_rep, warmup_counts = one_run()
