@@ -543,10 +543,19 @@ def assert_cross_session_jellyfish(cli_doc, python_doc):
     """The two sessions' jellyfish arms must agree on counts AND input bytes.
 
     The jellyfish reference is re-measured in each session; identical counts
-    prove both sessions counted the same bytes. A difference is a hard
-    failure because a venv/run-chain change would silently invalidate the
-    cross-session comparison.
+    prove both sessions counted the same bytes. The documents must also BE
+    the sessions they claim: a python-session document passed as the CLI side
+    would silently compare a session with itself (WR-12).
     """
+    if cli_doc.get("session") != "cli":
+        raise ValueError(
+            f"cross-session: the CLI-side document is session="
+            f"{cli_doc.get('session')!r}, not 'cli' — a python-session "
+            f"document can never stand in for the CLI session")
+    if python_doc.get("session") != "python":
+        raise ValueError(
+            f"cross-session: the Python-side document is session="
+            f"{python_doc.get('session')!r}, not 'python'")
     cli_arm = _single_arm(cli_doc, ARM_JF_T16, "cross-session cli")
     python_arm = _single_arm(python_doc, ARM_JF_T16, "cross-session python")
     cli_counts = _exact_counts(cli_arm, "cross-session cli jellyfish")
@@ -1793,6 +1802,11 @@ def load_cli_document(path):
         doc = json.load(fh)
     validate_schema(doc)
     validate_provenance(doc)
+    if doc.get("session") != "cli":
+        raise ValueError(
+            f"preflight source {path} is session={doc.get('session')!r}, "
+            f"not 'cli' — only a CLI-session measurement may anchor the "
+            f"projection or the cross-session comparison")
     if doc.get("mode") != "full":
         raise ValueError(
             f"preflight source {path} is mode={doc.get('mode')!r}, not 'full' "

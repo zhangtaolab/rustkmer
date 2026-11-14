@@ -308,9 +308,9 @@ class TestFinalizePythonArm(unittest.TestCase):
 class TestSessionParity(unittest.TestCase):
     """Internal and cross-session parity are hard failures when they differ."""
 
-    def _doc(self, arms, fingerprint=None):
+    def _doc(self, arms, fingerprint=None, session="python"):
         return {
-            "session": "python",
+            "session": session,
             "input_fingerprint": fingerprint or [
                 {"path": "/data/part_001.fq.gz", "size_bytes": 1,
                  "sha256": "c" * 64},
@@ -345,23 +345,36 @@ class TestSessionParity(unittest.TestCase):
                 p10.ARM_JF_T16, p10.ARM_PY_T16)
 
     def test_cross_session_accepts_identical_counts_and_fingerprints(self):
-        cli = self._doc([make_arm(p10.ARM_JF_T16, "jellyfish", 16)])
-        py = self._doc([make_arm(p10.ARM_JF_T16, "jellyfish", 16)])
+        cli = self._doc([make_arm(p10.ARM_JF_T16, "jellyfish", 16)],
+                        session="cli")
+        py = self._doc([make_arm(p10.ARM_JF_T16, "jellyfish", 16)],
+                       session="python")
         block = p10.assert_cross_session_jellyfish(cli, py)
         self.assertTrue(block["equal"])
 
+    def test_cross_session_rejects_a_python_document_as_the_cli_side(self):
+        cli = self._doc([make_arm(p10.ARM_JF_T16, "jellyfish", 16)],
+                        session="python")
+        py = self._doc([make_arm(p10.ARM_JF_T16, "jellyfish", 16)],
+                       session="python")
+        with self.assertRaises(ValueError):
+            p10.assert_cross_session_jellyfish(cli, py)
+
     def test_cross_session_rejects_count_differences(self):
-        cli = self._doc([make_arm(p10.ARM_JF_T16, "jellyfish", 16)])
+        cli = self._doc([make_arm(p10.ARM_JF_T16, "jellyfish", 16)],
+                        session="cli")
         py = self._doc([make_arm(p10.ARM_JF_T16, "jellyfish", 16,
-                                 total=201)])
+                                 total=201)], session="python")
         with self.assertRaises(ValueError):
             p10.assert_cross_session_jellyfish(cli, py)
 
     def test_cross_session_rejects_fingerprint_differences(self):
-        cli = self._doc([make_arm(p10.ARM_JF_T16, "jellyfish", 16)])
+        cli = self._doc([make_arm(p10.ARM_JF_T16, "jellyfish", 16)],
+                        session="cli")
         py = self._doc([make_arm(p10.ARM_JF_T16, "jellyfish", 16)],
                        fingerprint=[{"path": "/other.fq.gz",
-                                     "size_bytes": 1, "sha256": "e" * 64}])
+                                     "size_bytes": 1, "sha256": "e" * 64}],
+                       session="python")
         with self.assertRaises(ValueError):
             p10.assert_cross_session_jellyfish(cli, py)
 
@@ -723,6 +736,17 @@ class TestPythonStageDocument(PythonStageFixture):
         code, _out, _err = self.run_main(self.python_argv(),
                                          self.stage_patches())
         self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertFalse(self.out.exists())
+
+    def test_python_session_document_as_cli_doc_exits_2(self):
+        """--cli-doc must be a CLI-session document, never a Python one."""
+        doc = self.cli_document()
+        doc["session"] = "python"
+        self.cli_doc.write_text(json.dumps(doc), encoding="utf-8")
+        code, _out, err = self.run_main(self.python_argv(),
+                                        self.stage_patches())
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertIn("session", err)
         self.assertFalse(self.out.exists())
 
     def test_invalid_worker_outcome_exits_2_with_no_artifact(self):
