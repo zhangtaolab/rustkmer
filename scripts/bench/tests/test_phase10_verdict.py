@@ -587,6 +587,11 @@ class TestReport(unittest.TestCase):
     def full_docs(self, k=21):
         return [cli_doc(k=k), python_doc(k=k)]
 
+    def full_k_docs(self):
+        """One cli + one python document for EACH pinned k value."""
+        return [cli_doc(k=21), cli_doc(k=31),
+                python_doc(k=21), python_doc(k=31)]
+
     def test_re_render_is_byte_identical(self):
         docs = self.full_docs()
         first = self.render(docs, "a.md")
@@ -743,7 +748,7 @@ class TestReport(unittest.TestCase):
 
     def test_render_stage_publishes_both_artifacts_on_yes(self):
         code, verdict_out, report_out, _out, err = self.run_render(
-            self.full_docs())
+            self.full_k_docs())
         self.assertEqual(code, p10.EXIT_OK, err)
         verdict = json.loads(verdict_out.read_text(encoding="utf-8"))
         self.assertEqual(verdict["kind"], "phase10-verdict")
@@ -752,15 +757,31 @@ class TestReport(unittest.TestCase):
         self.assertFalse(verdict["kmc3_executed"])
         self.assertFalse(verdict["ci_baseline_written"])
         self.assertTrue(verdict["dev_host_only"])
-        self.assertEqual(len(verdict["inputs"]), 2)
+        self.assertEqual(len(verdict["inputs"]), 4)
+        self.assertEqual({block["k"] for block in verdict["verdicts"]},
+                         {21, 31})
         report = report_out.read_text(encoding="utf-8")
         self.assertIn("BENCH-V2-01", report)
 
+    def test_render_rejects_a_subset_of_the_pinned_k_values(self):
+        """A k=21-only document set can never publish an overall verdict."""
+        code, verdict_out, report_out, _out, err = self.run_render(
+            self.full_docs(k=21))
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertIn("pinned k values", err)
+        self.assertFalse(verdict_out.exists())
+        self.assertFalse(report_out.exists())
+
     def test_render_stage_keeps_artifacts_on_no(self):
-        docs = self.full_docs()
-        for arm in docs[1]["arms"]:
-            if arm["name"] == p10.ARM_PY_T16:
-                arm["medians"]["wall_s"] = 999.0
+        docs = self.full_k_docs()
+        for doc in docs:
+            if doc["session"] != "python":
+                continue
+            for arm in doc["arms"]:
+                if arm["name"] == p10.ARM_PY_T16:
+                    for rep in arm["reps"]:
+                        rep["wall_s"] = 999.0
+                    arm["medians"]["wall_s"] = 999.0
         code, verdict_out, report_out, _out, err = self.run_render(docs)
         self.assertEqual(code, p10.EXIT_NO, err)
         self.assertTrue(verdict_out.exists())
@@ -773,15 +794,15 @@ class TestReport(unittest.TestCase):
             raise ValueError("injected render failure")
 
         code, verdict_out, report_out, _out, err = self.run_render(
-            self.full_docs(), [mock.patch.object(p10, "render_report_text",
-                                                 side_effect=boom)])
+            self.full_k_docs(), [mock.patch.object(p10, "render_report_text",
+                                                   side_effect=boom)])
         self.assertEqual(code, p10.EXIT_INVALID)
         self.assertIn("injected render failure", err)
         self.assertFalse(verdict_out.exists())
         self.assertFalse(report_out.exists())
 
     def test_invalid_document_leaves_neither_destination(self):
-        docs = self.full_docs()
+        docs = self.full_k_docs()
         del docs[0]["provenance"]
         code, verdict_out, report_out, _out, _err = self.run_render(docs)
         self.assertEqual(code, p10.EXIT_INVALID)

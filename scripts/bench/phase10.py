@@ -841,6 +841,12 @@ def _render_groups(docs, allow_synthetic):
         pairs[k] = (sessions["cli"][0], sessions["python"][0])
     if not pairs:
         raise ValueError("render: no documents to render")
+    if not allow_synthetic and set(pairs) != set(SLICE_GATE_K_VALUES):
+        raise ValueError(
+            f"render: the full render requires exactly the pinned k values "
+            f"{SLICE_GATE_K_VALUES} with one cli + one python document each, "
+            f"got k={sorted(pairs)} — a subset of the pinned k values can "
+            f"never publish an overall verdict")
     return pairs
 
 
