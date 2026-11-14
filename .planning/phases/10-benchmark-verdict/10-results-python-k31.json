@@ -204,7 +204,8 @@
   },
   "pre_gate": {
     "path": "/tmp/rustkmer-phase10/scratch/pre_gate_k31.json",
-    "sha256": "b9f3d85061085ab7fe3712938a01afa15ec9df1e7347b7bd0ae54864b77082b2"
+    "sha256": "b9f3d85061085ab7fe3712938a01afa15ec9df1e7347b7bd0ae54864b77082b2",
+    "committed_copy": ".planning/phases/10-benchmark-verdict/evidence/pre_gate_k31.json"
   },
   "memory_preflight": {
     "decision": "PROCEED",
