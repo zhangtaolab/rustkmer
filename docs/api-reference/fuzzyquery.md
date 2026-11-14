@@ -14,7 +14,7 @@ Fuzzy queries find k-mers that are similar to a query pattern within a specified
 
 The implementation uses the Hamming distance metric, which counts the number of positions at which two k-mers differ.
 
-Fuzzy querying is provided by the `PyFuzzyQuery` engine, constructed from a `PyDatabase`. (`PyDatabase` also has a `query_fuzzy()` convenience method with the same signature, but `PyFuzzyQuery` is the documented interface for fuzzy workloads.)
+Fuzzy querying is provided by the `PyFuzzyQuery` engine, constructed from a `PyDatabase`. (`PyDatabase` also has a `query_fuzzy(pattern, max_mutations)` method, but it is a placeholder that always returns an empty result; use `PyFuzzyQuery` for fuzzy workloads.)
 
 ## Classes
 
@@ -25,7 +25,7 @@ Represents a single matched k-mer within the mutation tolerance. Instances are p
 **Attributes:**
 - `kmer` (str): The matched k-mer sequence found in the database
 - `count` (int): Number of occurrences of this k-mer in the database
-- `distance` (Optional[int]): Hamming distance from the query pattern (`None` when not applicable; 0 for exact matches)
+- `distance` (Optional[int]): Hamming distance from the query pattern (`None` when not applicable; exact matches also carry `None`, so it is never 0)
 - `match_type` (str): How the match was produced — `"exact"`, `"wildcard_expansion[...]"`, `"mutation_tolerance[...]"`, or `"length_normalization"`
 - `mutation_positions` (List[int]): Positions involved in the wildcard expansion or mutations (empty for plain exact matches)
 
@@ -44,7 +44,7 @@ Contains all matches for a single fuzzy query operation.
 - `query_kmer` (str): The upper-cased query pattern
 - `exact_match` (Optional[PyFuzzyMatch]): The exact match, if one was found
 - `matches` (List[PyFuzzyMatch]): All matches, exact and fuzzy
-- `total_matches` (int): Total number of matches found
+- `total_matches` (int): Sum of the counts of all matched k-mers (total abundance, not the number of matches)
 - `mutation_tolerance` (int): The mutation tolerance used for the query
 - `query_time_ms` (int): Query execution time in milliseconds
 - `has_position_mutations` (bool): Whether position-specific mutations were used
@@ -55,7 +55,7 @@ Contains all matches for a single fuzzy query operation.
 Get matches at a specific Hamming distance.
 
 **Parameters:**
-- `distance` (int): Specific distance to filter by (0 = exact matches)
+- `distance` (int): Specific distance to filter by. Exact matches carry `distance=None`, so filtering by `0` returns no matches
 
 **Returns:**
 - `List[PyFuzzyMatch]`: Matches at the specified distance
@@ -123,13 +123,13 @@ Perform a fuzzy query with wildcard and mutation support.
 **Parameters:**
 - `pattern` (str): The query pattern; must be exactly the database's k-mer size long and contain only `A`, `T`, `C`, `G`, `N` (`N` acts as a wildcard)
 - `max_mutations` (int): Maximum number of substitutions allowed
-- `max_results` (Optional[int]): Cap on the number of returned matches (default `None` = uncapped)
+- `max_results` (Optional[int]): Limit on the number of generated variants (passed as `FuzzyQuery.max_variants`), not a cap on returned matches. `None` falls back to `DEFAULT_MAX_VARIANTS` (10,000); exceeding the limit raises `TooManyVariants` (surfaced as `RuntimeError`) or truncates the generated variants
 
 **Returns:**
 - `PyFuzzyResult`: All matches within the mutation tolerance
 
 **Raises:**
-- `ValueError`: If the pattern length does not match the database k-mer size, the pattern contains invalid characters, or `max_mutations` is rejected by the engine
+- `ValueError`: If the pattern length does not match the database k-mer size or the pattern contains invalid characters
 - `RuntimeError`: If the database cannot be reloaded or the query execution fails
 
 **Example:**
@@ -156,15 +156,15 @@ Perform a fuzzy query with position-specific mutation constraints.
 
 **Parameters:**
 - `pattern` (str): The query pattern (same rules as `query_fuzzy`)
-- `max_mutations` (int): Overall maximum number of substitutions
+- `max_mutations` (int): Maximum number of substitutions when no position constraints are used. With `position_mutations`, this value only gates whether mutation expansion runs at all (`> 0`); the effective cap becomes the sum of the per-group limits
 - `position_mutations` (str): Position constraint configuration (see below)
-- `max_results` (Optional[int]): Cap on the number of returned matches
+- `max_results` (Optional[int]): Limit on the number of generated variants (same semantics as `query_fuzzy`), not a cap on returned matches
 
 **Returns:**
-- `PyFuzzyResult`: Matches satisfying both the global tolerance and the position constraints (`has_position_mutations` is `True`)
+- `PyFuzzyResult`: Matches satisfying the position constraints (`has_position_mutations` is `True`). The global `max_mutations` tolerance is not enforced once position mutations are given — the sum of the per-group limits is the effective overall cap
 
 **Raises:**
-- `ValueError`: Invalid pattern or invalid position-mutation configuration
+- `ValueError`: Invalid pattern, or syntax errors in the position-mutation configuration string (semantic failures such as out-of-range or overlapping positions, or a group limit exceeding its position count, surface as `RuntimeError`)
 - `RuntimeError`: Database load or execution failure
 
 **Position Mutations Format:**
@@ -203,7 +203,7 @@ The number of possible variants grows combinatorially with mutation tolerance. F
 - Distance 2: k² × 3² variants
 - Distance 3: k³ × 3³ variants
 
-Cap the result set with `max_results` and keep the tolerance low:
+Keep the tolerance low and use `max_results` to bound the generated variant count (exceeding it raises `TooManyVariants`):
 
 ```python
 # Safe: low mutation tolerance

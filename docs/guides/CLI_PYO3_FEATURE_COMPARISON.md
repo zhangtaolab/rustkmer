@@ -22,14 +22,14 @@
 - 可选排序
 
 **PyO3 现状**:
-- ✅ `PyCounter` 类存在但**标记为简化状态**
+- ✅ `PyCounter` 类已实现完整计数功能（`add_kmer`, `add_sequence`, `add_from_fasta`, `add_from_fastq`, `save_database`）
 - ✅ `add_kmer()`, `get_stats()`, `is_empty()` 方法存在
-- ❌ 无法从文件读取序列
-- ❌ 无 FASTA/FASTQ 解析功能
-- ❌ 无法生成数据库文件
+- ✅ `add_from_fasta()` / `add_from_fastq()` 可直接从序列文件读取
+- ✅ 通过共享的 `CountEngine` 解析 FASTA/FASTQ
+- ✅ `save_database()` 可写出排序后的 `.rkdb` 数据库文件
 - ❌ 无批量处理能力
 
-**影响**: 无法在 Python 中创建数据库，必须使用 CLI 工具
+**影响**: 无——Python 中可直接从 FASTA/FASTQ 计数并生成 `.rkdb` 数据库，无需依赖 CLI
 
 ---
 
@@ -104,7 +104,7 @@ stats = db.get_stats()
 ✅ stats.canonical
 
 ❌ 无详细频率分布
-❌ 无多种输出格式
+✅ stats.to_json() / stats.to_csv() / stats.to_tsv()  # 多种输出格式
 ❌ 无近似计算选项
 ❌ 无进度报告
 ```
@@ -130,12 +130,12 @@ rustkmer fuzzy-query database.rkdb "ANNNNNN" -o output.txt
 ✅ fuzzy = PyFuzzyQuery(db)
 ✅ result = fuzzy.query_fuzzy(pattern, max_mutations)
 ✅ result.matches, result.total_matches
-✅ result.get_top_matches()
-✅ result.get_matches_by_distance()
+✅ result.get_top_matches(limit)          # 需传入 limit 参数
+✅ result.get_matches_by_distance(distance)  # 需传入 distance 参数
 
-❌ 无格式化输出方法
+✅ result.to_json() / result.to_csv() / result.to_tsv()
 ❌ 无直接文件输出
-❌ 需要手动格式化为 table/json/csv/tsv
+❌ 无 table 格式化方法（JSON/CSV/TSV 已内置）
 ```
 
 **影响**: 需要额外代码来格式化和输出结果
@@ -202,10 +202,10 @@ rustkmer merge -i db1.rkdb db2.rkdb -o merged.rkdb \
 PyDatabase.merge(["db1.rkdb", "db2.rkdb"], "merged.rkdb")
 
 ❌ 无兼容性检查
-❌ 无内存控制
+✅ `max_memory` 参数可控制内存上限
 ❌ 无线程控制
 ❌ 无缓存策略选择
-❌ 无合并策略选择
+✅ `merge_mode` 参数可选 auto/memory/streaming
 ❌ 无临时目录控制
 ❌ 无中间文件保留
 ```
@@ -315,11 +315,11 @@ query.query_fuzzy_position(
     position_mutations="0,6:1"  # 格式: "positions:limit"
 )
 
-⚠️ 格式不如 CLI 灵活（无法指定多个位置组）
+✅ 支持多个位置组（`;` 分隔）与位置范围（如 `4-7`），与 CLI 相同
 ⚠️ 参数名称不同
 ```
 
-**影响**: 参数格式不同，功能不如 CLI 灵活
+**影响**: 功能与 CLI 一致；仅调用形式不同（Python 关键字参数 vs 命令行标志）
 
 ---
 
@@ -339,7 +339,7 @@ metrics = ext_query.query_prefix_metrics("AAA")
 ✅ metrics.execution_time_ms
 
 ❌ 无详细 profiling 数据
-❌ 无内存使用统计
+✅ `db.get_memory_usage()` 报告缓存大小、已加载条目与加载模式
 ❌ 无详细性能指标
 ```
 
@@ -358,8 +358,8 @@ rustkmer fuzzy-query-batch database.rkdb -s queries.txt --progress
 
 **PyO3 现状**:
 ```python
-❌ 无进度报告功能
-❌ 无法跟踪长时间操作
+✅ 导出方法支持 `progress_callback`
+✅ 长时间导出可通过 `(current, total)` 回调跟踪进度
 ```
 
 **影响**: 大型操作无进度反馈
@@ -378,9 +378,9 @@ rustkmer fuzzy-query-batch database.rkdb -s queries.txt --progress
 | **统计信息** | ✅ 完整 | ⚠️ 基础版 | 🟡 中 |
 | **数据库导出** | ✅ 完整 | ⚠️ 基础版 | 🟡 中 |
 | **批量查询** | ✅ 完整 | ⚠️ 需手动 | 🟡 中 |
-| **输出格式化** | ✅ 4种格式 | ❌ 需手动 | 🟡 中 |
-| **文件 I/O** | ✅ 完整 | ❌ 需手动 | 🟡 中 |
-| **进度跟踪** | ✅ 完整 | ❌ 缺失 | 🟡 中 |
+| **输出格式化** | ✅ 4种格式 | ✅ 内置 | 🟡 中 |
+| **文件 I/O** | ✅ 完整 | ✅ 内置 | 🟡 中 |
+| **进度跟踪** | ✅ 完整 | ✅ 导出回调 | 🟡 中 |
 | **性能分析** | ✅ 完整 | ⚠️ 基础版 | 🟡 中 |
 | **交互式模式** | ✅ 支持 | ❌ 缺失 | 🟡 中 |
 | **高级合并** | ✅ 完整 | ⚠️ 基础版 | 🟡 中 |
@@ -392,30 +392,30 @@ rustkmer fuzzy-query-batch database.rkdb -s queries.txt --progress
 ### 🔴 高优先级（严重影响功能）
 
 1. **完整的 K-mer 计数工具**
-   - 无法在 Python 中创建数据库
-   - 无法从 FASTA/FASTQ 读取序列
-   - 必须依赖 CLI 工具
+   - ✅ Python 中可通过 `save_database()` 创建数据库
+   - ✅ `add_from_fasta()` / `add_from_fastq()` 可直接读取 FASTA/FASTQ 序列
+   - ✅ 无需依赖 CLI 工具
 
 2. **数据库导出功能**
-   - 无便捷的导出方法
-   - 需要手动实现
+   - ✅ 提供 `get_all_kmers()`, `dump()`, `export_to_file()`, `export_to_json()`, `export_to_csv()`, `export_all_kmers()` 等便捷导出方法
+   - ✅ 无需手动实现；`dump()` 返回十六进制编码，序列文本请用 `export_to_file()`
 
 ### 🟡 中优先级（影响使用便利性）
 
 3. **批量查询接口**
-   - 无专用批量查询方法
+   - ✅ 提供 `query_exact_batch()`, `query_prefix_batch()`, `query_hybrid_batch()`
    - 需要大量样板代码
 
 4. **多种输出格式**
-   - 无格式化输出方法
-   - 需要手动转换为 JSON/CSV/TSV
+   - ✅ 结果类型提供 `to_json()`, `to_csv()`, `to_tsv()`（部分含 `to_table()`）
+   - ✅ 无需手动转换（仅 table 格式需自行处理）
 
 5. **高级统计功能**
    - 无频率分布
    - 无详细统计指标
 
 6. **高级合并选项**
-   - 无内存/线程控制
+   - ✅ `max_memory` 已支持；线程控制仍缺失
    - 无缓存策略选择
 
 ### 🟢 低优先级（影响有限）
@@ -526,10 +526,10 @@ pyrustkmer.PyDatabase.merge(["db1.rkdb", "db2.rkdb"], "merged.rkdb")
 ```
 
 ### 当前限制
-- ❌ 无法从 FASTA/FASTQ 创建数据库
-- ❌ 无批量查询接口
-- ❌ 无格式化输出方法
-- ❌ 无进度跟踪
+- ✅ `add_from_fasta()` / `add_from_fastq()` + `save_database()` 可直接从 FASTA/FASTQ 创建数据库
+- ✅ `query_exact_batch()`, `query_prefix_batch()`, `query_hybrid_batch()` 提供批量查询（模糊批量需手动循环）
+- ✅ 结果类型提供 `to_json()`, `to_csv()`, `to_tsv()`
+- ✅ 导出方法支持 `progress_callback` 进度跟踪
 
 ---
 

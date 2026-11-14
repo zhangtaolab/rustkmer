@@ -66,7 +66,7 @@ counter.save_database("combined.rkdb")
 # From in-memory sequences
 counter = PyCounter(21)
 counter.add_sequence("ATCGATCGATCGATCGATCGATCGATCGATCGATCG")
-counter.add_kmer("ATCGATCGATCGATCGATCGAT")   # must be exactly k long
+counter.add_kmer("ATCGATCGATCGATCGATCGA")   # must be exactly k long
 counter.save_database("from_strings.rkdb")
 
 stats = counter.get_stats()
@@ -134,8 +134,8 @@ rustkmer query database.rkdb ATCGATCGATC GCTAGCTAGCT
 printf 'ATCGATCGATC\nGCTAGCTAGCT\n' > queries.txt
 rustkmer query database.rkdb -b queries.txt
 
-# Extract and query every k-mer of a FASTA/FASTQ file
-rustkmer query database.rkdb -s reads.fastq
+# Extract and query every k-mer of a FASTA file
+rustkmer query database.rkdb -s reads.fasta
 
 # Save results to a file instead of stdout
 rustkmer query database.rkdb -b queries.txt -o results.txt
@@ -260,7 +260,7 @@ rustkmer count -k 11 -i nope.fasta -o out.rkdb # error: file not found
 
 ## 7. Performance Tips
 
-- **Threads**: pass `--threads N` to `count` (CLI) or `threads=N` to `PyCounter` (Python). Precedence: flag beats `RUSTKMER_THREADS` beats `RAYON_NUM_THREADS` beats all cores.
+- **Threads**: pass `--threads N` to `count` (CLI) or `threads=N` to `PyCounter` (Python). For the CLI, precedence is: flag beats `RUSTKMER_THREADS` beats `RAYON_NUM_THREADS` beats all cores. The Python binding does not read those environment variables — `threads=None` uses all available cores.
 - **Load modes**: `LoadMode.Preload` gives the fastest exact queries at the highest memory cost; `LoadMode.Lazy` binary-searches sorted entries; `LoadMode.MemoryMapped` keeps only a file handle.
 - **Batch queries**: `query_exact_batch` (Python) or `-b queries.txt` (CLI) amortizes database loading over many lookups.
 - **Canonical mode** roughly halves the database for strand-agnostic analyses.
@@ -272,11 +272,12 @@ Use the **CLI** for one-off counting, shell pipelines, and batch jobs. Use the *
 
 ## Runnable Example Scripts
 
-The repository ships working scripts you can run directly:
+The repository ships example scripts (check their flags before running; some predate the current CLI):
 
 - `examples/bash/01_counting.sh` — counting walkthroughs (note: it predates the current CLI; prefer the flags shown in this page, e.g. `--threads` instead of `-t`)
 - `examples/bash/03_querying.sh` — query-based workflows
-- `examples/python/demo_pyo3_binding.py`, `examples/python/unified_query_example.py` — PyDatabase interface demos
+- `examples/python/demo_pyo3_binding.py` — prefix-query interface demo (`PyPrefixQuery` / `PyExtendedPrefixQuery`)
+- `examples/python/unified_query_example.py` — `PyDatabase` interface demo
 - `examples/data/demo_rice_genome.fa.gz` — bundled demo FASTA (gzipped)
 - `examples/README.md` — index of all examples
 

@@ -116,7 +116,7 @@ Query multiple k-mers in one call.
 - `Dict[str, PyQueryResult]`: Mapping from each input k-mer to its result
 
 **Raises:**
-- `ValueError`: If any k-mer is invalid (the error names the failing input)
+- `ValueError`: If any k-mer is invalid — the message reports the length mismatch or invalid characters, but does not include the offending input
 
 **Example:**
 ```python
@@ -157,8 +157,8 @@ Hybrid-pattern query supporting spacer notation such as `ATAC{N5}ACAC`.
 - `Dict[str, str]`: Mapping of matching k-mer to count (as string)
 
 **Raises:**
-- `ValueError`: If the pattern is empty or invalid
-- `RuntimeError`: If the hybrid query fails
+- `ValueError`: If the database is not loaded or available
+- `RuntimeError`: If the pattern is empty or invalid, or the hybrid query fails
 
 #### `extract_by_prefix(prefix) -> Dict[str, str]`
 
@@ -267,8 +267,8 @@ Stream k-mers to a tab-separated text file (`kmer\tcount` per line).
 - `int`: Number of k-mers exported
 
 **Raises:**
-- `PermissionError`: If the output file cannot be created or written
-- `RuntimeError`: If a write fails mid-export
+- `PermissionError`: If the output file cannot be created
+- `RuntimeError`: If a write or flush fails during export
 
 **Example:**
 ```python
@@ -288,7 +288,7 @@ Export as CSV with a `kmer,count` header row. Same parameters and exceptions as 
 
 #### `PyDatabase.merge(databases, output, *, max_memory=None, merge_mode="auto")` (static method)
 
-Merge multiple `.rkdb` databases into a single output database. The merge goes through the same bounded core the CLI uses: total k-mer counts are read from the headers, compared against the memory budget, and routed to the in-memory or streaming path accordingly. The output file is written directly by the merge — the merged database is never held fully in RAM.
+Merge multiple `.rkdb` databases into a single output database. The merge goes through the same bounded core the CLI uses: total k-mer counts are read from the headers, compared against the memory budget, and routed to the in-memory or streaming path accordingly. The streaming and prefix-cache routes write the output directly; only the in-memory route (selected when the merge fits the memory budget) materializes the full merged dataset in RAM before writing it.
 
 **Parameters:**
 - `databases` (List[str]): Database file paths to merge
@@ -337,7 +337,7 @@ PyDatabase.merge(
 
 - `dump()` and `export_all_kmers()` build their result lists in memory; page through large databases with `limit`/`offset`
 - The streaming exports (`export_to_file`, `export_to_json`, `export_to_csv`) write incrementally and suit very large databases
-- `PyDatabase.merge` never materializes the merged database in RAM
+- `PyDatabase.merge` materializes the merged dataset in RAM only on the in-memory route; the streaming and prefix-cache routes write incrementally
 
 ## Error Handling
 
@@ -346,7 +346,7 @@ PyDatabase.merge(
 - `FileNotFoundError`: Database file doesn't exist (constructor, `merge`)
 - `ValueError`: File is not a valid `.rkdb` database, k-mer length mismatch, invalid characters, invalid pagination/merge parameters
 - `RuntimeError`: Query-engine failures (prefix, hybrid, merge)
-- `PermissionError`: Export target cannot be created or written
+- `PermissionError`: Export target cannot be created (write/flush failures raise `RuntimeError`)
 
 ### Best Practices
 

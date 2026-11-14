@@ -32,7 +32,7 @@ fn database_info(&self) -> HashMap<String, String>
 #### 1.3 关键功能实现
 - ✅ **query_hybrid功能**: 完全保留原有混合模式查询功能
 - ✅ **模式解析**: 支持{N}语法解析
-- ✅ **批量查询**: 支持批量前缀、混合、模糊查询
+- ✅ **批量查询**: 支持批量前缀、混合查询
 - ✅ **内存优化**: 共享数据库实例，避免重复加载
 - ✅ **错误处理**: 统一的错误处理机制
 
@@ -44,7 +44,7 @@ fn database_info(&self) -> HashMap<String, String>
   - 从PyPrefixQuery迁移到统一PyDatabase接口
   - 展示query_hybrid功能
   - 添加批量查询示例
-  - 增加性能监控代码
+  - 展示数据库信息与模式解析
 
 #### 2.2 创建统一接口示例
 - **文件**: `examples/python/unified_query_example.py` (新建)
@@ -80,14 +80,14 @@ fn database_info(&self) -> HashMap<String, String>
 原有用法：
 ```python
 # 原有代码
-engine = rustkmer_pyo3.PyPrefixQuery("/path/to/database.rkdb")
+engine = pyrustkmer.PyPrefixQuery("/path/to/database.rkdb")
 results = engine.query_hybrid("AAAAAAAAAAAAAAAAAAAAA{N7}AAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 ```
 
 新统一接口：
 ```python
 # 新代码
-engine = rustkmer_pyo3.PyDatabase("/path/to/database.rkdb", rustkmer_pyo3.LoadMode.Preload)
+engine = pyrustkmer.PyDatabase("/path/to/database.rkdb", pyrustkmer.LoadMode.Preload)
 results = engine.query_hybrid("AAAAAAAAAAAAAAAAAAAAA{N7}AAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 ```
 
@@ -201,7 +201,7 @@ results = {
 
 ### 向后兼容性
 - 现有PyPrefixQuery、PyFuzzyQuery类继续可用
-- 提供迁移适配器
+- 未提供独立的迁移适配器类
 - 渐进式升级路径
 
 ## ⚠️ 待完成工作

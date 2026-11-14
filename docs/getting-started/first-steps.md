@@ -1,3 +1,4 @@
+<!-- generated-by: gsd-doc-writer -->
 # First Steps
 
 Welcome to your first k-mer counting experience with RustKmer! This guide will walk you through basic operations and help you understand the fundamentals.
@@ -81,13 +82,12 @@ rustkmer count -k 21 -C -i sample.fa -o sample_k21.rkdb --verbose
 **Expected Output:**
 ```
 🧬 Counting k-mers with RustKmer CLI...
-Processing file: sample.fa
+Processing file 1/1: sample.fa
   K-mer size: 21
   Canonical mode: true
-  Total k-mers processed: 104
-  Unique k-mers found: 4
-  Uniqueness ratio: 0.0385
-✅ Database saved to: sample_k21.rkdb
+  Total k-mers processed: 106
+  Unique k-mers found: 24
+Results saved to: sample_k21.rkdb
 ```
 
 ---
@@ -174,7 +174,7 @@ print("🔍 Fuzzy searching with wildcards...")
 fuzzy = PyFuzzyQuery(db)
 for pattern in patterns:
     results = fuzzy.query_fuzzy(pattern, max_mutations=1)
-    print(f"   Pattern '{pattern}': found {len(results)} matches within distance 1")
+    print(f"   Pattern '{pattern}': found {len(results.matches)} matches within distance 1")
 
 ```
 
@@ -194,7 +194,7 @@ original = "ATCGATCGATCGATCGATCGAT"
 print("🎯 Distance-based fuzzy searching...")
 fuzzy = PyFuzzyQuery(db)
 results = fuzzy.query_fuzzy(original, max_mutations=2)
-print(f"   Found {len(results)} k-mers within distance 2 of '{original}'")
+print(f"   Found {len(results.matches)} k-mers within distance 2 of '{original}'")
 
 ```
 
@@ -318,7 +318,7 @@ rustkmer count --help
 counter = PyCounter(13)  # Smaller k = less memory
 
 # For query-heavy workloads
-db = PyDatabase("database.rkdb", LoadMode.MemoryMapped)  # Memory-mapped (lower memory)
+db = PyDatabase("database.rkdb", LoadMode.Lazy)  # Sorted in-memory index (lower memory than Preload)
 # db = PyDatabase("database.rkdb", LoadMode.Preload)  # Preload for speed
 ```
 

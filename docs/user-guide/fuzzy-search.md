@@ -28,7 +28,7 @@ Complete guide to fuzzy searching with RustKmer, including wildcard patterns, Ha
 |------|-------------|----------|---------|
 | **Wildcard Search** | Replace `N` with any base (A, T, C, G) | Ambiguous positions, incomplete sequences | `ATN` → `ATA`, `ATT`, `ATC`, `ATG` |
 | **Hamming Distance** | Find k-mers within X mutations | Error tolerance, variant detection | `ATCG` + distance=1 → `TTCG`, `AACG`, `ATAG`, `ATCC` |
-| **K-mer Completion** | Extend shorter k-mers to database k-mer size | Partial matches, primer design | `ATCG` (k=4) → `ATCGATCGATCG` (k=12) |
+| **Length Normalization** | Pad a shorter query with `N`s or truncate a longer one to the database k-mer size (up to 3 positions; CLI/Rust core only) | Partial matches, primer design | `ATCG` (k=4) → `NATCG` (k=5) via the CLI; the Python `query_fuzzy` API rejects any length mismatch |
 
 ---
 
@@ -49,7 +49,7 @@ wildcard_patterns = ["ATCGATCGATCGATCGATCGN", "CGATCGATCGATCGATCGATN", "TTGATCGA
 
 for pattern in wildcard_patterns:
     results = fuzzy.query_fuzzy(pattern, max_mutations=0)
-    print(f"   Pattern '{pattern}': {results.total_matches} matches")
+    print(f"   Pattern '{pattern}': {len(results.matches)} matching k-mers ({results.total_matches} total occurrences)")
 
     # Show first few matches
     for i, result in enumerate(results.matches[:3]):
@@ -189,7 +189,7 @@ def primer_compatibility_check(db_path, primer_sequence):
 db_path = "genome_k21.rkdb"
 
 # Find conserved motifs
-motif_results = find_conserved_motifs(db_path, "ATGNNNGTATCGATCGATCGAT")
+motif_results = find_conserved_motifs(db_path, "ATGNNNGTATCGATCGATCGA")
 
 # Check primer compatibility
 primer_results = primer_compatibility_check(db_path, "ATGCCGATCGATCGATCGATC")
@@ -267,10 +267,11 @@ def distance_based_search(db_path, query_kmer, max_mutations=3):
     # Perform fuzzy search with distance constraint
     results = fuzzy.query_fuzzy(query_kmer, max_mutations=max_mutations)
 
-    # Group results by distance
+    # Group results by distance. PyFuzzyMatch.distance is currently always
+    # None, so compute the Hamming distance from the query and match instead.
     distance_groups = {}
     for result in results.matches:
-        dist = result.distance
+        dist = sum(1 for a, b in zip(query_kmer, result.kmer) if a != b)
         if dist not in distance_groups:
             distance_groups[dist] = []
         distance_groups[dist].append(result)
@@ -302,9 +303,9 @@ def variant_analysis(db_path, reference_kmer):
         results = fuzzy.query_fuzzy(reference_kmer, max_mutations=distance)
 
         # Calculate statistics
-        exact_match = any(r.distance == 0 for r in results.matches)
-        total_variants = len([r for r in results.matches if r.distance > 0])
-        total_variant_count = sum(r.count for r in results.matches if r.distance > 0)
+        exact_match = any(r.kmer == reference_kmer for r in results.matches)
+        total_variants = len([r for r in results.matches if r.kmer != reference_kmer])
+        total_variant_count = sum(r.count for r in results.matches if r.kmer != reference_kmer)
 
         print(f"\nDistance ≤ {distance}:")
         print(f"  Exact match found: {'Yes' if exact_match else 'No'}")

@@ -19,7 +19,7 @@ rustkmer merge -i demo_a.rkdb demo_b.rkdb -o merged.rkdb --merge-mode memory
 
 ```text
 Merging 2 databases...
-Loading reference database: demo_a.rkdb
+Reading reference database header: demo_a.rkdb
 Saving merged database to: merged.rkdb
 Merge completed successfully!
   Total input databases: 2
@@ -31,7 +31,7 @@ Merge completed successfully!
   Sorted: true
 ```
 
-Merging **sums the counts** of shared k-mers: each input had `total_kmers: 92` over 29 uniques, and the merged database reports 184 total (92 + 92) over the same 29 uniques.
+Merging **sums the counts** of shared k-mers: each input held 29 unique k-mers totaling 92 observations, so the merged database holds the same 29 unique records with counts summing to 184 (92 + 92). Note that the header's `total_kmers` — and the summary's `Total k-mers:` line — is the **record count** (29), not the summed abundance; in a freshly written database `total_kmers` equals `unique_kmers`.
 
 `-i` accepts two or more databases; `-o` is the merged output path.
 
@@ -46,7 +46,7 @@ rustkmer merge -i demo_a.rkdb canonical.rkdb -o bad_merge.rkdb
 
 ```text
 Merging 2 databases...
-Loading reference database: demo_a.rkdb
+Reading reference database header: demo_a.rkdb
 Error: Database 'canonical.rkdb' has canonical mode true, expected false
 
 Recovery suggestions:
@@ -82,7 +82,7 @@ rustkmer merge -i a.rkdb b.rkdb -o merged.rkdb --merge-mode memory
 - `--merge-mode streaming` always streams; the merged bytes are written directly as the merge proceeds — the merged database is never fully held in RAM.
 - Without `--max-memory`, the budget defaults to 50% of system memory.
 
-Additional flags: `--num-threads N` (0 = all cores), `--temp-dir DIR` for streaming spill files, `--use-prefix-cache` + `--batch-size N` for the prefix-cache strategy, `--keep-intermediate` (debugging), `-v`/`-q`.
+Additional flags: `--num-threads N` (0 = all cores), `--temp-dir DIR` for streaming spill files, `--use-prefix-cache` for the prefix-cache strategy (`--batch-size N` is accepted but currently has no effect — it is never passed into the merge config), `--keep-intermediate` (debugging), `-v`/`-q`.
 
 ## 4. Merging from Python
 
@@ -110,7 +110,7 @@ Inspect the result:
 
 ```python
 db = PyDatabase("merged.rkdb", LoadMode.Preload)
-print(db.get_stats())     # PyDatabaseStats(kmer_size=11, total_kmers=184, unique_kmers=29, ...)
+print(db.get_stats())     # PyDatabaseStats(kmer_size=11, total_kmers=29, unique_kmers=29, ...)
 ```
 
 ## 5. Pattern: Cohort Merge (one database per sample)

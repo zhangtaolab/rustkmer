@@ -6,7 +6,7 @@
 
 ### 使用语法：
 ```bash
-rustkmer prefix-query [OPTIONS] <DATABASE> <PREFIX>
+rustkmer prefix-query [OPTIONS] <DATABASE> (-p, --pattern <PATTERN> | -x, --prefix <PREFIX>)
 ```
 
 ### 参数说明：
@@ -20,16 +20,16 @@ rustkmer prefix-query [OPTIONS] <DATABASE> <PREFIX>
 ### 使用示例：
 ```bash
 # 基本前缀查询
-rustkmer prefix-query database.rkdb "AAATT"
+rustkmer prefix-query database.rkdb -x "AAATT"
 
 # 指定输出格式
-rustkmer prefix-query database.rkdb "AAAA" --format json
+rustkmer prefix-query database.rkdb -p "AAAA" --format json
 
 # 保存到文件
-rustkmer prefix-query database.rkdb "AAATT" --output results.txt
+rustkmer prefix-query database.rkdb -x "AAATT" --output results.txt
 
 # 详细输出
-rustkmer prefix-query database.rkdb "AAATT" --verbose
+rustkmer prefix-query database.rkdb -x "AAATT" --verbose
 ```
 
 ### 预期输出：
@@ -49,7 +49,7 @@ AAATTCCGGAATTCCGG    890
 
 ### 使用语法：
 ```bash
-rustkmer suffix-query [OPTIONS] <DATABASE> <SUFFIX>
+# 当前 CLI 未实现 suffix-query 子命令（Commands 枚举中无此项）
 ```
 
 ### 参数说明：
@@ -59,14 +59,11 @@ rustkmer suffix-query [OPTIONS] <DATABASE> <SUFFIX>
 
 ### 使用示例：
 ```bash
-# 基本后缀查询
-rustkmer suffix-query database.rkdb "AAA"
+# 基本后缀查询（未实现：当前不存在 suffix-query 子命令）
 
-# 详细输出
-rustkmer suffix-query database.rkdb "AAA" --verbose
+# 详细输出（未实现：当前不存在 suffix-query 子命令）
 
-# JSON格式输出
-rustkmer suffix-query database.rkdb "AAA" --format json
+# JSON格式输出（未实现：当前不存在 suffix-query 子命令）
 ```
 
 ### 预期输出：
@@ -86,7 +83,7 @@ CCGGCCGGCCAAA        890
 
 ### 使用语法：
 ```bash
-rustkmer hybrid-query [OPTIONS] <DATABASE> <PATTERN>
+rustkmer prefix-query [OPTIONS] <DATABASE> --pattern <PATTERN> --hybrid
 ```
 
 ### 参数说明：
@@ -101,19 +98,17 @@ rustkmer hybrid-query [OPTIONS] <DATABASE> <PATTERN>
 ### 使用示例：
 ```bash
 # 智能混合查询 (自动选择最优策略)
-rustkmer hybrid-query database.rkdb "AAANNNAAA"
+rustkmer prefix-query database.rkdb --pattern "AAA{N3}AAA" --hybrid
 
-# 强制使用前缀匹配
-rustkmer hybrid-query database.rkdb "AAAANNN" --force-prefix
+# 强制使用前缀匹配（不存在 --force-prefix 选项；前缀匹配即 prefix-query 的默认模式）
+rustkmer prefix-query database.rkdb -p "AAAA"
 
-# 强制使用后缀匹配
-rustkmer hybrid-query database.rkdb "NNNAAA" --force-suffix
+# 强制使用后缀匹配（未实现：无 --force-suffix 选项，CLI 也不支持后缀匹配）
 
-# 强制使用变体生成 (用于对比)
-rustkmer hybrid-query database.rkdb "ANANANA" --force-variants
+# 强制使用变体生成（未实现：无 --force-variants 选项；变体匹配请使用 fuzzy-query 子命令）
 
 # 显示策略信息
-rustkmer hybrid-query database.rkdb "AAANNNAAA" --verbose
+rustkmer prefix-query database.rkdb --pattern "AAA{N3}AAA" --hybrid --verbose
 ```
 
 ### 预期输出：
@@ -137,7 +132,7 @@ AAATTTCTAGAAA        890
 
 ### 使用语法：
 ```bash
-rustkmer smart-query [OPTIONS] <DATABASE> <PATTERN>
+# 当前 CLI 未实现 smart-query 子命令（Commands 枚举中无此项）
 ```
 
 ### 特性：
@@ -148,14 +143,13 @@ rustkmer smart-query [OPTIONS] <DATABASE> <PATTERN>
 
 ### 使用示例：
 ```bash
-# 智能查询 (自动选择策略)
-rustkmer smart-query database.rkdb "AAAANNN"
+# 智能查询 (自动选择策略)（未实现：无 smart-query 子命令；等价的前缀查询如下）
+rustkmer prefix-query database.rkdb -p "AAAA"
 
-# 显示详细性能分析
-rustkmer smart-query database.rkdb "AAAANNN" --profile
+# 显示详细性能分析（--profile 由 prefix-query 提供）
+rustkmer prefix-query database.rkdb -p "AAAA" --profile
 
-# 对比不同策略
-rustkmer smart-query database.rkdb "AAAANNN" --compare-all
+# 对比不同策略（未实现：无 smart-query 子命令，也无 --compare-all 选项）
 ```
 
 ### 预期输出：
@@ -189,17 +183,17 @@ AAAACCGTTACGGTAA     567
 
 ### Prefix Batch:
 ```bash
-rustkmer prefix-batch database.rkdb --prefix-file prefixes.txt
+# 未实现：无 prefix-batch 子命令，也无 --prefix-file 选项
 ```
 
 ### Suffix Batch:
 ```bash
-rustkmer suffix-batch database.rkdb --suffix-file suffixes.txt
+# 未实现：无 suffix-batch 子命令，也无 --suffix-file 选项
 ```
 
 ### Smart Batch:
 ```bash
-rustkmer smart-batch database.rkdb --pattern-file patterns.txt
+# 未实现：无 smart-batch 子命令，也无 --pattern-file 选项
 ```
 
 ---
@@ -227,9 +221,9 @@ rustkmer smart-batch database.rkdb --pattern-file patterns.txt
 ```
 src/cli/commands/
 ├── prefix.rs       # 前缀查询实现
-├── suffix.rs       # 后缀查询实现  
-├── hybrid.rs       # 混合查询实现
-├── smart.rs        # 智能查询实现
+├── suffix.rs       # 未实现（文件不存在）  
+├── hybrid.rs       # 未实现（文件不存在）
+├── smart.rs        # 未实现（文件不存在）
 └── mod.rs         # 命令注册
 ```
 
@@ -251,12 +245,12 @@ src/cli/commands/
 ### 用户体验：
 ```bash
 # 简单直观的命令
-rustkmer prefix-query database.rkdb "AAATT"
-rustkmer suffix-query database.rkdb "AAA"
-rustkmer hybrid-query database.rkdb "AAANNNAAA"
+rustkmer prefix-query database.rkdb -x "AAATT"
+# 未实现：无 suffix-query 子命令
+rustkmer prefix-query database.rkdb --pattern "AAA{N3}AAA" --hybrid
 
 # 智能自动选择
-rustkmer smart-query database.rkdb "AAANNNAAA"
+rustkmer prefix-query database.rkdb --pattern "AAA{N3}AAA"
 ```
 
 ### 功能对比：

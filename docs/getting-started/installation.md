@@ -147,7 +147,7 @@ Install the command-line tool for system-wide k-mer analysis.
 cargo install rustkmer
 
 # Install from source (requires Rust toolchain)
-git clone https://github.com/rustkmer/rustkmer
+git clone https://github.com/zhangtaolab/rustkmer
 cd rustkmer
 cargo install --path .
 ```
@@ -159,7 +159,7 @@ rustkmer --version
 ```
 
 **System Requirements:**
-- Rust 1.80 or higher
+- Rust 1.82 or higher
 - Cargo package manager
 - Compiler toolchain (gcc/clang on Linux/macOS, MSVC on Windows)
 
@@ -172,7 +172,7 @@ For development or when you need the latest features.
 #### Prerequisites
 
 **Required Dependencies:**
-- Rust 1.80+
+- Rust 1.82+
 - Python 3.11+ (for Python bindings)
 - C++ compiler (gcc/clang/MSVC)
 - Git
@@ -181,7 +181,7 @@ For development or when you need the latest features.
 
 ```bash
 # Clone the repository
-git clone https://github.com/rustkmer/rustkmer.git
+git clone https://github.com/zhangtaolab/rustkmer.git
 cd rustkmer
 
 # Build the Rust library
@@ -191,7 +191,8 @@ cargo build --release
 cd pyo3
 maturin develop --release
 
-# Install command-line tool
+# Install command-line tool (run from the repository root)
+cd ..
 cargo install --path .
 ```
 
@@ -220,9 +221,11 @@ docker run --rm -it rustkmer/rustkmer:latest rustkmer --version
 ```
 
 #### Build from Source
+
+<!-- VERIFY: `docker build -t rustkmer:local .` requires a Dockerfile at the repository root; no Dockerfile exists in this repository, so this command cannot run as written. -->
 ```bash
 # Clone repository
-git clone https://github.com/rustkmer/rustkmer.git
+git clone https://github.com/zhangtaolab/rustkmer.git
 cd rustkmer
 
 # Build Docker image
@@ -426,7 +429,7 @@ pip install --user pyrustkmer
 
 If you encounter installation issues:
 
-1. **Check System Requirements**: Ensure Python 3.11+ and Rust 1.80+ are installed
+1. **Check System Requirements**: Ensure Python 3.11+ and Rust 1.82+ are installed
 2. **Verify PATH**: Make sure `pip` and/or `cargo` are in your system PATH
 3. **Clear Cache**: Sometimes clearing pip cache helps: `pip cache purge`
 4. **Update Packages**: Ensure `pip` and `rustup` are up to date

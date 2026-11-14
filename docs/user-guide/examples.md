@@ -142,7 +142,7 @@ db = PyDatabase(database_path, LoadMode.Preload)
 # Query specific k-mers (must match the database k-mer size, k=31 here)
 test_kmers = [
     "ATCGATCGATCGATCGATCGATCGATCGATC",
-    "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGC"
+    "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCT"
 ]
 
 for kmer in test_kmers:
@@ -210,9 +210,9 @@ db = PyDatabase("database.rkdb", LoadMode.Preload)
 
 # Prepare query list (k-mers must match the database k-mer size)
 query_kmers = [
-    "ATCGATCGATCGATCGATCGATC",
-    "GCTAGCTAGCTAGCTAGCTAGCT",
-    "CCCCCCCCCCCCCCCCCCCCCCCC",
+    "ATCGATCGATCGATCGATCGATCGATCGATC",
+    "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCT",
+    "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
     # ... thousands more k-mers
 ]
 
@@ -582,7 +582,10 @@ def complete_genomics_workflow(input_dir, output_dir):
 
     for file in sequence_files:
         print(f"  Processing {os.path.basename(file)}")
-        counter.add_from_fasta(file)
+        if file.endswith((".fq", ".fq.gz", ".fastq", ".fastq.gz")):
+            counter.add_from_fastq(file)
+        else:
+            counter.add_from_fasta(file)
 
     counting_time = time.time() - start_time
     print(f"Counting completed in {counting_time:.2f} seconds")
@@ -605,7 +608,7 @@ def complete_genomics_workflow(input_dir, output_dir):
     # 6. Perform some queries (k-mers must be 31 characters for k=31)
     test_sequences = [
         "ATCGATCGATCGATCGATCGATCGATCGATC",
-        "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGC"
+        "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCT"
     ]
 
     print("\nQuery Results:")
@@ -616,7 +619,7 @@ def complete_genomics_workflow(input_dir, output_dir):
     # 7. Fuzzy search example
     fq = PyFuzzyQuery(db)
 
-    pattern = "ATCGATCGATCGATCGATCGN"  # Find sequences with this pattern
+    pattern = "ATCGATCGATCGATCGATCGATCGATCGATN"  # Find sequences with this pattern
     fuzzy_results = fq.query_fuzzy(pattern, max_mutations=0)
     print(f"\nFuzzy search for '{pattern}': {fuzzy_results.total_matches} matches")
 

@@ -13,7 +13,7 @@
 
 ### 方法1: 简单脚本
 ```bash
-# 直接使用提供的简单脚本（脚本内置数据库路径与模式，不接受命令行参数）
+# 直接使用提供的简单脚本（可选命令行参数：argv[1]=数据库路径，argv[2]=查询模式）
 cd rustkmer/pyo3/target/debug
 export PYTHONPATH="/Users/forrest/Github/rustkmer/pyo3/target/debug:$PYTHONPATH"
 /usr/bin/python3 /Users/forrest/Github/rustkmer/examples/python/simple_prefix_query.py
@@ -47,7 +47,7 @@ else:
     print("GCCGCGG: 未找到")
 
 # 混合模式查询（等价于你的命令）
-hybrid_result = engine.query_hybrid("AAAAAAAA{N5}AAAAAA")
+hybrid_result = engine.query_hybrid("AA{N3}AA")
 print(f"混合查询结果: {len(hybrid_result)} 个匹配")
 for kmer, count in list(hybrid_result.items())[:3]:  # 显示前3个
     print(f"  {kmer}: {count}")
@@ -71,7 +71,7 @@ print(f"数据库统计: kmer_size={stats.kmer_size}, unique_kmers={stats.unique
 - `pyo3/src/database.rs` - 统一接口核心实现 ✅
 - `pyo3/src/lib.rs` - PyO3模块导出
 - `pyo3/build_with_python.sh` - 统一构建脚本 ✅
-- `pyo3/target/debug/libpyrustkmer.dylib` - 编译好的扩展库（macOS；Linux 下为 `libpyrustkmer.so`）
+- `pyo3/target/release/libpyrustkmer.dylib` - 编译好的扩展库（macOS；Linux 下为 `libpyrustkmer.so`）
 
 ### Python示例脚本
 - `examples/python/simple_prefix_query.py` - 简单版本，已更新为统一接口 ✅
@@ -166,7 +166,7 @@ print("Available classes:", [x for x in dir(pyrustkmer) if not x.startswith('_')
 ### 支持的查询类型
 1. **纯前缀查询**: `AAAAAAAA`
 2. **混合搜索**: `AAAAAAAA{N5}AAAAAA`
-3. **复杂模式**: `ATCG{N3}GCTA` 或 `AAAAA{N2}TTTTT{N2}GGGGG`
+3. **复杂模式**: `ATCG{N3}GCTA`（当前仅支持单个 `{N..}` 通配组，多组模式会解析失败）
 
 ### 性能特性
 - ⚡ 内存映射文件访问
@@ -177,7 +177,7 @@ print("Available classes:", [x for x in dir(pyrustkmer) if not x.startswith('_')
 ### 监控功能
 ```python
 # 获取详细性能指标
-metrics = extended_engine.query_with_metrics("AAAAAAAA{N5}AAAAAA")
+metrics = extended_engine.query_hybrid_with_metrics("AAAAAAAA{N5}AAAAAA")
 print(f"执行时间: {metrics.execution_time_ms} ms")
 print(f"总匹配数: {metrics.total_matches}")
 print(f"内存块大小: {metrics.block_size}")
@@ -228,12 +228,12 @@ engine = PyDatabase(
 # 所有查询功能都通过同一个实例
 exact_result = engine.query_exact("GCCGCGG")                    # 精确查询
 prefix_result = engine.query_prefix_optimized("GCC")      # 前缀查询
-hybrid_result = engine.query_hybrid("GCC{N3}CGG")         # 混合查询
-fuzzy_result = engine.fuzzy_query("GCCGCN", 1)            # 模糊查询
+hybrid_result = engine.query_hybrid("GC{N3}GG")          # 混合查询
+fuzzy_result = engine.fuzzy_query("GCCGCNG", 1)           # 模糊查询
 
 # 批量查询支持
 batch_hybrid = engine.query_hybrid_batch([
-    "GCC{N3}CGG", "ATC{N5}GCT", "AAA{N2}TTT"
+    "GC{N3}GG", "AT{N3}GC", "AA{N2}TTT"
 ])
 
 # 性能监控

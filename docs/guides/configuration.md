@@ -7,7 +7,7 @@ rustkmer can be configured at three levels: a TOML config file (`.rustkmerrc`), 
 
 Two things to keep in mind when configuring the CLI:
 
-1. **The CLI entry point does not load `.rustkmerrc` on startup.** `ConfigManager` is a library-level facility (`rustkmer::config`) intended for embedding and tooling; `src/main.rs` dispatches straight to command handlers. The environment variables the shipped CLI actually reads directly are listed in [Directly-read environment variables](#directly-read-environment-variables).
+1. **The CLI entry point does not load `.rustkmerrc` on startup.** `ConfigManager` is a library-level facility (`rustkmer::config`) intended for embedding and tooling; `src/main.rs` dispatches straight to command handlers without reading the config file. Even for library consumers, loading is explicit: `ConfigManager::new()` starts from defaults and discovers a file path, but values are only merged when you call `.load()`. The environment variables the shipped CLI actually reads directly are listed in [Directly-read environment variables](#directly-read-environment-variables).
 2. **Command flags always win** for the options they expose. For example, `rustkmer count --threads 4` overrides every environment tier for that run.
 
 ## Config file format (`.rustkmerrc`)
@@ -18,7 +18,7 @@ The config file is TOML with five top-level sections. `ConfigManager` searches t
 2. `$HOME/.rustkmerrc`
 3. `$XDG_CONFIG_HOME/rustkmer/.rustkmerrc`
 
-Minimal working example (all keys are optional — any omitted key falls back to its default):
+Example (all five top-level sections are required — the file is deserialized directly into `GlobalConfig` without serde defaults, so omitting a section fails with a `missing field` error; a key omitted inside a present section deserializes as `None`, not the documented default):
 
 ```toml
 [memory]
@@ -57,7 +57,7 @@ level = "info"
 structured = false
 ```
 
-`ConfigManager::save()` serializes the current configuration back to the discovered file as pretty TOML.
+`ConfigManager::save()` serializes the current configuration back to the discovered file as pretty TOML. If no config file was discovered (and none was supplied via `ConfigManager::with_config_file`), `save()` returns the error `No configuration file specified` — it does not create a new file.
 
 ## Environment variables
 
@@ -99,15 +99,17 @@ These are read by the shipped CLI/lib code paths independently of `ConfigManager
 | `RAYON_NUM_THREADS` | `count` and `merge` commands | Rayon-standard thread count; lowest env tier |
 | `RUST_LOG` | `env_logger` init in `src/main.rs` | Log filter (default `info` when unset) |
 | `RUST_LOG_STYLE` | `env_logger` init in `src/main.rs` | Log output styling (`auto`, `always`, `never`) |
-| `PYTHON_LIB_DIR` | build-time linking (see `.cargo/config.toml`) | Optional Python library path when building the PyO3 extension with unusual Python installs |
+| `PYTHON_LIB_DIR` | Not read by any code path | `.cargo/config.toml` mentions it only in commented-out examples, so setting it has no effect; no build script, manifest, source file, or helper script reads it |
 | `HOME`, `XDG_CONFIG_HOME` | `ConfigManager` file discovery | Location of `.rustkmerrc` |
+
+The benchmark harness (`scripts/bench/bench.py`) additionally reads `RUSTKMER_BENCH_MODE` and `RUSTKMER_BENCH_INPUT` to select the input mode/inputs when the corresponding CLI flags are omitted; see the [benchmarking guide](benchmarking.md) for that resolution ladder. No other runtime environment variables are read by the crate.
 
 ## Required vs optional settings
 
 **No environment variable or config key is required.** Every setting has a default, and the CLI runs with zero configuration. Invalid values fail at validation, not at startup:
 
 - `ConfigManager::validate_config` reports (does not throw until surfaced by the caller): `memory_limit`, `mmap_threshold`, `page_size`, and `hash_size` must be non-zero; `default_k` must be 1–64; `threads` must not exceed 256; `extension` must be non-empty.
-- The `count` command rejects `--threads < 1` ("--threads must be >= 1") and k-mer sizes outside 1–64 (`KmerError::InvalidKmerSize`, matching the u128 encoding bound in `src/kmer/encoding.rs`).
+- The `count` command rejects `--threads < 1` ("--threads must be >= 1", collected in `Commands::validate_input` in `src/cli/args.rs`) and k-mer sizes outside 1–64 (`KmerError::InvalidKmerSize`).
 - The `merge` command returns an error for an unparseable `--max-memory` value (e.g. `Invalid memory limit 'abc': Invalid number: abc`).
 
 ## Defaults
@@ -139,6 +141,18 @@ Defaults are defined in the `Default` implementations in `src/config/manager.rs`
 
 Merge-specific defaults (`MergeConfig::default()` in `src/database/merge_config.rs`): `max_memory_usage` = 50% of system memory, `chunk_size` = 50,000,000 k-mers, `temp_dir` = system temp dir, `merge_mode` = `"auto"`.
 
+## Per-environment overrides
+
+There is no built-in environment selector: `ConfigManager` has no development/staging/production switch, and the repository ships no `.env`, `.env.development`, or `.env.production` files. The config-file search order above is fixed regardless of context.
+
+To vary settings per environment, use one of the mechanisms the code actually supports:
+
+1. **Environment variables in the runner** — set `RUSTKMER_*` (and `RAYON_NUM_THREADS` / `RUST_LOG`) in each environment's shell, CI job, or container definition. These override the config file for `ConfigManager` consumers and are read directly where noted above.
+2. **Distinct config files** — library consumers can load an explicit file with `ConfigManager::with_config_file("/path/to/staging.rustkmerrc")`; the CLI never loads a config file, so its per-environment differences must come from flags and environment variables.
+3. **Per-invocation CLI flags** — highest precedence for the options they expose (for example `--threads`, `--max-memory`, `--merge-mode`, `RUST_LOG`).
+
+Because the CLI does not read `.rustkmerrc`, any environment-specific defaults used by pipelines must be passed as flags or environment variables at invocation time.
+
 ## Thread configuration
 
 ### `count` command
@@ -149,11 +163,11 @@ Precedence, highest first (implemented in `resolve_thread_count`, `src/cli/comma
 --threads  >  RUSTKMER_THREADS  >  RAYON_NUM_THREADS  >  all CPU cores
 ```
 
-Set with `rustkmer count --threads 4` or `RUSTKMER_THREADS=4 rustkmer count ...`. Malformed or `< 1` env values fall through to the next tier instead of erroring.
+Set with `rustkmer count --threads 4` or `RUSTKMER_THREADS=4 rustkmer count ...`. Malformed env values and values below 1 in either environmental tier are ignored and fall through to the next tier; a `--threads` value below 1 is a validation error instead of being silently ignored.
 
 ### `merge` command
 
-`--num-threads` (default `0` = all cores) builds the Rayon global thread pool. When set to `0`, `RAYON_NUM_THREADS` is honored if present and parseable (`src/cli/commands/merge.rs`). Note the merge command does **not** read `RUSTKMER_THREADS`.
+`--num-threads` (default `0` = all cores) builds the Rayon global thread pool. When set to `0`, `RAYON_NUM_THREADS` is honored if present and parseable (`src/cli/commands/merge.rs`). Note the merge command does **not** read `RUSTKMER_THREADS`. If the global pool was already initialized earlier in the same process, the pool request is skipped with a note under `--verbose` (the existing pool stays in effect).
 
 ## Memory configuration (merge)
 
@@ -164,18 +178,19 @@ rustkmer merge -i a.rkdb b.rkdb -o merged.rkdb --max-memory 32GB
 ```
 
 - **Units**: `B`, `KB`, `MB`, `GB`, `TB` (binary multipliers of 1024). A bare number is treated as bytes. Case-insensitive; whitespace is trimmed.
-- **Ceiling**: 1 TB — larger values (including arithmetic overflow) return an error, never a panic.
+- **Bounds**: minimum 1 KB ("Memory size too small (minimum 1KB)"); maximum 1 TB — larger values (including arithmetic overflow) return an error, never a panic.
 - **Default** (flag omitted): 50% of total system memory, read from `/proc/meminfo` on Unix; if unavailable, a fixed 32 GB fallback.
 
 Related merge routing flags:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--merge-mode` | `auto` | `auto` (in-memory when estimated footprint is small), `memory` (force in-memory), `streaming` (always stream) |
-| `--use-prefix-cache` | off | External-sort prefix-cache merge strategy (memory-efficient, error isolation) |
-| `--batch-size` | `100000` | K-mers per buffer flush in prefix-cache mode. The effective default comes from the clap surface in `src/cli/args.rs`; `MergeArgs` in `src/cli/commands/merge.rs` declares a divergent `50000` default but is never parsed — `src/main.rs` copies the parsed fields in verbatim |
+| `--merge-mode` | `auto` | `auto` (in-memory while the estimated footprint fits `max_memory`, otherwise streaming — `should_use_streaming` in `src/database/format.rs`), `memory` (force in-memory; rejected with an error if the estimate exceeds the budget), `streaming` (always stream) |
+| `--use-prefix-cache` | off | External-sort prefix-cache merge strategy (memory-efficient, error isolation). With this route enabled, `--merge-mode` does not select the route |
+| `--batch-size` | `100000` | Accepted by the CLI but not currently propagated to the prefix-cache merge, which uses an internal constant batch size. The effective default comes from the clap surface in `src/cli/args.rs`; `MergeArgs` in `src/cli/commands/merge.rs` declares a divergent `50000` default but is never parsed — `src/main.rs` copies the parsed fields in verbatim |
 | `--temp-dir` | system temp | Directory for merge intermediate files |
 | `--keep-intermediate` | off | Keep intermediate files for debugging |
+| `--check-compatibility` | off | Compare input database headers without merging |
 
 ## Logging
 
@@ -203,7 +218,7 @@ Layout: a 42-byte header followed by 20-byte entries (16-byte u128 k-mer + 4-byt
 
 ### Rust (root `Cargo.toml`)
 
-- Crate `rustkmer` 0.5.0, edition 2021; `pyo3/Cargo.toml` builds `rustkmer-pyo3` 0.5.0 as a `cdylib` named `pyrustkmer`.
+- Crate `rustkmer` 0.5.0, edition 2021, MSRV `rust-version = "1.82"`; `pyo3/Cargo.toml` builds `rustkmer-pyo3` 0.5.0 as a `cdylib` named `pyrustkmer` with the same MSRV.
 - Release profile: `lto = true`, `codegen-units = 1`, `panic = "abort"` — keep these when editing `[profile.release]`.
 - Features: `default = []`, `profiling = []`, `disable-zstd = []` (root); `extension-module = ["pyo3/extension-module"]` (pyo3 crate).
 - `.cargo/config.toml` documents optional cross-platform Python linking via `PYTHON_LIB_DIR` (see the [Directly-read environment variables](#directly-read-environment-variables) table).
@@ -214,6 +229,6 @@ Layout: a 42-byte header followed by 20-byte entries (16-byte u128 k-mer + 4-byt
 - `requires-python = ">=3.11"`; runtime dependency `numpy>=1.21`.
 - Optional dependency groups: `dev` (pytest, black, flake8, mypy, ...), `performance` (memory-profiler, psutil), `docs`, `jupyter`.
 - Tool config in the same file: black (line length 88, py311 target), mypy (strict, python_version 3.11), coverage source `pyrustkmer`.
-- pytest is configured with verbosity-only `addopts = ["-v"]`; the 80% threshold is applied by the CI `pyo3-pytest` job's pytest command line, not by local defaults.
+- pytest is configured with verbosity-only `addopts = ["-v"]`; the 80% threshold is applied by the CI `pyo3-pytest` job's pytest command line (`--cov-fail-under=80`), not by local defaults.
 
 Build and install the extension with `maturin develop --release` (helper script: `pyo3/build_with_python.sh`). Version bumps must keep the root `Cargo.toml`, `pyo3/Cargo.toml`, and `pyo3/pyproject.toml` versions in sync (`scripts/sync_versions.sh`).
