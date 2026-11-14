@@ -23,6 +23,7 @@ import hashlib
 import inspect
 import io
 import json
+import math
 import shutil
 import statistics
 import tempfile
@@ -581,8 +582,8 @@ class TestMemoryModel(unittest.TestCase):
     """The capacity-cliff CLI model and the conservative Python projection.
 
     The CLI model is validated against three measured RSS points; the Python
-    projection is the measured 86 B/distinct single-call coefficient quoted
-    as the conservative two-call upper bound; the budget gate is inclusive at
+    projection is the CEILED two-call upper bound (86.5 B/distinct), never
+    the 86 B single-call coefficient; the budget gate is inclusive at
     equality and blocks one byte over.
     """
 
@@ -601,10 +602,18 @@ class TestMemoryModel(unittest.TestCase):
                 f"distinct={distinct}: projected {projected} vs measured "
                 f"{measured} ({deviation:.2%})")
 
-    def test_python_projection_is_exactly_the_measured_coefficient(self):
-        self.assertEqual(p10.python_projection_bytes(1_050_000_000),
-                         86 * 1_050_000_000)
+    def test_python_projection_is_the_ceil_two_call_upper_bound(self):
+        """86.5 B/distinct is the true two-call bound; 86 B under-projects."""
+        expected = int(math.ceil(86.5 * 1_050_000_000))
+        self.assertEqual(p10.python_projection_bytes(1_050_000_000), expected)
+        self.assertGreater(p10.python_projection_bytes(1_050_000_000),
+                           86 * 1_050_000_000)
         self.assertEqual(p10.PYTHON_BYTES_PER_DISTINCT, 86)
+        self.assertEqual(p10.PYTHON_TWO_CALL_BYTES_PER_DISTINCT, 86.5)
+
+    def test_python_projection_ceil_is_not_truncated(self):
+        self.assertEqual(p10.python_projection_bytes(3),
+                         int(math.ceil(86.5 * 3)))
 
     def test_memory_gate_equality_passes_and_one_byte_over_blocks(self):
         budget = 110 * (1 << 30)

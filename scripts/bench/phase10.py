@@ -117,6 +117,10 @@ TOOL_WARMUP_ORDER = ("rustkmer", "jellyfish", "pyrustkmer")
 # 3). Do not tune them to make a projection come out green.
 MEMORY_BUDGET_BYTES = 110 * (1 << 30)   # ~18 GiB of the 128 GiB host for OS
 PYTHON_BYTES_PER_DISTINCT = 86          # measured single-call coefficient
+# Two-call (part-by-part) model: ~33 B/entry on each part's engine tables plus
+# ~53.5 B/entry on the union DashMap. Since D_part <= D_union, the peak is at
+# most 86.5 B per union distinct; the projection ceils that true upper bound.
+PYTHON_TWO_CALL_BYTES_PER_DISTINCT = 86.5
 DEFAULT_PARTITIONS = 64
 SLOT_BYTES = 16                         # Dense(hashbrown<u64,u32>) slot, 16 B
 PAIR_BYTES = 32                         # (u128,u32) drain pair, 32 B
@@ -1577,20 +1581,23 @@ def cli_peak_bytes(distinct, partitions=DEFAULT_PARTITIONS):
     return tables + pairs + MODEL_BASE_BYTES
 
 
-def python_projection_bytes(d_union, bytes_per_distinct=PYTHON_BYTES_PER_DISTINCT):
-    """Conservative Python two-call upper bound: 86 B per union distinct.
+def python_projection_bytes(d_union,
+                            bytes_per_distinct=PYTHON_TWO_CALL_BYTES_PER_DISTINCT):
+    """Conservative Python two-call upper bound: ceil(86.5 B / union distinct).
 
     The measured single-call coefficient is 86 B/distinct. For the two-call
     (part-by-part) full arm the calibrated split is ~33 B/entry on each
     part's engine tables plus ~53.5 B/entry on the union DashMap. Because
     each part's distinct count is at most the union distinct count,
     `33*D_part + 53.5*D_union <= 33*D_union + 53.5*D_union = 86.5*D_union`,
-    and 86 B is the measured value quoted as the conservative bound.
+    so `ceil(86.5 * D_union)` is a TRUE upper bound (86 B under-projects by
+    0.5 B/distinct). The measured 86 B coefficient is kept as
+    `PYTHON_BYTES_PER_DISTINCT`; it is not the two-call bound.
     """
     if (not isinstance(d_union, int) or isinstance(d_union, bool)
             or d_union <= 0):
         raise ValueError(f"d_union must be a positive integer, got {d_union!r}")
-    return bytes_per_distinct * d_union
+    return int(math.ceil(bytes_per_distinct * d_union))
 
 
 def memory_gate(projected_bytes, budget_bytes=MEMORY_BUDGET_BYTES):
@@ -1626,7 +1633,7 @@ def preflight_record(k, distinct, distinct_source, distinct_source_sha256,
         "budget_bytes": budget_bytes,
         "decision": "PROCEED" if ok else "BLOCKED",
         "headroom_bytes": budget_bytes - projected,
-        "model": "python-86B-per-distinct-conservative-two-call-upper-bound",
+        "model": "python-86.5B-per-distinct-conservative-two-call-upper-bound",
         "detail": detail,
     }
 
