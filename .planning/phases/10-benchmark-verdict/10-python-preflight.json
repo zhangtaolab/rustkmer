@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "kind": "phase10-python-preflight",
+  "phase": 10,
+  "created": "2026-11-14T01:19:20.136170+00:00",
+  "records": [
+    {
+      "k": 21,
+      "distinct_source": ".planning/phases/10-benchmark-verdict/10-results-full-k21.json",
+      "distinct_source_sha256": "757c923a7278c06b663ab8720d22cf32abdc10b35a81d65a85765a50be900d6f",
+      "distinct": 897266581,
+      "projected_bytes": 77164925966,
+      "budget_bytes": 118111600640,
+      "decision": "PROCEED",
+      "headroom_bytes": 40946674674,
+      "model": "python-86B-per-distinct-conservative-two-call-upper-bound",
+      "detail": "projected 77164925966 bytes <= budget 118111600640 bytes (40946674674 bytes headroom)"
+    },
+    {
+      "k": 31,
+      "distinct_source": ".planning/phases/10-benchmark-verdict/10-results-full-k31.json",
+      "distinct_source_sha256": "90804c50822dfeb2cbad1d37e413fd07a0fb3471cd776ce40ceff4347b96b5d2",
+      "distinct": 1146353600,
+      "projected_bytes": 98586409600,
+      "budget_bytes": 118111600640,
+      "decision": "PROCEED",
+      "headroom_bytes": 19525191040,
+      "model": "python-86B-per-distinct-conservative-two-call-upper-bound",
+      "detail": "projected 98586409600 bytes <= budget 118111600640 bytes (19525191040 bytes headroom)"
+    }
+  ],
+  "overall": "PROCEED",
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/.claude/worktrees/agent-a5eb35be1e40e77fd/target/release/rustkmer",
+      "size_bytes": 2966832,
+      "sha256": "8f38d20c2e3dc77dfc0ef80c9a2475613da1aa7ad131bd240d5ec74fc87c3d23"
+    },
+    "git_commit": "295c7b6044f1c20e01eb1bacd636282c83856289",
+    "git_dirty": false,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-14T01:19:20.180972+00:00"
+  }
+}
