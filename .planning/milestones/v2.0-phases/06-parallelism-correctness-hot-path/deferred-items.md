@@ -18,4 +18,4 @@ so a later plan or quick task can pick them up.
   **Resolved in 06-03:** plan 06-03 edits `pyo3/src/counter.rs` for PAR-03 and
   its formatting pass normalized the pre-existing drift (`RustPyCounter::new`
   call and the two compressed-file openers). No behavior change.
-
+  status: acknowledged

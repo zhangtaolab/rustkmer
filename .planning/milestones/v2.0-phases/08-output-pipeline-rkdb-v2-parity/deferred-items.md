@@ -15,3 +15,4 @@ in scope).
   The new `tests/rkdb_v2_byte_identity_tests.rs` is rustfmt-clean; no source
   file was modified by this plan. Owner: the next plan that touches the CI
   format gate, or a dedicated formatting quick task.
+  status: acknowledged

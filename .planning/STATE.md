@@ -2,21 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v2.0
 milestone_name: k=21 Counting Parity
-current_phase: 10
-current_phase_name: Benchmark Verdict
-current_plan: complete
-status: executing
+status: Awaiting next milestone
 stopped_at: Phase 10 complete — verified 8/8, review disposition 0 open; D3 answered (Phase 11 not executed); ready for milestone audit
-last_updated: "2026-11-14T05:00:00.000Z"
+last_updated: "2026-11-14T04:39:24.823Z"
 last_activity: 2026-11-14
-last_activity_desc: Phase 10 complete — overall YES on both surfaces at k=21 and k=31
-state_head: 83020a8
+last_activity_desc: Milestone v2.0 completed and archived
+state_head: 73f9451d13bfa93a9861313b87ecc5150369482b
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 29
   completed_plans: 29
   percent: 86
+current_phase: 10
+current_phase_name: Benchmark Verdict
 ---
 
 # Project State
@@ -30,13 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-13)
 
 ## Current Position
 
-Phase: 10 (Benchmark Verdict) — COMPLETE ✓
-Current Plan: 10-04 complete (4/4 plans)
-Total Plans in Phase: 4
-Status: Verified 8/8; overall YES at both k on both surfaces; review 0 open; D3 answered — Phase 11 not executed
-Last activity: 2026-11-14 — Phase 10 complete (k=21 144.69/165.05 vs 194.85/197.95 s; k=31 147.08/178.22 vs 1380.92/187.14 s)
-
-Progress: [███████░░░] 71% (v2.0)
+Phase: Milestone v2.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-11-14 — Milestone v2.0 completed and archived
 
 ## Performance Metrics
 
@@ -214,6 +210,8 @@ Items acknowledged and carried forward, most recent first:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
+| Deferred items | Phase 06 `deferred-items.md`: pre-existing `cargo fmt` drift in `src/database/prefix_cache_merge.rs:1382` and `pyo3/src/counter.rs:197` (both later normalized by 06-03) | Acknowledged at v2.0 close (override closeout) | 2026-11-14 |
+| Deferred items | Phase 08 `deferred-items.md`: pre-existing `cargo fmt --all --check` drift on 7 files not touched by 08-02; owner = next plan touching the CI format gate or a formatting quick task | Acknowledged at v2.0 close (override closeout) | 2026-11-14 |
 | Review findings | IN-06/07/09 (Phase-04 harness/test code) | Deferred (triaged 261111-spz) | 2026-11-11 |
 | Backlog | 999.1 pyo3 build.rs link args; 999.2 stale site-packages shadowing; 999.3 deferred-items stale sweep claim | Opportunistic in v2.0 if touched | 2026-10-09 |
 
@@ -225,6 +223,5 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Re-verification of Phases 5/6/7/9 completed 2026-11-14 — all `passed` (12/12, 20/20, 12/12, 38/38); every phase's verifier digest is current
-- Milestone audit → complete → cleanup (Phase 11 does not execute; MINIM-01..03 deferred)
-- Optional: run `/gsd-secure-phase 9` and `/gsd-secure-phase 10` if SECURITY.md coverage is required for the milestone audit
+
+- Start the next milestone with /gsd-new-milestone

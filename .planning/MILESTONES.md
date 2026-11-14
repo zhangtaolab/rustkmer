@@ -1,5 +1,34 @@
 # Milestones
 
+## v2.0 k=21 Counting Parity (Shipped: 2026-11-14)
+
+**Phases completed:** 6 phases, 29 plans, 73 tasks
+
+**Key accomplishments:**
+- Shared binary-provenance builder + PROF-02 thread-scaling gate wired end-to-end and proven to observe the `--threads` no-op bug as a structured, freshness-bound RED (speedup_t4 ~1.0, speedup_t16 ~1.05, both < 1.3) — the pattern every later Phase 5 gate replicates.
+- Rust 1.80 CI clippy pins plus a deterministic Algorithm R FASTQ slicer with manifest-backed selection; both locked-crate MSRV dependency failures are explicitly preserved as blocking findings.
+- Live-subprocess PROF-02 test pair records the `--threads` no-op as a freshness-bound RED (observed 18/17/17 OS threads at requested 1/4/16 on the 16-core dev host) and captures the 12 pre-refactor golden `.rkdb` hashes with full provenance — no hot-path file touched, no fixture regenerated.
+- Random-record subslicing and a fingerprint-bound parity-reference gate wired into bench.py (additive, SCHEMA_VERSION 1), then proven on the measured CRR1936095 input: head-4M pinned parity 229,694,874 / 519,271,168 vs jellyfish 2.3.1, a 1M random subslice with its own live-derived reference (73,578,421 / 129,801,125, seed 20261112), and the real-slice t1/t4/t16 scaling baseline recorded RED (speedup_t4 1.0318 / speedup_t16 1.0505) — the standing number Phase 6 must beat.
+- Four mechanism arms isolate the in-vivo increment multiplier on real reads: at t16 the global-atomics share is 120.22 ns/window (115.2% of the shared-vs-local gap) while the bandwidth share is -15.82 ns — recorded with an honest inconclusive note, never clamped — and the t16/t1 multiplier on the 18M-distinct subslice is 1.877; the evidence is persisted as attribution-v1 with a committed audited lockfile (sha256 eabd946a…) for Phase 7's engine design.
+- Fresh-worker Python counting benchmark with a parity-validated N-free control baseline (CLI == Python at 73,476,107 distinct / 129,579,577 total; control median 32.14 s over 3 reps) plus a 9-case CLI-vs-Python N-read differential recording 33 Python-only chimeric k-mers across 4 N cases — the D2 evidence Phase 9 resolves, with the measured win basis made invariant to the D2 semantics change.
+- The Phase 5 harness gates are now standing in CI (unit suite + Python benchmark + intentionally-red PROF-02 scaling), with evidence-preserving `always()` uploads, and the README gives maintainers the full tool/provenance/Phase-6-handoff playbook.
+- `--threads` now sizes the rayon pool through a lazy `available_parallelism` fallback: fresh children observe exactly 2/5/17 threads at `--threads 1/4/16`, the Phase 5 pool-size and scaling gates are green, and true single-thread baselines are recorded (synthetic 18.77 s; 4M-read real slice 142.54 s).
+- The CLI hot loop now accumulates into per-worker `LocalKmerCounts` tables and reduces them once per file with checked `u32` sums: `count.rs` contains no shared increment, k×canonical count maps are identical to the pre-change path in both 1-vs-N and multi-file runs, overflow fails loud with the verbatim message, and PyCounter inherits the change through the same core.
+- The counting hot path now encodes with a rolling 2-bit encoder: for every k 1..=32 the emitted sequence and skipped-window counts are byte-for-byte those of the unchanged per-window reference, k 33..=64 keeps the u128 path, and the release timing gate measures the rolling path at 0.452x per-window time (threshold 0.75).
+- The post-hot-path binary is measured GREEN at 1.633x (t4) and 2.016x (t16) scaling with identical counts, true t1 is 26% faster synthetically (18.77 -> 13.59 s) and 2.5x faster on the 4M-read real slice (142.54 -> 57.16 s), every exactness/golden/parity gate is green, MSRV clippy and the rebuilt PyO3 suite pass, and the CI/docs no longer call the PROF-02 gates expected failures — after fixing the serial reduction tail that broke scaling.
+- Atomic CAS publication of `total_kmers` under parallel local reduction, guarded by a deterministic 16-thread x 2000-round regression and a fail-loud u64 overflow proof
+- One skip-N extractor, splitmix64-partitioned sequential engine, and a `--threads 1` CLI cutover with exact counts and byte-identical `.rkdb` output.
+- One producer over the shared extractor, N persistent OS workers with disjoint partition tables and bounded queues, a full CLI cutover, and an exact 2N+1 thread gate that still turns RED on the pre-engine defect.
+- PyCounter's file and sequence paths now extract windows only through the shared `for_each_window` extractor while keeping Python's strip-N pre-filter byte-for-byte, with the one-extractor, MSRV, and dependency-freeze gates persisted as evidence.
+- ENGINE-02 measured on the final engine: synthetic gate GREEN at 6.42/4.09/4.00 s (vs 13.59/8.32/6.74 s), real 4M-read slice 36.92/17.76/23.83 s (vs 57.16/34.98/26.96 s) with pinned 229,694,874/519,271,168, byte-identical sorted `.rkdb`, 17.97 GB t16 RSS, a producer-bound split, and every standing gate green.
+- The CLI's counting-output stage now collects each partition table once, sorts in place with rayon's pdqsort, and streams through the frozen `.rkdb` writer: the measured t4 sort delta fell from 8.91 s to 1.71 s (0.192x) while the sorted output stayed byte-identical, and text output is numerically ordered with a k 1..=64 equivalence proof.
+- The new counting output path reproduces all six committed pre-refactor `.rkdb` goldens byte for byte against three independent references, and both binary-search consumers answer exactly from its files while an unsorted file is refused rather than mis-answered.
+- Every cell of the k x canonical x threads matrix reproduces the pre-refactor reference exactly in both formats, the output boundary is proven disjoint and conserving, and three injected defects — inverted ordering, duplicated records, and a disabled overflow guard — each turned their named gates red before a verified restore.
+- Post-change output stage GREEN at 10.41 s (from 18.73 s) with byte-identical `.rkdb`, slice walls cut to 31.82/10.15/9.31 s at 229M keys, and every standing gate green on a frozen writer
+- Final-tree evidence proves D2 N-read unification (9/9 cases equal, all 33 Python-only chimeric keys gone) and a measured Python counting win of 2.3006x at `threads=1` / 8.4802x at default threads against the committed Phase 5 baseline, with all nine standing gates green.
+
+---
+
 ## v1.0 Performance (Shipped: 2026-10-20)
 
 **Phases completed:** 4 phases, 31 plans, 67 tasks

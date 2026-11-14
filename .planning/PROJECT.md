@@ -45,14 +45,14 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 - ✓ Python surface reaches structural parity with the CLI counting engine: `PyCounter.add_from_fasta/add_from_fastq` count through the shared `CountEngine`, D2 skip-N unified (9/9 differential cells equal, 0 divergence, 33 chimeric k-mers eliminated), `save_database` sorts once under `py.detach`, public `PyCounter` API frozen at 12 names, measured 2.35x (threads=1) / 8.71x (default threads) against the committed Phase 5 sequential baseline — v2.0 (Phase 9, PY-01..02)
 - ✓ Milestone acceptance question answered by full human-scale measurement on BOTH surfaces: **overall YES** at k=21 (CLI 144.69 s vs jellyfish 194.85 s; Python 165.05 s vs 197.95 s) and k=31 (CLI 147.08 s vs 1380.92 s; Python 178.22 s vs 187.14 s), at lower peak memory both times; exact count parity across all arms (k=21 897,266,581 / 8,967,099,203; k=31 1,146,353,600 / 8,275,694,030); slice gate green before each stage; 3 counterbalanced reps; honest `cache_state: unavailable` x30; mechanical byte-identical report; KMC3 descoped and stated; dev-host only — v2.0 (Phase 10, BENCH-V2-02; verified 8/8)
 
+- ✓ Root-cause profiling of the k=21 ~5x gap, then the fix: the gap was parallel-scaling efficiency (~3.5x) × single-thread cost (~1.4x), not data structures; the shared engine + thread-local partitioned tables + overlapping producer recovered it, confirmed at full scale in Phase 10 — v2.0 (Phases 5-7, PROF-01..05, PAR-01..03, ENGINE-01..03)
+
 ### Active
 
-<!-- v2.0 scope — confirmed by user 2026-11-11: k=21 counting parity first; merge untouched this round. -->
+<!-- Next milestone scope is not yet defined. -->
 
-- [x] k=21 counting parity with Jellyfish2 at human scale — **achieved 2026-11-14 (overall YES)**; closed BENCH-02 outright
-- [x] Root-cause profiling of the k=21 ~5x gap on the real workload — completed in Phases 5-7 (parallel-scaling efficiency, not data structures); fixes measured in Phases 6-8 and confirmed at full scale in Phase 10
-- ~~KMC3 benchmark comparison (BENCH-V2-01)~~ — **DESCOPED 2026-11-13** by user decision ("不需要KMC3，本项目与KMC3 无关"); no KMC3 binary downloaded, installed, or executed
-- [ ] Backlog 999.1–999.3 (pyo3 `build.rs` link args, stale site-packages `pyrustkmer` shadowing, `deferred-items.md` stale sweep claim) — opportunistic, only if touched by the perf work
+- [ ] Backlog 999.1–999.3 (pyo3 `build.rs` link args, stale site-packages `pyrustkmer` shadowing, `deferred-items.md` stale sweep claim) — opportunistic, only if touched by future work
+- [ ] v2.0 carry-forward (see ROADMAP.md Backlog): Nyquist validation for Phases 5/6/7/8; `cargo fmt --all --check` drift; SECURITY.md for Phases 9/10; benchmark-harness CLI gate enforcement + README drift; MINIM-01..03 (deferred Phase 11) if a memory ceiling is wanted
 
 ### Out of Scope
 
@@ -68,7 +68,9 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 
 ## Context
 
-**Current state (v2.0 started 2026-11-11; v1.0 shipped 2026-10-20).** v1.0: 4 phases, 31 plans, 19 requirements (18 satisfied; BENCH-02 partial by user acceptance). Human-scale verdict vs Jellyfish2 2.3.1 on CRR2044018: k=31 faster (494 vs 843 s) and leaner (55.2 vs 84.0 GiB); k=21 ~5x slower — the gap v2.0 exists to close. Post-v1.0 hygiene wave (2026-11-11, quick tasks): memmap2 ≥0.9.11 security floor, Cargo.lock tracking + CI `--locked`, MSRV 1.80 enforced in both manifests, Python ≥3.11 policy normalized, unused deps removed, Phase-04 review findings triaged (11 fixed / 4 already-fixed / 3 deferred IN-06/07/09), both crates' clippy gates green. The codebase map under `.planning/codebase/` predates v1.0; refresh during v2.0 research.
+**Current state (v2.0 shipped 2026-11-14; v1.0 shipped 2026-10-20).** v1.0: 4 phases, 31 plans, 19 requirements (18 satisfied; BENCH-02 partial by user acceptance). Human-scale verdict vs Jellyfish2 2.3.1 on CRR2044018: k=31 faster (494 vs 843 s) and leaner (55.2 vs 84.0 GiB); k=21 ~5x slower — the gap v2.0 exists to close. Post-v1.0 hygiene wave (2026-11-11, quick tasks): memmap2 ≥0.9.11 security floor, Cargo.lock tracking + CI `--locked`, MSRV 1.80 enforced in both manifests, Python ≥3.11 policy normalized, unused deps removed, Phase-04 review findings triaged (11 fixed / 4 already-fixed / 3 deferred IN-06/07/09), both crates' clippy gates green. The codebase map under `.planning/codebase/` predates v1.0; refresh before the next milestone's research.
+
+**v2.0 shipped 2026-11-14 — overall YES on both surfaces at k=21 and k=31.** 6 phases, 29 plans, 73 tasks: measurement harness + profiling (5), parallelism correctness and hot path (6), the shared counting engine (7), output/`.rkdb` parity (8), Python parity (9), and the full-scale verdict (10). The k=21 gap was parallel-scaling efficiency, not data structures; the engine recovered it. Measured on the complete CRR1936095 r1 set (both split parts, 16 threads, 3 counterbalanced reps): k=21 CLI 144.69 s / Python 165.05 s vs jellyfish 194.85 / 197.95 s; k=31 CLI 147.08 s / Python 178.22 s vs jellyfish 1380.92 / 187.14 s — lower peak memory than jellyfish at both k, exact count parity across every arm. BENCH-V2-01 (KMC3) was descoped 2026-11-13; Phase 11 (MINIM) was not triggered (D3, 2026-11-14) and its requirements are deferred. Harness: 571 tests; Rust 508; pytest 179 passed. Code review across three rounds closed 27 findings with 0 open; milestone audit status `tech_debt` (no blockers) with carry-forward items listed in ROADMAP.md.
 
 **v2.0 research input (2026-11-11, Chorus3 investigation).** Sibling lab repo Chorus3 vendors rustkmer but worked AROUND its unbounded DashMap counter, not on it: chorus-kmer is a fixed-k=17 direct-address table of 2-bit saturating counters (clips counts at 3) + disk-spill; rusty_alloc is a binary-only global allocator. None of it transfers to rustkmer's k=21 exact-u32 counting of read sets (saturating counts break the exact-count contract; a 4^21 dense table is 1 TiB at 2 bits / 16 TiB at u32; rusty_alloc needs MSRV 1.87 and a global allocator is disqualified for PyO3). The v2 direction stands: minimizer/signature partitioning or CQF. Borrowable discipline: pre-registered peak-gate measurement max(rss, phys_footprint); never mmap spill files when RSS is the budget. The ~5x small-k direct-address-vs-DashMap result corroborates hashing overhead as the k=21 bottleneck hypothesis — but it was measured at k=17 on a 135 Mbp reference with saturating semantics, so it MUST be validated on rustkmer's actual workload before the architecture is chosen.
 
@@ -141,4 +143,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-14 after Phase 10 (Benchmark Verdict) — overall YES; D3 answered (Phase 11 not executed, MINIM-* deferred)*
+*Last updated: 2026-11-14 after v2.0 milestone (k=21 Counting Parity — shipped, overall YES; Phase 11 deferred)*
