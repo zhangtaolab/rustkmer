@@ -108,6 +108,14 @@ def make_doc(arms, k=21, session="cli", mode="full"):
         "provenance": fake_provenance(),
     }
     if session == "python":
+        # A real python-session artifact's primary `binary` is the measured
+        # INTERPRETER; the CLI used as the parity reference is `cli_binary`.
+        doc["provenance"]["cli_binary"] = fake_provenance()
+        doc["provenance"]["binary"] = {
+            "path": "/venv/bin/python",
+            "size_bytes": 5776992,
+            "sha256": "9" * 64,
+        }
         doc["provenance"]["module"] = {
             "path": "/venv/lib/python3.13/site-packages/pyrustkmer.so",
             "size_bytes": 1234,
@@ -744,6 +752,18 @@ class TestReport(unittest.TestCase):
         self.assertIn("a" * 64, report)   # CLI binary sha256
         self.assertIn("f" * 64, report)   # Python module sha256
 
+    def test_provenance_is_selected_by_session_not_document_order(self):
+        """A python-first document list must not relabel the interpreter."""
+        report = self.render([python_doc(k=21), cli_doc(k=21)], "order.md")
+        provenance = self.section(report, "## Provenance")
+        self.assertIn("CLI binary: `/repo/target/release/rustkmer`",
+                      provenance)
+        self.assertNotIn("CLI binary: `/venv/bin/python`", provenance)
+        self.assertIn("Python session CLI parity reference", provenance)
+        reference = provenance.split(
+            "Python session CLI parity reference", 1)[1]
+        self.assertIn("`/repo/target/release/rustkmer`", reference)
+
     def test_missing_arm_raises(self):
         docs = self.full_docs()
         docs[0]["arms"] = [arm for arm in docs[0]["arms"]
@@ -840,6 +860,18 @@ class TestReport(unittest.TestCase):
         self.assertIn("pinned k values", err)
         self.assertFalse(verdict_out.exists())
         self.assertFalse(report_out.exists())
+
+    def test_render_stage_labels_provenance_by_session_not_by_position(self):
+        docs = [python_doc(k=21), cli_doc(k=21),
+                python_doc(k=31), cli_doc(k=31)]
+        code, verdict_out, report_out, _out, err = self.run_render(docs)
+        self.assertEqual(code, p10.EXIT_OK, err)
+        report = report_out.read_text(encoding="utf-8")
+        provenance = self.section(report, "## Provenance")
+        self.assertIn("CLI binary: `/repo/target/release/rustkmer`",
+                      provenance)
+        self.assertNotIn("CLI binary: `/venv/bin/python`", provenance)
+        self.assertIn("Python session CLI parity reference", provenance)
 
     def test_render_stage_rejects_non_finite_json_values(self):
         """`Infinity`/`NaN` literals never pass the render validation."""

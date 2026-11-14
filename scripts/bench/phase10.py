@@ -1224,11 +1224,43 @@ def _methodology_lines(docs):
 
 
 def _provenance_lines(docs):
-    """CLI binary + Python module provenance, plus the harness source commit."""
-    primary = docs[0].get("provenance")
+    """CLI binary + Python module provenance, selected by SESSION, not order.
+
+    `--docs` order is unrestricted: a python-session document's `provenance`
+    block describes the INTERPRETER (`binary`), so using `docs[0]` positionally
+    mislabels `/venv/bin/python` as the CLI binary. The CLI lines come from
+    the cli-session document (every cli-session document must name the same
+    measured binary bytes); the Python lines come from the python-session
+    document, including the CLI parity reference it recorded.
+    """
+    cli_docs = sorted((doc for doc in docs if doc.get("session") == "cli"),
+                      key=_doc_k)
+    python_docs = sorted(
+        (doc for doc in docs if doc.get("session") == "python"), key=_doc_k)
+    if cli_docs:
+        primary = cli_docs[0].get("provenance")
+    elif python_docs:
+        raise ValueError(
+            "render: a cli-session document is required to name the CLI "
+            "binary — a python-session provenance must never be labeled as "
+            "the CLI binary")
+    else:
+        # Synthetic stage: the document's primary binary IS the CLI binary.
+        primary = docs[0].get("provenance")
     if not isinstance(primary, dict):
-        raise ValueError("render: the first document carries no provenance")
-    binary = primary["binary"]
+        raise ValueError("render: the cli-session document carries no "
+                         "provenance")
+    binary = primary.get("binary")
+    if not isinstance(binary, dict):
+        raise ValueError("render: the cli-session provenance has no binary "
+                         "block")
+    for doc in cli_docs[1:]:
+        other = (doc.get("provenance") or {}).get("binary")
+        if other != binary:
+            raise ValueError(
+                f"render: cli-session documents name different measured "
+                f"binaries ({binary!r} vs {other!r}) — the report cannot "
+                f"attribute one measured CLI binary")
     lines = [
         "## Provenance",
         "",
@@ -1238,12 +1270,27 @@ def _provenance_lines(docs):
         f"{primary['git_dirty']}, profile {primary['build_profile']}, "
         f"{primary['rust_toolchain']}",
     ]
-    module_prov = next(
-        (doc["provenance"] for doc in docs
-         if isinstance(doc.get("provenance"), dict)
-         and isinstance(doc["provenance"].get("module"), dict)), None)
-    if module_prov is not None:
+    if python_docs:
+        module_sources = [doc.get("provenance") for doc in python_docs]
+    elif not cli_docs:
+        module_sources = [primary]
+    else:
+        module_sources = []
+    if module_sources:
+        module_prov = module_sources[0]
+        if (not isinstance(module_prov, dict)
+                or not isinstance(module_prov.get("module"), dict)):
+            raise ValueError(
+                "render: the python-session document carries no module "
+                "provenance")
         module = module_prov["module"]
+        for other_prov in module_sources[1:]:
+            other = (other_prov or {}).get("module")
+            if other != module:
+                raise ValueError(
+                    f"render: python-session documents name different "
+                    f"measured modules ({module!r} vs {other!r}) — the "
+                    f"report cannot attribute one measured extension")
         lines.append(
             f"- Python module: `{module['path']}` — "
             f"size_bytes={module['size_bytes']} sha256=`{module['sha256']}`")
@@ -1251,6 +1298,13 @@ def _provenance_lines(docs):
             f"- Python interpreter: {module_prov.get('python_executable')} "
             f"({module_prov.get('python_version')}); maturin "
             f"{module_prov.get('maturin_version')}")
+        cli_reference = module_prov.get("cli_binary")
+        if (isinstance(cli_reference, dict)
+                and isinstance(cli_reference.get("binary"), dict)):
+            ref = cli_reference["binary"]
+            lines.append(
+                f"- Python session CLI parity reference: `{ref['path']}` — "
+                f"size_bytes={ref['size_bytes']} sha256=`{ref['sha256']}`")
     lines += [
         f"- Harness source commit (last commit touching this renderer): "
         f"`{harness_source_commit()}`",
