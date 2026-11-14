@@ -14,9 +14,9 @@ requires:
   - phase: 10-benchmark-verdict
     provides: "10-03: measured CLI sessions (rk-t16, rk-t1, jf-t16) at k=21 and k=31 over both split parts; Checkpoint-1 selection `proceed`"
   - phase: 10-benchmark-verdict
-    provides: "10-01/10-02: phase10.py `preflight-python`/`python`/`render` stages, the two-input fresh-process py-t16 worker, the 86 B/distinct memory model, and the byte-deterministic renderer"
+    provides: "10-01/10-02: phase10.py `preflight-python`/`python`/`render` stages, the two-input fresh-process py-t16 worker, the 86 B/distinct memory model (later re-derived at 86.5 B; see the revision note), and the byte-deterministic renderer"
 provides:
-  - "10-python-preflight.json: 86 B x measured rk-t16 distinct = 71.87 GiB (k=21) / 91.82 GiB (k=31) vs the 110 GiB budget; PROCEED at both k"
+  - "10-python-preflight.json: 86.5 B x measured rk-t16 distinct = 72.28 GiB (k=21) / 92.35 GiB (k=31) vs the 110 GiB budget; PROCEED at both k (re-derived 2026-11-14; the run-time 86 B record was 71.87 / 91.82 GiB, superseded and preserved in the session documents)"
   - "10-results-python-k21.json: Python session (`jf-t16`, `py-t16`), both parts, 3 counterbalanced reps, exact parity"
   - "10-results-python-k31.json: the same shape at k=31"
   - "10-verdict.json: per-k per-surface YES/NO computed from same-session recorded medians, with input shas, descope, dev-host statement"
@@ -50,9 +50,9 @@ key-files:
   modified: []
 
 key-decisions:
-  - "The Python memory gate is PROCEED from the MEASURED distinct counts: k=21 77,164,925,966 B (71.87 GiB, 38.13 GiB headroom) and k=31 98,586,409,600 B (91.82 GiB, 18.18 GiB headroom) against 110 GiB. No number was copied; each record pins its CLI source sha256."
+  - "The Python memory gate is PROCEED from the MEASURED distinct counts under the corrected 86.5 B/distinct model (re-derived 2026-11-14): k=21 77,613,559,257 B (72.28 GiB, 37.72 GiB headroom) and k=31 99,159,586,400 B (92.35 GiB, 17.65 GiB headroom) against 110 GiB. The run-time 86 B projections (77,164,925,966 / 98,586,409,600 B) are superseded, preserved in the session documents as historical values. No number was copied; each record pins its CLI source sha256."
   - "Python full-scale measured both parts in one fresh process per rep at 16 threads: py-t16 165.05 s vs same-session jf-t16 197.95 s at k=21; py-t16 178.22 s vs jf-t16 187.14 s at k=31. Both are match-or-beat (YES)."
-  - "Observed Python peaks (46.47 GB at k=21, 73.85 GB at k=31) were well below the conservative 86 B/distinct projections (77.16 / 98.59 GB); the projection is an upper bound, never a measurement."
+  - "Observed Python peaks (46.47 GB at k=21, 73.85 GB at k=31) were well below the conservative 86.5 B/distinct projections (77.61 / 99.16 GB; the historical run-time 86 B projections were 77.16 / 98.59 GB); the projection is an upper bound, never a measurement."
   - "Verdict is YES at both k on BOTH surfaces, computed only from recorded t16 medians with equality counting as match-or-beat: k=21 rustkmer 144.69 <= 194.85 and python 165.05 <= 197.95; k=31 rustkmer 147.08 <= 1380.92 and python 178.22 <= 187.14. Overall YES."
   - "The k=31 jellyfish median differed sharply between sessions (CLI 1380.92 s vs Python 187.14 s) with identical counts, identical two-part input, and an identical ~94.5 GB peak. Each surface uses its own session's reference, so both results are unaffected; the numbers are reported as measured and no run was re-rolled."
   - "A NO would have stood; there is no tolerance band, no re-roll, and the t1 arm never enters the verdict. Phase 11/D3 remains the user's decision and was not triggered."
@@ -61,11 +61,11 @@ requirements-completed: [BENCH-V2-02]
 
 coverage:
   - id: D1
-    description: "Python memory preflight derived from the measured CLI distinct counts: 86 x distinct vs 110 GiB, both k PROCEED, each record pinned to its source artifact sha256"
+    description: "Python memory preflight derived from the measured CLI distinct counts: 86.5 x distinct vs 110 GiB, both k PROCEED, each record pinned to its source artifact sha256 (re-derived 2026-11-14; the run-time 86 B record is superseded but preserved)"
     requirement: BENCH-V2-02
     verification:
       - kind: other
-        ref: "python3 assertion on 10-python-preflight.json (plan 10-04 task 1 <automated>) -> 'preflight OK {21: (897266581, 77164925966, 'PROCEED'), 31: (1146353600, 98586409600, 'PROCEED')}'"
+        ref: "python3 assertion on 10-python-preflight.json (plan 10-04 task 1 <automated>; values re-derived under the 86.5 B model) -> 'preflight OK {21: (897266581, 77613559257, 'PROCEED'), 31: (1146353600, 99159586400, 'PROCEED')}' (run-time 86 B output, superseded: 77164925966 / 98586409600)"
         status: pass
     human_judgment: false
   - id: D2
@@ -100,6 +100,16 @@ status: complete
 
 **The Python surface matches or beats jellyfish at full human scale on both surfaces and both k values — py-t16 165.05 s vs jf-t16 197.95 s at k=21 and 178.22 s vs 187.14 s at k=31 — so the phase's overall verdict is YES, delivered as Checkpoint 2.**
 
+> **Revision note (2026-11-14):** the delivered `10-python-preflight.json`
+> was re-derived from the corrected **86.5 B**/distinct model (WR-02/CR-01).
+> It now records 77,613,559,257 B (k=21) and 99,159,586,400 B (k=31), both
+> PROCEED against the 118,111,600,640 B (110 GiB) budget. The frontmatter,
+> `key-decisions`, `coverage` and `Accomplishments` below state those
+> delivered values; the original run-time **86 B** values remain visible
+> beside them, marked superseded, and survive verbatim in the Python session
+> documents' historical `memory_preflight` blocks. No measurement was re-run
+> and the PROCEED decision is unchanged.
+
 ## Performance
 
 - **Duration:** ~1 h 3 min (started 2026-11-14T01:18:31Z, last artifact 02:21:09Z)
@@ -108,7 +118,7 @@ status: complete
 
 ## Accomplishments
 
-- **Preflight (gate, not estimate):** `10-python-preflight.json` re-derives the projection inside the `preflight-python` stage from each CLI document's measured `rk-t16.unique_kmers`: k=21 897,266,581 → 77,164,925,966 B (71.87 GiB); k=31 1,146,353,600 → 98,586,409,600 B (91.82 GiB); budget 118,111,600,640 B (110 GiB). Both PROCEED (headroom 38.13 / 18.18 GiB), overall PROCEED, exit 0. Each record names its CLI source path and live sha256.
+- **Preflight (gate, not estimate):** `10-python-preflight.json` re-derives the projection inside the `preflight-python` stage from each CLI document's measured `rk-t16.unique_kmers` under the corrected 86.5 B/distinct model (re-derived 2026-11-14): k=21 897,266,581 → 77,613,559,257 B (72.28 GiB); k=31 1,146,353,600 → 99,159,586,400 B (92.35 GiB); budget 118,111,600,640 B (110 GiB). Both PROCEED (headroom 37.72 / 17.65 GiB), overall PROCEED, exit 0. Each record names its CLI source path and live sha256. The run-time 86 B projections (77,164,925,966 / 98,586,409,600 B; 71.87 / 91.82 GiB; headroom 38.13 / 18.18 GiB) are superseded — no measurement was re-run and the decision is unchanged.
 - **k=21 Python session** (after a green slice-gate pre-run: k=21 pinned 229,694,874 / 519,271,168, k=31 live parity 261,863,892 / 479,271,168): `jf-t16` medians 200.03 / 197.95 / 196.13 s → **197.95 s**, peak 50,297,651,200 B (46.84 GiB); `py-t16` 167.83 / 165.05 / 164.31 s → **165.05 s**, peak 46,470,447,104 B (43.28 GiB). Exact parity at 897,266,581 distinct / 8,967,099,203 total.
 - **k=31 Python session** (pre-gate re-run green): `jf-t16` 186.51 / 187.14 / 195.22 s → **187.14 s**, peak 94,505,009,152 B (88.01 GiB); `py-t16` 178.22 / 178.43 / 176.85 s → **178.22 s**, peak 73,847,406,592 B (68.78 GiB). Exact parity at 1,146,353,600 distinct / 8,275,694,030 total.
 - **Every py rep validated:** `threads_resolved == 16`, native module under the interpreter's site-packages (`pyrustkmer.cpython-313-darwin.so`, sha256 `6d526431…558ae3`), two ordered `--inputs`, `peak_bytes == max(peak_rss_bytes, peak_footprint_bytes)`, positive counts.
@@ -234,7 +244,7 @@ Each task was committed atomically:
 
 ## Verification
 
-- Task 1 automated verify — passed: `preflight OK {21: (897266581, 77164925966, 'PROCEED'), 31: (1146353600, 98586409600, 'PROCEED')}`.
+- Task 1 automated verify — passed: `preflight OK {21: (897266581, 77613559257, 'PROCEED'), 31: (1146353600, 99159586400, 'PROCEED')}` (re-derived 2026-11-14 under the 86.5 B model; the original run-time verify printed `preflight OK {21: (897266581, 77164925966, 'PROCEED'), 31: (1146353600, 98586409600, 'PROCEED')}`, superseded but kept here as history).
 - Task 2 automated verify — passed: `python sessions OK [(21, {897266581}), (31, {1146353600})]`.
 - Task 3 render + adapted verify — passed: `verdict OK {21: ('YES','YES','YES'), 31: ('YES','YES','YES')} overall YES`; `REPORT BYTE-IDENTICAL`; baselines/source/manifest diff empty.
 - Full suite — green as listed above; exit codes captured raw (no masked pipelines).
