@@ -2,7 +2,7 @@
   "schema_version": 1,
   "kind": "phase10-verdict",
   "phase": 10,
-  "created": "2026-11-14T03:38:17.874871+00:00",
+  "created": "2026-11-14T03:54:17.642965+00:00",
   "verdicts": [
     {
       "k": 21,
@@ -55,13 +55,13 @@
     },
     {
       "path": ".planning/phases/10-benchmark-verdict/10-results-python-k21.json",
-      "size_bytes": 9065,
-      "sha256": "0f019bed28672939383297cda749bd58f40554fa9ed40e7b866ef94558fc0fec"
+      "size_bytes": 10045,
+      "sha256": "0582bbc01f5f763d845dbc9e1ce90a63247e1bacbc08e5eebf9ba0f3bf490871"
     },
     {
       "path": ".planning/phases/10-benchmark-verdict/10-results-python-k31.json",
-      "size_bytes": 9068,
-      "sha256": "26f7ecb4a3cd51419975ac6f8f0e840fbdf55da587b576574c7fee19334ca70f"
+      "size_bytes": 10048,
+      "sha256": "1f737095c6ed54dd649f87bc4bf2728affded4c478da2dcbf79e9809cb85409f"
     }
   ],
   "dev_host_only": true,

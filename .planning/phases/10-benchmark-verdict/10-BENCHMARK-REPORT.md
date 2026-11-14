@@ -73,8 +73,10 @@ Scaling evidence (excluded from the verdict): `rk-t1` at 1 thread(s), median 474
 - reps: 3 measured per arm; cooldown 5 s between measured runs.
 - rotation: round-robin rotation — every round visits every arm once, and round r starts at arm r mod N, so order bias cannot accumulate inside one arm's block.
 - one discarded warmup per TOOL before round 0.
-- schedule policy: round-robin-rotation; warmup order: rustkmer, jellyfish.
-- recorded rotation: round 0: rk-t16 then rk-t1 then jf-t16; round 1: rk-t1 then jf-t16 then rk-t16; round 2: jf-t16 then rk-t16 then rk-t1.
+- CLI session schedule policy: round-robin-rotation; warmup order: rustkmer, jellyfish.
+- CLI session recorded rotation: round 0: rk-t16 then rk-t1 then jf-t16; round 1: rk-t1 then jf-t16 then rk-t16; round 2: jf-t16 then rk-t16 then rk-t1.
+- Python session schedule policy: round-robin-rotation; warmup order: jellyfish, pyrustkmer.
+- Python session recorded rotation: round 0: jf-t16 then py-t16; round 1: py-t16 then jf-t16; round 2: jf-t16 then py-t16.
 - jellyfish `-s 10G` (generous initial hash).
 - rustkmer `--size` stayed at its default and is NOT matched to jellyfish `-s`: rustkmer auto-grows while jellyfish receives a generous `-s`; matching the numbers would pre-reserve roughly 160 GB.
 - decompression asymmetry: rustkmer reads the `.gz` natively; jellyfish receives `gzcat <part_001> <part_006> | jellyfish count ... /dev/stdin`, so decompression is inside BOTH measured walls (the residual pipe overhead remains and is stated here per protocol).
@@ -88,7 +90,7 @@ Scaling evidence (excluded from the verdict): `rk-t1` at 1 thread(s), median 474
 - Python module: `/Users/forrest/GitHub/rustkmer/.venv313/lib/python3.13/site-packages/pyrustkmer/pyrustkmer.cpython-313-darwin.so` — size_bytes=1597920 sha256=`6d5264316e5c3e0587430cd87b49694e408871ddd780619950550cd7f5558ae3`
 - Python interpreter: /Users/forrest/GitHub/rustkmer/.venv313/bin/python (3.13.11); maturin maturin 1.11.5
 - Python session CLI parity reference: `/Users/forrest/GitHub/rustkmer/.claude/worktrees/agent-a5eb35be1e40e77fd/target/release/rustkmer` — size_bytes=2966832 sha256=`8f38d20c2e3dc77dfc0ef80c9a2475613da1aa7ad131bd240d5ec74fc87c3d23`
-- Harness source commit (last commit touching this renderer): `d6a5857c250defa509dffc8b9fbdd1947462867f`
+- Harness source commit (last commit touching this renderer): `afbe964e729e6035819ff0fb24fcbc7164717bb4`
 
 ---
 
