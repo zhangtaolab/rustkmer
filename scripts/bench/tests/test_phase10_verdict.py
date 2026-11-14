@@ -203,6 +203,15 @@ class TestArmConstruction(unittest.TestCase):
             p10.build_arm_specs([PART_1], 21, "rustkmer", "/venv/bin/python",
                                 "/tmp/p10scratch", (p10.ARM_RK_T16,))
 
+    def test_warmup_order_is_derived_from_the_specs(self):
+        """A recorded warmup order names only tools the session measured."""
+        specs = self._specs()
+        self.assertEqual(p10.tool_warmup_order(specs),
+                         ["rustkmer", "jellyfish", "pyrustkmer"])
+        subset = [spec for spec in specs if spec["name"] != p10.ARM_PY_T16]
+        self.assertEqual(p10.tool_warmup_order(subset),
+                         ["rustkmer", "jellyfish"])
+
 
 class RoundsFixture(unittest.TestCase):
     """Shared fake-measure fixture for the run_rounds contract."""

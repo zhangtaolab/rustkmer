@@ -413,6 +413,10 @@ class TestCliStageDocument(CliStageFixture):
         self.assertIn("schedule", doc)
         self.assertEqual(doc["schedule"]["policy"],
                          "round-robin-rotation")
+        # The CLI session measured no pyrustkmer arm: it must not claim a
+        # pyrustkmer warmup in the recorded order.
+        self.assertEqual(doc["schedule"]["warmup_order"],
+                         ["rustkmer", "jellyfish"])
         # Scratch databases are deleted after their sha256 is recorded.
         self.assertFalse((self.scratch / "phase10-rk-t16.rkdb").exists())
         self.assertFalse((self.scratch / "phase10-jf-t16.jf").exists())
@@ -568,6 +572,10 @@ class TestPythonStageDocument(PythonStageFixture):
         self.assertEqual(doc["params"]["k"], 21)
         self.assertEqual(doc["params"]["threads"], 16)
         self.assertEqual(doc["params"]["reps"], 2)
+        # The Python session measured no rustkmer arm: it must not claim a
+        # rustkmer warmup in the recorded order.
+        self.assertEqual(doc["schedule"]["warmup_order"],
+                         ["jellyfish", "pyrustkmer"])
         by_name = {arm["name"]: arm for arm in doc["arms"]}
         self.assertIsNone(by_name[p10.ARM_PY_T16]["db_sha256"])
         self.assertIsNotNone(by_name[p10.ARM_JF_T16]["db_sha256"])

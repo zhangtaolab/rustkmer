@@ -108,6 +108,9 @@ ARM_RK_T1 = "rk-t1"
 ARM_JF_T16 = "jf-t16"
 ARM_PY_T16 = "py-t16"
 ARM_ORDER = (ARM_RK_T16, ARM_RK_T1, ARM_JF_T16, ARM_PY_T16)
+# The canonical full four-arm tool sequence. Documents record the order
+# actually warmed up (tool_warmup_order(specs)), never this constant: a
+# session that measures a subset of tools must not claim the missing tools.
 TOOL_WARMUP_ORDER = ("rustkmer", "jellyfish", "pyrustkmer")
 
 # Memory model constants, each pinned by measured points (10-RESEARCH Pattern
@@ -290,6 +293,20 @@ def rep_peak_bytes(rep):
     return max(rep["peak_rss_bytes"], rep.get("peak_footprint_bytes") or 0)
 
 
+def tool_warmup_order(specs):
+    """The unique tool sequence run_rounds actually warms up, in spec order.
+
+    The document records THIS list, never the canonical four-arm constant: a
+    CLI session must not claim a `pyrustkmer` warmup (and a Python session
+    must not claim a `rustkmer` one) that never ran.
+    """
+    order = []
+    for spec in specs:
+        if spec["tool"] not in order:
+            order.append(spec["tool"])
+    return order
+
+
 def run_rounds(specs, reps, cooldown_s, measure_fn=None, purge_fn=None,
                sleep_fn=None, on_rep=None):
     """Warmups + counterbalanced measured rounds; return {arm: [rep dicts]}.
@@ -323,10 +340,7 @@ def run_rounds(specs, reps, cooldown_s, measure_fn=None, purge_fn=None,
     by_name = {spec["name"]: spec for spec in specs}
     reps_by_arm = {name: [] for name in names}
 
-    tool_order = []
-    for spec in specs:
-        if spec["tool"] not in tool_order:
-            tool_order.append(spec["tool"])
+    tool_order = tool_warmup_order(specs)
     total_runs = len(tool_order) + reps * len(specs)
     done_runs = 0
 
@@ -1535,7 +1549,7 @@ def run_synthetic(args):
         inputs=inputs, arms=arms, scratch=scratch, provenance=provenance,
         extra={"schedule": {
             "policy": "round-robin-rotation",
-            "warmup_order": list(TOOL_WARMUP_ORDER),
+            "warmup_order": tool_warmup_order(specs),
             "rounds": rotation_schedule([s["name"] for s in specs],
                                         args.reps),
         }})
@@ -1806,7 +1820,7 @@ def _stage_params(k, reps, cooldown_s):
 def _stage_schedule(specs, reps):
     return {
         "policy": "round-robin-rotation",
-        "warmup_order": list(TOOL_WARMUP_ORDER),
+        "warmup_order": tool_warmup_order(specs),
         "rounds": rotation_schedule([spec["name"] for spec in specs], reps),
     }
 
