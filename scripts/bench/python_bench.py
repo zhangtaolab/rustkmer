@@ -179,6 +179,27 @@ def threads_suffix(threads_text):
     return "tdefault" if value is None else f"t{value}"
 
 
+def pin_rayon_num_threads(threads):
+    """Pin this process's rayon DEFAULT pool to the requested size.
+
+    The binding calls `.num_threads(N).build_global()`; if that explicit build
+    fails (e.g. a restrictive cgroup/ulimit), rayon later initializes the
+    global pool lazily from `RAYON_NUM_THREADS`. Setting the variable BEFORE
+    the binding is imported/used makes the requested size effective on both
+    paths, so a failed explicit build cannot silently fall back to the
+    all-cores default while the worker still reports N (WR-08).
+    `threads=None` (the "default" configuration) removes any inherited pin so
+    the all-cores default is not narrowed by the parent environment. Returns
+    the recorded env value.
+    """
+    if threads is None:
+        os.environ.pop("RAYON_NUM_THREADS", None)
+        return None
+    value = str(threads)
+    os.environ["RAYON_NUM_THREADS"] = value
+    return value
+
+
 # --- pure helpers (unit-tested without PyO3) --------------------------------
 
 def baseline_filename(system_name):
@@ -245,12 +266,17 @@ def validate_worker_stats(payload, site_prefix, expected_threads=None):
     bare Python shim with no native bytes — is an invalid benchmark,
     T-05-11), or a resolved thread count that disagrees with the arm's
     requested configuration (``expected_threads``; None means the all-cores
-    default). ``threads_resolved`` is the binding's OWN resolved count
-    (``get_stats().threads``), so a PyCounter that ignores ``threads``
-    cannot produce a valid measurement (WR-02).
+    default). ``threads_resolved`` is the binding's resolved CONFIGURATION
+    (``get_stats().threads``, i.e. the requested value) — it is NOT an
+    independent observation of the rayon pool. The harness closes that gap
+    from the other side: the worker pins ``RAYON_NUM_THREADS`` to the same
+    requested size before the binding is used, so a failed explicit global
+    build cannot fall back to a different default. Both the reported count
+    and the recorded pin must match the arm's configuration (WR-08).
     """
     for key in ("total_kmers", "unique_kmers", "module_path", "module_mtime",
-                "python_version", "threads_resolved"):
+                "python_version", "threads_resolved",
+                "rayon_num_threads_env"):
         if key not in payload:
             raise ValueError(f"worker stats missing field {key!r}")
     for key in ("total_kmers", "unique_kmers"):
@@ -270,6 +296,20 @@ def validate_worker_stats(payload, site_prefix, expected_threads=None):
             f"worker resolved {resolved} rayon threads but the arm requested "
             f"{expected_threads} — the binding ignored its thread "
             f"configuration; the measurement is invalid")
+    env_pin = payload["rayon_num_threads_env"]
+    if env_pin is not None:
+        if (not isinstance(env_pin, str) or not env_pin.isdigit()
+                or int(env_pin) < 1):
+            raise ValueError(
+                f"worker stats rayon_num_threads_env={env_pin!r} must be "
+                f"None or a positive integer string")
+        env_pin = int(env_pin)
+    if expected_threads is not None and env_pin != expected_threads:
+        raise ValueError(
+            f"worker recorded RAYON_NUM_THREADS={env_pin!r} but the arm "
+            f"requested {expected_threads} — the measured process could run "
+            f"with a different default pool than the acceptance "
+            f"configuration")
     module = Path(payload["module_path"]).resolve()
     prefix = Path(site_prefix).resolve()
     if not module.is_relative_to(prefix):
@@ -648,6 +688,10 @@ def run_worker(args):
     THIS process, so the two split parts accumulate into one counter.
     """
     threads = parse_threads(args.threads)
+    # Pin the rayon default pool BEFORE the binding can use it: if the
+    # explicit `.build_global()` inside PyCounter ever fails, the lazy global
+    # pool still uses the requested size instead of the all-cores default.
+    rayon_env = pin_rayon_num_threads(threads)
     paths = list(args.inputs) if args.inputs else (
         [args.input] if args.input else [])
     if not paths:
@@ -673,8 +717,11 @@ def run_worker(args):
         "total_kmers": int(st.total_kmers),
         "unique_kmers": int(st.unique_kmers),
         "threads": args.threads,
-        # Observed, not requested: the binding's own resolved rayon count.
+        # The binding's resolved CONFIGURATION (the requested value), paired
+        # with the RAYON_NUM_THREADS pin above — not an independent OS-level
+        # observation of the rayon pool.
         "threads_resolved": int(st.threads),
+        "rayon_num_threads_env": rayon_env,
         "module_path": str(module_path),
         "module_mtime": os.path.getmtime(module_path),
         "python_version": platform.python_version(),
@@ -744,7 +791,9 @@ def measure_arm(args, info, input_path, scratch, arm_name, gap,
         "tool": "pyrustkmer",
         # "default" records the all-cores configuration; a concrete int is
         # the identical --threads value the workers were given. Never null.
-        # threads_resolved is the OBSERVED value reported by the binding.
+        # threads_resolved is the binding's resolved configuration (paired
+        # with the per-worker RAYON_NUM_THREADS pin, not an independent
+        # observation of the pool).
         "threads": "default" if requested_threads is None else requested_threads,
         "threads_resolved": resolved_threads,
         "reps": reps,

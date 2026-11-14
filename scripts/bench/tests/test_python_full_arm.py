@@ -86,6 +86,7 @@ def make_fake_measure(module_path, total=200, unique=100,
                 "unique_kmers": unique + (i if vary else 0),
                 "threads_resolved": (requested if threads_resolved is None
                                      else threads_resolved),
+                "rayon_num_threads_env": str(requested),
                 "module_path": str(module_path),
                 "module_mtime": 1.0,
                 "python_version": "3.13.11",

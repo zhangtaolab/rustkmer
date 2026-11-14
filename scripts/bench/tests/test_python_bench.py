@@ -70,6 +70,8 @@ def make_fake_measure(module_path, total=100, unique=90, vary=False,
             "total_kmers": total + (i if vary else 0),
             "unique_kmers": unique + (i if vary else 0),
             "threads_resolved": resolved,
+            "rayon_num_threads_env": (None if requested == "default"
+                                      else str(int(requested))),
             "module_path": str(module_path),
             "module_mtime": 1794477430.0,
             "python_version": "3.13.11",
@@ -268,6 +270,7 @@ class TestWorkerStatsValidation(unittest.TestCase):
     def payload(self, **over):
         base = {"total_kmers": 100, "unique_kmers": 90,
                 "threads_resolved": 1,
+                "rayon_num_threads_env": None,
                 "module_path": str(self.module), "module_mtime": 1.0,
                 "python_version": "3.13.11"}
         base.update(over)
@@ -314,8 +317,23 @@ class TestWorkerStatsValidation(unittest.TestCase):
 
     def test_resolved_threads_match_passes(self):
         counts = pb.validate_worker_stats(
-            self.payload(threads_resolved=1), self.site, expected_threads=1)
+            self.payload(threads_resolved=1, rayon_num_threads_env="1"),
+            self.site, expected_threads=1)
         self.assertEqual(counts, {"total_kmers": 100, "unique_kmers": 90})
+
+    def test_env_pin_mismatch_raises(self):
+        """The pinned default pool must match the arm's requested size."""
+        with self.assertRaises(ValueError):
+            pb.validate_worker_stats(
+                self.payload(threads_resolved=16,
+                             rayon_num_threads_env="8"),
+                self.site, expected_threads=16)
+
+    def test_missing_env_pin_raises(self):
+        payload = self.payload()
+        del payload["rayon_num_threads_env"]
+        with self.assertRaises(ValueError):
+            pb.validate_worker_stats(payload, self.site)
 
     def test_missing_resolved_threads_raises(self):
         payload = self.payload()
@@ -333,6 +351,20 @@ class TestWorkerStatsValidation(unittest.TestCase):
             self.payload(threads_resolved=16), self.site,
             expected_threads=None)
         self.assertEqual(counts["unique_kmers"], 90)
+
+
+class TestPinRayonNumThreads(unittest.TestCase):
+    """The worker pins rayon's default pool before the binding can use it."""
+
+    def test_explicit_threads_set_the_env_pin(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(pb.pin_rayon_num_threads(16), "16")
+            self.assertEqual(os.environ["RAYON_NUM_THREADS"], "16")
+
+    def test_default_threads_remove_an_inherited_pin(self):
+        with mock.patch.dict(os.environ, {"RAYON_NUM_THREADS": "4"}):
+            self.assertIsNone(pb.pin_rayon_num_threads(None))
+            self.assertNotIn("RAYON_NUM_THREADS", os.environ)
 
 
 class TestRepIdentity(unittest.TestCase):

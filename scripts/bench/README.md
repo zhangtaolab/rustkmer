@@ -216,10 +216,15 @@ locked inclusive thresholds:
 There is no noise band. Both arms are always reported. Compare mode
 measures both arms itself, so `--threads` must stay at its default `1`;
 any other value exits 2 instead of being silently ignored. Every worker
-reports the binding's own resolved rayon count (`get_stats().threads`, the
-`threads_resolved` field in the arm), and the arm is invalid unless that
-observed count matches the configuration the arm requested — a `PyCounter`
-that ignores its `threads` argument can never produce a PASS.
+reports the binding's resolved rayon configuration (`get_stats().threads`,
+the `threads_resolved` field in the arm) and records the
+`RAYON_NUM_THREADS` value the worker pinned before the binding was used.
+`threads_resolved` is the binding's resolved CONFIGURATION, not an
+independent observation of the pool: the env pin makes the requested size
+effective even if the binding's explicit global-pool build fails and rayon
+falls back to its lazy default. The arm is invalid unless both the reported
+count and the recorded pin match the configuration the arm requested, so a
+`PyCounter` that ignores its `threads` argument cannot produce a PASS.
 
 ```bash
 .venv313/bin/python scripts/bench/python_bench.py --mode slice \

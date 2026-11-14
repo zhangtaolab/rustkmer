@@ -254,6 +254,7 @@ class RoundsFixture(unittest.TestCase):
                 "total_kmers": 200,
                 "unique_kmers": 100,
                 "threads_resolved": requested,
+                "rayon_num_threads_env": str(requested),
                 "module_path": str(self.module),
                 "module_mtime": 1.0,
                 "python_version": "3.13.11",
