@@ -1890,7 +1890,13 @@ def _load_slice_gate_doc(path):
 
 
 def _load_python_preflight(path, k):
-    """Read the preflight record for `k` and re-derive its decision."""
+    """Read the preflight record for `k` and re-derive its decision.
+
+    The gate is re-derived with the harness constant `MEMORY_BUDGET_BYTES`,
+    never the record's own `budget_bytes`: a record whose budget differs from
+    the pinned budget is rejected outright, so editing the record can never
+    turn a blocked projection into PROCEED.
+    """
     with open(path, encoding="utf-8") as fh:
         doc = json.load(fh)
     if doc.get("kind") != "phase10-python-preflight":
@@ -1913,13 +1919,18 @@ def _load_python_preflight(path, k):
     if (not isinstance(budget, int) or isinstance(budget, bool)
             or budget <= 0):
         raise ValueError(f"preflight {path}: budget_bytes={budget!r} invalid")
+    if budget != MEMORY_BUDGET_BYTES:
+        raise ValueError(
+            f"preflight {path}: budget_bytes={budget!r} != the pinned "
+            f"MEMORY_BUDGET_BYTES {MEMORY_BUDGET_BYTES} — a record's own "
+            f"budget can never re-derive its gate")
     model_projection = python_projection_bytes(distinct)
     if projected != model_projection:
         raise ValueError(
             f"preflight {path}: projected_bytes={projected!r} != the model's "
             f"{model_projection} — a tampered projection cannot gate the "
             f"Python arm")
-    ok, detail = memory_gate(projected, budget)
+    ok, detail = memory_gate(projected, MEMORY_BUDGET_BYTES)
     want = "PROCEED" if ok else "BLOCKED"
     if record.get("decision") != want:
         raise ValueError(
@@ -1935,6 +1946,39 @@ def _load_python_preflight(path, k):
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"preflight {path}: {key} missing")
     return record
+
+
+def _check_preflight_matches_cli(preflight, cli_doc, cli_doc_path):
+    """The preflight must have been computed from THIS CLI document.
+
+    A projection computed from a different (smaller) CLI document would
+    authorize a run whose measured distinct count is higher, so the measured
+    count AND the source sha256 are cross-checked against the CLI document
+    actually consumed before any measurement starts.
+    """
+    arm = next((candidate for candidate in cli_doc.get("arms", [])
+                if isinstance(candidate, dict)
+                and candidate.get("name") == ARM_RK_T16
+                and candidate.get("threads") == ACCEPTANCE_THREADS), None)
+    if arm is None:
+        raise ValueError(
+            f"--cli-doc {cli_doc_path}: no {ARM_RK_T16} arm at "
+            f"threads={ACCEPTANCE_THREADS} — the preflight cannot be "
+            f"cross-checked")
+    unique, _total = _exact_counts(arm, f"preflight source {cli_doc_path}")
+    if preflight["distinct"] != unique:
+        raise ValueError(
+            f"--preflight distinct={preflight['distinct']!r} but the consumed "
+            f"CLI document {cli_doc_path} records {ARM_RK_T16}.unique_kmers="
+            f"{unique} — the projection was not computed from this document")
+    actual_sha = file_sha256(cli_doc_path)
+    recorded_sha = preflight["distinct_source_sha256"]
+    if recorded_sha != actual_sha:
+        raise ValueError(
+            f"--preflight was computed from a different CLI document "
+            f"(distinct_source_sha256={recorded_sha!r} != {actual_sha} for "
+            f"{cli_doc_path}) — a preflight over other bytes can never "
+            f"authorize this Python run")
 
 
 def run_python_session(args):
@@ -1966,6 +2010,7 @@ def run_python_session(args):
             raise ValueError(
                 f"--cli-doc {args.cli_doc} is k={_doc_k(cli_doc)} but the "
                 f"Python session measures k={args.k}")
+        _check_preflight_matches_cli(preflight, cli_doc, args.cli_doc)
         specs = build_arm_specs(
             inputs, args.k, args.rustkmer, args.python, scratch,
             [ARM_JF_T16, ARM_PY_T16])

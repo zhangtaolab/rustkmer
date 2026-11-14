@@ -439,13 +439,13 @@ class PythonStageFixture(FullArmFixture):
     def setUp(self):
         super().setUp()
         (self.scratch / "phase10-jf-t16.jf").write_bytes(b"jellyfish-db")
+        self.distinct = 1_050_000_000
         self.pre_gate = self.tmp / "10-slice-gate.json"
         self.write_pre_gate()
-        self.preflight = self.tmp / "10-python-preflight.json"
-        self.write_preflight(distinct=1_050_000_000)
         self.cli_doc = self.tmp / "10-results-full-k21.json"
-        self.cli_doc.write_text(json.dumps(self.cli_document()),
-                                encoding="utf-8")
+        self.write_cli_doc()
+        self.preflight = self.tmp / "10-python-preflight.json"
+        self.write_preflight()
 
     def write_pre_gate(self, distinct=None, total=None, sha=None):
         doc = {
@@ -473,8 +473,16 @@ class PythonStageFixture(FullArmFixture):
         }
         self.pre_gate.write_text(json.dumps(doc), encoding="utf-8")
 
-    def write_preflight(self, distinct=1_050_000_000):
-        record = p10.preflight_record(21, distinct, "cli-k21.json", "e" * 64)
+    def write_cli_doc(self, distinct=None):
+        distinct = self.distinct if distinct is None else distinct
+        self.cli_doc.write_text(
+            json.dumps(self.cli_document(distinct=distinct)),
+            encoding="utf-8")
+
+    def write_preflight(self, distinct=None):
+        distinct = self.distinct if distinct is None else distinct
+        record = p10.preflight_record(
+            21, distinct, str(self.cli_doc), p10.file_sha256(self.cli_doc))
         doc = {
             "schema_version": p10.SCHEMA_VERSION,
             "kind": "phase10-python-preflight",
@@ -484,7 +492,8 @@ class PythonStageFixture(FullArmFixture):
         }
         self.preflight.write_text(json.dumps(doc), encoding="utf-8")
 
-    def cli_document(self):
+    def cli_document(self, distinct=None):
+        distinct = self.distinct if distinct is None else distinct
         return {
             "schema_version": p10.SCHEMA_VERSION,
             "mode": "full",
@@ -499,11 +508,12 @@ class PythonStageFixture(FullArmFixture):
             "input_fingerprint": [p10.fingerprint(self.part1),
                                   p10.fingerprint(self.part2)],
             "arms": [
-                make_arm(p10.ARM_RK_T16, "rustkmer", 16, wall=10.0,
-                         db_sha256="c" * 64),
-                make_arm(p10.ARM_RK_T1, "rustkmer", 1, wall=40.0,
-                         db_sha256="c" * 64),
-                make_arm(p10.ARM_JF_T16, "jellyfish", 16, wall=20.0,
+                make_arm(p10.ARM_RK_T16, "rustkmer", 16, unique=distinct,
+                         total=distinct * 2, wall=10.0, db_sha256="c" * 64),
+                make_arm(p10.ARM_RK_T1, "rustkmer", 1, unique=distinct,
+                         total=distinct * 2, wall=40.0, db_sha256="c" * 64),
+                make_arm(p10.ARM_JF_T16, "jellyfish", 16, unique=distinct,
+                         total=distinct * 2, wall=20.0,
                          db_sha256="d" * 64),
             ],
             "provenance": fake_provenance(),
@@ -525,10 +535,12 @@ class PythonStageFixture(FullArmFixture):
                               return_value=10 ** 12),
             mock.patch.object(p10, "measure",
                               side_effect=measure if measure is not None
-                              else make_fake_measure(self.module)),
+                              else make_fake_measure(
+                                  self.module, total=self.distinct * 2,
+                                  unique=self.distinct)),
             mock.patch.object(p10, "jellyfish_stats",
-                              return_value={"distinct": 100,
-                                            "total": 200}),
+                              return_value={"distinct": self.distinct,
+                                            "total": self.distinct * 2}),
         ]
 
     def python_argv(self):
@@ -567,7 +579,9 @@ class TestPythonStageDocument(PythonStageFixture):
         self.assertEqual(memory["distinct"], 1_050_000_000)
         self.assertEqual(memory["budget_bytes"], p10.MEMORY_BUDGET_BYTES)
         self.assertGreaterEqual(memory["headroom_bytes"], 0)
-        self.assertEqual(memory["source_sha256"], "e" * 64)
+        self.assertEqual(memory["source_sha256"],
+                         hashlib.sha256(
+                             self.cli_doc.read_bytes()).hexdigest())
         self.assertGreater(memory["observed_peak_bytes"], 0)
         self.assertEqual(doc["cross_session"]["cli_doc"], str(self.cli_doc))
         self.assertEqual(
@@ -579,6 +593,7 @@ class TestPythonStageDocument(PythonStageFixture):
         self.assertFalse((self.scratch / "phase10-jf-t16.jf").exists())
 
     def test_blocked_preflight_exits_2_with_no_artifact(self):
+        self.write_cli_doc(distinct=2_000_000_000)
         self.write_preflight(distinct=2_000_000_000)
         code, _out, _err = self.run_main(self.python_argv(),
                                          self.stage_patches())
@@ -588,6 +603,38 @@ class TestPythonStageDocument(PythonStageFixture):
     def test_tampered_projection_exits_2_with_no_artifact(self):
         doc = json.loads(self.preflight.read_text(encoding="utf-8"))
         doc["records"][0]["projected_bytes"] += 1
+        self.preflight.write_text(json.dumps(doc), encoding="utf-8")
+        code, _out, _err = self.run_main(self.python_argv(),
+                                         self.stage_patches())
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertFalse(self.out.exists())
+
+    def test_preflight_with_a_substituted_budget_exits_2(self):
+        """A record's own budget can never turn BLOCKED into PROCEED."""
+        doc = json.loads(self.preflight.read_text(encoding="utf-8"))
+        record = doc["records"][0]
+        record["budget_bytes"] = 200_000_000_000
+        record["headroom_bytes"] = (record["budget_bytes"]
+                                    - record["projected_bytes"])
+        record["decision"] = "PROCEED"
+        self.preflight.write_text(json.dumps(doc), encoding="utf-8")
+        code, _out, err = self.run_main(self.python_argv(),
+                                        self.stage_patches())
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertIn("MEMORY_BUDGET_BYTES", err)
+        self.assertFalse(self.out.exists())
+
+    def test_preflight_from_a_different_cli_document_exits_2(self):
+        """A smaller source document can never authorize this measured run."""
+        self.write_cli_doc(distinct=100)
+        code, _out, _err = self.run_main(self.python_argv(),
+                                         self.stage_patches())
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertFalse(self.out.exists())
+
+    def test_preflight_source_sha_tamper_exits_2(self):
+        doc = json.loads(self.preflight.read_text(encoding="utf-8"))
+        doc["records"][0]["distinct_source_sha256"] = "e" * 64
         self.preflight.write_text(json.dumps(doc), encoding="utf-8")
         code, _out, _err = self.run_main(self.python_argv(),
                                          self.stage_patches())
