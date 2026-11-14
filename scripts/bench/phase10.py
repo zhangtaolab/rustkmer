@@ -156,6 +156,14 @@ SYNTHETIC_READS = 200_000
 DEFAULT_K = 21
 PHASE = 10
 
+# The two sessions each re-measure the SAME jellyfish command over the same
+# two-part input, but timing is session-local (cache/thermal/run-chain state).
+# When the two reference medians differ by more than this documented factor,
+# the report states the divergence and declines any cross-session timing
+# claim. The verdict rule itself is unchanged: each surface is compared only
+# with the jellyfish median recorded in ITS OWN session.
+CROSS_SESSION_JELLYFISH_MAX_RATIO = 2.0
+
 # Report section ordering for same-k documents.
 _SESSION_ORDER = {"cli": 0, "python": 1}
 
@@ -1063,6 +1071,24 @@ def _verdict_lines(pairs, docs):
             f"s vs jellyfish {block['jellyfish_cli_wall_s']!r} s), python "
             f"{block['python_result']} (median {block['python_wall_s']!r} s "
             f"vs jellyfish {block['jellyfish_python_wall_s']!r} s).")
+        cli_jf = block["jellyfish_cli_wall_s"]
+        python_jf = block["jellyfish_python_wall_s"]
+        ratio = max(cli_jf, python_jf) / min(cli_jf, python_jf)
+        if ratio > CROSS_SESSION_JELLYFISH_MAX_RATIO:
+            caveat = (
+                f" The identical `jf-t16` command counted the same bytes in "
+                f"both sessions, so each surface is judged only against its "
+                f"own session's jellyfish median; no cross-session timing "
+                f"claim is made.")
+        else:
+            caveat = (
+                f" Both sessions' reference medians are within the "
+                f"documented {CROSS_SESSION_JELLYFISH_MAX_RATIO:.1f}x "
+                f"comparability factor.")
+        lines.append(
+            f"- k={k} cross-session jellyfish reference: CLI session median "
+            f"{cli_jf!r} s vs Python session median {python_jf!r} s "
+            f"(ratio {ratio:.2f}x).{caveat}")
     lines += [
         f"- Overall: **{overall}** — k=21 is the primary acceptance "
         f"question; k=31 re-verifies the v1.0 matched-hash comparison.",

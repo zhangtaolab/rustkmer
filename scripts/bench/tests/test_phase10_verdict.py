@@ -653,6 +653,20 @@ class TestReport(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.render(docs, "tampered.md")
 
+    def test_cross_session_jellyfish_divergence_is_disclosed(self):
+        """A large same-command reference divergence carries a caveat."""
+        docs = [cli_doc(jf_wall=200.0, k=21),
+                python_doc(jf_wall=20.0, k=21)]
+        report = self.render(docs)
+        self.assertIn("cross-session jellyfish reference", report)
+        self.assertIn("ratio 10.00x", report)
+        self.assertIn("no cross-session timing claim is made", report)
+
+    def test_cross_session_jellyfish_agreement_is_stated(self):
+        report = self.render(self.full_docs())
+        self.assertIn("within the documented 2.0x comparability factor",
+                      report)
+
     def test_five_pinned_literals_are_present(self):
         report = self.render(self.full_docs())
         for literal in ("BENCH-V2-01", "partially satisfied",
