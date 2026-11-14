@@ -45,6 +45,51 @@
 
 ---
 
+## Milestone: v2.0 — k=21 Counting Parity
+
+**Shipped:** 2026-11-14
+**Phases:** 6 (5-10) | **Plans:** 29 | **Tasks:** 73 | **Requirements:** 17/17 in-scope (BENCH-V2-01 descoped; MINIM deferred)
+
+### What Was Built
+- A standing measurement harness: slice parity gate with pinned reference, binary provenance on every artifact, `--threads` reality/scaling gates, contention attribution, Python baseline, and the CLI-vs-Python N-read differential (Phase 5)
+- A working `--threads`, thread-local counters with end-of-run checked reduction, and a rolling 2-bit encoder with bit-parallel reverse complement (Phase 6)
+- One shared counting engine — persistent workers, disjoint hash-range partition tables, overlapped producer/consumer — consumed by both the CLI and `PyCounter` (Phase 7)
+- A parallel unstable sort + streaming write through the frozen `.rkdb` writer, with byte-identity proven through both binary-search consumers and a full differential matrix (Phase 8)
+- Python parity: the shared engine behind `PyCounter`, D2 skip-N unified, sort-once `save_database`, frozen 12-name API, measured 2.35x/8.71x wins vs the committed baseline (Phase 9)
+- The milestone verdict: **overall YES** at k=21 and k=31 on both surfaces, with exact count parity and lower peak memory than jellyfish (Phase 10)
+
+### What Worked
+- Profiling before architecture: the k=21 gap was parallel-scaling efficiency, not data structures — the research phase (D1) prevented a minimizer detour that would not have fixed the real bottleneck
+- Parity-before-timing everywhere: every optimized path shipped with exact-count gates; the numbers in the final verdict are defended by committed, recomputable artifacts
+- Mechanical rendering: the report is the renderer's output over committed documents, so every disclosure (KMC3 descope, cache census, dev-host, cross-session divergence) is enforced by code rather than by memory
+- Adversarial code review caught real verdict-integrity holes (partial-k rendering, non-finite medians, medians-vs-reps disagreement, preflight budget tampering) and each fix landed with a regression test
+- Two human checkpoints kept the expensive Python run authorized by measured CLI facts, not by estimates
+
+### What Was Inefficient
+- The k=31 jellyfish slowdown (23 min/rep in the CLI session vs 3 min in the Python session) was not predicted by the 5M-read probe; it doubled the CLI stage's planned duration and produced a disclosed 7.38x cross-session outlier
+- Plan/harness interface drift: plan 10-04's render command and verdict schema were stale versus the tested harness, forcing an executor-side adaptation that had to be documented
+- The first code-review pass found the deliverables had not been regenerated after the fixes — a second round was needed purely to publish the fixed renderer's output
+- Parallel verification agents clobbered a shared `/tmp` input and raced a binary swap; one scaling run had to be discarded and re-run in an isolated scratch directory
+- Bookkeeping lag: ROADMAP/STATE sat at "2/4 plans" and "wave 3" until the orchestrator's transition, and the manager counted four phases as complete only after their verifier digests were refreshed
+
+### Patterns Established
+- **Gate from measurement, never from estimate**: the Python memory preflight is re-derived from the measured CLI distinct count and pinned to the harness budget constant
+- **Same-session reference**: each surface's verdict compares against the jellyfish median measured in its own counterbalanced session; cross-session divergence is disclosed mechanically
+- **Fail-closed evidence validators**: pinned k set, finite values only, medians recomputed from raw reps, input shas recomputed from live documents
+- **Self-describing evidence corrections**: when metadata was corrected post-hoc, the artifact carries a dated correction block and the measured values are provably untouched
+- **Review-to-artifact closure**: a fix that changes the renderer must regenerate the deliverables, or the committed report is not the renderer's output
+
+### Key Lessons
+1. A measurement harness is part of the measurement — the verdict is only as trustworthy as its validators.
+2. Cross-session timing references can differ by more than an order of magnitude; report both and make no cross-session claim.
+3. Estimate-based budgets are acceptable only when the estimate is re-derived from a measurement before it authorizes an expensive run.
+4. When a fix changes a renderer, regenerate and re-commit the artifacts in the same review round.
+
+### Cost Observations
+- Model mix: not tracked
+- Sessions: multi-session autonomous run (discuss → plan → execute waves → review/fix → verify → audit → archive)
+- Notable: the full-scale measurement stage (~3 h 20 min CLI + ~2 h Python) dominated wall time; review/fix and verification ran within normal context budgets
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -52,14 +97,18 @@
 | Milestone | Sessions | Phases | Key Change |
 |-----------|----------|--------|------------|
 | v1.0 | multi | 4 | GSD adopted on brownfield v0.5.0; verification-driven gap-closure loop established |
+| v2.0 | multi | 6 | Autonomy scaled up: wave worktrees, two human checkpoints, adversarial review-fix loop, mechanical evidence rendering |
 
 ### Cumulative Quality
 
 | Milestone | Tests | Coverage | Zero-Dep Additions |
 |-----------|-------|----------|-------------------|
 | v1.0 | full suite 439/0 green | not tracked | stdlib-only benchmark harness (no new runtime deps) |
+| v2.0 | 571 harness + 508 Rust + 179 pytest green (1 known macOS sampling flake) | not tracked | Phase-10 controller + mechanical renderer (stdlib only; no new runtime deps) |
 
 ### Top Lessons (Verified Across Milestones)
 
-1. *(first milestone — candidates above; promote once v2 confirms)*
-2. *(first milestone — candidates above; promote once v2 confirms)*
+1. Measure before architecting: v1.0's k=21 gap was diagnosed as parallel-scaling efficiency, and v2.0's engine fixed exactly that — the minimizer path would not have.
+2. Make gates adversarial: mutation-RED proofs (v1.0) and inject-defect regression tests (v2.0 review fixes) are what distinguish a real gate from a vacuous green.
+3. Evidence must be regenerated after any change to its producer; a committed report that no longer matches its renderer is a defect.
+4. Honest NOs and disclosed outliers survive scrutiny; tuned or re-rolled numbers do not.
