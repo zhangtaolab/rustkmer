@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "kind": "phase10-verdict",
+  "phase": 10,
+  "created": "2026-11-14T02:18:01.060471+00:00",
+  "verdicts": [
+    {
+      "k": 21,
+      "result": "YES",
+      "rustkmer_result": "YES",
+      "python_result": "YES",
+      "rustkmer_wall_s": 144.69,
+      "python_wall_s": 165.05,
+      "jellyfish_cli_wall_s": 194.85,
+      "jellyfish_python_wall_s": 197.95,
+      "scaling": {
+        "arm": "rk-t1",
+        "threads": 1,
+        "wall_s": 493.86
+      },
+      "rule": "acceptance compares t16 medians only; a surface is YES when its median wall <= the jellyfish median wall in the same session (equality is match-or-beat; no tolerance band); rk-t1 is scaling evidence and never enters the verdict"
+    },
+    {
+      "k": 31,
+      "result": "YES",
+      "rustkmer_result": "YES",
+      "python_result": "YES",
+      "rustkmer_wall_s": 147.08,
+      "python_wall_s": 178.22,
+      "jellyfish_cli_wall_s": 1380.92,
+      "jellyfish_python_wall_s": 187.14,
+      "scaling": {
+        "arm": "rk-t1",
+        "threads": 1,
+        "wall_s": 474.31
+      },
+      "rule": "acceptance compares t16 medians only; a surface is YES when its median wall <= the jellyfish median wall in the same session (equality is match-or-beat; no tolerance band); rk-t1 is scaling evidence and never enters the verdict"
+    }
+  ],
+  "overall": "YES",
+  "descoped": {
+    "requirement": "BENCH-V2-01",
+    "decision": "descoped by user decision on 2026-11-13; no KMC3 binary downloaded, installed, or executed"
+  },
+  "inputs": [
+    {
+      "path": ".planning/phases/10-benchmark-verdict/10-results-full-k21.json",
+      "size_bytes": 6678,
+      "sha256": "757c923a7278c06b663ab8720d22cf32abdc10b35a81d65a85765a50be900d6f"
+    },
+    {
+      "path": ".planning/phases/10-benchmark-verdict/10-results-full-k31.json",
+      "size_bytes": 6686,
+      "sha256": "90804c50822dfeb2cbad1d37e413fd07a0fb3471cd776ce40ceff4347b96b5d2"
+    },
+    {
+      "path": ".planning/phases/10-benchmark-verdict/10-results-python-k21.json",
+      "size_bytes": 8465,
+      "sha256": "f303f47579ff9cfba9f298851134bbe8da0ba7e614bb30125662157f9906843a"
+    },
+    {
+      "path": ".planning/phases/10-benchmark-verdict/10-results-python-k31.json",
+      "size_bytes": 8468,
+      "sha256": "7e19a01386af5a6bda281e77226b78f76e03d6f80728968b5a737fefb1373a6f"
+    }
+  ],
+  "dev_host_only": true,
+  "kmc3_executed": false,
+  "ci_baseline_written": false,
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/.claude/worktrees/agent-a5eb35be1e40e77fd/target/release/rustkmer",
+      "size_bytes": 2966832,
+      "sha256": "8f38d20c2e3dc77dfc0ef80c9a2475613da1aa7ad131bd240d5ec74fc87c3d23"
+    },
+    "git_commit": "10f059160396a4f1b9954eb37c99e4c124ff504e",
+    "git_dirty": false,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-14T02:18:01.104448+00:00"
+  }
+}
