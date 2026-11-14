@@ -28,8 +28,8 @@ Full detail: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md) · Summary
 - [x] **Phase 7: Shared Counting Engine** - One src/count/engine.rs entry point: persistent workers, disjoint partitioned tables, overlapped producer/consumer (the ~3.5x lever) (completed 2026-11-13)
 - [x] **Phase 8: Output Pipeline & .rkdb v2 Parity** - Unstable/parallel sort + streaming write; golden byte-identity, both-consumer sortedness, full differential matrix (completed 2026-11-13)
 - [x] **Phase 9: Python Parity** - PyCounter routed through the shared engine, D2 skip-N semantics documented, measured win vs the Phase 5 baseline (completed 2026-11-13)
-- [ ] **Phase 10: Benchmark Verdict** - Full human-scale jellyfish parity verdict on both surfaces (BENCH-V2-02; BENCH-V2-01 KMC3 descoped 2026-11-13)
-- [ ] **Phase 11: Minimizer Partitioning & Memory Ceiling** - CONDITIONAL (D3): hand-rolled canonical minimizers + skew-controlled disk-backed bins — only if Stage A misses parity or a memory ceiling Stage A cannot meet
+- [x] **Phase 10: Benchmark Verdict** - Full human-scale jellyfish parity verdict on both surfaces (BENCH-V2-02; BENCH-V2-01 KMC3 descoped 2026-11-13)
+- [ ] **Phase 11: Minimizer Partitioning & Memory Ceiling** - CONDITIONAL (D3): hand-rolled canonical minimizers + skew-controlled disk-backed bins — only if Stage A misses parity or a memory ceiling Stage A cannot meet. **D3 answered 2026-11-14: NOT EXECUTED** — Stage A hit parity on both k and both surfaces, and peak memory was below jellyfish at both k; MINIM-01..03 deferred to a later milestone.
 
 ## Phase Details
 
@@ -151,7 +151,7 @@ Plans:
   2. A full human-scale jellyfish parity verdict is produced on BOTH surfaces — slice gate green at every step before the full run — from medians of counterbalanced reps with honest per-rep cache_state, the verdict computed from the recorded medians.
   3. The acceptance question is answered by measurement: rustkmer matches or beats jellyfish at k=21 (and k=31 under fair, matched-hash comparison). A YES closes BENCH-02 outright; a NO is recorded honestly and feeds the D3 trigger decision for Phase 11.
   4. CI baselines are regenerated only from the CI runner class; every verdict artifact carries binary/module provenance; the report states cold-cache limitations honestly (no-sudo warm-cache reality recorded, as in v1.0). Phase 10 records dev-host evidence only and writes no CI baseline.
-**Plans**: 2/4 plans executed
+**Plans**: 4/4 plans complete
 **Wave 1**
 - [x] 10-01-PLAN.md — Phase-10 controller tracer (four arms, both parts), `max(rss, footprint)` parser, memory projection model
 
@@ -159,10 +159,12 @@ Plans:
 - [x] 10-02-PLAN.md — Production `py-t16` arm, mechanical Phase-10 renderer with mandatory statements, slice-gate record with reference sha256 pin
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 10-03-PLAN.md — Slice gate on the real dataset, CLI full-scale k=21 and k=31, Checkpoint 1 (blocking user decision)
+- [x] 10-03-PLAN.md — Slice gate on the real dataset, CLI full-scale k=21 and k=31, Checkpoint 1 (blocking user decision; `proceed` 2026-11-14)
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 10-04-PLAN.md — Python memory preflight, Python full-scale sessions, verdict computed from recorded medians + Checkpoint 2 report
+- [x] 10-04-PLAN.md — Python memory preflight, Python full-scale sessions, verdict computed from recorded medians + Checkpoint 2 report (overall YES; D3 returned to the user)
+
+**Outcome**: overall **YES** — k=21 CLI 144.69 s vs jellyfish 194.85 s, Python 165.05 s vs 197.95 s; k=31 CLI 147.08 s vs 1380.92 s, Python 178.22 s vs 187.14 s; exact count parity across all arms; verified 8/8, review disposition 0 open.
 
 **Research**: complete — `10-RESEARCH.md` (tool mechanics and harness seams verified locally; full-scale walls/RSS are labeled extrapolations converted to measurements by this phase's own preflight).
 

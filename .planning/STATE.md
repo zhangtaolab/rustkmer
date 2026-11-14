@@ -4,19 +4,19 @@ milestone: v2.0
 milestone_name: k=21 Counting Parity
 current_phase: 10
 current_phase_name: Benchmark Verdict
-current_plan: 10-04
+current_plan: complete
 status: executing
-stopped_at: Phase 10 wave 3 complete — Checkpoint 1 approved (proceed); wave 4 (10-04 Python full-scale + verdict) is next
-last_updated: "2026-11-14T00:00:00.000Z"
+stopped_at: Phase 10 complete — verified 8/8, review disposition 0 open; D3 answered (Phase 11 not executed); ready for milestone audit
+last_updated: "2026-11-14T05:00:00.000Z"
 last_activity: 2026-11-14
-last_activity_desc: Phase 10 Checkpoint 1 approved (proceed) after CLI full-scale evidence
-state_head: 9d2e6c0
+last_activity_desc: Phase 10 complete — overall YES on both surfaces at k=21 and k=31
+state_head: 83020a8
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 29
-  completed_plans: 28
-  percent: 71
+  completed_plans: 29
+  percent: 86
 ---
 
 # Project State
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-11-13)
 
 ## Current Position
 
-Phase: 10 (Benchmark Verdict) — EXECUTING (wave 3 of 4 complete)
-Current Plan: 10-04 (Python full-scale arms + verdict + report)
+Phase: 10 (Benchmark Verdict) — COMPLETE ✓
+Current Plan: 10-04 complete (4/4 plans)
 Total Plans in Phase: 4
-Status: Checkpoint 1 approved (proceed) 2026-11-14; wave 4 may run
-Last activity: 2026-11-14 — Checkpoint 1 approved after CLI full-scale evidence (k=21 144.69 s vs 194.85 s; k=31 147.08 s vs 1380.92 s)
+Status: Verified 8/8; overall YES at both k on both surfaces; review 0 open; D3 answered — Phase 11 not executed
+Last activity: 2026-11-14 — Phase 10 complete (k=21 144.69/165.05 vs 194.85/197.95 s; k=31 147.08/178.22 vs 1380.92/187.14 s)
 
 Progress: [███████░░░] 71% (v2.0)
 
@@ -194,6 +194,8 @@ None yet.
 - [Carried W1, OPEN] Unpushed local dev commits lack remote CI validation (memmap2 floor, Cargo.lock tracking, --locked CI, MSRV declaration, clippy fixes). Push dev to resolve.
 - [Resolved 05-02] Rust 1.80.0 + clippy installed locally; remaining MSRV blocker is locked dependency compatibility, recorded below.
 - [v2.0 research] Stage-A-achieves-parity is a MEDIUM-confidence extrapolation — Phase 9 measured the Python arm at 2.35x/8.71x on the slice; the full-scale verdict is Phase 10's job and still feeds the D3 trigger decision (Phase 11).
+- [Phase 10, CLOSED] Overall YES at both k on both surfaces from recorded same-session t16 medians: k=21 CLI 144.69 s / Python 165.05 s vs jellyfish 194.85 / 197.95 s; k=31 CLI 147.08 s / Python 178.22 s vs 1380.92 / 187.14 s. Exact count parity; peak memory below jellyfish at both k. Verified 8/8; review disposition 0 open (27 findings across 3 rounds). The k=31 jellyfish CLI-session median is a disclosed 7.38x outlier; the verdict is robust to using the faster reference.
+- [Phase 10, CLOSED] D3 answered 2026-11-14: Phase 11 (minimizer partitioning / memory ceiling) does NOT execute in v2.0. MINIM-01..03 deferred to a later milestone; no Phase 11 directory or plan exists.
 - [Phase 9, OPEN] Security audit never ran for phase 9 (`SECURITY.md` absent). Phase 9 shipped under a plan-level threat model only — run `/gsd-secure-phase 9` before the milestone audit if that coverage is required.
 - [Phase 9, OPEN] 8 Info-severity review findings remain in `09-REVIEW.md` (info only; the verifier confirmed none weakens a must-have). Notable: `--previous` accepts any structurally valid differential without a pre-D2 sha pin; `save_database`'s snapshot is not documented as non-linearizable.
 - [Environment, OPEN] `scripts/bench/tests/test_verify_threads.py::TestNegativeControls::test_pre_engine_n_plus_one_stub_is_measured_red` is a pre-existing ~50% macOS `sample`-race flake; the file is untouched by Phases 5-9. A shared `target/` across git worktrees can also bake a deleted `CARGO_MANIFEST_DIR` into test binaries — purge artifacts containing the stale path before trusting a red result.
@@ -217,12 +219,12 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-14T00:00:00Z
-Stopped at: Phase 10 wave 3 complete — Checkpoint 1 approved (proceed); wave 4 next
+Last session: 2026-11-14T05:00:00Z
+Stopped at: Phase 10 complete — verified 8/8, overall YES; ready for milestone audit
 Resume file: None
 
 ## Operator Next Steps
 
-- Execute Phase 10 wave 4 (10-04): Python memory preflight → Python full-scale k=21 and k=31 (each after a slice-gate re-run, same-session jellyfish) → verdict + `10-BENCHMARK-REPORT.md` → Checkpoint 2
-- After Checkpoint 2: Phase 10 code review, verification, transition; the D3 decision (whether Phase 11 runs) is returned to the user — Phase 11 is never auto-triggered
-- Optional before the milestone audit: run `/gsd-secure-phase 9` (no SECURITY.md was produced for phase 9)
+- Re-run the stale verification gates for Phases 5, 6, 7 and 9 (`/gsd-execute-phase <N>` resumes at the verification gates) — their verifier digests went stale when Phases 9/10 changed shared harness files
+- Milestone audit → complete → cleanup (Phase 11 does not execute; MINIM-01..03 deferred)
+- Optional: run `/gsd-secure-phase 9` and `/gsd-secure-phase 10` if SECURITY.md coverage is required for the milestone audit

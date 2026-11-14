@@ -43,14 +43,15 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 - ✓ Counting competitive with Jellyfish2 at human scale, k=31: 494 s @ 55.2 GiB vs 843 s @ 84.0 GiB — faster (−41%) AND leaner (−34% RSS); k=21 measured ~5x slower, accepted as a known gap at close — v1.0 (Phase 4, BENCH-02 partial)
 - ✓ Exact-count preservation proof: 508 Rust tests + 179 pytest + 398 harness tests green, 1-vs-N and old-vs-new differentials identical across k/canonical/threads, `.rkdb` v2 byte-identical (sha256 `0976f29c…` CLI, `a5da813e…` golden) — v2.0 (Phases 6-8, plus Phase 9 for the Python surface; PY-01)
 - ✓ Python surface reaches structural parity with the CLI counting engine: `PyCounter.add_from_fasta/add_from_fastq` count through the shared `CountEngine`, D2 skip-N unified (9/9 differential cells equal, 0 divergence, 33 chimeric k-mers eliminated), `save_database` sorts once under `py.detach`, public `PyCounter` API frozen at 12 names, measured 2.35x (threads=1) / 8.71x (default threads) against the committed Phase 5 sequential baseline — v2.0 (Phase 9, PY-01..02)
+- ✓ Milestone acceptance question answered by full human-scale measurement on BOTH surfaces: **overall YES** at k=21 (CLI 144.69 s vs jellyfish 194.85 s; Python 165.05 s vs 197.95 s) and k=31 (CLI 147.08 s vs 1380.92 s; Python 178.22 s vs 187.14 s), at lower peak memory both times; exact count parity across all arms (k=21 897,266,581 / 8,967,099,203; k=31 1,146,353,600 / 8,275,694,030); slice gate green before each stage; 3 counterbalanced reps; honest `cache_state: unavailable` x30; mechanical byte-identical report; KMC3 descoped and stated; dev-host only — v2.0 (Phase 10, BENCH-V2-02; verified 8/8)
 
 ### Active
 
 <!-- v2.0 scope — confirmed by user 2026-11-11: k=21 counting parity first; merge untouched this round. -->
 
-- [ ] k=21 counting parity with Jellyfish2 at human scale — match or beat (closes BENCH-02 outright); approach chosen from profiling evidence; candidate direction minimizer/signature partitioning (MINIM-01..03 staged in the v1.0 requirements archive)
-- [ ] Root-cause profiling of the k=21 ~5x gap on the real workload — evidence before architecture (hashing overhead hypothesis from the Chorus3 small-k direct-address-vs-DashMap result needs validation on rustkmer's exact-u32 workload)
-- [ ] KMC3 benchmark comparison (BENCH-V2-01) — the disk-backed, memory-efficient gold standard as a second validation reference
+- [x] k=21 counting parity with Jellyfish2 at human scale — **achieved 2026-11-14 (overall YES)**; closed BENCH-02 outright
+- [x] Root-cause profiling of the k=21 ~5x gap on the real workload — completed in Phases 5-7 (parallel-scaling efficiency, not data structures); fixes measured in Phases 6-8 and confirmed at full scale in Phase 10
+- ~~KMC3 benchmark comparison (BENCH-V2-01)~~ — **DESCOPED 2026-11-13** by user decision ("不需要KMC3，本项目与KMC3 无关"); no KMC3 binary downloaded, installed, or executed
 - [ ] Backlog 999.1–999.3 (pyo3 `build.rs` link args, stale site-packages `pyrustkmer` shadowing, `deferred-items.md` stale sweep claim) — opportunistic, only if touched by the perf work
 
 ### Out of Scope
@@ -119,6 +120,8 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 | Phase 7 shared engine: persistent workers + 64 hash-range partitions + overlapped producer, one `for_each_window` extractor | Measured (independent re-execution): real 4M slice t1 57.16→36.92s, t4 34.98→17.76s, t16 26.96→23.83s; synthetic t1 13.59→6.42s; peak RSS ~17.96 GB (down from 25 GiB — partitioned scheme); t1/t4/t16 `.rkdb` sha256 identical; exact pinned parity. Honest finding: the count phase is now PRODUCER-BOUND (single producer ≈99.9997% of parallel wall) — parallel extraction is the documented future lever; the slice wall is now dominated by output sort/write (Phase 8) | ✅ Verified 12/12 (2N+1 gate exact with reachable RED control) |
 | Phase 8 output pipeline: in-place parallel unstable sort + streaming write through the frozen writer | Measured (independent re-execution): real 4M slice t1/t4/t16 36.92/17.76/23.83 → 31.82/10.15/9.31s; sort delta 8.91→1.70s (0.19x); sorted RSS 17.97→12.04 GB; `.rkdb` sha256 `0976f29c…` unchanged across t1/t4/t16 and pre/post; 12 pre-refactor goldens byte-identical; four-arm differential + both binary-search consumers + mutation-RED (ordering/duplication/overflow). Frozen format.rs/fixtures/manifests untouched | ✅ Verified 16/16 (OUT-01..03 complete) |
 | Phase 9 Python parity: one shared engine, D2 skip-N, sort-once save, frozen API | Measured on the shipped tree: differential 9/9 cases equal with 0 divergence (33 Python-only chimeric k-mers eliminated); `--compare-baseline` PASS at speedup_t1 2.35x / speedup_default 8.71x vs the committed Phase 5 sequential baseline (N-free control exact counts 129,579,577 / 73,476,107 preserved); public `PyCounter` frozen at 12 names; `format.rs` grew by pure addition (78/0). Review found 0 critical / 4 warnings / 8 info; the 4 warnings were fixed and every gate + evidence artifact regenerated on the post-fix tree | ✅ Verified 38/38 (PY-01..02 complete) |
+| Phase 10 verdict: rustkmer matches-or-beats jellyfish on both surfaces at both k | Overall **YES** from recorded t16 medians in same-session comparisons: k=21 CLI 144.69 vs 194.85 s, Python 165.05 vs 197.95 s; k=31 CLI 147.08 vs 1380.92 s, Python 178.22 vs 187.14 s; exact three-way parity and identical two-part fingerprints; peak memory lower than jellyfish at both k. The k=31 jellyfish CLI-session median is a disclosed 7.38x outlier vs the Python session; the verdict is robust to using the faster reference (both rustkmer arms still win). Three code-review rounds fixed 27 findings (19 unique IDs), 0 open; no measured number or verdict changed | ✅ Verified 8/8 (BENCH-V2-02 complete) |
+| D3 revised 2026-11-14: Phase 11 (minimizer partitioning / memory ceiling) does NOT execute in v2.0 | The conditional trigger (Stage A misses parity OR a memory ceiling Stage A cannot meet) did not fire: Stage A hit parity on both k and both surfaces, and peak memory was below jellyfish (43.97 vs 46.84 GiB at k=21; 68.52 vs 88.00 GiB at k=31). MINIM-01..03 deferred to a later milestone | ✅ User decision 2026-11-14 |
 
 ## Evolution
 
@@ -138,4 +141,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-13 after Phase 9 (Python Parity)*
+*Last updated: 2026-11-14 after Phase 10 (Benchmark Verdict) — overall YES; D3 answered (Phase 11 not executed, MINIM-* deferred)*

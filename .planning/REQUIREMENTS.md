@@ -45,11 +45,11 @@ Committed scope. Each maps to exactly one roadmap phase. MINIM-* are CONDITIONAL
 ### Benchmark Verdict (BENCH)
 
 - ~~**BENCH-V2-01**: A KMC3 comparison runs with exact-count configuration (install KMC 3.2.4 official mac.arm64 tarball; `-ci1 -cx4294967295 -cs4294967295`, matched threads/canonical, agreed `-m`), a parity gate on the measured input BEFORE timing, temp-disk recording, and graceful degradation when KMC3 is absent.~~ **DESCOPED 2026-11-13** — user decision: "不需要KMC3，本项目与KMC3 无关". Supersedes the D3 ruling that kept it in v2.0; no third-party binary is downloaded or executed.
-- [ ] **BENCH-V2-02**: A full human-scale jellyfish parity verdict is produced on BOTH surfaces — slice gate at every step, then the full run; medians of counterbalanced reps, honest per-rep cache_state, CI baselines regenerated only from the CI runner class. Acceptance: rustkmer matches or beats jellyfish at k=21 (and k=31 under fair, matched-hash comparison).
+- [x] **BENCH-V2-02**: A full human-scale jellyfish parity verdict is produced on BOTH surfaces — slice gate at every step, then the full run; medians of counterbalanced reps, honest per-rep cache_state, CI baselines regenerated only from the CI runner class. Acceptance: rustkmer matches or beats jellyfish at k=21 (and k=31 under fair, matched-hash comparison). **Result 2026-11-14: overall YES** — k=21 CLI 144.69 s / Python 165.05 s vs jellyfish 194.85 / 197.95 s; k=31 CLI 147.08 s / Python 178.22 s vs jellyfish 1380.92 / 187.14 s; exact count parity, dev-host evidence only (`10-verdict.json`, `10-BENCHMARK-REPORT.md`, verified 8/8).
 
 ### Conditional Minimizer / Memory Ceiling (MINIM) — Stage B, gated on D3
 
-> These requirements are IN SCOPE only if the conditional phase triggers: Stage A misses the parity gate, OR the user sets a memory ceiling Stage A cannot meet (e.g. beating KMC3 on RAM). If Stage A hits parity and memory is acceptable, MINIM-* descope/defer to a later milestone. They reuse the ENGINE partitioned tables + v1.0 external-sort/temp-lifecycle machinery; no new persistence engine; MSRV-clean hand-roll (no edition-2024 minimizer crates).
+> These requirements are IN SCOPE only if the conditional phase triggers: Stage A misses the parity gate, OR the user sets a memory ceiling Stage A cannot meet (e.g. beating KMC3 on RAM). If Stage A hits parity and memory is acceptable, MINIM-* descope/defer to a later milestone. **D3 answered 2026-11-14: NOT TRIGGERED.** Stage A hit parity on both k and both surfaces (overall YES), and peak memory was below jellyfish at both k (43.97 vs 46.84 GiB at k=21; 68.52 vs 88.00 GiB at k=31). MINIM-01..03 are deferred to a later milestone; Phase 11 does not execute in v2.0. They reuse the ENGINE partitioned tables + v1.0 external-sort/temp-lifecycle machinery; no new persistence engine; MSRV-clean hand-roll (no edition-2024 minimizer crates).
 
 - [ ] **MINIM-01**: Hand-rolled canonical minimizer/signature extraction (KMC2 exclusion rules: AAA*/ACA*/internal AA) + super-mer runs, with a strand-invariance proptest (canonical minimizer = min(m-mer, revcomp(m-mer)), tie-breaks matching `canonical_kmer_u128`).
 - [ ] **MINIM-02**: Skew-controlled bins (bucket histogram + adaptive re-partition; adversarial poly-A test input) and `--max-memory` counting admission with honest byte accounting; temp lifecycle extended (counting prefix paired with the prefix-based TTL sweep selector; `DiskOverflow` not reused).
@@ -103,10 +103,10 @@ Each requirement maps to exactly one phase. MINIM-* map to conditional Phase 11 
 | PY-01 | Phase 9 | Complete |
 | PY-02 | Phase 9 | Complete |
 | BENCH-V2-01 | Phase 10 | Descoped 2026-11-13 (user: no KMC3 comparison) |
-| BENCH-V2-02 | Phase 10 | Pending |
-| MINIM-01 | Phase 11 (conditional — D3) | Pending (conditional) |
-| MINIM-02 | Phase 11 (conditional — D3) | Pending (conditional) |
-| MINIM-03 | Phase 11 (conditional — D3) | Pending (conditional) |
+| BENCH-V2-02 | Phase 10 | Complete — overall YES 2026-11-14 (both k, both surfaces) |
+| MINIM-01 | Phase 11 (conditional — D3) | Deferred 2026-11-14 (D3 not triggered) |
+| MINIM-02 | Phase 11 (conditional — D3) | Deferred 2026-11-14 (D3 not triggered) |
+| MINIM-03 | Phase 11 (conditional — D3) | Deferred 2026-11-14 (D3 not triggered) |
 
 **Coverage:**
 - v2.0 requirements: 21 total (18 committed + 3 conditional MINIM)
@@ -115,4 +115,4 @@ Each requirement maps to exactly one phase. MINIM-* map to conditional Phase 11 
 
 ---
 *Requirements defined: 2026-11-12*
-*Last updated: 2026-11-12 after roadmap creation (Phases 5-11; traceability populated, 21/21 mapped)*
+*Last updated: 2026-11-14 after Phase 10 — BENCH-V2-02 complete (overall YES); D3 answered: Phase 11 not executed, MINIM-01..03 deferred*
