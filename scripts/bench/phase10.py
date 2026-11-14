@@ -252,6 +252,7 @@ def build_arm_specs(inputs, k, rustkmer, python, scratch, include):
                 "inputs": inputs_text,
                 "out": str(out),
                 "cmd": rustkmer_count_cmd(cfg, out, rustkmer),
+                "rustkmer": str(rustkmer),
             })
         elif name == ARM_JF_T16:
             out = scratch / "phase10-jf-t16.jf"
@@ -307,8 +308,39 @@ def tool_warmup_order(specs):
     return order
 
 
+def read_rep_counts(spec):
+    """Read one measured rep's exact counts from that rep's OWN output.
+
+    Every rep overwrites the same output path, so this runs immediately after
+    each measured run (never after the next run has overwritten it). A zero or
+    invalid count is ValueError: a rep that silently counted nothing must
+    invalidate the arm BEFORE any median is computed, not disappear behind
+    the next rep's positive artifact.
+    """
+    if spec["tool"] == "jellyfish":
+        raw = jellyfish_stats(spec["out"])
+        unique = raw.get("distinct")
+        total = raw.get("total")
+    elif spec["tool"] == "rustkmer":
+        raw = stats(spec["out"], spec["rustkmer"])
+        unique = raw.get("unique_kmers")
+        total = raw.get("total_kmers")
+    else:
+        raise ValueError(
+            f"arm {spec['name']!r}: per-rep count verification applies only "
+            f"to the CLI/jellyfish arms, not tool {spec['tool']!r}")
+    for key, value in (("unique_kmers", unique), ("total_kmers", total)):
+        if (not isinstance(value, int) or isinstance(value, bool)
+                or value <= 0):
+            raise ValueError(
+                f"arm {spec['name']!r}: per-rep {key}={value!r} must be a "
+                f"positive integer — a zero count after a measured run is a "
+                f"silent input failure, never a measurement")
+    return {"unique_kmers": unique, "total_kmers": total}
+
+
 def run_rounds(specs, reps, cooldown_s, measure_fn=None, purge_fn=None,
-               sleep_fn=None, on_rep=None):
+               sleep_fn=None, on_rep=None, counts_fn=None):
     """Warmups + counterbalanced measured rounds; return {arm: [rep dicts]}.
 
     One discarded warmup per TOOL (the first spec of that tool) runs before
@@ -319,7 +351,10 @@ def run_rounds(specs, reps, cooldown_s, measure_fn=None, purge_fn=None,
     python_bench.validate_worker_stats with the spec's site_prefix, the
     payload's input list must equal the spec's two-part list IN ORDER, and
     the exact counts plus module identity are attached — a py run that
-    leaves no stats file is invalid, never synthesized.
+    leaves no stats file is invalid, never synthesized. For a CLI/jellyfish
+    spec `counts_fn` reads that rep's OWN output immediately after the run
+    (the next rep overwrites the path), so a silently empty rep invalidates
+    the arm instead of entering the medians (WR-06).
 
     The injectable seams default to the module-level primitives at CALL time
     (not at definition time), so a test can patch `phase10.measure` /
@@ -329,6 +364,7 @@ def run_rounds(specs, reps, cooldown_s, measure_fn=None, purge_fn=None,
     measure_fn = measure if measure_fn is None else measure_fn
     purge_fn = attempt_cache_purge if purge_fn is None else purge_fn
     sleep_fn = time.sleep if sleep_fn is None else sleep_fn
+    counts_fn = read_rep_counts if counts_fn is None else counts_fn
     if reps < 1:
         raise ValueError(f"reps must be >= 1, got {reps}")
     names = [spec["name"] for spec in specs]
@@ -350,7 +386,7 @@ def run_rounds(specs, reps, cooldown_s, measure_fn=None, purge_fn=None,
         if done_runs < total_runs:
             sleep_fn(cooldown_s)
 
-    def one_measured_run(spec):
+    def one_measured_run(spec, verify_counts=True):
         if spec["tool"] == "pyrustkmer":
             stats_path = Path(spec["stats_path"])
             if stats_path.exists():
@@ -382,6 +418,8 @@ def run_rounds(specs, reps, cooldown_s, measure_fn=None, purge_fn=None,
                 payload["module_path"])["sha256"]
         else:
             rep = measure_fn(spec["cmd"])
+            if verify_counts:
+                rep.update(counts_fn(spec))
         rep.setdefault("peak_footprint_bytes", None)
         rep["peak_bytes"] = rep_peak_bytes(rep)
         return rep
@@ -392,7 +430,7 @@ def run_rounds(specs, reps, cooldown_s, measure_fn=None, purge_fn=None,
         if spec["tool"] in warmup_tools:
             continue
         warmup_tools.add(spec["tool"])
-        one_measured_run(spec)
+        one_measured_run(spec, verify_counts=False)
         cooldown_gap()
 
     for rnd, round_order in enumerate(schedule):
@@ -530,7 +568,10 @@ def build_arms(specs, reps_by_arm, rustkmer):
     Counts come from the producer of the bytes: `rustkmer stats` for the CLI
     arms, `jellyfish stats` for the reference arm, and the validated worker
     payloads for the Python arm (through the strict `finalize_python_arm`).
-    A zero count is invalid, never a measurement.
+    For the CLI/jellyfish arms every measured rep recorded its OWN counts
+    after its run; those must agree with each other and with the final
+    artifact, and a zero count is invalid — never a measurement, and never
+    hidden behind the next rep's positive output (WR-06).
     """
     arms = []
     for spec in specs:
@@ -543,6 +584,14 @@ def build_arms(specs, reps_by_arm, rustkmer):
                 arm["inputs"] = list(spec["inputs"])
             arms.append(arm)
             continue
+        per_rep = {(rep.get("unique_kmers"), rep.get("total_kmers"))
+                   for rep in reps}
+        if len(per_rep) != 1 or None in per_rep:
+            raise ValueError(
+                f"arm {spec['name']!r}: per-rep exact counts disagree "
+                f"({sorted(per_rep, key=str)}) — a rep that counted nothing "
+                f"or counted different bytes is never averaged into a median")
+        recorded_counts = per_rep.pop()
         if spec["tool"] == "jellyfish":
             jf = jellyfish_stats(spec["out"])
             exact = {"unique_kmers": jf["distinct"], "total_kmers": jf["total"]}
@@ -554,6 +603,11 @@ def build_arms(specs, reps_by_arm, rustkmer):
             raise ValueError(
                 f"arm {spec['name']!r}: zero counts {exact} after the reps — "
                 f"silent input failure, never a measurement")
+        if (exact["unique_kmers"], exact["total_kmers"]) != recorded_counts:
+            raise ValueError(
+                f"arm {spec['name']!r}: final output counts {exact} differ "
+                f"from the last measured rep's counts {recorded_counts} — "
+                f"the artifact was replaced after its rep was measured")
         db_sha256 = fingerprint(spec["out"])["sha256"]
         arms.append({
             "name": spec["name"],
@@ -1213,8 +1267,11 @@ def _methodology_lines(docs):
         "jellyfish receives `gzcat <part_001> <part_006> | jellyfish count "
         "... /dev/stdin`, so decompression is inside BOTH measured walls (the "
         "residual pipe overhead remains and is stated here per protocol).",
-        "- `rustkmer stats` is a single post-arm read per arm because it "
-        "scans the whole database; it is not a per-rep cost.",
+        "- exact counts are re-read from every measured run's OWN output "
+        "immediately after that run, outside the timed wall, so a rep that "
+        "silently counts nothing invalidates its arm before any median "
+        "exists; `rustkmer stats` scans the whole database per read, so these "
+        "per-rep parity reads are not part of any recorded wall time.",
         "- every number in this report is read from the committed result "
         "documents; the renderer holds no measurement literals and consults "
         "no clock.",

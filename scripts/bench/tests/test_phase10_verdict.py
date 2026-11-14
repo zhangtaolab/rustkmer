@@ -263,13 +263,18 @@ class RoundsFixture(unittest.TestCase):
         index = len(self.calls)
         return {"wall_s": float(index), "peak_rss_bytes": 1000 + index}
 
-    def run_with_fakes(self, reps=3, measure_fn=None):
+    def fake_counts(self, spec):
+        """Per-rep counts for the CLI/jellyfish arms (no real artifact)."""
+        return {"unique_kmers": 100, "total_kmers": 200}
+
+    def run_with_fakes(self, reps=3, measure_fn=None, counts_fn=None):
         sleeps = []
         reps_by_arm = p10.run_rounds(
             self.specs, reps, 5,
             measure_fn=measure_fn or self.fake_measure,
             purge_fn=lambda: "unavailable",
-            sleep_fn=sleeps.append)
+            sleep_fn=sleeps.append,
+            counts_fn=counts_fn or self.fake_counts)
         return reps_by_arm, sleeps
 
 
@@ -333,6 +338,22 @@ class TestRunRounds(RoundsFixture):
         for call in validator.call_args_list:
             self.assertEqual(call.args[1], self.site_prefix)
 
+    def test_cli_and_jellyfish_reps_carry_per_rep_counts(self):
+        """Every measured CLI/jellyfish rep records its own exact counts."""
+        reps_by_arm, _ = self.run_with_fakes()
+        for name in (p10.ARM_RK_T16, p10.ARM_RK_T1, p10.ARM_JF_T16):
+            for rep in reps_by_arm[name]:
+                self.assertEqual(rep["unique_kmers"], 100)
+                self.assertEqual(rep["total_kmers"], 200)
+
+    def test_zero_count_rep_is_invalid(self):
+        """A rep that silently counted nothing never enters the medians."""
+        with mock.patch.object(p10, "stats",
+                               return_value={"unique_kmers": 0,
+                                             "total_kmers": 0}):
+            with self.assertRaises(ValueError):
+                self.run_with_fakes(counts_fn=p10.read_rep_counts)
+
     def test_missing_py_stats_file_is_invalid(self):
         """A py run leaving no stats file raises — counts are never made up."""
 
@@ -347,6 +368,66 @@ class TestRunRounds(RoundsFixture):
     def test_zero_reps_rejected(self):
         with self.assertRaises(ValueError):
             self.run_with_fakes(reps=0)
+
+
+class TestReadRepCounts(unittest.TestCase):
+    """Per-rep counts are read from THAT rep's own output, never synthesized."""
+
+    def test_jellyfish_counts_come_from_distinct_and_total(self):
+        spec = {"name": p10.ARM_JF_T16, "tool": "jellyfish",
+                "out": "/tmp/x.jf"}
+        with mock.patch.object(p10, "jellyfish_stats",
+                               return_value={"distinct": 7, "total": 9}):
+            self.assertEqual(p10.read_rep_counts(spec),
+                             {"unique_kmers": 7, "total_kmers": 9})
+
+    def test_rustkmer_counts_come_from_the_stats_command(self):
+        spec = {"name": p10.ARM_RK_T16, "tool": "rustkmer",
+                "out": "/tmp/x.rkdb", "rustkmer": "/repo/rustkmer"}
+        with mock.patch.object(p10, "stats",
+                               return_value={"unique_kmers": 7,
+                                             "total_kmers": 9}) as reader:
+            self.assertEqual(p10.read_rep_counts(spec),
+                             {"unique_kmers": 7, "total_kmers": 9})
+        reader.assert_called_once_with("/tmp/x.rkdb", "/repo/rustkmer")
+
+    def test_zero_counts_raise(self):
+        spec = {"name": p10.ARM_RK_T16, "tool": "rustkmer",
+                "out": "/tmp/x.rkdb", "rustkmer": "/repo/rustkmer"}
+        with mock.patch.object(p10, "stats",
+                               return_value={"unique_kmers": 0,
+                                             "total_kmers": 0}):
+            with self.assertRaises(ValueError):
+                p10.read_rep_counts(spec)
+
+
+class TestBuildArmsPerRepCounts(unittest.TestCase):
+    """A CLI/jellyfish rep that counted nothing invalidates the arm."""
+
+    def _spec(self):
+        return {"name": p10.ARM_RK_T16, "tool": "rustkmer", "threads": 16,
+                "inputs": [PART_1, PART_2], "out": "/tmp/phase10-test.rkdb",
+                "cmd": ["rustkmer"], "rustkmer": "/repo/rustkmer"}
+
+    def _rep(self, unique=100, total=200):
+        return {"wall_s": 1.0, "peak_rss_bytes": 1000, "peak_bytes": 1000,
+                "unique_kmers": unique, "total_kmers": total}
+
+    def test_disagreeing_per_rep_counts_are_rejected(self):
+        specs = [self._spec()]
+        reps = [self._rep(), self._rep(total=201)]
+        with self.assertRaises(ValueError):
+            p10.build_arms(specs, {p10.ARM_RK_T16: reps}, "/repo/rustkmer")
+
+    def test_final_output_must_match_the_last_rep(self):
+        specs = [self._spec()]
+        reps = [self._rep()]
+        with mock.patch.object(p10, "stats",
+                               return_value={"unique_kmers": 100,
+                                             "total_kmers": 201}):
+            with self.assertRaises(ValueError):
+                p10.build_arms(specs, {p10.ARM_RK_T16: reps},
+                               "/repo/rustkmer")
 
 
 class TestSurfaceResult(unittest.TestCase):
