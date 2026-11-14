@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "mode": "full",
+  "phase": 10,
+  "session": "python",
+  "params": {
+    "k": 21,
+    "canonical": true,
+    "threads": 16,
+    "reps": 3,
+    "cooldown_s": 5,
+    "hash_size": "10G",
+    "arm_order": [
+      "rk-t16",
+      "rk-t1",
+      "jf-t16",
+      "py-t16"
+    ]
+  },
+  "platform": {
+    "system": "Darwin",
+    "release": "25.6.0",
+    "machine": "arm64",
+    "python": "3.13.11"
+  },
+  "created": "2026-11-14T01:48:03.566884+00:00",
+  "input_fingerprint": [
+    {
+      "path": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+      "size_bytes": 2785381389,
+      "sha256": "dae91042e42c1a0562a2bda66b7a3409665cddc87e702d99b922e44160c1b0de"
+    },
+    {
+      "path": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz",
+      "size_bytes": 2785388289,
+      "sha256": "b197f16c31dd34094858adcb25f811194f532ed3ce95523df6ae709f2a37f07e"
+    }
+  ],
+  "arms": [
+    {
+      "name": "jf-t16",
+      "tool": "jellyfish",
+      "threads": 16,
+      "inputs": [
+        "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+        "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz"
+      ],
+      "reps": [
+        {
+          "wall_s": 200.03,
+          "peak_rss_bytes": 50297651200,
+          "peak_footprint_bytes": 1294648,
+          "peak_bytes": 50297651200,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 197.95,
+          "peak_rss_bytes": 50298257408,
+          "peak_footprint_bytes": 1278240,
+          "peak_bytes": 50298257408,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 196.13,
+          "peak_rss_bytes": 50297651200,
+          "peak_footprint_bytes": 1294648,
+          "peak_bytes": 50297651200,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 0
+        }
+      ],
+      "medians": {
+        "wall_s": 197.95,
+        "peak_rss_bytes": 50297651200,
+        "peak_bytes": 50297651200,
+        "cv_wall_pct": 0.9853952516508415,
+        "cv_warning": false
+      },
+      "unique_kmers": 897266581,
+      "total_kmers": 8967099203,
+      "db_sha256": "214f0b03356d460bdc1f3fe8e83eba1ac319baa4b5177f7d65af538882ce84d1"
+    },
+    {
+      "name": "py-t16",
+      "tool": "pyrustkmer",
+      "threads": 16,
+      "inputs": [
+        "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+        "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz"
+      ],
+      "reps": [
+        {
+          "wall_s": 167.83,
+          "peak_rss_bytes": 46407483392,
+          "peak_footprint_bytes": 37172954760,
+          "peak_bytes": 46407483392,
+          "total_kmers": 8967099203,
+          "unique_kmers": 897266581,
+          "inputs": [
+            "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+            "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz"
+          ],
+          "module_path": "/Users/forrest/GitHub/rustkmer/.venv313/lib/python3.13/site-packages/pyrustkmer/pyrustkmer.cpython-313-darwin.so",
+          "module_mtime": 1794538614.598684,
+          "threads_resolved": 16,
+          "python_version": "3.13.11",
+          "module_sha256": "6d5264316e5c3e0587430cd87b49694e408871ddd780619950550cd7f5558ae3",
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 165.05,
+          "peak_rss_bytes": 46470447104,
+          "peak_footprint_bytes": 37296784936,
+          "peak_bytes": 46470447104,
+          "total_kmers": 8967099203,
+          "unique_kmers": 897266581,
+          "inputs": [
+            "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+            "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz"
+          ],
+          "module_path": "/Users/forrest/GitHub/rustkmer/.venv313/lib/python3.13/site-packages/pyrustkmer/pyrustkmer.cpython-313-darwin.so",
+          "module_mtime": 1794538614.598684,
+          "threads_resolved": 16,
+          "python_version": "3.13.11",
+          "module_sha256": "6d5264316e5c3e0587430cd87b49694e408871ddd780619950550cd7f5558ae3",
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 164.31,
+          "peak_rss_bytes": 46489731072,
+          "peak_footprint_bytes": 37256578840,
+          "peak_bytes": 46489731072,
+          "total_kmers": 8967099203,
+          "unique_kmers": 897266581,
+          "inputs": [
+            "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+            "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz"
+          ],
+          "module_path": "/Users/forrest/GitHub/rustkmer/.venv313/lib/python3.13/site-packages/pyrustkmer/pyrustkmer.cpython-313-darwin.so",
+          "module_mtime": 1794538614.598684,
+          "threads_resolved": 16,
+          "python_version": "3.13.11",
+          "module_sha256": "6d5264316e5c3e0587430cd87b49694e408871ddd780619950550cd7f5558ae3",
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 1
+        }
+      ],
+      "medians": {
+        "wall_s": 165.05,
+        "peak_rss_bytes": 46470447104,
+        "peak_bytes": 46470447104,
+        "cv_wall_pct": 1.1198391845479099,
+        "cv_warning": false
+      },
+      "unique_kmers": 897266581,
+      "total_kmers": 8967099203,
+      "db_sha256": null
+    }
+  ],
+  "scratch": "/tmp/rustkmer-phase10/scratch",
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/miniconda3/envs/py313/bin/python3.13",
+      "size_bytes": 5776992,
+      "sha256": "83a3f1a40e1f58286e5ec41917be8e6acc5b553c3916738080a6c0f833bbb836"
+    },
+    "git_commit": "efee25320a8e5cf1057f597e01bd02c9308cd2a8",
+    "git_dirty": false,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-14T01:48:03.449343+00:00",
+    "module": {
+      "path": "/Users/forrest/GitHub/rustkmer/.venv313/lib/python3.13/site-packages/pyrustkmer/pyrustkmer.cpython-313-darwin.so",
+      "size_bytes": 1597920,
+      "sha256": "6d5264316e5c3e0587430cd87b49694e408871ddd780619950550cd7f5558ae3"
+    },
+    "python_executable": "/Users/forrest/GitHub/rustkmer/.venv313/bin/python",
+    "python_version": "3.13.11",
+    "maturin_version": "maturin 1.11.5",
+    "cli_binary": {
+      "binary": {
+        "path": "/Users/forrest/GitHub/rustkmer/.claude/worktrees/agent-a5eb35be1e40e77fd/target/release/rustkmer",
+        "size_bytes": 2966832,
+        "sha256": "8f38d20c2e3dc77dfc0ef80c9a2475613da1aa7ad131bd240d5ec74fc87c3d23"
+      },
+      "git_commit": "efee25320a8e5cf1057f597e01bd02c9308cd2a8",
+      "git_dirty": false,
+      "build_profile": "release",
+      "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+      "platform": "darwin-arm64",
+      "created": "2026-11-14T01:48:03.566530+00:00"
+    }
+  },
+  "pre_gate": {
+    "path": "/tmp/rustkmer-phase10/scratch/pre_gate_k21.json",
+    "sha256": "4f958c19053dc1297f4998f7dfe1258b35f5d4610a0859234c71c65e4d5e8ea3"
+  },
+  "memory_preflight": {
+    "decision": "PROCEED",
+    "distinct": 897266581,
+    "projected_bytes": 77164925966,
+    "budget_bytes": 118111600640,
+    "headroom_bytes": 40946674674,
+    "observed_peak_bytes": 46470447104,
+    "source": ".planning/phases/10-benchmark-verdict/10-results-full-k21.json",
+    "source_sha256": "757c923a7278c06b663ab8720d22cf32abdc10b35a81d65a85765a50be900d6f"
+  },
+  "cross_session": {
+    "cli_doc": ".planning/phases/10-benchmark-verdict/10-results-full-k21.json",
+    "cli_doc_sha256": "757c923a7278c06b663ab8720d22cf32abdc10b35a81d65a85765a50be900d6f"
+  },
+  "schedule": {
+    "policy": "round-robin-rotation",
+    "warmup_order": [
+      "rustkmer",
+      "jellyfish",
+      "pyrustkmer"
+    ],
+    "rounds": [
+      [
+        "jf-t16",
+        "py-t16"
+      ],
+      [
+        "py-t16",
+        "jf-t16"
+      ],
+      [
+        "jf-t16",
+        "py-t16"
+      ]
+    ]
+  }
+}
