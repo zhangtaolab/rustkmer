@@ -290,7 +290,10 @@ def check_rep_identity(reps, expected=None):
     """All reps of one input must report identical exact counts and module.
 
     Any disagreement is a nondeterministic pipeline (exit 2 upstream) —
-    never averaged away. `expected` optionally pins the counts to a
+    never averaged away. The measured extension is identified by path AND by
+    its measured bytes (`module_sha256`) and mtime where recorded: a rebuild
+    that replaces the `.so` at the same path mid-session is a different
+    module and fails here (WR-07). `expected` optionally pins the counts to a
     parity-checked reference. Returns the exact-counts dict.
     """
     if not reps:
@@ -300,11 +303,13 @@ def check_rep_identity(reps, expected=None):
         raise ValueError(
             f"rep-count disagreement: {sorted(seen)} — nondeterministic "
             f"pipeline, never averaged away")
-    modules = {r["module_path"] for r in reps}
+    modules = {(r["module_path"], r.get("module_sha256"),
+                r.get("module_mtime")) for r in reps}
     if len(modules) != 1:
         raise ValueError(
-            f"rep module disagreement: {sorted(modules)} — the measured "
-            f"extension changed mid-run")
+            f"rep module identity disagreement (path, sha256, mtime): "
+            f"{sorted(modules, key=str)} — the measured extension changed "
+            f"mid-run")
     thread_counts = {r.get("threads_resolved") for r in reps}
     if len(thread_counts) != 1:
         raise ValueError(

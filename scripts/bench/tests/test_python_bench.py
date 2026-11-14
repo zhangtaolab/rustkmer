@@ -99,9 +99,10 @@ def build_gz_fixture(path, n_records=30):
 
 
 def make_rep(total=100, unique=90, module="/x/pyrustkmer.so", wall=1.0,
-             threads_resolved=1):
+             threads_resolved=1, module_sha256=None, module_mtime=None):
     return {"wall_s": wall, "peak_rss_bytes": 1000, "total_kmers": total,
             "unique_kmers": unique, "module_path": module,
+            "module_sha256": module_sha256, "module_mtime": module_mtime,
             "threads_resolved": threads_resolved,
             "cache_state": "unavailable", "rep": 0}
 
@@ -355,6 +356,18 @@ class TestRepIdentity(unittest.TestCase):
 
     def test_module_disagreement_raises(self):
         reps = [make_rep(), make_rep(module="/other/pyrustkmer.so")]
+        with self.assertRaises(ValueError):
+            pb.check_rep_identity(reps)
+
+    def test_module_sha_disagreement_raises(self):
+        """A rebuild replacing the .so at the same path is a different module."""
+        reps = [make_rep(module_sha256="a" * 64),
+                make_rep(module_sha256="b" * 64)]
+        with self.assertRaises(ValueError):
+            pb.check_rep_identity(reps)
+
+    def test_module_mtime_disagreement_raises(self):
+        reps = [make_rep(module_mtime=1.0), make_rep(module_mtime=2.0)]
         with self.assertRaises(ValueError):
             pb.check_rep_identity(reps)
 
