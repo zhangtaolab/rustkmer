@@ -22,10 +22,10 @@ current_phase_name: Benchmark Verdict
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-13)
+See: .planning/PROJECT.md (updated 2026-11-14)
 
 **Core value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools (KMC / Jellyfish class), from both the CLI and Python.
-**Current focus:** Phase 10 — Benchmark Verdict
+**Current focus:** Milestone v2.0 shipped (overall YES); planning the next milestone
 
 ## Current Position
 
@@ -38,7 +38,7 @@ Last activity: 2026-11-14 — Milestone v2.0 completed and archived
 
 **Velocity (v2.0):**
 
-- Total plans completed: 25
+- Total plans completed: 29
 - Average duration: - min
 - Total execution time: 0.0 hours
 - v1.0 history: 31 plans / 4 phases (per-plan metrics archived in milestones/v1.0-phases/)
@@ -52,12 +52,12 @@ Last activity: 2026-11-14 — Milestone v2.0 completed and archived
 | 2. Parallel Counting (v1.0) | 5/5 | - | - |
 | 3. Memory Safety (v1.0) | 17/17 | - | - |
 | 4. Benchmark & Validation (v1.0) | 5/5 | - | - |
-| 5. Measurement & Regression Harness | 0/TBD | - | - |
-| 6. Parallelism Correctness & Hot Path | 0/TBD | - | - |
-| 7. Shared Counting Engine | 0/TBD | - | - |
-| 8. Output Pipeline & .rkdb v2 Parity | 0/TBD | - | - |
-| 9. Python Parity | 0/TBD | - | - |
-| 10. Benchmark Verdict | 0/TBD | - | - |
+| 5. Measurement & Regression Harness | 7/7 | - | - |
+| 6. Parallelism Correctness & Hot Path | 5/5 | - | - |
+| 7. Shared Counting Engine | 4/4 | - | - |
+| 8. Output Pipeline & .rkdb v2 Parity | 4/4 | - | - |
+| 9. Python Parity | 5/5 | - | - |
+| 10. Benchmark Verdict | 4/4 | - | - |
 | 11. Minimizer & Memory Ceiling (conditional) | 0/TBD | - | - |
 | 05 | 7 | - | - |
 | 06 | 5 | - | - |
