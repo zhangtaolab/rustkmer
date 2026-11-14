@@ -49,7 +49,9 @@ Scaling evidence (excluded from the verdict): `rk-t1` at 1 thread(s), median 474
 ## Verdict
 
 - k=21 (primary acceptance question): **YES** — rustkmer YES (median 144.69 s vs jellyfish 194.85 s), python YES (median 165.05 s vs jellyfish 197.95 s).
+- k=21 cross-session jellyfish reference: CLI session median 194.85 s vs Python session median 197.95 s (ratio 1.02x). Both sessions' reference medians are within the documented 2.0x comparability factor.
 - k=31 (matched-hash re-verification): **YES** — rustkmer YES (median 147.08 s vs jellyfish 1380.92 s), python YES (median 178.22 s vs jellyfish 187.14 s).
+- k=31 cross-session jellyfish reference: CLI session median 1380.92 s vs Python session median 187.14 s (ratio 7.38x). The identical `jf-t16` command counted the same bytes in both sessions, so each surface is judged only against its own session's jellyfish median; no cross-session timing claim is made.
 - Overall: **YES** — k=21 is the primary acceptance question; k=31 re-verifies the v1.0 matched-hash comparison.
 
 - Rule: the comparison is `rustkmer_median <= jellyfish_median` per surface in the SAME session; equality counts as match-or-beat, with no tolerance band and no re-roll.
@@ -71,12 +73,12 @@ Scaling evidence (excluded from the verdict): `rk-t1` at 1 thread(s), median 474
 - reps: 3 measured per arm; cooldown 5 s between measured runs.
 - rotation: round-robin rotation — every round visits every arm once, and round r starts at arm r mod N, so order bias cannot accumulate inside one arm's block.
 - one discarded warmup per TOOL before round 0.
-- schedule policy: round-robin-rotation; warmup order: rustkmer, jellyfish, pyrustkmer.
+- schedule policy: round-robin-rotation; warmup order: rustkmer, jellyfish.
 - recorded rotation: round 0: rk-t16 then rk-t1 then jf-t16; round 1: rk-t1 then jf-t16 then rk-t16; round 2: jf-t16 then rk-t16 then rk-t1.
 - jellyfish `-s 10G` (generous initial hash).
 - rustkmer `--size` stayed at its default and is NOT matched to jellyfish `-s`: rustkmer auto-grows while jellyfish receives a generous `-s`; matching the numbers would pre-reserve roughly 160 GB.
 - decompression asymmetry: rustkmer reads the `.gz` natively; jellyfish receives `gzcat <part_001> <part_006> | jellyfish count ... /dev/stdin`, so decompression is inside BOTH measured walls (the residual pipe overhead remains and is stated here per protocol).
-- `rustkmer stats` is a single post-arm read per arm because it scans the whole database; it is not a per-rep cost.
+- exact counts are re-read from every measured run's OWN output immediately after that run, outside the timed wall, so a rep that silently counts nothing invalidates its arm before any median exists; `rustkmer stats` scans the whole database per read, so these per-rep parity reads are not part of any recorded wall time.
 - every number in this report is read from the committed result documents; the renderer holds no measurement literals and consults no clock.
 
 ## Provenance
@@ -85,6 +87,7 @@ Scaling evidence (excluded from the verdict): `rk-t1` at 1 thread(s), median 474
 - CLI build: git commit `97b3f01c273c11e8780e3af2de5a69016c6cdbe4`, dirty=False, profile release, rustc 1.101.0-nightly (07e526db9 2026-10-19)
 - Python module: `/Users/forrest/GitHub/rustkmer/.venv313/lib/python3.13/site-packages/pyrustkmer/pyrustkmer.cpython-313-darwin.so` — size_bytes=1597920 sha256=`6d5264316e5c3e0587430cd87b49694e408871ddd780619950550cd7f5558ae3`
 - Python interpreter: /Users/forrest/GitHub/rustkmer/.venv313/bin/python (3.13.11); maturin maturin 1.11.5
+- Python session CLI parity reference: `/Users/forrest/GitHub/rustkmer/.claude/worktrees/agent-a5eb35be1e40e77fd/target/release/rustkmer` — size_bytes=2966832 sha256=`8f38d20c2e3dc77dfc0ef80c9a2475613da1aa7ad131bd240d5ec74fc87c3d23`
 - Harness source commit (last commit touching this renderer): `d6a5857c250defa509dffc8b9fbdd1947462867f`
 
 ---
