@@ -695,6 +695,13 @@ class TestPreflightStage(unittest.TestCase):
             self.assertEqual(len(record["distinct_source_sha256"]), 64)
             self.assertEqual(record["decision"], "PROCEED")
 
+    def test_preflight_rejects_a_non_pinned_k_pair(self):
+        """Only the pinned {21, 31} pair may gate the pinned Python arms."""
+        docs = self._cli_docs({21: 1_050_000_000, 7: 1_200_000_000})
+        with self.assertRaises(ValueError) as ctx:
+            self._run(docs, self.tmp / "preflight.json")
+        self.assertIn("pinned k values", str(ctx.exception))
+
     def test_blocked_projection_still_writes_the_record_and_returns_2(self):
         docs = self._cli_docs({21: 2_000_000_000, 31: 2_000_000_000})
         out = self.tmp / "preflight.json"

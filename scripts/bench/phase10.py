@@ -1890,6 +1890,11 @@ def preflight_records(paths, budget_bytes=MEMORY_BUDGET_BYTES):
                 f"positive integer")
         records.append(preflight_record(
             k, distinct, str(path), file_sha256(path), budget_bytes))
+    if seen_k != set(SLICE_GATE_K_VALUES):
+        raise ValueError(
+            f"preflight-python requires exactly the pinned k values "
+            f"{SLICE_GATE_K_VALUES}, got {sorted(seen_k)} — a projection "
+            f"over a different k pair cannot gate the pinned Python arms")
     return records, _measured_provenance(docs, "preflight-python")
 
 
@@ -2189,11 +2194,16 @@ def run_cli_session(args):
     return EXIT_OK
 
 
-def _load_slice_gate_doc(path):
-    """Read the slice-gate artifact and assert it is still the pinned gate.
+def _load_slice_gate_doc(path, k):
+    """Read the slice-gate artifact and validate the gate for session k.
 
     The artifact is a consumed TRUST BOUNDARY: its provenance block must be
-    complete before any field is trusted (WR-05).
+    complete before any field is trusted (WR-05), and the gate that
+    authorizes THIS session is the one whose k equals the session's k
+    (IN-01). Validating only k=21 would leave a k=31 session's gate
+    unchecked. The k=31 gate has no pinned reference, so it is validated by
+    shape (positive counts) and by the source sha256 its slice recipe shares
+    with the k=21 gate — both gates describe the same provisioned slice.
     """
     with open(path, encoding="utf-8") as fh:
         doc = json.load(fh)
@@ -2202,25 +2212,62 @@ def _load_slice_gate_doc(path):
         raise ValueError(
             f"pre-gate {path} is kind={doc.get('kind')!r}, not "
             f"'phase10-slice-gate'")
-    matches = [gate for gate in doc.get("gates", [])
-               if isinstance(gate, dict) and gate.get("k") == 21]
-    if len(matches) != 1:
-        raise ValueError(
-            f"pre-gate {path}: expected exactly one k=21 gate, found "
-            f"{len(matches)}")
-    gate = matches[0]
-    for key in ("distinct", "total"):
-        if gate.get(key) != PINNED_HEAD4M[key]:
+    by_k = {}
+    for gate in doc.get("gates", []):
+        if not isinstance(gate, dict):
+            continue
+        gate_k = gate.get("k")
+        if gate_k in by_k:
             raise ValueError(
-                f"pre-gate {path}: k=21 gate {key}={gate.get(key)!r} != "
-                f"pinned {PINNED_HEAD4M[key]!r} — this is not the pinned "
-                f"head-4M reference gate")
-    reference = gate.get("parity_reference")
-    if (not isinstance(reference, dict)
-            or reference.get("sha256") != REFERENCE_SHA256):
+                f"pre-gate {path}: duplicate gate for k={gate_k!r}")
+        by_k[gate_k] = gate
+    if k not in by_k:
         raise ValueError(
-            f"pre-gate {path}: k=21 gate does not carry the pinned reference "
-            f"sha256 {REFERENCE_SHA256}")
+            f"pre-gate {path}: no gate for the session's k={k} "
+            f"(recorded gates: {sorted(by_k, key=str)}) — a session must "
+            f"validate its own k's gate")
+    gate = by_k[k]
+    for key in ("distinct", "total"):
+        value = gate.get(key)
+        if (not isinstance(value, int) or isinstance(value, bool)
+                or value <= 0):
+            raise ValueError(
+                f"pre-gate {path}: k={k} gate {key}={value!r} must be a "
+                f"positive integer")
+    recipe = gate.get("slice_recipe")
+    if not isinstance(recipe, dict):
+        raise ValueError(
+            f"pre-gate {path}: k={k} gate has no slice_recipe")
+    source_sha = recipe.get("source_sha256")
+    if not isinstance(source_sha, str) or not source_sha:
+        raise ValueError(
+            f"pre-gate {path}: k={k} gate slice_recipe has no source_sha256")
+    if k != 21:
+        if 21 not in by_k:
+            raise ValueError(
+                f"pre-gate {path}: a k={k} session needs the k=21 reference "
+                f"gate to prove both gates measured the same slice")
+        reference_recipe = by_k[21].get("slice_recipe")
+        reference_sha = (reference_recipe.get("source_sha256")
+                         if isinstance(reference_recipe, dict) else None)
+        if source_sha != reference_sha:
+            raise ValueError(
+                f"pre-gate {path}: k={k} slice source sha256 {source_sha!r} "
+                f"!= the k=21 gate's {reference_sha!r} — both gates must "
+                f"describe the same provisioned slice")
+    if k == 21:
+        for key in ("distinct", "total"):
+            if gate.get(key) != PINNED_HEAD4M[key]:
+                raise ValueError(
+                    f"pre-gate {path}: k=21 gate {key}={gate.get(key)!r} != "
+                    f"pinned {PINNED_HEAD4M[key]!r} — this is not the pinned "
+                    f"head-4M reference gate")
+        reference = gate.get("parity_reference")
+        if (not isinstance(reference, dict)
+                or reference.get("sha256") != REFERENCE_SHA256):
+            raise ValueError(
+                f"pre-gate {path}: k=21 gate does not carry the pinned "
+                f"reference sha256 {REFERENCE_SHA256}")
     return doc
 
 
@@ -2346,7 +2393,7 @@ def run_python_session(args):
     try:
         inputs = _resolve_two_parts(args.data_dir)
         check_disk_floor(scratch, DEFAULT_DISK_FLOOR_GB)
-        gate_doc = _load_slice_gate_doc(args.pre_gate)
+        gate_doc = _load_slice_gate_doc(args.pre_gate, args.k)
         current_fingerprints = [fingerprint(path) for path in inputs]
         if gate_doc.get("input_fingerprint") != current_fingerprints:
             raise ValueError(

@@ -729,6 +729,37 @@ class TestPythonStageDocument(PythonStageFixture):
         self.assertEqual(code, p10.EXIT_INVALID)
         self.assertFalse(self.out.exists())
 
+    def _add_k31_gate(self, source_sha="f" * 64):
+        doc = json.loads(self.pre_gate.read_text(encoding="utf-8"))
+        gate21 = doc["gates"][0]
+        doc["gates"].append({
+            "k": 31,
+            "slice_recipe": dict(gate21["slice_recipe"], k=31,
+                                 source_sha256=source_sha),
+            "distinct": 261_863_892,
+            "total": 479_271_168,
+            "parity_reference": None,
+            "reference_gate": p10.LIVE_PARITY_ONLY,
+        })
+        self.pre_gate.write_text(json.dumps(doc), encoding="utf-8")
+
+    def test_pre_gate_missing_the_session_k_is_rejected(self):
+        """A k=31 session must not be authorized by a k=21-only gate (IN-01)."""
+        with self.assertRaises(ValueError) as ctx:
+            p10._load_slice_gate_doc(self.pre_gate, 31)
+        self.assertIn("no gate for the session's k=31", str(ctx.exception))
+
+    def test_pre_gate_validates_the_k31_gate_for_a_k31_session(self):
+        self._add_k31_gate()
+        loaded = p10._load_slice_gate_doc(self.pre_gate, 31)
+        self.assertEqual([gate["k"] for gate in loaded["gates"]], [21, 31])
+
+    def test_pre_gate_k31_gate_from_another_slice_is_rejected(self):
+        self._add_k31_gate(source_sha="0" * 64)
+        with self.assertRaises(ValueError) as ctx:
+            p10._load_slice_gate_doc(self.pre_gate, 31)
+        self.assertIn("same provisioned slice", str(ctx.exception))
+
     def test_preflight_without_provenance_exits_2(self):
         doc = json.loads(self.preflight.read_text(encoding="utf-8"))
         del doc["provenance"]
