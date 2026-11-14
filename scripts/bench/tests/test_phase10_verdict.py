@@ -626,11 +626,32 @@ class TestReport(unittest.TestCase):
         before = self.render(docs, "a.md")
         for arm in docs[0]["arms"]:
             if arm["name"] == p10.ARM_RK_T16:
+                for rep in arm["reps"]:
+                    rep["wall_s"] = 123.456
                 arm["medians"]["wall_s"] = 123.456
         after = self.render(docs, "b.md")
         self.assertNotEqual(before, after)
         self.assertIn("123.456", after)
         self.assertNotIn("123.456", before)
+
+    def test_recorded_median_contradicted_by_the_reps_raises(self):
+        """A stale/hand-edited median can never drive the rendered verdict."""
+        docs = self.full_k_docs()
+        for arm in docs[0]["arms"]:
+            if arm["name"] == p10.ARM_RK_T16:
+                for rep in arm["reps"]:
+                    rep["wall_s"] = 5000.0
+                arm["medians"]["wall_s"] = 50.0
+        with self.assertRaises(ValueError):
+            self.render(docs, "tampered.md")
+
+    def test_recorded_peak_contradicted_by_the_reps_raises(self):
+        docs = self.full_k_docs()
+        for arm in docs[0]["arms"]:
+            if arm["name"] == p10.ARM_RK_T16:
+                arm["medians"]["peak_bytes"] = 2_000
+        with self.assertRaises(ValueError):
+            self.render(docs, "tampered.md")
 
     def test_five_pinned_literals_are_present(self):
         report = self.render(self.full_docs())
@@ -673,6 +694,8 @@ class TestReport(unittest.TestCase):
         docs = self.full_docs()
         for arm in docs[0]["arms"]:
             if arm["name"] == p10.ARM_RK_T16:
+                for rep in arm["reps"]:
+                    rep["peak_bytes"] = 1 << 30
                 arm["medians"]["peak_bytes"] = 1 << 30
         report = self.render(docs)
         cli_table = self.section(report, "### CLI session")

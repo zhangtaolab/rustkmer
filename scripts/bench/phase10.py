@@ -594,12 +594,75 @@ def surface_result(tool_median, jellyfish_median):
     return "YES" if float(tool_median) <= float(jellyfish_median) else "NO"
 
 
+def _finite_positive(value, label):
+    """A positive finite number, or ValueError naming `label`."""
+    if (not isinstance(value, (int, float)) or isinstance(value, bool)
+            or not math.isfinite(value) or value <= 0):
+        raise ValueError(f"{label}={value!r} must be a positive finite number")
+    return float(value)
+
+
+def validate_arm_medians(arm, label):
+    """Recompute every recorded median from the raw reps; require agreement.
+
+    The verdict must never trust a recorded `medians` block that the document's
+    own raw reps contradict: a stale, partially regenerated, or hand-edited
+    median would otherwise drive a YES/NO while the evidence says otherwise.
+    `medians.wall_s`, `medians.peak_rss_bytes` and `medians.peak_bytes` are
+    each recomputed with the same reducer that produced them
+    (`statistics.median`, with `rep_peak_bytes` for the honest peak) and must
+    match exactly. Returns the validated medians dict.
+    """
+    name = arm.get("name")
+    medians = arm.get("medians")
+    if not isinstance(medians, dict):
+        raise ValueError(f"{label}: arm {name!r} has no medians block")
+    reps = arm.get("reps")
+    if not isinstance(reps, list) or not reps:
+        raise ValueError(
+            f"{label}: arm {name!r} has zero reps — no median may exist")
+    walls = []
+    rss = []
+    peaks = []
+    for index, rep in enumerate(reps):
+        if not isinstance(rep, dict):
+            raise ValueError(
+                f"{label}: arm {name!r} rep[{index}] is not an object")
+        walls.append(_finite_positive(
+            rep.get("wall_s"), f"{label}: arm {name!r} rep[{index}] wall_s"))
+        rss.append(_finite_positive(
+            rep.get("peak_rss_bytes"),
+            f"{label}: arm {name!r} rep[{index}] peak_rss_bytes"))
+        peaks.append(_finite_positive(
+            rep_peak_bytes(rep),
+            f"{label}: arm {name!r} rep[{index}] peak_bytes"))
+    recorded = {
+        key: _finite_positive(medians.get(key),
+                              f"{label}: arm {name!r} medians.{key}")
+        for key in ("wall_s", "peak_rss_bytes", "peak_bytes")
+    }
+    recomputed = {
+        "wall_s": statistics.median(walls),
+        "peak_rss_bytes": statistics.median(rss),
+        "peak_bytes": statistics.median(peaks),
+    }
+    for key in ("wall_s", "peak_rss_bytes", "peak_bytes"):
+        if recorded[key] != recomputed[key]:
+            raise ValueError(
+                f"{label}: arm {name!r} recorded medians.{key}="
+                f"{recorded[key]!r} but its raw reps recompute to "
+                f"{recomputed[key]!r} — a median the reps contradict can "
+                f"never drive a verdict")
+    return medians
+
+
 def _acceptance_arm(doc, name, label, k):
     """The single arm named `name` measured at ACCEPTANCE_THREADS.
 
     Missing, ambiguous, zero-rep or non-positive-median arms are ValueError
     (exit 2 upstream): a verdict may never be fabricated from absent data.
-    The t1 arm cannot match this filter by construction.
+    The recorded medians must also be reproducible from the raw reps. The t1
+    arm cannot match this filter by construction.
     """
     matches = [arm for arm in doc.get("arms", [])
                if isinstance(arm, dict) and arm.get("name") == name
@@ -611,19 +674,9 @@ def _acceptance_arm(doc, name, label, k):
             f"k={k}: required arm {name!r} at threads="
             f"{ACCEPTANCE_THREADS} is missing or ambiguous in the {label} "
             f"document (found {len(matches)}); observed {observed}")
-    arm = matches[0]
-    reps = arm.get("reps")
-    if not isinstance(reps, list) or not reps:
-        raise ValueError(f"k={k}: arm {name!r} in the {label} document has "
-                         f"zero reps — no median may exist")
-    medians = arm.get("medians")
-    wall = medians.get("wall_s") if isinstance(medians, dict) else None
-    if (not isinstance(wall, (int, float)) or isinstance(wall, bool)
-            or not math.isfinite(wall) or wall <= 0):
-        raise ValueError(
-            f"k={k}: arm {name!r} in the {label} document has a non-positive "
-            f"or non-finite median wall {wall!r}")
-    return float(wall)
+    medians = validate_arm_medians(matches[0],
+                                   f"k={k} {label} document")
+    return float(medians["wall_s"])
 
 
 def verdict_block(k, cli_doc, python_doc):
@@ -655,18 +708,9 @@ def verdict_block(k, cli_doc, python_doc):
     for arm in cli_doc.get("arms", []):
         if (isinstance(arm, dict) and arm.get("name") == ARM_RK_T1
                 and arm.get("threads") == 1):
-            medians = arm.get("medians")
-            wall = medians.get("wall_s") if isinstance(medians, dict) else None
-            if (isinstance(wall, (int, float)) and not isinstance(wall, bool)
-                    and not math.isfinite(wall)):
-                raise ValueError(
-                    f"k={k}: scaling arm {ARM_RK_T1} median wall {wall!r} "
-                    f"is not finite — a recorded scaling number must be a "
-                    f"real measurement")
-            if (isinstance(wall, (int, float)) and not isinstance(wall, bool)
-                    and wall > 0):
-                scaling = {"arm": ARM_RK_T1, "threads": 1,
-                           "wall_s": float(wall)}
+            medians = validate_arm_medians(arm, f"k={k} cli scaling arm")
+            scaling = {"arm": ARM_RK_T1, "threads": 1,
+                       "wall_s": float(medians["wall_s"])}
             break
 
     return {
@@ -900,31 +944,9 @@ def _report_arm_row(arm):
     if not isinstance(reps, list) or not reps:
         raise ValueError(
             f"render: arm {name!r} has zero reps — no median may exist")
-    wall = medians.get("wall_s")
-    peak = medians.get("peak_bytes")
-    for label, value in (("median wall", wall), ("median peak_bytes", peak)):
-        if (not isinstance(value, (int, float)) or isinstance(value, bool)
-                or not math.isfinite(value) or value <= 0):
-            raise ValueError(
-                f"render: arm {name!r} {label}={value!r} must be a positive "
-                f"finite number")
-    for rep in reps:
-        if not isinstance(rep, dict):
-            raise ValueError(f"render: arm {name!r} has a non-object rep")
-        rep_wall = rep.get("wall_s")
-        if (not isinstance(rep_wall, (int, float))
-                or isinstance(rep_wall, bool)
-                or not math.isfinite(rep_wall) or rep_wall <= 0):
-            raise ValueError(
-                f"render: arm {name!r} rep wall_s={rep_wall!r} must be a "
-                f"positive finite number")
-        rep_peak = rep_peak_bytes(rep)
-        if (not isinstance(rep_peak, (int, float))
-                or isinstance(rep_peak, bool)
-                or not math.isfinite(rep_peak) or rep_peak <= 0):
-            raise ValueError(
-                f"render: arm {name!r} rep peak={rep_peak!r} must be a "
-                f"positive finite number")
+    medians = validate_arm_medians(arm, "render")
+    wall = medians["wall_s"]
+    peak = medians["peak_bytes"]
     unique, total = _exact_counts(arm, f"render arm {name!r}")
     walls = " / ".join(repr(rep.get("wall_s")) for rep in reps)
     warn = " `[cv_warning]`" if medians.get("cv_warning") else ""
