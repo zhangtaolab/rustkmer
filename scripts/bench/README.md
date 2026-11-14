@@ -350,6 +350,11 @@ strictly staged:
 | `preflight-python` | projects the Python peak from the MEASURED CLI distinct count and writes a PROCEED/BLOCKED record |
 | `render` | mechanically renders the verdict document and the Markdown report from the committed result documents |
 
+The `cli` and `python` stages resolve exactly the pinned
+`CRR1936095_r1.part_001.fq.gz` / `.part_006.fq.gz` names and verify
+`part_001`'s sha256 against the pinned source digest, so a directory of
+unrelated `.fq.gz` files exits 2 before any measurement.
+
 Exit contract (shared with the rest of `scripts/bench/`): **0** valid result
 or measured YES, **1** a genuine measured NO (artifacts kept), **2** invalid
 or inapplicable (no artifact written). The disk-floor guard keeps its own

@@ -139,6 +139,14 @@ class FullArmFixture(unittest.TestCase):
         self.part2 = self.data / PART_2_NAME
         self.part1.write_bytes(b"part-001-bytes")
         self.part2.write_bytes(b"part-006-bytes")
+        # The full-scale stages pin part_001's sha256; point the pin at this
+        # fixture's bytes so the real resolver is exercised end to end.
+        self.pinned_source_sha256 = hashlib.sha256(
+            self.part1.read_bytes()).hexdigest()
+        pin_patch = mock.patch.object(
+            p10, "PINNED_SOURCE_SHA256", self.pinned_source_sha256)
+        pin_patch.start()
+        self.addCleanup(pin_patch.stop)
         self.site = self.tmp / "site-packages"
         self.site.mkdir()
         self.module = self.site / "pyrustkmer.cpython-313-darwin.so"
@@ -177,6 +185,24 @@ class FullArmFixture(unittest.TestCase):
             except SystemExit as exc:
                 code = exc.code
         return code, out.getvalue(), err.getvalue()
+
+
+class TestResolveTwoParts(FullArmFixture):
+    """The full-scale stages refuse anything but the pinned split parts."""
+
+    def test_pinned_parts_are_accepted(self):
+        self.assertEqual(p10._resolve_two_parts(self.data),
+                         [self.part1, self.part2])
+
+    def test_wrong_part_name_is_rejected(self):
+        self.part1.rename(self.data / "CRR1936095_r1.part_002.fq.gz")
+        with self.assertRaises(ValueError):
+            p10._resolve_two_parts(self.data)
+
+    def test_different_part_001_bytes_are_rejected(self):
+        with mock.patch.object(p10, "PINNED_SOURCE_SHA256", "0" * 64):
+            with self.assertRaises(ValueError):
+                p10._resolve_two_parts(self.data)
 
 
 class TestWorkerArgv(FullArmFixture):

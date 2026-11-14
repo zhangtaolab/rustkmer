@@ -1193,14 +1193,31 @@ def _verdict_lines(pairs, docs):
 
 
 def _parity_lines(pairs, docs):
-    """One explicit parity statement per k from the recorded exact counts."""
+    """One explicit parity statement per k from the recorded exact counts.
+
+    The statement claims every arm counted the SAME two-part input, so each
+    arm's recorded `inputs` must equal its document's input fingerprint paths
+    (WR-10): an arm measured over a different file list can never support a
+    parity claim.
+    """
     lines = ["## Parity evidence", ""]
     for k in sorted(pairs):
         entries = []
         for doc in docs:
             if _doc_k(doc) != k:
                 continue
+            fingerprint_paths = [
+                fp.get("path") for fp in doc.get("input_fingerprint") or []
+                if isinstance(fp, dict)]
             for arm in _ordered_arms(doc):
+                arm_inputs = [str(path) for path in arm.get("inputs") or []]
+                if arm_inputs != fingerprint_paths:
+                    raise ValueError(
+                        f"render: k={k}: arm {arm.get('name')!r} in the "
+                        f"{doc.get('session')}-session document measured "
+                        f"{arm_inputs!r} but the document fingerprints "
+                        f"{fingerprint_paths!r} — no parity claim may be "
+                        f"rendered for arms that measured different inputs")
                 unique, total = _exact_counts(
                     arm, f"parity {arm.get('name')!r}")
                 entries.append((arm.get("name"), doc.get("session"),
@@ -1824,8 +1841,8 @@ def require_split_parts(inputs):
     paths = [Path(p) for p in inputs]
     if len(paths) != 2:
         raise ValueError(
-            f"the slice gate requires exactly the two split parts, got "
-            f"{len(paths)}: {[str(path) for path in paths]}")
+            f"the full-scale/slice stages require exactly the two split "
+            f"parts, got {len(paths)}: {[str(path) for path in paths]}")
     stems = []
     for path in paths:
         stem = strip_compression_suffix(path.name)
@@ -1952,13 +1969,22 @@ def _stage_paths(args):
 
 
 def _resolve_two_parts(data_dir):
-    """The complete read-1 set: exactly the two split parts, sorted."""
-    inputs = [Path(p) for p in gather_inputs(str(data_dir))]
-    if len(inputs) != 2:
+    """The complete read-1 set: exactly the pinned two split parts, sorted.
+
+    The full-scale stages measure the pinned CRR1936095 read-1 set: the names
+    must be part_001 then part_006 AND the part_001 bytes must match
+    `PINNED_SOURCE_SHA256`. A directory of two unrelated `.fq.gz` files can
+    never produce a full-scale verdict that the report describes as the
+    pinned set (WR-10).
+    """
+    inputs = require_split_parts(
+        [Path(path) for path in gather_inputs(str(data_dir))])
+    source_sha = fingerprint(inputs[0])["sha256"]
+    if source_sha != PINNED_SOURCE_SHA256:
         raise ValueError(
-            f"the full-scale stages require exactly two split parts under "
-            f"{data_dir}, found {len(inputs)} — both parts are ONE measured "
-            f"input list, never two half-size arms")
+            f"part_001 sha256 {source_sha} != pinned "
+            f"{PINNED_SOURCE_SHA256} — the full-scale stages measure only "
+            f"the pinned CRR1936095 read-1 split parts")
     return inputs
 
 

@@ -908,6 +908,16 @@ class TestReport(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.render(docs)
 
+    def test_arm_inputs_must_match_the_document_fingerprint(self):
+        """A parity claim is impossible when an arm measured other inputs."""
+        docs = self.full_docs()
+        for arm in docs[0]["arms"]:
+            if arm["name"] == p10.ARM_RK_T16:
+                arm["inputs"] = ["/other/part_001.fq.gz",
+                                 "/other/part_006.fq.gz"]
+        with self.assertRaises(ValueError):
+            self.render(docs)
+
     # --- the render stage: atomic publish and exit codes --------------------
 
     def write_docs(self, docs):
