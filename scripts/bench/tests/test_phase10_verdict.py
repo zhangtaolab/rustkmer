@@ -729,6 +729,26 @@ class TestPreflightStage(unittest.TestCase):
         self.assertEqual(doc["provenance"]["binary"]["sha256"], "a" * 64)
 
 
+class TestCommittedPreflightArtifact(unittest.TestCase):
+    """The committed preflight record must stay consumable by the stage.
+
+    A regenerated artifact that the current `_load_python_preflight` rejects
+    would make the documented Python stage fail before any measurement — the
+    exact regression WR-02 fixed by re-deriving the record under the 86.5 B
+    model.
+    """
+
+    def test_committed_preflight_revalidates_for_both_k(self):
+        path = (Path(__file__).resolve().parents[3] / ".planning" / "phases"
+                / "10-benchmark-verdict" / "10-python-preflight.json")
+        self.assertTrue(path.is_file(), f"missing committed artifact {path}")
+        for k in p10.SLICE_GATE_K_VALUES:
+            record, sha256 = p10._load_python_preflight(path, k)
+            self.assertEqual(record["k"], k)
+            self.assertEqual(record["decision"], "PROCEED")
+            self.assertEqual(len(sha256), 64)
+
+
 class TestReport(unittest.TestCase):
     """The Phase-10 renderer: deterministic, literal-bearing, order-pinned.
 
