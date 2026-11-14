@@ -802,6 +802,42 @@ class TestReport(unittest.TestCase):
         self.assertNotIn("warmup order: rustkmer, jellyfish, pyrustkmer",
                          report)
 
+    def test_each_session_schedule_is_rendered_from_its_own_document(self):
+        """The Python session warms jellyfish and rotates two arms (WR-05).
+
+        Rendering `docs[0]`'s schedule report-wide claimed the CLI warmup and
+        the three-arm rotation for a session that ran neither.
+        """
+        docs = self.full_docs()
+        docs[1]["schedule"]["rounds"] = [
+            ["jf-t16", "py-t16"],
+            ["py-t16", "jf-t16"],
+            ["jf-t16", "py-t16"],
+        ]
+        report = self.render(docs)
+        self.assertIn(
+            "- CLI session schedule policy: round-robin-rotation; warmup "
+            "order: rustkmer, jellyfish.", report)
+        self.assertIn(
+            "- Python session schedule policy: round-robin-rotation; warmup "
+            "order: jellyfish, pyrustkmer.", report)
+        self.assertIn(
+            "- Python session recorded rotation: round 0: jf-t16 then py-t16; "
+            "round 1: py-t16 then jf-t16; round 2: jf-t16 then py-t16.",
+            report)
+        # The CLI three-arm rotation must never be rendered as the Python
+        # session's rotation.
+        self.assertNotIn("Python session recorded rotation: round 0: rk-t16",
+                         report)
+
+    def test_session_documents_disagreeing_on_schedule_are_rejected(self):
+        """One session has one recorded schedule; a contradiction raises."""
+        docs = [python_doc(k=21), python_doc(k=31)]
+        docs[1]["schedule"]["warmup_order"] = ["pyrustkmer", "jellyfish"]
+        with self.assertRaises(ValueError) as ctx:
+            p10._session_schedules(docs)
+        self.assertIn("schedule.warmup_order", str(ctx.exception))
+
     def test_editing_one_recorded_median_changes_that_number(self):
         docs = copy.deepcopy(self.full_docs())
         before = self.render(docs, "a.md")

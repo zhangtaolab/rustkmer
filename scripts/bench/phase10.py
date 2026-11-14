@@ -1304,15 +1304,50 @@ def _shared_params(docs):
     return reference
 
 
+def _session_schedules(docs):
+    """The (session, schedule) pairs the methodology section must render.
+
+    The schedule is SESSION-LOCAL: the CLI session warms `rustkmer` and
+    rotates three arms; the Python session warms `jellyfish` and rotates two.
+    Reading `docs[0]`'s schedule report-wide would attribute the CLI warmup
+    and rotation to a session that never ran either (WR-05). Every document
+    of one session must record the same schedule; a disagreement raises
+    rather than silently picking one. Sessions are ordered CLI first, then
+    Python, then any other name, so the output does not depend on `--docs`
+    order.
+    """
+    grouped = {}
+    for doc in docs:
+        session = doc.get("session")
+        if not isinstance(session, str) or not session:
+            raise ValueError(
+                "render: a document carries no session for the schedule")
+        grouped.setdefault(session, []).append(doc)
+    schedules = []
+    for session in sorted(
+            grouped, key=lambda name: (_SESSION_ORDER.get(name, 99), name)):
+        session_docs = sorted(grouped[session], key=_doc_k)
+        reference = session_docs[0].get("schedule")
+        reference = reference if isinstance(reference, dict) else {}
+        for doc in session_docs[1:]:
+            other = doc.get("schedule")
+            other = other if isinstance(other, dict) else {}
+            for key in ("policy", "warmup_order", "rounds"):
+                if other.get(key) != reference.get(key):
+                    raise ValueError(
+                        f"render: {session}-session documents disagree on "
+                        f"schedule.{key}: {reference.get(key)!r} vs "
+                        f"{other.get(key)!r} — a session has one recorded "
+                        f"schedule")
+        schedules.append((session, reference))
+    if not schedules:
+        raise ValueError("render: the documents carry no schedule")
+    return schedules
+
+
 def _methodology_lines(docs):
-    """Reps, rotation, warmup, -s, decompression asymmetry, stats cost."""
+    """Reps, per-session rotation/warmup, -s, asymmetry, stats cost."""
     params = _shared_params(docs)
-    schedule = docs[0].get("schedule")
-    schedule = schedule if isinstance(schedule, dict) else {}
-    rounds = schedule.get("rounds") or []
-    schedule_text = "; ".join(
-        f"round {index}: {' then '.join(order)}"
-        for index, order in enumerate(rounds))
     lines = [
         "## Methodology",
         "",
@@ -1322,11 +1357,21 @@ def _methodology_lines(docs):
         "once, and round r starts at arm r mod N, so order bias cannot "
         "accumulate inside one arm's block.",
         "- one discarded warmup per TOOL before round 0.",
-        f"- schedule policy: {schedule.get('policy')}; warmup order: "
-        f"{', '.join(schedule.get('warmup_order') or [])}.",
     ]
-    if schedule_text:
-        lines.append(f"- recorded rotation: {schedule_text}.")
+    for session, schedule in _session_schedules(docs):
+        label = {"cli": "CLI session",
+                 "python": "Python session",
+                 "synthetic": "synthetic session"}.get(
+                     session, f"{session} session")
+        lines.append(
+            f"- {label} schedule policy: {schedule.get('policy')}; warmup "
+            f"order: {', '.join(schedule.get('warmup_order') or [])}.")
+        rounds = schedule.get("rounds") or []
+        if rounds:
+            schedule_text = "; ".join(
+                f"round {index}: {' then '.join(order)}"
+                for index, order in enumerate(rounds))
+            lines.append(f"- {label} recorded rotation: {schedule_text}.")
     lines += [
         f"- jellyfish `-s {params.get('hash_size')}` (generous initial hash).",
         "- rustkmer `--size` stayed at its default and is NOT matched to "
