@@ -87,6 +87,20 @@ def make_arm(name, tool, threads, wall, peak=1000, reps=None, unique=100,
     }
 
 
+def _warmup_order(arms):
+    """The unique tool order a session measuring `arms` actually warms up.
+
+    Mirrors `tool_warmup_order`: one discarded warmup per TOOL, in spec
+    order — a CLI document never claims a `pyrustkmer` warmup and a Python
+    document never claims a `rustkmer` one (WR-01).
+    """
+    order = []
+    for arm in arms:
+        if arm["tool"] not in order:
+            order.append(arm["tool"])
+    return order
+
+
 def make_doc(arms, k=21, session="cli", mode="full"):
     doc = {
         "schema_version": p10.SCHEMA_VERSION,
@@ -105,7 +119,7 @@ def make_doc(arms, k=21, session="cli", mode="full"):
         ],
         "arms": arms,
         "schedule": {"policy": "round-robin-rotation",
-                     "warmup_order": list(p10.TOOL_WARMUP_ORDER),
+                     "warmup_order": _warmup_order(arms),
                      "rounds": []},
         "provenance": fake_provenance(),
     }
@@ -745,6 +759,21 @@ class TestReport(unittest.TestCase):
         first = self.render(docs, "a.md")
         second = self.render(docs, "b.md")
         self.assertEqual(first, second)
+
+    def test_warmup_order_naming_an_unmeasured_tool_is_rejected(self):
+        """A Python session never warms rustkmer; the pre-fix constant lied."""
+        docs = self.full_docs()
+        docs[1]["schedule"]["warmup_order"] = [
+            "rustkmer", "jellyfish", "pyrustkmer"]
+        with self.assertRaises(ValueError) as ctx:
+            self.render(docs, "bad-warmup.md")
+        self.assertIn("warmup_order", str(ctx.exception))
+
+    def test_rendered_warmup_order_is_the_recorded_session_order(self):
+        report = self.render(self.full_docs())
+        self.assertIn("warmup order: rustkmer, jellyfish", report)
+        self.assertNotIn("warmup order: rustkmer, jellyfish, pyrustkmer",
+                         report)
 
     def test_editing_one_recorded_median_changes_that_number(self):
         docs = copy.deepcopy(self.full_docs())

@@ -950,6 +950,45 @@ def _validate_fingerprint(fp, label):
     return {"path": path, "size_bytes": size, "sha256": sha}
 
 
+def _validate_warmup_order(doc):
+    """The recorded warmup order names exactly the tools the document ran.
+
+    The pre-fix harness wrote a constant three-tool list into every session,
+    so a CLI session claimed a `pyrustkmer` warmup it never performed and a
+    Python session claimed a `rustkmer` one. Warmups are discarded runs and
+    carry no measured value, but a document that claims a tool it never
+    measured misdescribes the session — the render stage must refuse it
+    (WR-01). Returns the document unchanged.
+    """
+    schedule = doc.get("schedule")
+    if not isinstance(schedule, dict) or "warmup_order" not in schedule:
+        return doc
+    order = schedule.get("warmup_order")
+    if (not isinstance(order, list)
+            or not all(isinstance(tool, str) and tool for tool in order)):
+        raise ValueError(
+            f"render: schedule.warmup_order={order!r} must be a list of "
+            f"non-empty tool names")
+    if len(set(order)) != len(order):
+        raise ValueError(
+            f"render: schedule.warmup_order={order!r} names a tool more "
+            f"than once")
+    tools = {arm.get("tool") for arm in doc.get("arms", [])
+             if isinstance(arm, dict) and isinstance(arm.get("tool"), str)}
+    unknown = [tool for tool in order if tool not in tools]
+    if unknown:
+        raise ValueError(
+            f"render: schedule.warmup_order names tool(s) {unknown!r} that "
+            f"the document never measured (arms use {sorted(tools)!r}) — a "
+            f"warmup order can only describe tools that actually ran")
+    missing = sorted(tool for tool in tools if tool not in order)
+    if missing:
+        raise ValueError(
+            f"render: schedule.warmup_order={order!r} omits measured "
+            f"tool(s) {missing!r} — every measured tool is warmed once")
+    return doc
+
+
 def _validate_render_document(doc):
     """Validate one results document and return it unchanged."""
     if not isinstance(doc, dict):
@@ -965,6 +1004,7 @@ def _validate_render_document(doc):
         raise ValueError(
             f"render: supports mode=synthetic/full, got "
             f"mode={doc.get('mode')!r}")
+    _validate_warmup_order(doc)
     return doc
 
 

@@ -209,8 +209,7 @@
     "policy": "round-robin-rotation",
     "warmup_order": [
       "rustkmer",
-      "jellyfish",
-      "pyrustkmer"
+      "jellyfish"
     ],
     "rounds": [
       [
@@ -229,5 +228,21 @@
         "rk-t1"
       ]
     ]
+  },
+  "schedule_correction": {
+    "corrected_at": "2026-11-14",
+    "field": "schedule.warmup_order",
+    "previous": [
+      "rustkmer",
+      "jellyfish",
+      "pyrustkmer"
+    ],
+    "corrected": [
+      "rustkmer",
+      "jellyfish"
+    ],
+    "reason": "pre-fix harness wrote a constant warmup_order; the recorded arms show the warmups actually run",
+    "measured_values_changed": false,
+    "note": "Only the discarded-warmup metadata was corrected; no rep, median, count, fingerprint, or provenance field changed."
   }
 }
