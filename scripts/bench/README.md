@@ -341,7 +341,7 @@ strictly staged:
 | `synthetic` | four-arm spine proof over two seeded synthetic parts (`mode: synthetic`) |
 | `slice-gate` | provisions the head-4M slice from `part_001` once, gates k=21 against the committed pinned reference (its sha256 is re-checked before consumption), and records k=31 as live-parity-only because no pinned k=31 slice reference exists |
 | `cli` | full-scale CLI session: `rk-t16`, `rk-t1` (scaling evidence only) and `jf-t16` over both parts |
-| `python` | full-scale Python session: `jf-t16` and `py-t16`; consumes the slice-gate artifact, the Python preflight record, and the matching CLI document, pinning each one's sha256 |
+| `python` | full-scale Python session: `jf-t16` and `py-t16`; consumes the slice-gate artifact, the Python preflight record, and the matching CLI document, validating each one's provenance and input identity, re-deriving the preflight gate against the pinned budget and its measured source distinct/sha256, and pinning each consumed artifact's sha256 in the artifact |
 | `preflight-python` | projects the Python peak from the MEASURED CLI distinct count and writes a PROCEED/BLOCKED record |
 | `render` | mechanically renders the verdict document and the Markdown report from the committed result documents |
 

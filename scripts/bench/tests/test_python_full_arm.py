@@ -456,6 +456,8 @@ class PythonStageFixture(FullArmFixture):
             "schema_version": p10.SCHEMA_VERSION,
             "kind": "phase10-slice-gate",
             "phase": 10,
+            "input_fingerprint": [p10.fingerprint(self.part1),
+                                  p10.fingerprint(self.part2)],
             "gates": [{
                 "k": 21,
                 "slice_recipe": {"mode": "slice", "k": 21,
@@ -474,6 +476,7 @@ class PythonStageFixture(FullArmFixture):
                 },
                 "reference_gate": "pinned-reference",
             }],
+            "provenance": fake_provenance(),
         }
         self.pre_gate.write_text(json.dumps(doc), encoding="utf-8")
 
@@ -493,6 +496,7 @@ class PythonStageFixture(FullArmFixture):
             "phase": 10,
             "records": [record],
             "overall": record["decision"],
+            "provenance": fake_provenance(),
         }
         self.preflight.write_text(json.dumps(doc), encoding="utf-8")
 
@@ -582,6 +586,10 @@ class TestPythonStageDocument(PythonStageFixture):
         self.assertEqual(doc["pre_gate"]["sha256"],
                          hashlib.sha256(
                              self.pre_gate.read_bytes()).hexdigest())
+        self.assertEqual(doc["preflight"]["path"], str(self.preflight))
+        self.assertEqual(
+            doc["preflight"]["sha256"],
+            hashlib.sha256(self.preflight.read_bytes()).hexdigest())
         memory = doc["memory_preflight"]
         self.assertEqual(memory["decision"], "PROCEED")
         self.assertEqual(memory["distinct"], 1_050_000_000)
@@ -658,6 +666,33 @@ class TestPythonStageDocument(PythonStageFixture):
 
     def test_pre_gate_with_unpinned_reference_sha_exits_2(self):
         self.write_pre_gate(sha="0" * 64)
+        code, _out, _err = self.run_main(self.python_argv(),
+                                         self.stage_patches())
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertFalse(self.out.exists())
+
+    def test_pre_gate_without_provenance_exits_2(self):
+        doc = json.loads(self.pre_gate.read_text(encoding="utf-8"))
+        del doc["provenance"]
+        self.pre_gate.write_text(json.dumps(doc), encoding="utf-8")
+        code, _out, _err = self.run_main(self.python_argv(),
+                                         self.stage_patches())
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertFalse(self.out.exists())
+
+    def test_pre_gate_for_different_inputs_exits_2(self):
+        doc = json.loads(self.pre_gate.read_text(encoding="utf-8"))
+        doc["input_fingerprint"][0]["sha256"] = "0" * 64
+        self.pre_gate.write_text(json.dumps(doc), encoding="utf-8")
+        code, _out, _err = self.run_main(self.python_argv(),
+                                         self.stage_patches())
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertFalse(self.out.exists())
+
+    def test_preflight_without_provenance_exits_2(self):
+        doc = json.loads(self.preflight.read_text(encoding="utf-8"))
+        del doc["provenance"]
+        self.preflight.write_text(json.dumps(doc), encoding="utf-8")
         code, _out, _err = self.run_main(self.python_argv(),
                                          self.stage_patches())
         self.assertEqual(code, p10.EXIT_INVALID)

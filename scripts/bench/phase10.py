@@ -1994,9 +1994,14 @@ def run_cli_session(args):
 
 
 def _load_slice_gate_doc(path):
-    """Read the slice-gate artifact and assert it is still the pinned gate."""
+    """Read the slice-gate artifact and assert it is still the pinned gate.
+
+    The artifact is a consumed TRUST BOUNDARY: its provenance block must be
+    complete before any field is trusted (WR-05).
+    """
     with open(path, encoding="utf-8") as fh:
         doc = json.load(fh)
+    validate_provenance(doc)
     if doc.get("kind") != "phase10-slice-gate":
         raise ValueError(
             f"pre-gate {path} is kind={doc.get('kind')!r}, not "
@@ -2024,15 +2029,20 @@ def _load_slice_gate_doc(path):
 
 
 def _load_python_preflight(path, k):
-    """Read the preflight record for `k` and re-derive its decision.
+    """Read the preflight record for `k`; return (record, sha256 of the file).
+
+    The artifact is a consumed TRUST BOUNDARY: its provenance block must be
+    complete (WR-05) and the bytes are parsed and hashed once, so the sha256
+    the Python document pins describes the content actually consumed.
 
     The gate is re-derived with the harness constant `MEMORY_BUDGET_BYTES`,
     never the record's own `budget_bytes`: a record whose budget differs from
     the pinned budget is rejected outright, so editing the record can never
     turn a blocked projection into PROCEED.
     """
-    with open(path, encoding="utf-8") as fh:
-        doc = json.load(fh)
+    data = Path(path).read_bytes()
+    doc = json.loads(data)
+    validate_provenance(doc)
     if doc.get("kind") != "phase10-python-preflight":
         raise ValueError(
             f"preflight {path} is kind={doc.get('kind')!r}, not "
@@ -2079,7 +2089,7 @@ def _load_python_preflight(path, k):
         value = record.get(key)
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"preflight {path}: {key} missing")
-    return record
+    return record, hashlib.sha256(data).hexdigest()
 
 
 def _check_preflight_matches_cli(preflight, cli_doc, cli_doc_path):
@@ -2118,12 +2128,15 @@ def _check_preflight_matches_cli(preflight, cli_doc, cli_doc_path):
 def run_python_session(args):
     """Full-scale Python session: `jf-t16` and `py-t16` over both parts.
 
-    Consumes committed evidence only after pinning its sha256: the slice-gate
-    artifact must still carry the pinned k=21 counts, and the preflight
-    record's projection/decision is re-derived. Every rep is a fresh
-    interpreter validated by the `py-t16` branch of `run_rounds`; the session
-    is parity-checked internally and against the committed CLI document. The
-    scratch `.jf` is deleted after its sha256 is recorded.
+    Consumes committed evidence only after pinning and validating it: the
+    slice-gate artifact must carry complete provenance and the same input
+    fingerprints as the current two parts, the preflight record's
+    projection/decision is re-derived and cross-checked against the consumed
+    CLI document, and the Python artifact records the preflight's path+sha256
+    (WR-05). Every rep is a fresh interpreter validated by the `py-t16`
+    branch of `run_rounds`; the session is parity-checked internally and
+    against the committed CLI document. The scratch `.jf` is deleted after
+    its sha256 is recorded.
     """
     if not args.pre_gate:
         invalid("the python stage requires --pre-gate <10-slice-gate.json>")
@@ -2137,8 +2150,15 @@ def run_python_session(args):
     try:
         inputs = _resolve_two_parts(args.data_dir)
         check_disk_floor(scratch, DEFAULT_DISK_FLOOR_GB)
-        _load_slice_gate_doc(args.pre_gate)
-        preflight = _load_python_preflight(args.preflight, args.k)
+        gate_doc = _load_slice_gate_doc(args.pre_gate)
+        current_fingerprints = [fingerprint(path) for path in inputs]
+        if gate_doc.get("input_fingerprint") != current_fingerprints:
+            raise ValueError(
+                f"--pre-gate {args.pre_gate} was measured on different input "
+                f"bytes ({gate_doc.get('input_fingerprint')!r}) than the "
+                f"current two parts ({current_fingerprints!r})")
+        preflight, preflight_sha256 = _load_python_preflight(
+            args.preflight, args.k)
         cli_doc = load_cli_document(args.cli_doc)
         if _doc_k(cli_doc) != args.k:
             raise ValueError(
@@ -2164,6 +2184,10 @@ def run_python_session(args):
                 "pre_gate": {
                     "path": str(args.pre_gate),
                     "sha256": file_sha256(args.pre_gate),
+                },
+                "preflight": {
+                    "path": str(args.preflight),
+                    "sha256": preflight_sha256,
                 },
                 "memory_preflight": {
                     "decision": preflight["decision"],
