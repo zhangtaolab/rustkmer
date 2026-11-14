@@ -24,6 +24,7 @@ import inspect
 import io
 import json
 import math
+import os
 import shutil
 import statistics
 import tempfile
@@ -1073,6 +1074,94 @@ class TestReport(unittest.TestCase):
         self.assertEqual(code, p10.EXIT_INVALID)
         self.assertFalse(verdict_out.exists())
         self.assertFalse(report_out.exists())
+
+    def test_failed_rerender_preserves_pre_existing_artifacts(self):
+        """A failed re-render must never delete the published verdict/report."""
+        verdict_out = self.tmp / "10-verdict.json"
+        report_out = self.tmp / "10-BENCHMARK-REPORT.md"
+        verdict_out.write_text("old verdict", encoding="utf-8")
+        report_out.write_text("old report", encoding="utf-8")
+        paths = self.write_docs(self.full_k_docs())
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(p10, "render_report_text",
+                               side_effect=ValueError("injected failure")), \
+                contextlib.redirect_stdout(out), \
+                contextlib.redirect_stderr(err):
+            try:
+                code = p10.main([
+                    "--stage", "render", "--docs", *paths,
+                    "--verdict-out", str(verdict_out),
+                    "--out", str(report_out),
+                    "--rustkmer", "/nonexistent/rustkmer"])
+            except SystemExit as exc:
+                code = exc.code
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertEqual(verdict_out.read_text(encoding="utf-8"),
+                         "old verdict")
+        self.assertEqual(report_out.read_text(encoding="utf-8"),
+                         "old report")
+
+    def test_publish_failure_restores_previous_destinations(self):
+        first = self.tmp / "first.md"
+        second = self.tmp / "second.md"
+        first.write_text("first-old", encoding="utf-8")
+        second.write_text("second-old", encoding="utf-8")
+        real_replace = os.replace
+        calls = {"n": 0}
+
+        def flaky_replace(src, dst):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise OSError("injected replace failure")
+            return real_replace(src, dst)
+
+        with mock.patch.object(p10.os, "replace",
+                               side_effect=flaky_replace):
+            with self.assertRaises(OSError):
+                p10.publish_atomic([(first, "first-new"),
+                                    (second, "second-new")])
+        self.assertEqual(first.read_text(encoding="utf-8"), "first-old")
+        self.assertEqual(second.read_text(encoding="utf-8"), "second-old")
+
+    def test_publish_removes_destinations_it_created(self):
+        first = self.tmp / "first.md"
+        second = self.tmp / "second.md"
+        real_replace = os.replace
+        calls = {"n": 0}
+
+        def flaky_replace(src, dst):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise OSError("injected replace failure")
+            return real_replace(src, dst)
+
+        with mock.patch.object(p10.os, "replace",
+                               side_effect=flaky_replace):
+            with self.assertRaises(OSError):
+                p10.publish_atomic([(first, "first-new"),
+                                    (second, "second-new")])
+        self.assertFalse(first.exists())
+        self.assertFalse(second.exists())
+
+    def test_publish_rejects_identical_destinations(self):
+        same = self.tmp / "same.md"
+        same.write_text("keep", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            p10.publish_atomic([(same, "one"), (same, "two")])
+        self.assertEqual(same.read_text(encoding="utf-8"), "keep")
+
+    def test_publish_rejects_a_directory_destination(self):
+        directory = self.tmp / "destdir"
+        directory.mkdir()
+        with self.assertRaises(ValueError):
+            p10.publish_atomic([(directory, "text")])
+        self.assertTrue(directory.is_dir())
+
+    def test_unlink_quiet_does_not_mask_oserror(self):
+        directory = self.tmp / "dir"
+        directory.mkdir()
+        p10._unlink_quiet(directory)  # a directory unlink raises OSError
+        self.assertTrue(directory.is_dir())
 
 
 class TestSliceGateRecord(unittest.TestCase):

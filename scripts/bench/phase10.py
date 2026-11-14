@@ -1466,19 +1466,65 @@ def render_report(docs, out_path):
 
 
 def _unlink_quiet(path):
+    """Best-effort unlink; an OSError (directory, permission) never escapes."""
     try:
         Path(path).unlink()
-    except FileNotFoundError:
+    except OSError:
         pass
+
+
+def _restore_file(path, data):
+    """Best-effort atomic restore of pre-existing bytes.
+
+    Used only on the publish failure path: a restore problem must never
+    replace the exception that caused the failure, so OSError is swallowed.
+    """
+    temp_name = None
+    try:
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".restore", dir=str(path.parent))
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        os.replace(temp_name, str(path))
+        temp_name = None
+    except OSError:
+        pass
+    finally:
+        if temp_name is not None:
+            _unlink_quiet(temp_name)
 
 
 def publish_atomic(artifacts):
     """Publish [(destination, text)] via sibling temps + os.replace.
 
-    All-or-nothing: on ANY failure both temps and BOTH destinations are
-    removed, so a partially published pair can never exist (T-10-05).
+    All-or-nothing: on ANY failure the temps and every destination that did
+    not exist before are removed, while every PRE-EXISTING destination is
+    restored to its previous bytes — a failed re-render must never destroy a
+    previously published verdict/report. Identical destinations and
+    non-regular-file destinations are rejected up front, and cleanup errors
+    never mask the original exception (WR-11).
     """
     destinations = [Path(path) for path, _text in artifacts]
+    resolved = [path.resolve() for path in destinations]
+    if len(set(resolved)) != len(resolved):
+        raise ValueError(
+            "publish: every destination must be a distinct file path, got "
+            f"{[str(path) for path in destinations]!r} — publishing the same "
+            f"path twice would silently keep only one artifact")
+    backups = {}
+    for path in destinations:
+        if not path.exists():
+            continue
+        if not path.is_file():
+            raise ValueError(
+                f"publish: destination {path} exists and is not a regular "
+                f"file — refusing to replace it")
+        try:
+            backups[path] = path.read_bytes()
+        except OSError as exc:
+            raise ValueError(
+                f"publish: cannot back up existing destination {path}: "
+                f"{exc}") from exc
     temps = []
     try:
         for path, text in artifacts:
@@ -1496,8 +1542,11 @@ def publish_atomic(artifacts):
     except BaseException:
         for temp in temps:
             _unlink_quiet(temp)
-        for destination in destinations:
-            _unlink_quiet(destination)
+        for path in reversed(destinations):
+            if path in backups:
+                _restore_file(path, backups[path])
+            else:
+                _unlink_quiet(path)
         raise
 
 
@@ -1512,9 +1561,11 @@ def _load_result_documents(paths):
 def run_render(args):
     """Build the verdict document and the report IN MEMORY, then publish.
 
-    Neither destination exists on EXIT_INVALID; both exist on EXIT_OK/EXIT_NO.
-    The verdict document's `provenance.created` is its only varying field and
-    the report never includes it, so the report alone is byte-comparable.
+    A fresh invocation writes neither destination on EXIT_INVALID; a failed
+    re-render preserves every pre-existing destination (never destroys a
+    previously published verdict/report). The verdict document's
+    `provenance.created` is its only varying field and the report never
+    includes it, so the report alone is byte-comparable.
 
     The stage consumes recorded JSON only: its provenance is the MEASURED CLI
     provenance carried by the source documents, so no local release binary or
@@ -1561,8 +1612,9 @@ def run_render(args):
     except SystemExit:
         raise
     except Exception as exc:  # noqa: BLE001 — invalid publish, never a verdict
-        _unlink_quiet(out_path)
-        _unlink_quiet(verdict_path)
+        # `publish_atomic` already restored any pre-existing artifact; a
+        # failure before publish never touched the destinations. Never unlink
+        # here: that would destroy a previously published verdict/report.
         print(f"phase10.py: {exc}", file=sys.stderr)
         return EXIT_INVALID
     for block in verdicts:
