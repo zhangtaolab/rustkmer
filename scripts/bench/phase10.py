@@ -49,6 +49,7 @@ import math
 import os
 import platform
 import statistics
+import subprocess
 import sys
 import tempfile
 import time
@@ -78,7 +79,6 @@ from scripts.bench.bench import (
     fingerprint,
     gate_parity_reference,
     gather_inputs,
-    harness_source_commit,
     jellyfish_count_cmd,
     jellyfish_stats,
     measure,
@@ -1395,6 +1395,28 @@ def _methodology_lines(docs):
     return lines
 
 
+def renderer_source_commit():
+    """Last commit that touched THIS renderer (`phase10.py`) — provenance.
+
+    `harness_source_commit()` from bench.py hashes bench.py, not this file, so
+    using it here labeled bench.py's commit as the renderer's (IN-02) — a
+    reader checking out that commit could get a `phase10.py` without the
+    guards the report relies on. Deterministic across re-renders (unrelated
+    commits do not move it), and 'unknown' outside a git checkout —
+    deterministic in that environment too.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "log", "-1", "--format=%H", "--",
+             str(Path(__file__).resolve())],
+            capture_output=True, text=True, cwd=str(REPO_ROOT))
+    except OSError:
+        return "unknown"
+    if proc.returncode != 0:
+        return "unknown"
+    return proc.stdout.strip() or "unknown"
+
+
 def _provenance_lines(docs):
     """CLI binary + Python module provenance, selected by SESSION, not order.
 
@@ -1479,7 +1501,7 @@ def _provenance_lines(docs):
                 f"size_bytes={ref['size_bytes']} sha256=`{ref['sha256']}`")
     lines += [
         f"- Harness source commit (last commit touching this renderer): "
-        f"`{harness_source_commit()}`",
+        f"`{renderer_source_commit()}`",
         "",
     ]
     return lines
@@ -1501,7 +1523,7 @@ def render_report_text(docs):
     """Render the Phase-10 Markdown report text from recorded documents.
 
     Mechanical by construction: every number comes from the documents, the
-    only environment read is `harness_source_commit()`, and no clock is
+    only environment read is `renderer_source_commit()`, and no clock is
     consulted — re-rendering the same documents is byte-identical, so a
     hand-edited number is detectable. The five mandatory literals are
     validated in memory before any byte is published.

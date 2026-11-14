@@ -964,6 +964,27 @@ class TestReport(unittest.TestCase):
             "Python session CLI parity reference", 1)[1]
         self.assertIn("`/repo/target/release/rustkmer`", reference)
 
+    def test_renderer_source_commit_hashes_phase10_not_bench(self):
+        """IN-02: 'last commit touching this renderer' must query phase10.py."""
+        with mock.patch.object(p10.subprocess, "run") as run:
+            run.return_value = mock.Mock(returncode=0, stdout="abc123\n")
+            self.assertEqual(p10.renderer_source_commit(), "abc123")
+        argv = run.call_args[0][0]
+        self.assertTrue(argv[-1].endswith("phase10.py"), argv[-1])
+        self.assertEqual(argv[:4], ["git", "log", "-1", "--format=%H"])
+
+    def test_renderer_source_commit_reads_phase10_pys_own_git_log(self):
+        """The rendered value equals `git log -1 -- phase10.py`, not bench.py."""
+        proc = p10.subprocess.run(
+            ["git", "log", "-1", "--format=%H", "--",
+             str(Path(p10.__file__).resolve())],
+            capture_output=True, text=True, cwd=str(p10.REPO_ROOT))
+        if proc.returncode != 0 or not proc.stdout.strip():
+            self.skipTest("not a git checkout")
+        report = self.render(self.full_docs())
+        self.assertIn(f"last commit touching this renderer): "
+                      f"`{proc.stdout.strip()}`", report)
+
     def test_missing_arm_raises(self):
         docs = self.full_docs()
         docs[0]["arms"] = [arm for arm in docs[0]["arms"]
