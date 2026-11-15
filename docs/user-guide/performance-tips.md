@@ -374,5 +374,5 @@ if __name__ == "__main__":
 
 - **[API Reference](../api-reference/)** - Complete function documentation
 - **[Troubleshooting](../getting-started/troubleshooting.md)** - Common issues and solutions
-- **[GitHub Issues](https://github.com/rustkmer/rustkmer/issues)** - Report performance problems
-- **[Discussions](https://github.com/rustkmer/rustkmer/discussions)** - Performance optimization tips
+- **[GitHub Issues](https://github.com/zhangtaolab/rustkmer/issues)** - Report performance problems
+- **[Discussions](https://github.com/zhangtaolab/rustkmer/discussions)** - Performance optimization tips

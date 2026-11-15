@@ -395,7 +395,7 @@ CI 回归门禁（`.github/workflows/benchmark.yml`）在 `ubuntu-latest` 和 `m
 
 ## Python API
 
-`pyrustkmer` 由 `pyo3/src/lib.rs` 注册并导出以下类型：
+`pyrustkmer` 由 `pyo3/src/lib.rs` 注册并导出以下主要类型（另有 `PyQueryResult`、`PyPrefixQueryResult`、`PyFuzzyResult`、`PyFuzzyMatch`、`PyDatabaseStats`、`PyCounterStats`、`PyPrefixQueryMetrics` 等查询结果/统计载荷类型）：
 
 | 类型 | 作用 |
 |------|------|

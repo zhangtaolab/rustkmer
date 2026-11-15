@@ -1,3 +1,4 @@
+<!-- generated-by: gsd-doc-writer -->
 # RustKmer 项目综合总结
 
 **文档版本**: 1.0  
@@ -19,9 +20,9 @@ RustKmer 是一个高性能的 k-mer 计数和查询库，使用 Rust 编写，�
 - **内存映射支持**: 支持大基因组建库和查询
 
 ### 技术栈
-- **核心语言**: Rust 1.80+ (stable)
-- **Python 绑定**: PyO3 0.22.6+
-- **Python 版本**: 3.10+
+- **核心语言**: Rust 1.82+ (stable)
+- **Python 绑定**: PyO3 0.27.2
+- **Python 版本**: 3.11+
 - **构建工具**: Cargo, maturin
 - **测试框架**: pytest, pytest-benchmark
 
@@ -196,7 +197,7 @@ db.fuzzy_query()    # → 推荐使用 db.query_fuzzy()
 ### 测试环境
 
 - **PyO3 构建状态**: ✅ 成功（仅警告，无错误）
-- **Python 版本**: 3.10+
+- **Python 版本**: 3.11+
 - **测试框架**: pytest
 
 ### 测试结果
@@ -223,8 +224,8 @@ db.fuzzy_query()    # → 推荐使用 db.query_fuzzy()
 
 ### 系统要求
 
-- **Rust**: 1.80+ (stable)
-- **Python**: 3.10+
+- **Rust**: 1.82+ (stable)
+- **Python**: 3.11+
 - **操作系统**: Linux, macOS, Windows
 - **内存**: 建议 8GB+（大型基因组）
 
@@ -341,6 +342,8 @@ print(f"Unique k-mers: {stats.unique_kmers}")
 
 | 版本 | 日期 | 主要变更 |
 |------|------|---------|
+| v0.5.0 | 2026-01-18 | 版本管理规范化：CLI 动态版本号、版本同步脚本，代码清理 |
+| v0.4.1 | 2026-01-18 | 统一 API 发布与文档清理 |
 | v0.4.0 | 2026-01-18 | PyO3 统一接口实现，66% 内存优化 |
 | v0.3.0 | 2025-12-20 | 模糊查询功能添加 |
 | v0.2.0 | 2025-11-28 | 初始 PyO3 绑定 |

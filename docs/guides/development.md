@@ -98,7 +98,7 @@ Tooling is configured in `pyo3/pyproject.toml`: **black** (line length 88, py311
 
 There is no PR template (and no issue templates); the requirements are enforced by CI, not a checklist.
 
-1. **Open the PR against `dev`** (or `main` for release-oriented changes). PRs to `main` that touch `docs/**` or the MkDocs config files also run the `Documentation Build and Deploy` workflow (`.github/workflows/docs.yml`), which builds the MkDocs site with `--strict`; it never triggers for PRs against `dev`.
+1. **Open the PR against `dev`** (or `main` for release-oriented changes). PRs to `main` whose diff touches `docs/**`, `python/**`, `mkdocs.yml`, `mkdocs.docs.yml`, or `.pydocstylerc` also run the `Documentation Build and Deploy` workflow (`.github/workflows/docs.yml`), which builds the MkDocs site with `--strict`; it never triggers for PRs against `dev`.
 2. **The `CI` workflow must be fully green** — every job is a hard gate with no `continue-on-error` or skipped steps (stated in the header comment of `.github/workflows/ci.yml`):
    - `rustfmt`: `cargo fmt --all --check` (Ubuntu).
    - `clippy (root)`: `cargo clippy --locked --all-targets -- -D warnings` on an Ubuntu/macOS/Windows matrix, pinned to Rust 1.82.0.
@@ -114,5 +114,6 @@ There is no PR template (and no issue templates); the requirements are enforced 
 - [CONTRIBUTING.md](https://github.com/zhangtaolab/rustkmer/blob/dev/CONTRIBUTING.md) — contribution workflow, coding standards, and PR expectations
 - [Testing guide](testing.md) — test layout, commands, and coverage gates
 - [Configuration guide](configuration.md) — `.rustkmerrc`, environment variables, thread/memory configuration
+- [Benchmarking guide](benchmarking.md) — benchmark harness, committed baselines, and gate thresholds
 - [Architecture overview](../architecture/overview.md) — component and layering details
 - `scripts/bench/README.md` — benchmark harness internals, baseline bootstrapping, and maintainer procedures

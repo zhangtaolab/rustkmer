@@ -9,7 +9,7 @@ Auto-generated from all feature plans. Last updated: 2025-11-28
 - Binary RKDB format for database storage
 - Rust 1.80+ stable channel + clap (CLI), serde (serialization), rayon (parallel processing), memmap2 (memory mapping), thiserror (error handling), anyhow (error handling)
 - RKDB binary database format (existing) + memory-mapped file access
-- Rust 1.80+ stable + Python 3.11+ + PyO3 (Rust-Python bindings), setuptools-rust, serde, thiserror, anyhow, rayon
+- Rust 1.80+ stable + Python 3.11+ + PyO3 (Rust-Python bindings), maturin (Python build backend), serde, thiserror, anyhow, rayon
 - Existing RKDB binary database format + memory-mapped file access
 - Rust 1.80+ stable channel + PyO3 0.23.4 (Python bindings), serde 1.0 (serialization), thiserror 2.0 (error handling), rayon 1.10 (parallel processing), clap 4.5 (CLI), bio 2.0 (genomics), memmap2 0.9 (memory mapping)
 - Hybrid JSON + binary .rkdb format for database persistence, memory-mapped files for large datasets
@@ -30,7 +30,7 @@ Auto-generated from all feature plans. Last updated: 2025-11-28
 - Rust 1.80+ stable, Python 3.11+ + PyO3 0.27.2 (Python bindings), serde 1.0+ (序列化), thiserror 2.0.17 (错误处理), clap 4.5.53 (CLI)
 - 二进制RKDB文件（自定义k-mer数据库格式）
 - Rust 1.80+ stable, Python 3.11+ + PyO3 0.27.2 (Python bindings), pytest 8.4+ (testing), subprocess (CLI invocation)
-- Python 3.11+ + mkdocs, mkdocstrings[python], mkdocs-material theme
+- Python 3.11+ + mkdocs, mkdocs-material theme, pymdown-extensions
 - Documentation files in `docs/` directory
 - Python 3.11+ (for the API), Rust 1.80+ (existing CLI) + subprocess (Python standard library), pytest for testing
 - Binary .rkdb files (existing format)

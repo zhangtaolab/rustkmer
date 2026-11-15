@@ -357,16 +357,19 @@ def error_tolerant_search(db_path, queries, max_error_rate=0.1):
         if results.total_matches > 0:
             # Find best match (highest count)
             best_match = max(results.matches, key=lambda x: x.count)
+            best_dist = sum(1 for a, b in zip(query, best_match.kmer) if a != b)
 
             print(f"  Results: {results.total_matches} matches")
-            print(f"  Best match: {best_match.kmer} (distance={best_match.distance}, count={best_match.count:,})")
+            print(f"  Best match: {best_match.kmer} (distance={best_dist}, count={best_match.count:,})")
 
-            # Group by distance
+            # Group by distance, computed in Python (PyFuzzyMatch.distance is
+            # always None on the current API)
             distance_counts = {}
             for result in results.matches:
-                if result.distance not in distance_counts:
-                    distance_counts[result.distance] = 0
-                distance_counts[result.distance] += result.count
+                dist = sum(1 for a, b in zip(query, result.kmer) if a != b)
+                if dist not in distance_counts:
+                    distance_counts[dist] = 0
+                distance_counts[dist] += result.count
 
             print("  Distance distribution:")
             for dist, count in sorted(distance_counts.items()):
@@ -486,10 +489,11 @@ def discover_motifs(db_path, seed_pattern, min_frequency=100):
 
     print(f"Found {len(significant_results)} significant motifs (≥{min_frequency} occurrences)")
 
-    # Group by Hamming distance
+    # Group by Hamming distance, computed against the seed pattern
+    # (PyFuzzyMatch.distance is always None on the current API)
     distance_groups = {}
     for result in significant_results:
-        dist = result.distance
+        dist = sum(1 for a, b in zip(seed_pattern, result.kmer) if a != b)
         if dist not in distance_groups:
             distance_groups[dist] = []
         distance_groups[dist].append(result)
@@ -571,7 +575,8 @@ def position_specific_search(db_path, pattern, position_scores):
 
     print(f"\nTop 20 scored results:")
     for i, (result, score) in enumerate(scored_results[:20], 1):
-        print(f"  {i:2d}. {result.kmer} (dist={result.distance}, count={result.count:,}, score={score})")
+        dist = sum(1 for a, b in zip(pattern, result.kmer) if a != b)
+        print(f"  {i:2d}. {result.kmer} (dist={dist}, count={result.count:,}, score={score})")
 
     return [result for result, score in scored_results]
 
@@ -669,8 +674,12 @@ def adaptive_distance_search(db_path, query_kmer, target_result_count=1000):
         distance_results = fuzzy.query_fuzzy(query_kmer, max_mutations=current_distance)
         search_time = time.time() - start_time
 
-        # Filter to only results at exactly this distance
-        exact_distance_results = [r for r in distance_results.matches if r.distance == current_distance]
+        # Filter to only results at exactly this distance (computed in
+        # Python; PyFuzzyMatch.distance is always None on the current API)
+        exact_distance_results = [
+            r for r in distance_results.matches
+            if sum(1 for a, b in zip(query_kmer, r.kmer) if a != b) == current_distance
+        ]
 
         all_results.extend(exact_distance_results)
 
@@ -699,9 +708,10 @@ def adaptive_distance_search(db_path, query_kmer, target_result_count=1000):
         print(f"  Distance distribution:")
         distance_counts = {}
         for result in final_results:
-            if result.distance not in distance_counts:
-                distance_counts[result.distance] = 0
-            distance_counts[result.distance] += 1
+            dist = sum(1 for a, b in zip(query_kmer, result.kmer) if a != b)
+            if dist not in distance_counts:
+                distance_counts[dist] = 0
+            distance_counts[dist] += 1
 
         for dist, count in sorted(distance_counts.items()):
             print(f"    Distance {dist}: {count} results")
@@ -728,9 +738,13 @@ def snp_detection(db_path, reference_kmer, frequency_threshold=0.01):
     # Find all variants within distance 1 (single mutations)
     variants = fuzzy.query_fuzzy(reference_kmer, max_mutations=1)
 
-    # Calculate total count including reference
+    # Calculate total count including reference. Hamming distance is
+    # computed in Python (PyFuzzyMatch.distance is always None).
     reference_result = db.query_exact(reference_kmer)
-    total_count = reference_result.count + sum(v.count for v in variants.matches if v.distance == 1)
+    total_count = reference_result.count + sum(
+        v.count for v in variants.matches
+        if sum(1 for a, b in zip(reference_kmer, v.kmer) if a != b) == 1
+    )
 
     if total_count == 0:
         print("No occurrences found")
@@ -743,7 +757,8 @@ def snp_detection(db_path, reference_kmer, frequency_threshold=0.01):
     significant_variants = []
 
     for variant in variants.matches:
-        if variant.distance == 1:  # Only single mutations
+        # Only single mutations (distance computed against the reference)
+        if sum(1 for a, b in zip(reference_kmer, variant.kmer) if a != b) == 1:
             frequency = variant.count / total_count
 
             if frequency >= frequency_threshold:
@@ -799,15 +814,22 @@ def tolerant_primer_design(db_path, target_region, primer_length=20):
         results = fuzzy.query_fuzzy(primer, max_mutations=2)
 
         if results.total_matches > 0:
+            # Pair each match with its Hamming distance from the primer,
+            # computed in Python (PyFuzzyMatch.distance is always None)
+            dist_pairs = [
+                (sum(1 for a, b in zip(primer, r.kmer) if a != b), r)
+                for r in results.matches
+            ]
+
             # Calculate binding strength
-            total_binding = sum(r.count for r in results.matches if r.distance <= 1)
+            total_binding = sum(r.count for d, r in dist_pairs if d <= 1)
 
             primers.append({
                 'sequence': primer,
                 'position': i,
                 'total_binding': total_binding,
-                'exact_matches': sum(1 for r in results.matches if r.distance == 0),
-                'near_matches': sum(1 for r in results.matches if r.distance == 1),
+                'exact_matches': sum(1 for d, r in dist_pairs if d == 0),
+                'near_matches': sum(1 for d, r in dist_pairs if d == 1),
                 'best_match': max(results.matches, key=lambda x: x.count) if results.matches else None
             })
 

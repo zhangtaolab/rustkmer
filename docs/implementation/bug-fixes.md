@@ -41,7 +41,7 @@ rustflags = [
 - 用户按照说明操作时会失败，因为该路径不存在于他们的系统
 
 **修复方案**:
-- 将绝对路径替换为占位符 `/path/to/rustkmer/`
+- 将绝对路径替换为占位符 `/path/to/rustkmer/`（当时的方案；当前 README 已改用相对路径 `./target/release/rustkmer`，不再包含该占位符）
 - 添加注释说明用户需要替换为实际路径
 - 确保所有相关文档保持一致性
 
@@ -50,11 +50,13 @@ rustflags = [
 echo 'export PATH="/Users/forrest/GitHub/rustkmer/target/release:$PATH"' >> ~/.zshrc
 ```
 
-**修复后**:
+**修复后**（修复当时的 README 内容）:
 ```bash
 # 注意：将 /path/to/rustkmer 替换为实际的 rustkmer 项目路径
 echo 'export PATH="/path/to/rustkmer/target/release:$PATH"' >> ~/.zshrc
 ```
+
+> 注：后续文档重构后，当前 README 已改用相对路径（如 `./target/release/rustkmer --version`），不再包含 `/path/to/rustkmer` 占位符；硬编码的 `/Users/forrest/...` 路径同样未再出现。
 
 ### ✅ Bug 3: `coverage.xml` 文件问题
 
@@ -81,7 +83,7 @@ echo 'export PATH="/path/to/rustkmer/target/release:$PATH"' >> ~/.zshrc
 ## 更新的文件
 
 1. **`.cargo/config.toml`** - 修复了硬编码路径，增加了跨平台兼容性
-2. **`README.md`** - 修复了硬编码路径，使用了占位符
+2. **`README.md`** - 修复了硬编码路径（当时使用占位符，当前为相对路径）
 3. **`.gitignore`** - 添加了 coverage.xml、*.xml 和 .hypothesis/ 的忽略规则
 4. **删除的文件**:
    - `coverage.xml`

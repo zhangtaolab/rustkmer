@@ -298,7 +298,7 @@ rustkmer prefix-query combined.rkdb -p "ATCGATCG" --min-count 3
 rustkmer count -k 19 --sort -i sars_cov2_ref.fa -o sars_k19.rkdb
 
 # 2. 模糊查询变体
-rustkmer fuzzy-query sars_k19.rkdb "ATCG{N5}GTAC" --profile
+rustkmer fuzzy-query sars_k19.rkdb "ATCGATCGANNNNNNGTAC" --profile
 
 # 3. 前缀查询分析
 rustkmer prefix-query sars_k19.rkdb -p "ATCG{N3}GTAC" --output variants.txt
@@ -413,7 +413,7 @@ rustkmer dump database.rkdb | head -100
 ### Q: 模糊查询生成了太多变体？
 
 **A**: 
-1. 检查模式复杂度: `AAAAA{N10}TTTTT` 会生成4^10个变体
+1. 检查模式复杂度: `AAAAANNNNNNNNNNTTTTT` 会生成4^10个变体
 2. 使用前缀查询替代: `ATCG{N3}GTAC` → `ATCG{N3}GTAC`
 3. 设置变体上限: `--max-variants 1000`
 

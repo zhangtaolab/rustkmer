@@ -186,7 +186,7 @@ results = engine.query_hybrid(pattern)
 - **更新为**：
 ```python
 # 统一接口
-engine = pyrustkmer.PyDatabase("/Users/forrest/Data/data/kmer/K57/R1_K57_001.rkdb", 
+engine = pyrustkmer.PyDatabase("test_data/databases/small_test.rkdb",
                                    pyrustkmer.LoadMode.Preload)
 results = engine.query_hybrid("AAAAAAAAAAAAAAAAAAAAA{N7}AAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 ```

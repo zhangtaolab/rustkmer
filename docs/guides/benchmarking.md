@@ -251,7 +251,7 @@ python3 -m unittest scripts.bench.tests.test_compare \
 | `test_schema.py` | results schema contract (includes one real `--self-check` invocation) |
 | `test_time_parser.py` | dual-platform `/usr/bin/time` output parsing |
 
-The dual-platform time-parser tests read committed fixtures `scripts/bench/tests/fixtures/time_l_macos.txt` and `time_v_linux.txt`. Some suites (`test_schema`, `test_cmd_matrix`) invoke the real release binary, so build with `cargo build --release` first.
+The dual-platform time-parser tests read committed fixtures `scripts/bench/tests/fixtures/time_l_macos.txt` and `time_v_linux.txt`. The `test_schema` suite invokes the real release binary, so build with `cargo build --release` first; `test_cmd_matrix` only unit-tests command construction imported from `scripts.bench.bench` and never runs the binary.
 
 ## Helper tools
 

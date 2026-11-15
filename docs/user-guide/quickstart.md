@@ -173,4 +173,4 @@ print(f"\nFuzzy search found {fuzzy_results.total_matches} matches")
 
 - Check the [Troubleshooting guide](../getting-started/troubleshooting.md)
 - Browse [Examples](../examples/)
-- Report issues on [GitHub](https://github.com/rustkmer/rustkmer/issues)
+- Report issues on [GitHub](https://github.com/zhangtaolab/rustkmer/issues)

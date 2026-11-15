@@ -27,7 +27,7 @@ Expected exports: `LoadMode`, `PyCounter`, `PyCounterStats`, `PyDatabase`, `PyDa
 | `integration_pandas.py` | pandas/matplotlib analysis of k-mer tables |
 | `integration_biopython.py` | BioPython workflows over FASTA/FASTQ |
 
-These companion scripts were drafted against an earlier binding surface and do not currently run unmodified: they import `KmerCounter` (the module now exports `PyCounter`), and some code blocks are mis-indented. Treat them as topical outlines and pair them with the verified patterns below when writing new code.
+These companion scripts were drafted against an earlier binding surface and do not currently run unmodified: `basic_usage.py`, `fuzzy_search.py`, `database_operations.py`, and `integration_biopython.py` import `KmerCounter` (the module now exports `PyCounter`), while `integration_pandas.py` imports the current names (`PyDatabase`, `LoadMode`) but still calls `PyCounter(k=31, ...)` and `db.dump(canonical_only=True)`, which do not match the current signatures (`kmer_length`; `dump` accepts only `limit`/`offset`). Some code blocks are also mis-indented. Treat them as topical outlines and pair them with the verified patterns below when writing new code.
 
 For scripts that run against the current API today, see the repository's [`examples/python/`](../../../examples/python/) directory: `demo_pyo3_binding.py`, `unified_query_example.py`, `simple_prefix_query.py`, `demo_fuzzy.py`, `demo_fuzzy_enhanced.py`, `demo_performance.py`, `demo_position_mutations_fixed.py`, `validate_position_mutations.py`, and `test_pyo3_api.py`.
 

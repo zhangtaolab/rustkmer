@@ -53,7 +53,7 @@ Add a single k-mer to the counter.
 **Example:**
 ```python
 counter = PyCounter(21, canonical=True)
-counter.add_kmer("ATGCGATGCATGCGATGCAT")
+counter.add_kmer("ATGCGATGCATGCGATGCATG")
 ```
 
 ### `add_sequence(sequence)`
@@ -61,7 +61,7 @@ counter.add_kmer("ATGCGATGCATGCGATGCAT")
 Extract and count all k-mers from a sequence string.
 
 **Parameters:**
-- `sequence` (str): DNA sequence string; whitespace and invalid characters (e.g. `N`) are filtered out, and k-mers spanning them are skipped
+- `sequence` (str): DNA sequence string (upper- and lowercase `A`/`C`/`G`/`T` accepted); any length-k window containing a non-ACGT byte (e.g. `N`, whitespace) is skipped and never counted — no characters are removed from the sequence
 
 **Notes:**
 - If the cleaned sequence is shorter than `kmer_length`, the call is a no-op
@@ -133,7 +133,7 @@ Get the count for a specific k-mer.
 
 **Example:**
 ```python
-count = counter.get_count("ATGCGATGCATGCGATGCAT")
+count = counter.get_count("ATGCGATGCATGCGATGCATG")
 print(f"K-mer appears {count} times")
 ```
 
@@ -235,7 +235,7 @@ print(f"Total k-mers: {stats.total_kmers:,}")
 print(f"Unique k-mers: {stats.unique_kmers:,}")
 
 # Look up a single k-mer
-count = counter.get_count("ATGCGATGCATGCGATGCAT")
+count = counter.get_count("ATGCGATGCATGCGATGCATG")
 print(f"Count: {count}")
 
 # Save database
@@ -243,7 +243,7 @@ counter.save_database("genome_k21.rkdb")
 
 # Query the saved database
 db = PyDatabase("genome_k21.rkdb", LoadMode.Preload)
-result = db.query_exact("ATGCGATGCATGCGATGCAT")
+result = db.query_exact("ATGCGATGCATGCGATGCATG")
 print(f"In database: found={result.found}, count={result.count}")
 ```
 

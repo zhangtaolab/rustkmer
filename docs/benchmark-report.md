@@ -1,6 +1,6 @@
 # rustkmer vs Jellyfish2 — milestone benchmark report
 
-*Mechanically rendered from the committed results JSONs by `scripts/bench/bench.py --render-report`. Every measurement below is read from those JSONs — the renderer contains no measurement literals — and re-rendering with the harness at the recorded commit reproduces this file byte-for-byte, so a hand-edited number is detectable (BENCH-02/T-04-07). Since this report was rendered, `scripts/bench/bench.py` has advanced to commit `d6a5857c250defa509dffc8b9fbdd1947462867f` (2026-11-13); a re-render with the current harness would emit that commit on the harness-provenance line instead of the recorded `78e5eec409f0fede27e69167357f82a630b096f2`.*
+*Mechanically rendered from the committed results JSONs by `scripts/bench/bench.py --render-report`. Every measurement below is read from those JSONs — the renderer contains no measurement literals — and re-rendering reproduces this file byte-for-byte, so a hand-edited number is detectable (BENCH-02/T-04-07).*
 
 ## Dataset provenance
 

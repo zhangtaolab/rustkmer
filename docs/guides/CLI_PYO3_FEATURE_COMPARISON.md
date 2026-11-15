@@ -4,7 +4,7 @@
 
 **CLI 实现的子命令**: 8 个  
 **PyO3 实现的功能模块**: 6 个  
-**核心功能缺失**: K-mer 计数工具不完整  
+**核心功能**: K-mer 计数已完整实现  
 **部分功能缺失**: 统计、输出格式、批量操作等
 
 ---
@@ -370,7 +370,7 @@ rustkmer fuzzy-query-batch database.rkdb -s queries.txt --progress
 
 | 功能类别 | CLI 支持 | PyO3 支持 | 缺失程度 |
 |---------|---------|-----------|---------|
-| **K-mer 计数** | ✅ 完整 | ⚠️ 简化版 | 🔴 高 |
+| **K-mer 计数** | ✅ 完整 | ✅ 完整 | 🟢 低 |
 | **精确查询** | ✅ 完整 | ✅ 完整 | 🟢 低 |
 | **模糊查询** | ✅ 完整 | ✅ 完整 | 🟢 低 |
 | **前缀查询** | ✅ 完整 | ✅ 完整 | 🟢 低 |
@@ -431,13 +431,13 @@ rustkmer fuzzy-query-batch database.rkdb -s queries.txt --progress
 
 ### 短期改进（v0.4.0）
 1. 实现 `PyCounter` 的完整功能
-2. 添加格式化输出方法（`to_json()`, `to_csv()` 等）
-3. 实现数据库导出方法
+2. ✅ 已实现：格式化输出方法（`to_json()`, `to_csv()`, `to_tsv()`）
+3. ✅ 已实现：数据库导出方法（`export_to_file()`, `export_to_json()`, `export_to_csv()`, `export_all_kmers()`）
 
 ### 中期改进（v0.5.0）
-1. 添加批量查询接口
+1. ✅ 已实现：批量查询接口（`query_exact_batch()`, `query_prefix_batch()`, `query_hybrid_batch()`；模糊批量查询需手动循环）
 2. 实现高级统计（频率分布）
-3. 添加进度回调支持
+3. ✅ 已实现：进度回调支持（导出方法的 `progress_callback` 参数，以 `(current, total)` 回调）
 4. 扩展合并选项
 
 ### 长期改进（v1.0.0）

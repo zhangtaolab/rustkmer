@@ -23,7 +23,7 @@ Rust 1.82+ stable channel + Python 3.11+ via PyO3 0.27.2: Follow standard conven
 
 ## Recent Changes
 
-- 013-pyo3-fuzzy-query: Added Rust 1.80+ stable channel + Python 3.11+ via PyO3 0.22.6
+- 013-pyo3-fuzzy-query: Added Rust 1.82+ stable channel + Python 3.11+ via PyO3 0.27.2
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

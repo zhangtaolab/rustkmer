@@ -11,7 +11,7 @@ The RustKmer `PyCounter` class provides high-performance k-mer counting from gen
 ```python
 from pyrustkmer import PyCounter
 
-# Create counter with default settings
+# Create counter with canonical k-mers enabled (canonical defaults to False)
 counter = PyCounter(21, canonical=True)
 
 # Count k-mers from file
