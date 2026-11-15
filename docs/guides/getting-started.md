@@ -140,7 +140,7 @@ result = db.query_exact("CTAAACCCTAAACCCTAAACC")
 print(result.found, result.count)              # True 9
 ```
 
-The unique count differs from the CLI example because the Python counter was created with `canonical=True`; pass `-C` to the CLI to count canonical k-mers as well. `LoadMode` accepts `Preload` (fastest queries, builds an in-memory cache), `MemoryMapped` (file-backed access for large databases), or `Lazy` (sorted index for infrequent queries).
+The unique count differs from the CLI example because the Python counter was created with `canonical=True`; pass `-C` to the CLI to count canonical k-mers as well. `LoadMode` accepts `Preload` (fastest queries, builds an in-memory cache), `MemoryMapped` (file-backed access for large databases), or `Lazy` (loads k-mers on demand; lowest memory, slower queries).
 
 ## Common setup issues
 

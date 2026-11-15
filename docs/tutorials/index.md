@@ -145,7 +145,7 @@ For tutorials requiring real genomic data:
 ### Local Environment
 ```bash
 # Clone repository
-git clone https://github.com/rustkmer/rustkmer.git
+git clone https://github.com/zhangtaolab/rustkmer.git
 cd rustkmer
 
 # Save the code block you want to run from a tutorial page into a .py file,
@@ -242,5 +242,5 @@ Choose your first tutorial based on your experience level:
 
 - **Documentation**: [Getting Started](../getting-started/) for basics
 - **API Reference**: [Python API](../api-reference/python/) for complete reference
-- **Community**: [GitHub Discussions](https://github.com/rustkmer/rustkmer/discussions) for questions
-- **Issues**: [GitHub Issues](https://github.com/rustkmer/rustkmer/issues) for bugs
+- **Community**: [GitHub Discussions](https://github.com/zhangtaolab/rustkmer/discussions) for questions
+- **Issues**: [GitHub Issues](https://github.com/zhangtaolab/rustkmer/issues) for bugs

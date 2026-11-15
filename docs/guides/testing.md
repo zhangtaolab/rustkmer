@@ -40,7 +40,7 @@ maturin develop --release
 
 ```bash
 cd pyo3
-maturin build --release
+maturin build
 pip install --no-index --find-links target/wheels pyrustkmer
 ```
 
@@ -176,7 +176,7 @@ One binary per `tests/*.rs` file (verified via `cargo metadata`; 29 targets tota
 | `thread_pool_size_tests` | Live rayon counting-pool observation through independent child CLI processes |
 | `window_extract_differential_tests` | Skip-N window extractor differential over k 1–64, canonical modes, case, N positions, and record boundaries |
 
-**Wiring caveat:** files in `tests/` subdirectories are only compiled when a top-level `tests/*.rs` binary includes them (`mod x;` or `#[path = ...]`). Currently `tests/consistency/` is included via `consistency_tests.rs`, and `tests/common/factories.rs` is included either through `mod common;` or directly via `#[path = "common/factories.rs"]` (used by `merge_routing_tests.rs` and `merge_cleanup_tests.rs`). The files `tests/integration/queryx_tests.rs`, `tests/integration/stats_integration.rs`, `tests/unit/stats_tests.rs`, `tests/unit/database/*.rs`, `tests/property/stats_properties.rs`, and `tests/contract/*.rs` are referenced by no binary and **do not run** — wire them into a target before relying on them.
+**Wiring caveat:** files in `tests/` subdirectories are only compiled when a top-level `tests/*.rs` binary includes them (`mod x;` or `#[path = ...]`). Currently `tests/consistency/` is included via `consistency_tests.rs`, and `tests/common/factories.rs` is included either through `mod common;` or directly via `#[path = "common/factories.rs"]` (used by `merge_routing_tests.rs` and `merge_cleanup_tests.rs`). Although `tests/mod.rs` declares `pub mod integration/property/unit`, the `mod.rs` files inside those subdirectories have all their leaf `pub mod` declarations commented out (they name files that were never committed), and `tests/contract/` has neither a `mod.rs` nor an includer at all. As a result, `tests/integration/queryx_tests.rs`, `tests/integration/stats_integration.rs`, `tests/unit/stats_tests.rs`, `tests/unit/database/*.rs`, `tests/property/stats_properties.rs`, and `tests/contract/*.rs` are referenced by no binary and **do not run** — wire them into a target before relying on them.
 
 ## Writing new tests
 
@@ -253,7 +253,7 @@ Exit codes carry the verdict: 0 within thresholds, 1 regression (the PR fails), 
 
 ### `docs.yml` — documentation build
 
-Triggered by pushes to `main`, version tags, PRs touching `docs/**`, `python/**`, `mkdocs.yml`, `mkdocs.docs.yml`, or `.pydocstylerc`, and manual `workflow_dispatch`. The `build-docs` job builds the MkDocs site with `--strict` and deploys to GitHub Pages on `main`/tags; a dependent `test-docs` job checks key pages and a clean `--strict` rebuild. It does not run the test suites.
+Triggered by pushes to `main`, version tags, PRs touching `docs/**`, `python/**`, `mkdocs.yml`, `mkdocs.docs.yml`, or `.pydocstylerc`, and manual `workflow_dispatch`. The `build-docs` job builds the MkDocs site from `mkdocs.docs.yml` with `--strict` and deploys to GitHub Pages on `main`/tags; a dependent `test-docs` job checks key pages and a clean `--strict` rebuild. It does not run the test suites.
 
 ### What CI does not run
 

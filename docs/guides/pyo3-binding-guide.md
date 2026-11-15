@@ -237,8 +237,8 @@ print(f"数据库中共有 {len(all_kmers)} 个k-mers")
 ```python
 # 旧方式 - 需要多个实例（已废弃）
 db = PyDatabase("db.rkdb", LoadMode.Preload)           # 精确查询
-prefix_query = PyDatabase("db.rkdb")                # 前缀查询（已废弃）
-fuzzy_query = PyFuzzyQuery(db)                         # 模糊查询（已废弃）
+prefix_query = PyPrefixQuery("db.rkdb")             # 前缀查询（独立类，重复加载数据库）
+fuzzy_query = PyFuzzyQuery(db)                         # 模糊查询（当前 API，未废弃）
 
 # 问题：重复加载数据库，内存占用高
 ```
@@ -306,7 +306,7 @@ ATCGATCG          # 查找以 ATCGATCG 开头的 k-mers
 ```
 AAAAAAAA{N5}AAAAAA      # 前缀 AAAAAAAA + 5个N + 后缀 AAAAAA
 ATCG{N3}GCTA           # 前缀 ATCG + 3个N + 后缀 GCTA
-A{N2}T{N2}C{N2}G        # 多个N组
+A{N2}T{N2}C{N2}G        # 无效：仅支持单个 {N} 组，多组模式会导致后缀校验失败
 ```
 
 ### 模式解析示例
@@ -508,7 +508,7 @@ from pyrustkmer import PyDatabase, LoadMode
 db = PyDatabase("~/Data/data/kmer/K19/R1_001.rkdb", LoadMode.Preload)
 results = db.query_hybrid("AAAAAAAA{N5}AAAAAA")
 
-# 注意：PyDatabase、PyDatabase等已废弃，建议迁移到统一接口
+# 注意：PyPrefixQuery、PyExtendedPrefixQuery 等独立查询类已由统一接口 PyDatabase 取代，建议迁移到统一接口（PyFuzzyQuery 仍为当前模糊查询 API）
 ```
 
 ## 🌟 统一接口最新实现状态
@@ -575,7 +575,7 @@ fuzzy_result = fuzzy.query_fuzzy("GCCGCN", max_mutations=1)
 
 更多详细信息请参考：
 - `README.md` - 完整的项目文档
-- `FINAL_UNIFIED_INTERFACE_REPORT.md` - 统一接口完整实现报告
+- `docs/guides/FINAL_UNIFIED_INTERFACE_REPORT.md` - 统一接口完整实现报告
 - `docs/guides/pyo3-binding-readme.md` - 快速使用指南
 - `examples/python/unified_query_example.py` - 统一接口完整演示
 

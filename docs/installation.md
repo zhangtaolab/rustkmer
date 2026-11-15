@@ -231,7 +231,7 @@ After successful installation:
 | RustKmer Version | Python Version | Status |
 |------------------|----------------|--------|
 | 0.5.x | 3.11+ | ✅ Stable |
-| 0.0.x | 3.8+ | ⚠️ Legacy |
+| 0.1.0 | 3.11+ | ⚠️ Legacy |
 
 ## Release Notes
 

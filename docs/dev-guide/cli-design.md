@@ -2,7 +2,7 @@
 
 ## 1. Prefix Query Command - 前缀查询命令
 
-### 命令名称：`prefix-query` 或 `prefix`
+### 命令名称：`prefix-query`（不存在 `prefix` 别名；Commands 枚举中仅 PrefixQuery 变体有效，未定义 alias）
 
 ### 使用语法：
 ```bash
@@ -89,7 +89,7 @@ rustkmer prefix-query [OPTIONS] <DATABASE> --pattern <PATTERN> --hybrid
 ### 参数说明：
 - `<DATABASE>`: 数据库文件路径
 - `<PATTERN>`: 包含N通配符的模式 (如: "AAANNNAAA")
-- `--smart`: 启用智能策略选择 (默认)
+- `--smart`: 启用智能策略选择 (默认)（未实现：无 --smart 选项；智能策略选择仅为库函数 smart_wildcard_query（src/database/suffix_query.rs），未暴露到 CLI）
 - `--force-prefix`: 强制使用前缀匹配
 - `--force-suffix`: 强制使用后缀匹配
 - `--force-variants`: 强制使用变体生成

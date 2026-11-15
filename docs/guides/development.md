@@ -91,14 +91,14 @@ Tooling is configured in `pyo3/pyproject.toml`: **black** (line length 88, py311
 
 ## Branch conventions
 
-- **`dev` is the working/default branch**: `origin/HEAD` points at `origin/dev`, and [CONTRIBUTING.md](https://github.com/zhangtaolab/rustkmer/blob/dev/CONTRIBUTING.md) says to target PRs at `dev` (`main` receives promoted states). Both `.github/workflows/ci.yml` and `.github/workflows/benchmark.yml` trigger on pull requests and direct pushes to `dev` and `main`; at the time of writing, origin also carries a `0.5` branch and has no `main` branch.
+- **`dev` is the working/default branch**: `origin/HEAD` points at `origin/dev`, and [CONTRIBUTING.md](https://github.com/zhangtaolab/rustkmer/blob/dev/CONTRIBUTING.md) says to target PRs at `dev` (`main` receives promoted states). Both `.github/workflows/ci.yml` and `.github/workflows/benchmark.yml` trigger on pull requests and direct pushes to `dev` and `main`; at the time of writing, origin also carries `0.5` and `gsd/v3.1-zlib-rs` branches and has no `main` branch.
 - **No branch-naming scheme is mandated** — CONTRIBUTING.md says to choose a descriptive name. Commit messages should follow Conventional Commits (`type(scope): subject`, e.g. `feat(query): ...`, `docs: ...`, `test: ...`) with one logical change per commit; history follows this style, and no CI step enforces the message format.
 
 ## Pull request process
 
 There is no PR template (and no issue templates); the requirements are enforced by CI, not a checklist.
 
-1. **Open the PR against `dev`** (or `main` for release-oriented changes).
+1. **Open the PR against `dev`** (or `main` for release-oriented changes). PRs to `main` that touch `docs/**` or the MkDocs config files also run the `Documentation Build and Deploy` workflow (`.github/workflows/docs.yml`), which builds the MkDocs site with `--strict`; it never triggers for PRs against `dev`.
 2. **The `CI` workflow must be fully green** — every job is a hard gate with no `continue-on-error` or skipped steps (stated in the header comment of `.github/workflows/ci.yml`):
    - `rustfmt`: `cargo fmt --all --check` (Ubuntu).
    - `clippy (root)`: `cargo clippy --locked --all-targets -- -D warnings` on an Ubuntu/macOS/Windows matrix, pinned to Rust 1.82.0.

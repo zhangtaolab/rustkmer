@@ -39,7 +39,7 @@ cargo build --release
 ### 系统要求
 
 - **操作系统**: Linux, macOS, Windows
-- **Rust版本**: 1.80+ (推荐使用最新稳定版)
+- **Rust版本**: 1.82+ (推荐使用最新稳定版)
 - **内存**: 建议8GB+用于大型基因组
 - **存储**: 足够空间存储数据库文件
 
@@ -347,17 +347,18 @@ output_dir = Path("results")
 output_dir.mkdir(exist_ok=True)
 
 db = PyDatabase("genome.rkdb", LoadMode.Preload)
-    # 读取查询序列
-    with open(query_file) as f:
-        queries = [line.strip() for line in f if line.startswith('>')]
-    
-    # 批量查询
-    for query in queries:
-        result = db.query(query)
-        output_file = output_dir / f"{query}.txt"
-        with open(output_file, 'w') as out:
-            if result.found:
-                out.write(f"{query}\t{result.count}\n")
+
+# 读取查询序列（跳过FASTA标题行；每条序列长度需等于数据库的k-mer长度）
+with open(query_file) as f:
+    queries = [line.strip() for line in f if line.strip() and not line.startswith(">")]
+
+# 批量查询
+for query in queries:
+    result = db.query(query)
+    output_file = output_dir / f"{query}.txt"
+    with open(output_file, "w") as out:
+        if result.found:
+            out.write(f"{query}\t{result.count}\n")
 ```
 
 ## 常见问题

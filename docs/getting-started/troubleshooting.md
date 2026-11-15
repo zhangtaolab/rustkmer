@@ -29,7 +29,7 @@ pip install pyrustkmer
 
 3. **Install from source:**
 ```bash
-git clone https://github.com/rustkmer/rustkmer.git
+git clone https://github.com/zhangtaolab/rustkmer.git
 cd rustkmer/pyo3
 pip install maturin
 maturin develop --release
@@ -489,11 +489,11 @@ If you're still experiencing issues:
 - [API Reference](../api-reference/)
 
 ### 2. Search Existing Issues
-- [GitHub Issues](https://github.com/rustkmer/rustkmer/issues)
+- [GitHub Issues](https://github.com/zhangtaolab/rustkmer/issues)
 
 ### 3. Ask for Help
-- [GitHub Discussions](https://github.com/rustkmer/rustkmer/discussions)
-- [Community Forum](https://github.com/rustkmer/rustkmer/discussions)
+- [GitHub Discussions](https://github.com/zhangtaolab/rustkmer/discussions)
+- [Community Forum](https://github.com/zhangtaolab/rustkmer/discussions)
 
 ### 4. Report a Bug
 When reporting bugs, include:

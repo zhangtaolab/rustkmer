@@ -62,6 +62,8 @@ When updating version, update these files:
 | Version | Date | Notes |
 |---------|------|-------|
 | 0.5.0 | 2026-01-18 | Current version |
+| 0.4.3 | 2026-01-18 | Version alignment for Rust CLI and PyO3 |
 | 0.4.1 | 2026-01-18 | PyO3 unified API |
-| 0.4.0 | 2026-01-17 | Initial PyO3 release |
-| 0.2.0 | 2026-01-16 | CLI refactoring |
+| 0.4.0 | 2026-01-18 | Python API documentation fixes; removed subprocess-based binding |
+| 0.3.0 | 2026-01-16 | Rename PyO3 binding from rustkmer_pyo3 to pyrustkmer |
+| 0.2.0 | 2026-01-15 | CLI refactoring |

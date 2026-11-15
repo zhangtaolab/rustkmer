@@ -67,8 +67,11 @@ print(db.get_stats())          # PyDatabaseStats(kmer_size=11, ..., is_sorted=Tr
 print(db.database_info())      # {'database_path': ..., 'kmer_size': ..., 'load_mode': 'preload', ...}
 print(db.get_memory_usage())   # {'cache_size': '29', 'mode': 'preload'}
 
-# Drop the preload cache and switch to lazy lookups without reopening
-db.force_lazy_mode()
+# To switch to lazy lookups, reopen the database with LoadMode.Lazy.
+# (force_lazy_mode() exists but is a trap in the current implementation:
+# it clears the preload cache without building the Lazy-mode sorted index,
+# so exact queries return 0/False afterwards.)
+db = PyDatabase("demo.rkdb", LoadMode.Lazy)
 
 # Direct entry access is available in MemoryMapped mode only:
 # returns (encoded_kmer_u128, count) tuples

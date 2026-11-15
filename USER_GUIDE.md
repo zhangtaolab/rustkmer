@@ -186,7 +186,7 @@ rustkmer count -k 21 --sort -o sorted.rkdb -i input.fa
 rustkmer count -k 21 --no-sort -o unsorted.rkdb -i input.fa
 ```
 
-**性能差异**：排序数据库比非排序数据库快**384-1526倍**。
+**性能差异**：排序数据库比非排序数据库快约**4-20倍**（二分查找 vs 线性扫描；排序约 ~200,000 q/s，非排序约 ~10,000-50,000 q/s，参见 `docs/user-guide/performance-tips.md`）。
 
 **2. 合理设置哈希表大小**
 
@@ -681,7 +681,7 @@ if __name__ == "__main__":
 
 ### Q1: 排序数据库vs非排序数据库的性能差异？
 
-**A**: 性能差异巨大，排序数据库快384-1526倍：
+**A**: 性能差异巨大，排序数据库快约4-20倍（排序 ~200,000 q/s，非排序 ~10,000-50,000 q/s）：
 ```bash
 # 排序数据库（推荐）
 rustkmer count -k 21 --sort -o sorted.rkdb -i input.fa

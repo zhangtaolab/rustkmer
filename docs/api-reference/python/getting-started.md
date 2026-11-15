@@ -48,7 +48,7 @@ counter.add_sequence("ATGCGATGCATGCGATGCAT")
 
 stats = counter.get_stats()
 print(stats)
-# PyCounterStats(total_kmers=18, unique_kmers=..., kmer_length=3, canonical_mode=True, memory_usage=...)
+# PyCounterStats(total_kmers=18, unique_kmers=..., kmer_length=3, canonical_mode=True, memory_usage=..., threads=8)
 ```
 
 ## Your First K-mer Analysis

@@ -732,7 +732,7 @@ print_comparison(comparison, "Genome1", "Genome2")
 ### Query Performance Guidelines
 
 1. **Use appropriate database loading**:
-   - Memory-mapped for large databases, few queries
+   - Lazy (`LoadMode.Lazy`) for large databases, few queries
    - Preloaded for many queries, smaller databases
 
 2. **Batch queries when possible**:

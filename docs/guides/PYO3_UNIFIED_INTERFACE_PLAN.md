@@ -26,7 +26,7 @@
 ### 现有功能分析
 ```python
 # 当前PyPrefixQuery的使用方式
-engine = rustkmer_pyo3.PyPrefixQuery("/path/to/database.rkdb")
+engine = pyrustkmer.PyPrefixQuery("/path/to/database.rkdb")
 results = engine.query_hybrid("AAAAAAAAAAAAAAAAAAAAA{N7}AAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 ```
 
@@ -173,17 +173,21 @@ batch_prefix = db.query_prefix_batch(["GCC", "ATG", "TTT"])
 
 #### 3.2 重点修订示例代码
 - **文件**：`examples/python/simple_prefix_query.py`
-- **当前代码**：
+- **当前代码**（该文件已完成迁移：使用 `pyrustkmer.PyDatabase` + `LoadMode.MemoryMapped`，数据库路径默认为仓库内 `test_data/databases/small_test.rkdb`，可用命令行参数覆盖）：
 ```python
-# 现有代码
-engine = rustkmer_pyo3.PyPrefixQuery("/Users/forrest/Data/data/kmer/K57/R1_K57_001.rkdb")
-results = engine.query_hybrid("AAAAAAAAAAAAAAAAAAAAA{N7}AAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+# 现有代码（examples/python/simple_prefix_query.py 节选）
+import pyrustkmer
+
+default_db = Path(__file__).resolve().parents[2] / "test_data" / "databases" / "small_test.rkdb"
+db_path = sys.argv[1] if len(sys.argv) > 1 else str(default_db)
+engine = pyrustkmer.PyDatabase(db_path, pyrustkmer.LoadMode.MemoryMapped)
+results = engine.query_hybrid(pattern)
 ```
 - **更新为**：
 ```python
 # 统一接口
-engine = rustkmer_pyo3.PyDatabase("/Users/forrest/Data/data/kmer/K57/R1_K57_001.rkdb", 
-                                   rustkmer_pyo3.LoadMode.Preload)
+engine = pyrustkmer.PyDatabase("/Users/forrest/Data/data/kmer/K57/R1_K57_001.rkdb", 
+                                   pyrustkmer.LoadMode.Preload)
 results = engine.query_hybrid("AAAAAAAAAAAAAAAAAAAAA{N7}AAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 ```
 
@@ -193,33 +197,26 @@ results = engine.query_hybrid("AAAAAAAAAAAAAAAAAAAAA{N7}AAAAAAAAAAAAAAAAAAAAAAAA
 
 ### 阶段4：迁移支持
 
-#### 4.1 向后兼容适配器
+#### 4.1 向后兼容（实际实现方式）
+未创建 `PyPrefixQueryCompat` 适配器类。向后兼容通过在现有类上保留 deprecated 旧方法实现（`#[deprecated(since = "2.0.0", ...)]`，见 `pyo3/src/database.rs` 与 `pyo3/src/fuzzy_query.rs`）：
 ```python
-class PyPrefixQueryCompat:
-    """兼容性适配器，支持现有PyPrefixQuery API"""
-    
-    def __init__(self, database_path: str, load_mode: LoadMode = LoadMode.Preload):
-        self._db = PyDatabase(database_path, load_mode)
-    
-    def query_hybrid(self, pattern: str):
-        return self._db.query_hybrid(pattern)
-    
-    def query_prefix(self, prefix: str):
-        return self._db.query_prefix(prefix)
-    
-    def parse_pattern(self, pattern: str):
-        return self._db.parse_pattern(pattern)
+# PyDatabase 上的旧方法名保留并标记 deprecated
+db = pyrustkmer.PyDatabase("database.rkdb", pyrustkmer.LoadMode.Preload)
+db.query("GCCGCGG")               # deprecated，改用 db.query_exact()
+db.query_batch(["GCCGCGG"])       # deprecated，改用 db.query_exact_batch()
+db.query_prefix_optimized("GCC")  # deprecated，改用 db.query_prefix()
+db.fuzzy_query("GCCGCN", 1)       # deprecated，改用 db.query_fuzzy()
 ```
 
 #### 4.2 迁移指南
 ```python
 # 迁移指南示例
-# 旧代码
+# 旧代码（rustkmer_pyo3 为更名前的历史模块名，当前模块名为 pyrustkmer）
 engine = rustkmer_pyo3.PyPrefixQuery("database.rkdb")
 results = engine.query_hybrid("AAAA{N5}AAAA")
 
 # 新代码
-engine = rustkmer_pyo3.PyDatabase("database.rkdb", rustkmer_pyo3.LoadMode.Preload)
+engine = pyrustkmer.PyDatabase("database.rkdb", pyrustkmer.LoadMode.Preload)
 results = engine.query_hybrid("AAAA{N5}AAAA")
 ```
 

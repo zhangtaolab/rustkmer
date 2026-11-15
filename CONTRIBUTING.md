@@ -31,7 +31,7 @@ pytest
 
 `maturin develop` installs into the active virtualenv. If a conda environment is active, deactivate it or `unset CONDA_PREFIX` first — otherwise maturin targets the conda interpreter instead of the venv.
 
-See [docs/guides/development.md](docs/guides/development.md) for the full local-development workflow and [docs/guides/testing.md](docs/guides/testing.md) for the test layout and conventions.
+See [docs/guides/getting-started.md](docs/guides/getting-started.md) for prerequisites and first-run instructions, [docs/guides/development.md](docs/guides/development.md) for the full local-development workflow, and [docs/guides/testing.md](docs/guides/testing.md) for the test layout and conventions.
 
 ## Build and test commands
 
@@ -52,6 +52,8 @@ A separate `Benchmark` workflow (`.github/workflows/benchmark.yml`) also runs on
 
 No gate step in `ci.yml` or `benchmark.yml` uses `continue-on-error`, `|| true`, or a conditional skip — a failing gate fails the PR.
 
+A third workflow, `Documentation Build and Deploy` (`.github/workflows/docs.yml`), builds the MkDocs site with `mkdocs build -f mkdocs.docs.yml --strict` and deploys it to GitHub Pages from `main` pushes and `v*` tags. It also runs on pull requests targeting `main` (not `dev`) whose diff touches `docs/`, `python/`, `mkdocs.yml`, `mkdocs.docs.yml`, or `.pydocstylerc` — so documentation changes are strict-build-checked at promotion time, and a docs edit that breaks the strict MkDocs build must be fixed before `main` can advance.
+
 ## Coding standards
 
 - **Rust formatting and linting**: default `cargo fmt` and `cargo clippy --all-targets -- -D warnings`, both enforced in CI (`fmt` on Ubuntu, clippy on all three operating systems).
@@ -61,7 +63,7 @@ No gate step in `ci.yml` or `benchmark.yml` uses `continue-on-error`, `|| true`,
 
 ## Pull requests
 
-- Target the `dev` branch — it is the working branch and the repository default (`origin/HEAD` points at `origin/dev`). `main` is the promotion branch referenced by both CI workflows, though `origin` currently carries only `dev` and `0.5`.
+- Target the `dev` branch — it is the working branch and the repository default (`origin/HEAD` points at `origin/dev`). `main` is the promotion branch referenced by the CI and Benchmark gate workflows and by the docs deploy.
 - No branch-naming scheme is enforced; choose a descriptive name for your branch.
 - Use conventional commit messages: `type(scope): subject` (e.g. `feat(query): ...`, `fix(cli): ...`, `docs: ...`, `test: ...`), one logical change per commit.
 - The gates in the table above must pass on Ubuntu, macOS, and Windows, and the `Benchmark` workflow must pass on Linux and macOS, before review.
@@ -81,6 +83,8 @@ Open an issue at https://github.com/zhangtaolab/rustkmer/issues. There are no is
 ## Further reading
 
 - [README](README.md) — feature overview and installation
+- [docs/guides/getting-started.md](docs/guides/getting-started.md) — prerequisites, installation, and first run
+- [docs/guides/development.md](docs/guides/development.md) — local development workflow
 - [docs/architecture/overview.md](docs/architecture/overview.md) — system and component architecture
 - [docs/guides/configuration.md](docs/guides/configuration.md) — `.rustkmerrc`, environment variables, and CLI precedence
 - [docs/guides/testing.md](docs/guides/testing.md) — test layout, fixtures, and conventions

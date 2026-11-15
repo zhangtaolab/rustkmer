@@ -319,35 +319,46 @@ for mismatches, matches in sorted(by_mismatches.items()):
 
 ### Complex Query Patterns
 
+`query_exact()` and `query_fuzzy()` require the pattern length to equal the database k-mer size and raise `ValueError` otherwise, so short motifs (4-6 bp) must be searched with prefix queries. `query_prefix()` accepts any non-empty A/T/C/G prefix shorter than k and returns the k-mers that begin with that motif (k-mers containing the motif elsewhere are not matched). Use full k-length patterns for exact and fuzzy queries.
+
 ```python
 from pyrustkmer import PyDatabase, LoadMode, PyFuzzyQuery
 
-# Load databases
+# Load databases (both counted with k=31)
 db = PyDatabase("annotations.rkdb", LoadMode.Preload)
 fuzzy = PyFuzzyQuery(PyDatabase("genome.rkdb", LoadMode.Preload))
 
-# Define query patterns
-patterns = {
+# Short motifs (shorter than k) -- prefix queries
+short_motifs = {
     'promoter': ['TATAAA', 'CAAT', 'GGCGCC'],
     'terminator': ['TTTTTT', 'AAAAAAAA'],
     'restriction': ['GAATTC', 'GGATCC', 'AAGCTT']
 }
 
-# Search for patterns
-for category, pattern_list in patterns.items():
-    print(f"\n{category.upper()} PATTERNS:")
+for category, motif_list in short_motifs.items():
+    print(f"\n{category.upper()} MOTIFS (prefix search):")
+    for motif in motif_list:
+        result = db.query_prefix(motif)
+        print(f"  {motif}: {result.total_matches} k-mers start with this motif")
 
+# Full k-length patterns (k=31) -- exact and fuzzy queries
+patterns = [
+    'TATAAATATATATATATATATATATATATAT',  # TATA-box-like promoter 31-mer
+    'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',  # poly-A terminator 31-mer
+    'GAATTCGCGCGCGCGCGCGCGCGCGCGCGCG'   # EcoRI restriction site in a 31-mer
+]
+
+print("\nK-LENGTH PATTERNS (exact and fuzzy):")
+for pattern in patterns:
     # Exact matches
-    for pattern in pattern_list:
-        result = db.query_exact(pattern)
-        if result.found:
-            print(f"  {pattern}: {result.count} exact matches")
+    result = db.query_exact(pattern)
+    if result.found:
+        print(f"  {pattern}: {result.count} exact matches")
 
     # Fuzzy matches
-    for pattern in pattern_list:
-        fuzzy_results = fuzzy.query_fuzzy(pattern, max_mutations=1)
-        if fuzzy_results.total_matches > 0:
-            print(f"  {pattern}: {len(fuzzy_results.matches)} similar sequences, {fuzzy_results.total_matches} total occurrences")
+    fuzzy_results = fuzzy.query_fuzzy(pattern, max_mutations=1)
+    if fuzzy_results.total_matches > 0:
+        print(f"  {pattern}: {len(fuzzy_results.matches)} similar sequences, {fuzzy_results.total_matches} total occurrences")
 ```
 
 ## Performance Optimization

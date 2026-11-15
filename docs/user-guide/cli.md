@@ -61,7 +61,7 @@ rustkmer count -i reads.fq -k 21 -o reads.rkdb
 rustkmer count -i reads.fq.gz -k 21 -o reads.rkdb
 
 # Multiple files
-rustkmer count -i chr1.fa -i chr2.fa -i chr3.fa -o genome.rkdb
+rustkmer count -i chr1.fa -i chr2.fa -i chr3.fa -k 21 -o genome.rkdb
 ```
 
 #### Advanced Counting Options
