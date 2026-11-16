@@ -9,7 +9,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Merge Benchmark & Verdict
 
-- [ ] **MBENCH-01**: Harness gains jellyfish merge arms — two same-`-m/-s/-C` jellyfish per-part count artifacts plus a `jellyfish merge` command arm wired into bench.py's counterbalanced protocol, with input fingerprints, provenance recording, and honest per-rep `cache_state`
+- [x] **MBENCH-01**: Harness gains jellyfish merge arms — two same-`-m/-s/-C` jellyfish per-part count artifacts plus a `jellyfish merge` command arm wired into bench.py's counterbalanced protocol, with input fingerprints, provenance recording, and honest per-rep `cache_state`
 - [ ] **MBENCH-02**: Three-way merge parity gate is defined in writing and executed BEFORE any timing: rustkmer merge == independent recount of the union == jellyfish merge, exact per-k-mer — with a slice-scale dump-vs-dump deep gate AND per-k-mer deep validation at full scale (user-selected); the `total_kmers` definition (record-count vs sum-of-counts) is named per check
 - [ ] **MBENCH-03**: Full-scale merge verdict is measured and recorded at BOTH k=21 and k=31 — counterbalanced ≥3 reps, wall (primary decision axis), `max(rss, phys_footprint)` (context), disk (recorded); invest/no-invest verdict recorded via the 0/1/2 exit-code contract; methodology block captures threads/flags/merge-route/sha256 per arm including a like-for-like `rustkmer merge --num-threads 1` arm
 - [ ] **MBENCH-04**: Mechanical merge-verdict report — byte-identical re-render proof, entry-rate / byte-rate metrics, the single-threaded-comparator asymmetry disclosed, and a predicted-vs-measured cost-model check (linear-in-entries, single-threaded)
@@ -60,7 +60,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MBENCH-01 | Phase 11 | Pending |
+| MBENCH-01 | Phase 11 | Complete |
 | MBENCH-02 | Phase 11 | Pending |
 | MBENCH-03 | Phase 12 | Pending |
 | MBENCH-04 | Phase 12 | Pending |

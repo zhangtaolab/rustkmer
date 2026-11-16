@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 0
+open_count: 2
 waived_count: 7
 fixed_count: 18
-total_count: 25
-last_updated: 2026-11-16T07:50:34.301Z
+total_count: 27
+last_updated: 2026-11-16T15:22:58.192Z
 ---
 
 # Broken Windows Ledger
@@ -40,6 +40,8 @@ last_updated: 2026-11-16T07:50:34.301Z
 | 23 | 7 | deviation | src/core/monitoring.rs |  | Pre-existing broken profiling feature repaired minimally so the -features profiling probe builds; default release binary unchanged | fixed |  | 2026-11-12T15:55:58.371Z | 2026-11-12T15:56:28.934Z |
 | 24 | quick-261116-ks7 | lint-warning | src/hash/table.rs | 483 | Pre-existing (out of ks7 scope): AtomicU64::fetch_update deprecated warning fires on local newer-stable rustc; CI clippy pins 1.82.0 where it does not fire | fixed |  | 2026-11-16T07:15:15.892Z | 2026-11-16T07:49:46.495Z |
 | 25 | quick-261116-ks7 | deviation | .planning/quick/261116-ks7-fix-cargo-fmt-drift-across-source-files-/261116-ks7-PLAN.md |  | Plan T2V1 literal gate 'grep -c 261116-ks7 >= 3' is line-counting and unsatisfiable under the plan's own action spec (only the deferred row and quick-tasks row may mention the ID = 2 lines, 4 occurrences); discriminating evidence used instead: occurrence count >= 3 (4), 'Resolved by quick 261116-ks7' exactly 1, quick-task row line present | waived | Accepted deviation, waived 2026-11-16: the ks7 T2V1 gate form was unsatisfiable by construction — a line-counting grep -c over plan-ID mentions cannot reach 3 matching lines when the plan own action spec permits the ID on only 2 lines (4 occurrences), so the gate could not pass without corrupting the actions it verifies. The discriminating evidence stands and proved the property the literal gate approximated: occurrence count 4 >= 3, exactly one Resolved-by-quick-261116-ks7 line, and the quick-task row present. Same defect class as waived rows 12 and 13: the literal grep was the wrong instrument, not a code defect. | 2026-11-16T07:17:45.584Z | 2026-11-16T07:50:34.301Z |
+| 26 | 11 | unmet-truth | scripts/bench/tests/test_phase10_verdict.py |  | Pre-existing: 3 tests read archived .planning/phases/10-benchmark-verdict/ paths moved to .planning/milestones/v2.0-phases/ by 97c497c; full-suite gate exits non-zero (also test_verify_threads documented sample-race flake) — see 11-01 deferred-items.md | open |  | 2026-11-16T13:02:50.470Z |  |
+| 27 | 11 | deviation | .planning/phases/11-merge-characterization-harness-prep/11-05-SUMMARY.md |  | Task 3 verify snippet assumed occupancy inside jellyfish_info records; corrected to compute from hash_size_plan (identical fails_when semantics) — Rule 3, verification-only | open |  | 2026-11-16T15:22:58.192Z |  |
 
 ````json
 [
@@ -367,6 +369,32 @@ last_updated: 2026-11-16T07:50:34.301Z
     "recorded_at": "2026-11-16T07:17:45.584Z",
     "resolved_at": "2026-11-16T07:50:34.301Z",
     "milestone": "v2.0"
+  },
+  {
+    "id": 26,
+    "kind": "unmet-truth",
+    "phase": "11",
+    "file": "scripts/bench/tests/test_phase10_verdict.py",
+    "line": null,
+    "description": "Pre-existing: 3 tests read archived .planning/phases/10-benchmark-verdict/ paths moved to .planning/milestones/v2.0-phases/ by 97c497c; full-suite gate exits non-zero (also test_verify_threads documented sample-race flake) — see 11-01 deferred-items.md",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-16T13:02:50.470Z",
+    "resolved_at": null,
+    "milestone": "v2.1"
+  },
+  {
+    "id": 27,
+    "kind": "deviation",
+    "phase": "11",
+    "file": ".planning/phases/11-merge-characterization-harness-prep/11-05-SUMMARY.md",
+    "line": null,
+    "description": "Task 3 verify snippet assumed occupancy inside jellyfish_info records; corrected to compute from hash_size_plan (identical fails_when semantics) — Rule 3, verification-only",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-16T15:22:58.192Z",
+    "resolved_at": null,
+    "milestone": "v2.1"
   }
 ]
 ````

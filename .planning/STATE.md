@@ -5,16 +5,16 @@ milestone_name: Merge Verdict & Producer Research
 current_phase: 11
 current_phase_name: Merge Characterization & Harness Prep
 status: executing
-stopped_at: Completed 11-04-PLAN.md
-last_updated: "2026-11-16T14:13:02.025Z"
+stopped_at: Completed 11-05-PLAN.md
+last_updated: "2026-11-16T15:23:15.956Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 11 execution started
-state_head: b29dff9c5da81c09932326b1ac0b0b2ff62e6af7
+state_head: 7029c7de1c2310747592d4c89cf920a97e61039c
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 8
-  completed_plans: 4
+  completed_plans: 6
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-16)
 ## Current Position
 
 Phase: 11 (Merge Characterization & Harness Prep) — EXECUTING
-Plan: 6 of 8
+Plan: 7 of 8
 Status: Ready to execute
 Last activity: 2026-11-16 — Phase 11 execution started
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 11 P03 | 6min | 2 tasks | 5 files |
 | Phase 11 P08 | 10min | 2 tasks | 6 files |
 | Phase 11 P04 | 15 min | 3 tasks | 3 files |
+| Phase 11 P05 | 63min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 11]: 11-04: comparator sorts in-process with Python str ordering (byte-identical to LC_ALL=C over the ASCII dump alphabet) instead of shelling out to sort; dumps go via workdir files (rustkmer dump -o / jellyfish dump -c stdout)
 - [Phase 11]: 11-04: live slice proof head-provisions 200k reads from the first sorted parts (functional gate proof only); the pinned part_001+part_006 pair and union anchors bind full-scale runs through the prepare manifest
 - [Phase 11]: 11-04: MBENCH-02 left unmarked in REQUIREMENTS.md — shared with 11-07 which has no SUMMARY yet (shared-ID gate)
+- [Phase 11]: 11-05: per-part -s approved as derived via plan auto_select option-a (AUTO mode): 1G@k21 occ 0.619, 2G@k31 occ 0.388; A4 closed — derived -s, not 10G-everywhere; fairness via k-pair hash-size equality + recorded occupancy
+- [Phase 11]: 11-05: artifact budget approved on measured reality — 86.74 GiB actual vs D-01 ~70 GiB estimate (superseded by measurement, inside the recorded 85.8-109.8 GiB projection band); merge-output occupancy pre-computed for 11-07 floor: k21 0.836, k31 0.534
 
 ### Pending Todos
 
@@ -114,6 +117,6 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-16T14:12:48.065Z
-Stopped at: Completed 11-04-PLAN.md
+Last session: 2026-11-16T15:23:15.937Z
+Stopped at: Completed 11-05-PLAN.md
 Resume file: None
