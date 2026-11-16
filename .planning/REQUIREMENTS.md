@@ -60,26 +60,30 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MBENCH-01 | — | Pending |
-| MBENCH-02 | — | Pending |
-| MBENCH-03 | — | Pending |
-| MBENCH-04 | — | Pending |
-| MBENCH-05 | — | Pending |
-| PEXT-01 | — | Pending |
-| PEXT-02 | — | Pending |
-| PEXT-03 | — | Pending |
-| PEXT-04 | — | Pending |
-| HYG-01 | — | Pending |
-| HYG-02 | — | Pending |
-| HYG-03 | — | Pending |
-| HYG-04 | — | Pending |
-| MEM-01 | — | Pending |
+| MBENCH-01 | Phase 11 | Pending |
+| MBENCH-02 | Phase 11 | Pending |
+| MBENCH-03 | Phase 12 | Pending |
+| MBENCH-04 | Phase 12 | Pending |
+| MBENCH-05 | Phase 11 | Pending |
+| PEXT-01 | Phase 13 | Pending |
+| PEXT-02 | Phase 13 | Pending |
+| PEXT-03 | Phase 14 (conditional — D3) | Pending (gated) |
+| PEXT-04 | Phase 14 (conditional — D3) | Pending (gated) |
+| HYG-01 | Phase 11 | Pending |
+| HYG-02 | Phase 11 | Pending |
+| HYG-03 | Phase 11 | Pending |
+| HYG-04 | Phase 11 (opportunistic) | Pending |
+| MEM-01 | Phase 14 | Pending |
 
 **Coverage:**
-- v1 requirements: 14 total (2 conditional on the D3 gate)
-- Mapped to phases: 0
-- Unmapped: 14 ⚠️ (filled by roadmap)
+- v2.1 requirements: 14 total (2 conditional on the D3 gate)
+- Mapped to phases: 14 ✓
+- Unmapped: 0 ✓
+
+**Mapping notes:**
+- MBENCH-02 maps to Phase 11 (written spec + implementation + slice-scale dump-vs-dump deep gate); its full-scale execution — the user-selected per-k-mer deep validation — runs inside Phase 12's protocol as a Phase 12 success criterion under MBENCH-03, per "parity before timing".
+- MEM-01 maps to Phase 14 because that is the only phase where a performance change can land; if the D3 gate does not fire, no perf change lands and the guardrail holds by status quo (re-measurement happens only if PEXT-04 runs).
 
 ---
 *Requirements defined: 2026-11-16*
-*Last updated: 2026-11-16 after initial definition*
+*Last updated: 2026-11-16 after roadmap traceability (Phases 11-14)*
