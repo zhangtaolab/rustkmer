@@ -25,8 +25,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### Hygiene
 
 - [x] **HYG-01**: `docs/benchmark-report.md` drift resolved (superseded banner or v2.0-based regeneration) BEFORE the Phase 2 merge verdict lands; the stale dataset description (two parts ~5.2 GB → six parts ~16.7 GB) corrected in PROJECT.md/docs
-- [ ] **HYG-02**: Nyquist validation gaps for Phases 5–8 filled (per `/gsd-validate-phase` scope)
-- [ ] **HYG-03**: SECURITY.md threat-model verification produced for Phases 9 and 10 (per `/gsd-secure-phase`)
+- [x] **HYG-02**: Nyquist validation gaps for Phases 5–8 filled (per `/gsd-validate-phase` scope)
+- [x] **HYG-03**: SECURITY.md threat-model verification produced for Phases 9 and 10 (per `/gsd-secure-phase`)
 - [ ] **HYG-04**: Backlog 999.1–999.3 handled opportunistically when touched by other work (not gate-blocking)
 
 ### Memory Guardrail
@@ -70,8 +70,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PEXT-03 | Phase 14 (conditional — D3) | Pending (gated) |
 | PEXT-04 | Phase 14 (conditional — D3) | Pending (gated) |
 | HYG-01 | Phase 11 | Complete |
-| HYG-02 | Phase 11 | Pending |
-| HYG-03 | Phase 11 | Pending |
+| HYG-02 | Phase 11 | Complete |
+| HYG-03 | Phase 11 | Complete |
 | HYG-04 | Phase 11 (opportunistic) | Pending |
 | MEM-01 | Phase 14 | Pending |
 

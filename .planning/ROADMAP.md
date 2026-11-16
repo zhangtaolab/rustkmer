@@ -74,14 +74,14 @@ Full detail: [milestones/v2.0-ROADMAP.md](milestones/v2.0-ROADMAP.md) · Require
   4. `docs/benchmark-report.md` no longer presents the superseded v1.0 k=21 "+420%" verdict as current (superseded banner or v2.0-based regeneration), and the dataset description (six single-member gzip parts, ~16.7 GB total) is corrected in PROJECT.md/docs — BEFORE the Phase 12 verdict lands (HYG-01).
   5. Evidence debts are closed: Nyquist validation records exist for Phases 5-8 (HYG-02), SECURITY.md threat-model verification exists for Phases 9-10 (HYG-03), and every backlog 999.1-999.3 item whose file is touched by milestone work is resolved in the same touch — opportunistic, remaining items stay tracked and are not gate-blocking (HYG-04).
 
-**Plans**: 3/8 plans executed
+**Plans**: 4/8 plans executed
 
 Plans:
 **Wave 1**
 - [x] 11-01-PLAN.md — Harness merge-arm extension: seven-arm counterbalanced set + ordering assertion + schema/renderer compat (MBENCH-01, MBENCH-05)
 - [x] 11-02-PLAN.md — prepare-inputs stage: build/revalidate/manifest with -s derivation, union-anchor reconciliation, and provenance records (D-01/D-03/D-04 mechanics)
 - [x] 11-03-PLAN.md — Evidence hygiene (docs): benchmark-report banner + dataset correction + drift sweep + hygiene record (HYG-01, HYG-04)
-- [ ] 11-08-PLAN.md — Evidence hygiene (records): Nyquist 5-8 via /gsd-validate-phase + SECURITY.md 9-10 via /gsd-secure-phase (HYG-02, HYG-03)
+- [x] 11-08-PLAN.md — Evidence hygiene (records): Nyquist 5-8 via /gsd-validate-phase + SECURITY.md 9-10 via /gsd-secure-phase (HYG-02, HYG-03)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 11-04-PLAN.md — Three-way parity gate: written PARITY-GATE.md spec + implementation + live slice-scale proof (MBENCH-02)
@@ -159,7 +159,7 @@ Plans:
 | 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 4/4 | Complete | 2026-11-13 |
 | 9. Python Parity | v2.0 | 5/5 | Complete | 2026-11-13 |
 | 10. Benchmark Verdict | v2.0 | 4/4 | Complete | 2026-11-14 |
-| 11. Merge Characterization & Harness Prep | v2.1 | 3/8 | In Progress | - |
+| 11. Merge Characterization & Harness Prep | v2.1 | 4/8 | In Progress | - |
 | 12. Full-Scale Merge Verdict | v2.1 | 0/TBD | Not started | - |
 | 13. Producer Attribution Research | v2.1 | 0/TBD | Not started | - |
 | 14. Parallel Extraction | v2.1 | 0/TBD | Not started (conditional — D3) | - |
