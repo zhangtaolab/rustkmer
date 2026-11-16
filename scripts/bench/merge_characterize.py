@@ -183,8 +183,19 @@ def route_from_stderr(stderr_text):
 
 
 def free_bytes(path):
-    """Free bytes on the volume holding path (os.statvfs, as bench.py)."""
-    st = os.statvfs(str(path))
+    """Free bytes on the volume holding path (os.statvfs, as bench.py).
+
+    os.statvfs requires an existing path, so the nearest existing ancestor
+    is probed when path itself does not exist yet (a fresh scratch root on
+    a fresh host) — same volume, same answer.
+    """
+    probe = Path(path)
+    while not probe.exists():
+        parent = probe.parent
+        if parent == probe:
+            break
+        probe = parent
+    st = os.statvfs(str(probe))
     return st.f_bavail * st.f_frsize
 
 
