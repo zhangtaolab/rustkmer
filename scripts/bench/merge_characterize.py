@@ -69,7 +69,6 @@ from scripts.bench.bench import (
     attempt_cache_purge,
     binary_provenance,
     build_merge_cmd,
-    dump_vs_dump_equal,
     fingerprint,
     jellyfish_count_cmd,
     jellyfish_merge_cmd,
@@ -177,6 +176,150 @@ def route_from_stderr(stderr_text):
     if ROUTE_MARKER_RE.search(stderr_text or ""):
         return "prefix-cache"
     return "not-reported"
+
+
+# --- deep dump-vs-dump gate (PARITY-GATE.md §4, streaming form) ----------------
+# bench.py's dump_vs_dump_equal normalizes both dumps in-process; at the
+# measured 10%-rung scale (3.5M-read slices -> ~200M distinct per part ->
+# ~356M lines per merged dump side) that requires ~120-150 GB of Python
+# heap and cannot run on this host. This ladder implementation executes
+# the WRITTEN spec's original §4 pipeline — dump both sides, strip '#'
+# comments, normalize every line fail-loud to "kmer<TAB>count", LC_ALL=C
+# external sort, exact comparison — streaming, within practical memory.
+# Byte order is identical to the in-process variant (both are LC_ALL=C
+# over the pure-ASCII k-mer/digit/tab alphabet; the 11-04 equivalence
+# argument realized literally).
+
+_AWK_NORMALIZE = r"""
+/^#/ { next }
+{
+    if (NF != 2 || $2 !~ /^[0-9]+$/) {
+        printf "dump parse: expected exactly 'kmer count', got %d fields " \
+               "in line: %s\n", NF, $0 > "/dev/stderr"
+        exit 2
+    }
+    seen++
+    print $1 "\t" $2
+}
+END {
+    if (seen == 0) {
+        print "dump parse: empty dump output (zero data lines) — an " \
+              "empty dump can never pass the gate (MBENCH-02/empty)" \
+              > "/dev/stderr"
+        exit 2
+    }
+}
+"""
+
+
+def _run_fail_loud(argv, stdout_path=None, env=None, side_label=""):
+    """Run one list-form pipeline element; fail loud on non-zero exit."""
+    argv = [str(a) for a in argv]
+    if stdout_path is not None:
+        with open(stdout_path, "w", encoding="utf-8") as fh:
+            proc = subprocess.run(argv, stdout=fh, stderr=subprocess.PIPE,
+                                  text=True, env=env)
+    else:
+        proc = subprocess.run(argv, capture_output=True, text=True, env=env)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"dump-vs-dump gate ({side_label}): step failed rc="
+            f"{proc.returncode}: {argv}\n"
+            f"trailing stderr:\n{(proc.stderr or '')[-500:]}")
+
+
+def _normalized_sorted_dump(dump_cmd_builder, workdir, stem, side_label,
+                            via_stdout=True):
+    """One dump side: dump -> fail-loud normalize -> LC_ALL=C sort.
+
+    dump_cmd_builder(raw_path) returns the dump argv for this side's raw
+    output (rustkmer dump writes via `-o`; jellyfish dump -c writes
+    stdout, hence via_stdout). Streams (never loads) so the gate runs at
+    ladder scale; returns the sorted canonical "kmer<TAB>count" file path
+    and its line count.
+    """
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    raw = workdir / f"{stem}.raw"
+    norm = workdir / f"{stem}.norm"
+    sorted_path = workdir / f"{stem}.sorted"
+    try:
+        if via_stdout:
+            _run_fail_loud(dump_cmd_builder(raw), stdout_path=raw,
+                           side_label=side_label)
+        else:
+            _run_fail_loud(dump_cmd_builder(raw), side_label=side_label)
+        _run_fail_loud(["awk", _AWK_NORMALIZE, str(raw)],
+                       stdout_path=norm, side_label=side_label)
+        sort_env = dict(os.environ, LC_ALL="C")
+        _run_fail_loud(["sort", "-T", str(workdir), "-o", str(sorted_path),
+                        str(norm)], env=sort_env, side_label=side_label)
+        wc = subprocess.run(["wc", "-l", str(sorted_path)],
+                            capture_output=True, text=True)
+        if wc.returncode != 0:
+            raise RuntimeError(
+                f"dump-vs-dump gate ({side_label}): wc -l failed rc="
+                f"{wc.returncode}")
+        lines = int(wc.stdout.split()[0])
+        if lines <= 0:
+            raise RuntimeError(
+                f"dump-vs-dump gate ({side_label}): sorted dump has "
+                f"{lines} lines — an empty dump can never pass "
+                "(MBENCH-02/empty)")
+        return sorted_path, lines
+    finally:
+        for leftover in (raw, norm):
+            try:
+                leftover.unlink()
+            except OSError:
+                pass
+
+
+def dump_vs_dump_equal_streaming(rkdb_path, jf_path, rustkmer, workdir):
+    """Cross-tool verdict gate at ladder scale (PARITY-GATE.md §4).
+
+    Same legs and identical semantics as bench.dump_vs_dump_equal —
+    fail-loud dumps, '#' comments stripped, every data line normalized to
+    (kmer, count) with a loud error naming the offending line, non-empty
+    both sides, LC_ALL=C byte ordering, exact per-k-mer identity required,
+    first difference named — realized as the spec's original streaming
+    pipeline (external sort + streaming compare) so ~356M-line dumps run
+    within practical memory.
+
+    Returns True on exact equality; raises RuntimeError otherwise.
+    """
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    rk_sorted, rk_lines = _normalized_sorted_dump(
+        lambda raw: [str(rustkmer), "dump", str(rkdb_path), "-o", str(raw)],
+        workdir, "rk", "rustkmer side", via_stdout=False)
+    jf_sorted, jf_lines = _normalized_sorted_dump(
+        lambda raw: ["jellyfish", "dump", "-c", str(jf_path)],
+        workdir, "jf", "jellyfish side", via_stdout=True)
+    try:
+        with open(rk_sorted, "r", encoding="utf-8") as fa, \
+                open(jf_sorted, "r", encoding="utf-8") as fb:
+            compared = 0
+            for la, lb in zip(fa, fb):
+                if la != lb:
+                    raise RuntimeError(
+                        f"dump-vs-dump gate: dumps differ at sorted line "
+                        f"{compared}: rustkmer={la!r} vs jellyfish={lb!r} "
+                        "— per-k-mer parity violated")
+                compared += 1
+            if compared != rk_lines or compared != jf_lines:
+                raise RuntimeError(
+                    f"dump-vs-dump gate: dumps differ in length: rustkmer "
+                    f"{rk_lines} lines vs jellyfish {jf_lines} lines (the "
+                    f"first {compared} sorted lines agree) — per-k-mer "
+                    "parity violated")
+        return True
+    finally:
+        for leftover in (rk_sorted, jf_sorted):
+            try:
+                leftover.unlink()
+            except OSError:
+                pass
 
 
 # --- disk + zero-entry guards -------------------------------------------------
@@ -467,9 +610,11 @@ def run_rung(n_reads, seed, k, rustkmer=DEFAULT_RUSTKMER,
     if deep_gate is None:
         deep_gate = (n_reads == RUNGS[0][0])
     if deep_gate:
-        dump_vs_dump_equal(merged_rkdb, merged_jf, rustkmer,
-                           rung_dir / "gate")
-        dump_verdict = "green"
+        dump_vs_dump_equal_streaming(merged_rkdb, merged_jf, rustkmer,
+                                     rung_dir / "gate")
+        dump_verdict = ("green (streaming PARITY-GATE.md §4 form: fail-loud "
+                        "normalization, LC_ALL=C external sort, exact "
+                        "per-k-mer identity)")
         legs = ["aggregate-conservation", "distinct-union", "dump-vs-dump"]
     else:
         dump_verdict = ("not-run: deep dump-vs-dump leg scheduled at the "
