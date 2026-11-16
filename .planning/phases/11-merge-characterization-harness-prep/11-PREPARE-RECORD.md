@@ -64,7 +64,14 @@ Derivation rule: smallest standard ladder size with `max_per_part_distinct <= 0.
 
 ## 7. Checkpoint outcome (Task 2 — recorded before any .jf build runs)
 
-PENDING — filled after the Task 2 decision.
+**Decision: option-a — the derived -s values are approved as computed. .jf builds commit at `-s 1G` for the k=21 pair and `-s 2G` for the k=31 pair. No adjustment.**
+
+- **Resolved at:** 2026-11-16, Task 2 of plan 11-05. Execution mode: auto (`auto_advance=true` + `_auto_chain_active=true` in `.planning/config.json`; checkpoint gate is `blocking`, not `blocking-human`; plan `auto_select="option-a"` per RESEARCH Open Question 1's resolution). ⚡ Auto-selected: option-a.
+- **Approved values:** -s 1G (k=21 pair, occupancy 0.6191) / -s 2G (k=31 pair, occupancy 0.3875) — derived in §4, both ≤ the 0.75 occupancy target with a full-rung auto-grow margin.
+- **Budget approval:** approved against measured reality, not the D-01 estimate. Measured .rkdb 55.75 GiB + projected .jf 30.0–54.0 GiB ⇒ total 85.8–109.8 GiB, which **exceeds D-01's ~70 GiB estimate** — the estimate predates per-part Distinct (research A2 guessed 450–920M per part; measured 664–832M). Affordability governs: 359.42 GiB free at decision time ⇒ ~250 GiB headroom even at the high-end projection (§6). Option-b (-s one rung up / 10G everywhere) was rejected as the research anti-pattern (RESEARCH Pitfall 3: four per-part 10G artifacts ≈ hundreds of GiB) — strictly worse on disk, floor, and build time, with no correctness benefit (merge requires hash-size *equality*, not any particular size).
+- **Consequence accepted (option-a cons):** the merge-output occupancy consequence is measured-in-advance from the Phase-10 union Distinct anchors riding input-0 capacity (jellyfish merge takes no `-s`; output slots derive from the first input): k=21 merged occupancy = 897,266,581 / 1,073,741,824 = **0.836** (above the 0.75 count-time target — expected, this is the plan option-a con "merge output occupancy roughly doubles"; PARITY-GATE.md Leg-1 Distinct conservation + the Phase 12 deep dump-vs-dump leg are the structural checks there); k=31 merged occupancy = 1,146,353,600 / 2,147,483,648 = **0.534** (comfortable). These two numbers are Plan 11-07 floor-derivation inputs (D-10).
+- **A4 closed:** research assumption A4 (`-s 10G` fairness reading vs D-01 budget) resolves as: per-part -s is **derived** (1G/2G), not 10G-everywhere; fairness is preserved by the merge-equality precondition (identical -m/-s/-C within each k-pair) plus recorded occupancy, not by oversized hashes. Research Open Question 1 closes with this record.
+- **Disk plan impact:** none negative — Plan 11-07's floor derivation consumes the as-measured numbers (D-10); free-space recheck before each .jf build is Task 3's precondition.
 
 ## 8. Provenance (stage-recorded, D-04 — zero manual transcription)
 
