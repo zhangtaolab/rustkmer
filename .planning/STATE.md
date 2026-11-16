@@ -5,16 +5,16 @@ milestone_name: Merge Verdict & Producer Research
 current_phase: 11
 current_phase_name: Merge Characterization & Harness Prep
 status: executing
-stopped_at: Completed 11-05-PLAN.md
-last_updated: "2026-11-16T15:23:15.956Z"
+stopped_at: Completed 11-06-PLAN.md
+last_updated: "2026-11-16T16:49:34.540Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 11 execution started
-state_head: 7029c7de1c2310747592d4c89cf920a97e61039c
+state_head: 2e1a16eee0fbb3985a761c22b9524feb05c7e5a2
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-16)
 ## Current Position
 
 Phase: 11 (Merge Characterization & Harness Prep) — EXECUTING
-Plan: 7 of 8
+Plan: 8 of 8
 Status: Ready to execute
 Last activity: 2026-11-16 — Phase 11 execution started
 
@@ -63,6 +63,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 11 P08 | 10min | 2 tasks | 6 files |
 | Phase 11 P04 | 15 min | 3 tasks | 3 files |
 | Phase 11 P05 | 63min | 3 tasks | 1 files |
+| Phase 11 P06 | 80min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 11]: 11-04: MBENCH-02 left unmarked in REQUIREMENTS.md — shared with 11-07 which has no SUMMARY yet (shared-ID gate)
 - [Phase 11]: 11-05: per-part -s approved as derived via plan auto_select option-a (AUTO mode): 1G@k21 occ 0.619, 2G@k31 occ 0.388; A4 closed — derived -s, not 10G-everywhere; fairness via k-pair hash-size equality + recorded occupancy
 - [Phase 11]: 11-05: artifact budget approved on measured reality — 86.74 GiB actual vs D-01 ~70 GiB estimate (superseded by measurement, inside the recorded 85.8-109.8 GiB projection band); merge-output occupancy pre-computed for 11-07 floor: k21 0.836, k31 0.534
+- [Phase 11]: 11-06: rung gates execute per PARITY-GATE.md before record acceptance; the deep dump-vs-dump leg runs the written spec's streaming form at ladder scale (measured 318.5M/373.0M lines per side — the in-process variant would need ~120-150 GB heap), implemented in merge_characterize.py with bench.py untouched
+- [Phase 11]: 11-06: ladder slopes all linear (40/10 wall-per-entry ratios 1.06-1.37, under the 2x flag) — jellyfish 8.97e-8/1.008e-7 s/entry k=21/31, rustkmer 6.67e-8/7.41e-8; extrapolated full-scale merge walls rustkmer 53.8/73.4 s, jellyfish 77.3/105.5 s with the MBENCH-04 backstop caveat — the Phase 12 scheduling input and the 11-07 D-10 transient term
 
 ### Pending Todos
 
@@ -117,6 +120,6 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-16T15:23:15.937Z
-Stopped at: Completed 11-05-PLAN.md
+Last session: 2026-11-16T16:49:18.655Z
+Stopped at: Completed 11-06-PLAN.md
 Resume file: None

@@ -74,7 +74,7 @@ Full detail: [milestones/v2.0-ROADMAP.md](milestones/v2.0-ROADMAP.md) · Require
   4. `docs/benchmark-report.md` no longer presents the superseded v1.0 k=21 "+420%" verdict as current (superseded banner or v2.0-based regeneration), and the dataset description (six single-member gzip parts, ~16.7 GB total) is corrected in PROJECT.md/docs — BEFORE the Phase 12 verdict lands (HYG-01).
   5. Evidence debts are closed: Nyquist validation records exist for Phases 5-8 (HYG-02), SECURITY.md threat-model verification exists for Phases 9-10 (HYG-03), and every backlog 999.1-999.3 item whose file is touched by milestone work is resolved in the same touch — opportunistic, remaining items stay tracked and are not gate-blocking (HYG-04).
 
-**Plans**: 6/8 plans executed
+**Plans**: 7/8 plans executed
 
 Plans:
 **Wave 1**
@@ -86,7 +86,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 11-04-PLAN.md — Three-way parity gate: written PARITY-GATE.md spec + implementation + live slice-scale proof (MBENCH-02)
 - [x] 11-05-PLAN.md — Full-scale artifact builds: 8 per-part .rkdb/.jf with -s decision gate and manifest revalidation (D-01/D-02/D-04)
-- [ ] 11-06-PLAN.md — Characterization ladder: 2-point × both-k × both-tools with slope/linearity evidence (D-07/D-08/D-09)
+- [x] 11-06-PLAN.md — Characterization ladder: 2-point × both-k × both-tools with slope/linearity evidence (D-07/D-08/D-09)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 11-07-PLAN.md — Disk floor (derive/block/override/per-rep) + full-protocol dress rehearsal + README stage docs/WARNING-2 (D-10/D-11/D-12, MBENCH-02 proof, HYG-04)
@@ -159,7 +159,7 @@ Plans:
 | 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 4/4 | Complete | 2026-11-13 |
 | 9. Python Parity | v2.0 | 5/5 | Complete | 2026-11-13 |
 | 10. Benchmark Verdict | v2.0 | 4/4 | Complete | 2026-11-14 |
-| 11. Merge Characterization & Harness Prep | v2.1 | 6/8 | In Progress | - |
+| 11. Merge Characterization & Harness Prep | v2.1 | 7/8 | In Progress | - |
 | 12. Full-Scale Merge Verdict | v2.1 | 0/TBD | Not started | - |
 | 13. Producer Attribution Research | v2.1 | 0/TBD | Not started | - |
 | 14. Parallel Extraction | v2.1 | 0/TBD | Not started (conditional — D3) | - |
