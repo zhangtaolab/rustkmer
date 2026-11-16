@@ -16,8 +16,12 @@ debug build) under `/usr/bin/time -l` (macOS) / `-v` (Linux):
 - arms: `count-A`, `count-B` (two disjoint seeded synthetic inputs, or the
   resolved real inputs), and `merge` of the two count databases;
 - with `--reps >= 2` the interleaved counterbalanced comparison protocol
-  engages and adds a `jellyfish-count-A` arm (jellyfish 2.3.x must be on
-  PATH; CI never runs this path);
+  engages and the full seven-arm set runs: `count-A`, `count-B`, `merge`,
+  `merge-t1` (like-for-like `rustkmer merge --num-threads 1`), and
+  `jellyfish-count-A`, `jellyfish-count-B`, `jellyfish-merge` (jellyfish
+  2.3.x must be on PATH; CI never runs this path). The three-way merge
+  parity gate (aggregate + per-k-mer dump-vs-dump, PARITY-GATE.md) executes
+  before any median is accepted;
 - every run asserts `distinct_kmers > 0` (a silent zero-count "success" is a
   failure), and results land in a schema-versioned `results.json` validated
   by the single shared validator (`validate_schema` in `bench.py`).
@@ -317,8 +321,9 @@ resolver); they now pin the fixed behavior:
   measured no-op or regression is exit **1** — never converted to a pass.
 - **Rust standing gate** `pool_size_matches_requested_threads`
   (`tests/thread_pool_size_tests.rs`) runs in the default `cargo test`
-  suite: a fresh CLI child per requested N in {1, 4, 16} must observe exactly
-  requested + 1 OS threads (rayon workers + main).
+  suite: a fresh CLI child per requested N in {1, 4, 16} must observe
+  exactly **2** OS threads at N=1 and **2N + 1** at N>1 (N rayon workers +
+  N engine workers + main).
 - **Characterization test** `pool_size_characterization_records_requested_pool`
   pins the same contract for a single `--threads 1` child in the default
   suite. Single-core hosts skip the comparison because the fixed one-worker
@@ -376,6 +381,94 @@ The Phase-10 verdict artifacts are **dev-host evidence only**: no CI-class
 baseline is regenerated, written, or modified, and a dev-host number must
 never be copied into a CI baseline slot. Every file under
 `scripts/bench/baselines/` is a read-only input whose sha256 is pinned.
+
+## Phase-11 merge-characterization stages
+
+Three harness stages (Plans 11-02/11-05/11-06/11-07) prepare and prove the
+Phase-12 full-scale merge session. They are dev-host workflows on the real
+CRR1936095 data — nothing here runs in CI.
+
+### prepare-inputs (`prepare_inputs.py`)
+
+Builds, revalidates, and describes the 8 full-scale merge input artifacts
+(part_001/part_006 × `.rkdb`/`.jf` × k=21/31, D-01):
+
+```
+python3 scripts/bench/prepare_inputs.py build --stage rkdb   # counts first
+python3 scripts/bench/prepare_inputs.py build --stage jf     # .jf after -s plan
+python3 scripts/bench/prepare_inputs.py revalidate           # re-hash + re-stat vs manifest
+python3 scripts/bench/prepare_inputs.py manifest             # path + compact table
+```
+
+- **`.rkdb`-first build order:** the `rkdb` stage produces the per-part
+  Distinct counts, reconciles their Total sums against the committed
+  Phase-10 union anchors mid-build, and derives each k-pair's jellyfish
+  `-s` (smallest standard rung with occupancy <= 0.75); the `jf` stage then
+  re-verifies the recorded `.rkdb` identity before building the `.jf`
+  inputs that must share the derived `-s` (merge hash-size equality).
+- **Manifest, not transcription (D-04):** every artifact's sha256, size,
+  Total/Distinct, command line, and binary provenance are stage-recorded in
+  `manifest.json`; `revalidate` re-hashes everything against it and is the
+  round-0 revalidation path Phase 12 consumes.
+- **Outside the repo (D-03):** artifacts live in a dedicated directory next
+  to the source data (never inside the repo tree — mis-commit risk);
+  `--artifacts-dir` enforces this and retention runs until the Phase 12
+  verdict lands (D-02).
+
+### characterization ladder (`merge_characterize.py`)
+
+Two-point merge-characterization ladder (D-07/D-08/D-09): jellyfish merge
+vs rustkmer merge on seeded real-data slice pairs (~10% and ~40% of part
+scale, both k=21/31), each rung running the complete
+slice → count ×2 → merge chain for both tools with its gates.
+
+```
+python3 scripts/bench/merge_characterize.py --run              # execute the pinned ladder
+python3 scripts/bench/merge_characterize.py --summarize        # recompute the summary block
+```
+
+The fitted per-entry rates and wall slopes feed three consumers: Phase-12
+round scheduling (expected wall per arm), the disk-floor derivation's
+transient term (below), and MBENCH-04's predicted-vs-measured curve check
+(D-07 backstop at full scale).
+
+### disk pre-flight (derived floor)
+
+`bench.py`'s floor is **derived, not round** (D-10): inputs (measured
+prepare inventory) + largest single-arm transient (ladder-extrapolated
+per-entry rates) × 1.25 margin — the formula, every input value, and the
+arithmetic are recorded in
+`.planning/phases/11-merge-characterization-harness-prep/11-FLOOR-DERIVATION.md`
+(currently 136 GiB; the stale 150 priced the count-era `-s 10G` regime).
+
+- `--disk-floor-gb` overrides the derived default; `mode=full` runs
+  hard-block (exit **3**) below it before any measurement — the D-12
+  full-budget pre-flight — and every comparison-protocol rep re-checks the
+  floor just before its measured run (D-12 lightweight re-check; catches
+  other processes filling the disk during multi-hour sessions).
+- Below the floor the run states the shortfall in GiB and exits 3. The
+  explicit `--disk-floor-override` flag (D-11) prints the shortfall and
+  continues for a deliberate run — there is no silent continue.
+- Slice/rehearsal runs pass their computed scaled budget explicitly (e.g.
+  `--disk-floor-gb 2` at 200k-read scale) instead of inheriting the
+  full-scale default.
+
+### dress rehearsal (gates before trust)
+
+The rehearsal runs the FULL seven-arm comparison protocol at slice scale,
+as two staged runs per k per PARITY-GATE.md's execution order:
+
+| Stage | Shape | What it proves |
+|---|---|---|
+| A (gate proof) | `bench.py --mode slice --slice-reads 50000 --reps 2 --self-check` | the gate pipeline is green at small scale — gates raise before results are accepted, so a green exit IS the proof |
+| B (full protocol) | `bench.py --mode slice --slice-reads 200000 --k {21,31} --reps 3 --self-check` | all seven arms at both k, counterbalanced rounds, honest per-rep `cache_state`, medians + CV, with the three-way parity + dump-vs-dump gates green before medians are accepted |
+
+Evidence lands in the phase dir as `11-REHEARSAL-RESULTS.json`. RSS is
+recorded as context only — no memory-win claim over the streaming jellyfish
+merge comparator is made from rehearsal numbers; `merge-t1`'s
+`--num-threads 1` row reads as a like-for-like single-worker scheduling
+point (the CLI child pool contract is 2 threads at N=1), not a one-OS-thread
+measurement.
 
 ## Provenance fields
 
@@ -599,6 +692,10 @@ scripts/bench/
 ├── python_bench.py          # PROF-04 fresh-worker PyO3 counting benchmark
 ├── phase10.py               # Phase-10 verdict controller: four arms over both
 │                            #   split parts, slice gate, mechanical report (0/1/2)
+├── prepare_inputs.py        # Phase-11 full-scale merge input artifacts:
+│                            #   build (rkdb-first + -s derivation) / revalidate / manifest
+├── merge_characterize.py    # Phase-11 two-point merge ladder: jellyfish vs
+│                            #   rustkmer on seeded slice pairs, both k (D-07/08/09)
 ├── n_read_differential.py   # PROF-05 CLI-vs-Python N-read differential (D2 evidence)
 ├── contention_bench.py      # PROF-03 four-arm contention microbench controller
 ├── capture_goldens.py       # read-only golden .rkdb hash capture (Phase 8 input)
@@ -608,6 +705,8 @@ scripts/bench/
 │   ├── python_bench_baseline.darwin.json   # dev-host-class PROF-04 baseline
 │   └── slice_parity.crr1936095.json        # pinned head-4M + random parity references
 ├── tests/                   # stdlib-unittest suites + dual-platform time fixtures
+│                            #   (incl. merge arms + parity gates, prepare-inputs,
+│                            #   disk floor derive/block/override/per-rep)
 └── scratch/                 # gitignored runtime outputs (slices, dbs, docs)
 
 .planning/research/profiling/
