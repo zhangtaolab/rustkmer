@@ -219,8 +219,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-15T15:47:47.537Z
-Stopped at: context exhaustion at 75% (2026-11-15)
+Last session: 2026-11-16 (resumed from HANDOFF.json, handoff cleared)
+Stopped at: Resuming — dispatching quick task to fix docs/getting-started/first-steps.md:56 (canonical → canonical_mode), then /gsd-new-milestone
 Resume file: None
 
 ## Operator Next Steps
