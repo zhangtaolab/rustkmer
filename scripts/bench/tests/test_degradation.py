@@ -20,7 +20,7 @@ from pathlib import Path
 from unittest import mock
 
 from scripts.bench import bench
-from scripts.bench.bench import gather_inputs, resolve_mode
+from scripts.bench.bench import SCHEMA_VERSION, gather_inputs, resolve_mode, validate_schema
 from scripts.bench.tests.test_schema import make_provenance
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -851,6 +851,54 @@ class TestHashSizeThreading(ReferenceGateTestCase):
                                   return_value={"distinct": 1, "total": 1}) as rp:
             bench.run_parity_cli(args)
         self.assertEqual(rp.call_args.kwargs.get("hash_size"), "2G")
+
+
+# --- MBENCH-05: the CI degradation rung pins the single-rep merge arm -------
+# The CI path (reps=1) is rustkmer-only: count-A, count-B, merge — no
+# jellyfish dependency, no second schema (SCHEMA_VERSION stays 1). The rung
+# exists precisely for machines without the comparator, so it must validate
+# and fail loudly with jellyfish nowhere in the shape.
+
+
+def make_ci_rung_results(merge_reps=None):
+    """A schema-v1 results dict shaped like the reps=1 CI run's output."""
+    if merge_reps is None:
+        merge_reps = [{"wall_s": 1.0, "peak_rss_bytes": 123}]
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "mode": "synthetic",
+        "arms": [
+            {"name": "count-A", "tool": "rustkmer",
+             "reps": [{"wall_s": 1.0, "peak_rss_bytes": 100}],
+             "distinct_kmers": 10, "total_kmers": 10},
+            {"name": "count-B", "tool": "rustkmer",
+             "reps": [{"wall_s": 1.0, "peak_rss_bytes": 100}],
+             "distinct_kmers": 10, "total_kmers": 10},
+            {"name": "merge", "tool": "rustkmer",
+             "reps": merge_reps,
+             "distinct_kmers": 20, "total_kmers": 20},
+        ],
+    }
+
+
+class TestCIIntegrationRung(unittest.TestCase):
+    """MBENCH-05: the single-rep CI path validates with no jellyfish arms."""
+
+    def test_single_rep_ci_arm_set_validates_schema_v1(self):
+        """count-A/count-B/merge (no jellyfish) validates under schema v1."""
+        doc = make_ci_rung_results()
+        names = [a["name"] for a in doc["arms"]]
+        self.assertEqual(names, ["count-A", "count-B", "merge"])
+        self.assertNotIn("jellyfish-merge", names)
+        self.assertNotIn("jellyfish-count-A", names)
+        validate_schema(doc)  # must not raise
+
+    def test_malformed_merge_arm_empty_reps_raises(self):
+        """An empty reps list on the merge arm raises — the rung cannot pass
+        vacuously (a zero-rep results file is a failure, BENCH-03)."""
+        doc = make_ci_rung_results(merge_reps=[])
+        with self.assertRaises(ValueError):
+            validate_schema(doc)
 
 
 if __name__ == "__main__":
