@@ -5,11 +5,11 @@ milestone_name: Merge Verdict & Producer Research
 current_phase: 11
 current_phase_name: Merge Characterization & Harness Prep
 status: executing
-stopped_at: Completed 11-08-PLAN.md
-last_updated: "2026-11-16T13:53:53.779Z"
+stopped_at: Completed 11-04-PLAN.md
+last_updated: "2026-11-16T14:13:02.025Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 11 execution started
-state_head: 95e028b6634a35dc96a0f7e7ff93233216b75928
+state_head: b29dff9c5da81c09932326b1ac0b0b2ff62e6af7
 progress:
   total_phases: 4
   completed_phases: 0
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-16)
 ## Current Position
 
 Phase: 11 (Merge Characterization & Harness Prep) — EXECUTING
-Plan: 5 of 8
+Plan: 6 of 8
 Status: Ready to execute
 Last activity: 2026-11-16 — Phase 11 execution started
 
@@ -61,6 +61,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 11 P02 | 17min | 2 tasks | 2 files |
 | Phase 11 P03 | 6min | 2 tasks | 5 files |
 | Phase 11 P08 | 10min | 2 tasks | 6 files |
+| Phase 11 P04 | 15 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 11]: [11-03]: benchmark-report.md SUPERSEDED banner is the single acknowledged generated-file exception (re-render from v1.0 JSONs drops it); renderer-narrative debt (bench.py halt note :1981-1990, CRR2044018 block :2040-2045 post-11-01 anchors) owned by the post-Phase-12 rewrite — protects old-JSON re-render byte-identity per research Open Question 4; recorded in 11-HYGIENE-RECORD.md
 - [Phase 11]: [11-03]: dataset description corrected to six single-member gzip parts (~2.79 GB each, ~16.7 GB total), pinned pair part_001+part_006 unchanged; HYG-04: WARNING-2 assigned to the 11-07 same-touch, backlog 999.1-999.3 not triggered (tracked, non-gate-blocking) — D-05/D-06 factual fixes only; HYG-04 opportunistic rule
 - [Phase 11]: [11-08]: Phase 7 draft VALIDATION.md confirmed in place via the workflow's State A audit (draft -> validated, Wave 0 verified delivered) rather than re-issued; 05/06/08 reconstructed grounding on the archived 2026-11-14 re-verification reports; security records keep plan-time dispositions (09 T-9-07 accepted low / IN-03 info-only; 10 T-10-SC reserved) — 8 Info findings NOT re-opened
+- [Phase 11]: 11-04: merge parity gate wired as pre-gate (assert_merge_parity) + deep verdict gate (dump_vs_dump_equal), both before results acceptance, guarded on the jellyfish-merge arm
+- [Phase 11]: 11-04: comparator sorts in-process with Python str ordering (byte-identical to LC_ALL=C over the ASCII dump alphabet) instead of shelling out to sort; dumps go via workdir files (rustkmer dump -o / jellyfish dump -c stdout)
+- [Phase 11]: 11-04: live slice proof head-provisions 200k reads from the first sorted parts (functional gate proof only); the pinned part_001+part_006 pair and union anchors bind full-scale runs through the prepare manifest
+- [Phase 11]: 11-04: MBENCH-02 left unmarked in REQUIREMENTS.md — shared with 11-07 which has no SUMMARY yet (shared-ID gate)
 
 ### Pending Todos
 
@@ -109,6 +114,6 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-16T13:53:53.760Z
-Stopped at: Completed 11-08-PLAN.md
+Last session: 2026-11-16T14:12:48.065Z
+Stopped at: Completed 11-04-PLAN.md
 Resume file: None
