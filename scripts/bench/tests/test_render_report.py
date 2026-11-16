@@ -372,5 +372,49 @@ class TestDeltaPct(unittest.TestCase):
             _delta_pct(1.0, 0.0)
 
 
+class TestJellyfishMergeDelta(RenderFixtureBase):
+    """MBENCH-01: merge-row deltas activate only when a jellyfish-merge arm
+    exists in the same results file — otherwise the legacy n/a branch is
+    preserved byte-compatibly for committed pre-Phase-11 results files."""
+
+    def _slice_results(self, with_jellyfish_merge):
+        """A slice-mode results dict; optionally carrying jellyfish-merge."""
+        arms = [
+            build_arm("count-A", "rustkmer", (16.0, 16.0, 16.0),
+                      (5 * (1 << 30),) * 3, distinct=100, total=1000),
+            build_arm("count-B", "rustkmer", (16.0, 16.0, 16.0),
+                      (5 * (1 << 30),) * 3, distinct=120, total=1100),
+            build_arm("jellyfish-count-A", "jellyfish", (22.0, 22.0, 22.0),
+                      (80 * (1 << 30),) * 3, distinct=100, total=1000),
+            build_arm("merge", "rustkmer", (7.5, 7.5, 7.5),
+                      (16 * (1 << 30),) * 3, distinct=150, total=2100),
+        ]
+        if with_jellyfish_merge:
+            arms.append(build_arm("jellyfish-merge", "jellyfish",
+                                  (9.0, 9.0, 9.0), (12 * (1 << 30),) * 3,
+                                  distinct=150, total=2100))
+        return build_results(mode="slice", arms=arms)
+
+    def test_merge_deltas_vs_jellyfish_merge_when_present(self):
+        """A jellyfish-merge arm in the same file: the merge row renders real
+        deltas against it (not 'n/a') — 7.5s vs 9.0s and 16 vs 12 GiB."""
+        results = self._slice_results(with_jellyfish_merge=True)
+        report = self.render([self.write_results(typical_full_results()),
+                              self.write_results(results, "slice.json")])
+        self.assertIn(
+            "| merge | rustkmer | 7.50 | 16.00 | -16.7% | +33.3% |", report)
+        self.assertNotIn(
+            "| merge | rustkmer | 7.50 | 16.00 | n/a |", report)
+
+    def test_merge_na_branch_preserved_without_jellyfish_merge(self):
+        """No jellyfish-merge arm: the merge n/a branch renders exactly as
+        before — byte-compat for committed pre-Phase-11 results files."""
+        results = self._slice_results(with_jellyfish_merge=False)
+        report = self.render([self.write_results(typical_full_results()),
+                              self.write_results(results, "slice.json")])
+        self.assertIn("| merge | rustkmer | 7.50 | 16.00 | n/a | n/a |",
+                      report)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -18,7 +18,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.bench.bench import validate_provenance, validate_schema
+from scripts.bench.bench import (
+    SCHEMA_VERSION,
+    validate_provenance,
+    validate_schema,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BENCH = REPO_ROOT / "scripts" / "bench" / "bench.py"
@@ -192,6 +196,40 @@ class TestRealRunProvenance(unittest.TestCase):
             expected = hashlib.sha256(RUSTKMER.read_bytes()).hexdigest()
             self.assertEqual(results["provenance"]["binary"]["sha256"],
                              expected)
+
+
+class TestSevenArmSchemaTolerance(unittest.TestCase):
+    """MBENCH-01: the seven-arm comparison shape rides schema v1 unchanged.
+
+    The new merge arm names (merge-t1, jellyfish-count-B, jellyfish-merge)
+    are entries in the existing arms list — validate_schema is name-tolerant,
+    so no second results schema exists (SCHEMA_VERSION stays 1).
+    """
+
+    ARM_NAMES = ("count-A", "count-B", "merge", "merge-t1",
+                 "jellyfish-count-A", "jellyfish-count-B", "jellyfish-merge")
+
+    def _seven_arm_results(self):
+        """A well-formed results dict carrying all seven arm names."""
+        arms = []
+        for name in self.ARM_NAMES:
+            tool = "jellyfish" if name.startswith("jellyfish") else "rustkmer"
+            arms.append({
+                "name": name,
+                "tool": tool,
+                "reps": [{"wall_s": 1.0, "peak_rss_bytes": 123}],
+                "distinct_kmers": 1,
+                "total_kmers": 1,
+            })
+        return {"schema_version": SCHEMA_VERSION, "arms": arms}
+
+    def test_seven_arm_results_validate_unchanged(self):
+        """All seven arm names pass validate_schema with no schema fork."""
+        validate_schema(self._seven_arm_results())  # must not raise
+
+    def test_schema_version_stays_1(self):
+        """SCHEMA_VERSION is still 1 — no second results schema (MBENCH-05)."""
+        self.assertEqual(SCHEMA_VERSION, 1)
 
 
 if __name__ == "__main__":

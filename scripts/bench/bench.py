@@ -1702,13 +1702,27 @@ def _rep_series(arm, key, scale=1.0, fmt="{:.2f}"):
     return " / ".join(fmt.format(r[key] / scale) for r in arm["reps"])
 
 
-def _arm_row(arm, base_arm):
-    """One table row: medians, deltas vs the jellyfish baseline arm, raw reps."""
+def _arm_row(arm, base_arm, merge_base=None):
+    """One table row: medians, deltas vs the jellyfish baseline arm, raw reps.
+
+    merge_base (MBENCH-01): the same results file's jellyfish-merge arm when
+    one exists — the merge row then carries real deltas against that arm
+    instead of the legacy n/a marker. With no jellyfish-merge arm in the
+    file the n/a branch is preserved byte-compatibly for committed
+    pre-Phase-11 results files.
+    """
     wall, rss = arm["median_wall_s"], arm["median_peak_rss_bytes"]
     if arm["name"] == "merge":
-        # No jellyfish counterpart exists for the merge operation — a delta
-        # against the jellyfish COUNT arm would be semantically void.
-        d_wall = d_rss = "n/a"
+        if merge_base is None:
+            # No jellyfish counterpart exists for the merge operation — a
+            # delta against the jellyfish COUNT arm would be semantically
+            # void.
+            d_wall = d_rss = "n/a"
+        else:
+            wall_base = merge_base["median_wall_s"]
+            rss_base = merge_base["median_peak_rss_bytes"]
+            d_wall = f"{_delta_pct(wall, wall_base):+.1f}%"
+            d_rss = f"{_delta_pct(rss, rss_base):+.1f}%"
     elif base_arm is None or arm is base_arm:
         d_wall = d_rss = "baseline"
     else:
@@ -1832,8 +1846,10 @@ def _slice_section_lines(results):
     lines = [f"## Slice-scale run (k={k}) — counting + merge (r1/r2)", ""]
     lines += _ARM_TABLE_HEADER
     merge_arms = [a for a in results["arms"] if a["name"] == "merge"]
+    jf_merge = next((a for a in results["arms"]
+                     if a["name"] == "jellyfish-merge"), None)
     for arm in [*count_arms, jf, *merge_arms]:
-        lines.append(_arm_row(arm, jf))
+        lines.append(_arm_row(arm, jf, merge_base=jf_merge))
     lines.append("")
     if merge_arms:
         mg = merge_arms[0]
