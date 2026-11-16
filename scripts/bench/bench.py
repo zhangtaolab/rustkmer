@@ -30,6 +30,7 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import math
 import os
 import platform
 import re
@@ -58,10 +59,64 @@ DEFAULT_RUSTKMER = "target/release/rustkmer"
 DEFAULT_HASH_SIZE = "10G"      # generous -s: undersizing silently penalizes
                                # the comparator (Pitfall 4); recorded in results
 DEFAULT_COOLDOWN_S = 5         # thermal gap between measured runs (Pitfall 5)
-DEFAULT_DISK_FLOOR_GB = 150    # Pitfall 8: full-run .rkdb artifacts alone can
-                               # reach 55-60 GB per database + merge scratch
 CV_WARNING_THRESHOLD_PCT = 10.0
 DISK_FLOOR_EXIT = 3
+
+# --- Derived disk floor (D-10) -------------------------------------------------
+# The floor is RECORDED EVIDENCE, not a round number: inputs + largest
+# single-arm transient + margin, computed by derive_disk_floor from the
+# measurements cited in
+# .planning/phases/11-merge-characterization-harness-prep/11-FLOOR-DERIVATION.md.
+# Re-derive (update the two measured literals AND the derivation doc together)
+# if the input artifacts or ladder rates change (D-10); never hand-edit the
+# default past the formula.
+MEASURED_INPUT_ARTIFACTS_BYTES = 93_135_484_166      # final prepare inventory:
+#   8 artifacts (4 .rkdb + 4 .jf), 11-PREPARE-RECORD.md §11
+LARGEST_SINGLE_ARM_TRANSIENT_BYTES = 22_927_072_000  # merged .rkdb at k=31
+#   union scale: 1,146,353,600 entries x 20.0 B/entry (ladder-fitted rate);
+#   the largest of the enumerated arm outputs — 11-FLOOR-DERIVATION.md §3
+SAFETY_MARGIN = 1.25                                 # documented D-10 constant
+
+
+def derive_disk_floor(inputs_bytes, transient_bytes, margin=SAFETY_MARGIN):
+    """Pure D-10 floor arithmetic: ceil((inputs + transient) * margin / 2^30).
+
+    # Arguments
+    inputs_bytes: measured input-artifact bytes (the D-10 inputs term).
+    transient_bytes: largest single-arm transient bytes (the D-10 transient
+        term, ladder-extrapolated).
+    margin: documented safety multiplier (D-10 constant, default 1.25).
+
+    # Returns
+    The floor in whole GiB (ceil).
+
+    # Errors
+    ValueError on a missing inputs term — a floor derived from nothing guards
+    nothing, and D-10 requires the derivation to consume measurements.
+    """
+    if inputs_bytes <= 0:
+        raise ValueError(
+            "derive_disk_floor: inputs_bytes must be > 0 (got "
+            f"{inputs_bytes}) — the measured input artifacts are the D-10 "
+            "formula's inputs term")
+    if transient_bytes < 0:
+        raise ValueError(
+            f"derive_disk_floor: transient_bytes must be >= 0 "
+            f"(got {transient_bytes})")
+    return math.ceil((inputs_bytes + transient_bytes) * margin / (1 << 30))
+
+
+DEFAULT_DISK_FLOOR_GB = 136  # derive_disk_floor(MEASURED_INPUT_ARTIFACTS_BYTES,
+# LARGEST_SINGLE_ARM_TRANSIENT_BYTES) — see 11-FLOOR-DERIVATION.md. Lower than
+# the stale 150: the old default priced the count-era -s 10G artifact regime;
+# the derived floor prices the measured per-part -s 1G/2G regime (D-10).
+# Tripwire: the literal above must equal the formula on the recorded inputs —
+# a drift means someone hand-edited the floor past the derivation (D-10).
+if DEFAULT_DISK_FLOOR_GB != derive_disk_floor(
+        MEASURED_INPUT_ARTIFACTS_BYTES, LARGEST_SINGLE_ARM_TRANSIENT_BYTES):
+    raise ValueError(
+        "DEFAULT_DISK_FLOOR_GB drifted from derive_disk_floor(recorded "
+        "inputs) — re-derive per 11-FLOOR-DERIVATION.md (D-10)")
 
 # --- /usr/bin/time output parsing (dual-platform, units-pinned) -------------
 # macOS BSD `time -l` reports peak RSS in BYTES (verified on this repo's dev
@@ -1285,21 +1340,45 @@ def reduce_arm(reps):
     return reduced
 
 
-def check_disk_floor(directory, floor_gb):
+def check_disk_floor(directory, floor_gb, override=False, phase=None):
     """Abort with exit 3 before any mode=full measurement when free space on
     the output directory's volume is below the floor (Pitfall 8: full-human
     .rkdb artifacts alone can reach 55-60 GB per database, with merge scratch
-    on top). Returns the free bytes when the guard passes."""
+    on top). Returns the free bytes when the guard passes.
+
+    D-11: the stated shortfall is part of every breach message. The explicit
+    --disk-floor-override flag converts the breach into a printed shortfall +
+    continue for a deliberate run — there is no silent continue path.
+    """
     st = os.statvfs(str(directory))
     free_bytes = st.f_bavail * st.f_frsize
     required_bytes = int(floor_gb * (1 << 30))
     if free_bytes < required_bytes:
-        print(f"bench.py: disk guardrail: {free_bytes} bytes free on "
+        shortfall_gb = (required_bytes - free_bytes) / (1 << 30)
+        label = "disk guardrail" if phase is None else f"disk guardrail ({phase})"
+        action = (f"continuing under --disk-floor-override (deliberate run, "
+                  f"D-11)" if override else
+                  f"aborting before any measurement (exit {DISK_FLOOR_EXIT})")
+        print(f"bench.py: {label}: {free_bytes} bytes free on "
               f"{directory} but the configured floor is {required_bytes} "
-              f"bytes ({floor_gb} GiB) — aborting before any measurement "
-              f"(exit {DISK_FLOOR_EXIT})", file=sys.stderr)
-        sys.exit(DISK_FLOOR_EXIT)
+              f"bytes ({floor_gb} GiB) — shortfall {shortfall_gb:.2f} GiB — "
+              f"{action}", file=sys.stderr)
+        if not override:
+            sys.exit(DISK_FLOOR_EXIT)
     return free_bytes
+
+
+def ensure_disk_headroom(directory, floor_gb, phase="rep", override=False):
+    """Lightweight per-rep disk re-check (D-12): the same statvfs primitive
+    check_disk_floor uses, re-run immediately before each measured rep of a
+    comparison protocol — other processes can fill the disk during multi-hour
+    sessions, and a mid-rep ENOSPC or near-full APFS distorts the write-heavy
+    arms. Exits 3 on breach (D-11 hard block) unless the explicit
+    --disk-floor-override was passed, in which case the shortfall is printed
+    and the rep proceeds (no silent continue). Returns the free bytes when
+    the guard passes."""
+    return check_disk_floor(directory, floor_gb, override=override,
+                            phase=phase)
 
 
 def assert_arm_ordering(arm_specs):
@@ -1556,7 +1635,9 @@ def dump_vs_dump_equal(rkdb_path, jf_path, rustkmer, workdir,
         f"per-k-mer parity violated")
 
 
-def run_comparison_protocol(arm_specs, reps, cooldown_s, rustkmer):
+def run_comparison_protocol(arm_specs, reps, cooldown_s, rustkmer,
+                            disk_floor_gb=None, disk_dir=None,
+                            disk_override=False):
     """Interleaved, counterbalanced, honestly-recorded protocol (BENCH-02).
 
     One warmup run per tool is executed and discarded before round 1; tool
@@ -1564,6 +1645,13 @@ def run_comparison_protocol(arm_specs, reps, cooldown_s, rustkmer):
     tools never run concurrently (memory-pool and core contention — RESEARCH
     anti-pattern); and every measured rep records the cache_state of its own
     actual purge attempt plus its round index and arm-order position.
+
+    D-12 per-rep re-check: when disk_floor_gb is set, ensure_disk_headroom
+    re-runs the statvfs disk guard immediately before each measured rep (the
+    full-budget pre-flight remains the mode=full guard in run_bench; slice /
+    rehearsal runs pass their computed scaled budget explicitly). Active in
+    comparison runs regardless of mode — disk can fill mid-protocol on any
+    multi-hour session.
 
     Returns (arms_list, round_schedule_dict).
     """
@@ -1594,6 +1682,11 @@ def run_comparison_protocol(arm_specs, reps, cooldown_s, rustkmer):
         position = 0
         for tool in schedule[str(rnd)]:
             for spec in [s for s in arm_specs if s["tool"] == tool]:
+                if disk_floor_gb is not None and disk_dir is not None:
+                    # D-12 lightweight re-check before each measured rep.
+                    ensure_disk_headroom(disk_dir, disk_floor_gb,
+                                         phase=f"rep round {rnd}",
+                                         override=disk_override)
                 cache_state = attempt_cache_purge()
                 rep = measure(spec["cmd"])
                 rep["cache_state"] = cache_state
@@ -1655,10 +1748,12 @@ def run_bench(args):
     scratch = out_path.parent
     scratch.mkdir(parents=True, exist_ok=True)
 
-    # Disk guardrail (Pitfall 8) — aborts with exit 3 BEFORE any mode=full
-    # provisioning or measurement.
+    # Disk guardrail (Pitfall 8) — the D-12 full-budget pre-flight: aborts
+    # with exit 3 BEFORE any mode=full provisioning or measurement; the
+    # per-rep re-checks run later inside the protocol (D-12).
     if mode == "full":
-        check_disk_floor(scratch, args.disk_floor_gb)
+        check_disk_floor(scratch, args.disk_floor_gb,
+                         override=args.disk_floor_override)
 
     selections = None
     if mode == "synthetic":
@@ -1731,7 +1826,9 @@ def run_bench(args):
                  "cmd": jellyfish_merge_cmd(jf_merged, [jf_a, jf_b])})
         assert_arm_ordering(arm_specs)
         arms, round_sched = run_comparison_protocol(
-            arm_specs, args.reps, args.cooldown_s, args.rustkmer)
+            arm_specs, args.reps, args.cooldown_s, args.rustkmer,
+            disk_floor_gb=args.disk_floor_gb, disk_dir=scratch,
+            disk_override=args.disk_floor_override)
 
         # A timing comparison between tools that counted DIFFERENT things is
         # meaningless — parity is asserted on the measured input itself.
@@ -2387,9 +2484,19 @@ def main():
                              "runs (thermal/order-bias defense, Pitfall 5)")
     parser.add_argument("--disk-floor-gb", type=int,
                         default=DEFAULT_DISK_FLOOR_GB,
-                        help="abort mode=full runs (exit 3) when free space "
-                             "on the output volume is below this floor in "
-                             "GiB (Pitfall 8)")
+                        help="disk floor in GiB: mode=full runs hard-block "
+                             "(exit 3) below it before any measurement, and "
+                             "every comparison-protocol rep re-checks it "
+                             "(D-12). Default is the DERIVED floor "
+                             "(inputs + largest ladder-extrapolated single-"
+                             "arm transient + 1.25 margin — "
+                             "11-FLOOR-DERIVATION.md); slice/rehearsal runs "
+                             "pass their computed scaled budget explicitly")
+    parser.add_argument("--disk-floor-override", action="store_true",
+                        help="deliberate-run escape (D-11): when free space "
+                             "is below the floor, print the stated shortfall "
+                             "and continue instead of the exit-3 hard block "
+                             "— there is no silent continue without it")
     parser.add_argument("--parity-only", action="store_true",
                         help="count the same input with rustkmer and "
                              "jellyfish, assert equal Distinct/Total, and "
