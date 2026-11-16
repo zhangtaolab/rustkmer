@@ -473,15 +473,19 @@ def ensure_disk_headroom(out_dir, floor_gb, phase="rep"):
 | A6 | `rustkmer merge --num-threads 1` maps to a meaningfully single-threaded path worth recording (milestone Pitfall 3: "record what 1 thread actually changes in the route") | Pattern 3 | The t1 row could be mis-read as strictly like-for-like; the methodology line must state what the flag controls |
 | A7 | `/tmp` scratch (phase10 precedent) is acceptable for rehearsal scratch — same single volume as the data dir on this host | Pattern 6 / Pitfall 9 | Only relevant if the user prefers another scratch root; trivial to re-point |
 
-## Open Questions
+## Open Questions (RESOLVED at planning, 2026-11-16)
 
 1. **Exact per-part jellyfish `-s` value (and whether one `-s` serves both k-pairs).**
    - What we know: merge requires equality within a k-pair; D-01's ~70 GiB budget implies well below 10G; occupancy assertion needs measured per-part Distinct which only exists after the first `.rkdb` builds.
    - What's unclear: the user's intent on the ~70 GiB figure vs a "-s 10G everywhere" fairness reading (A4).
    - Recommendation: planner sequences `.rkdb`-first, derives `-s` with the occupancy assertion, and puts a `checkpoint:human-verify` on the chosen `-s` + resulting disk budget before the full-scale builds run.
+   - RESOLVED: Plan 11-02 Task 1 derives `-s` per k-pair with the occupancy assertion (`derive_hash_size`; one shared `-s` per k-pair, not one for both k-pairs); Plan 11-05 Task 2 is the blocking checkpoint that approves the derived `-s` + disk budget before any `.jf` build (also closes A4 explicitly).
 2. **Ladder rung read-counts.** CONTEXT says "e.g. ~10% and ~40%" — planner pins exact N (A3 gives the scale anchors). Recommendation: pick round read counts that keep each rung's jellyfish count + merge under ~15 min combined.
+   - RESOLVED: Plan 11-06 pins RUNGS at N=3,500,000 and N=14,000,000 reads per slice (seed 4242), at both k.
 3. **phase11.py now or Phase 12.** CONTEXT discretion. Recommendation: if the rehearsal wants resumable stages + session provenance, create it now as a thin phase10 clone; otherwise drive staged bench.py/prepare invocations and defer the controller.
+   - RESOLVED: deferred — no `phase11.py` is created this phase; Plans 11-05/11-06/11-07 drive staged bench.py / prepare_inputs invocations directly; the optional controller remains a Phase 12 decision (ROADMAP marks it optional for the Phase 12 session).
 4. **Renderer narrative scope.** Fix the hardcoded v1.0 narrative lines this phase (small, but touches the byte-identity expectations for old JSON re-renders) or record as post-verdict debt. Recommendation: record as debt in the phase summary + make the post-verdict rewrite own it; do not re-render old JSONs after any narrative change without noting the intentional diff.
+   - RESOLVED: recorded as post-verdict debt — Plan 11-03 Task 2 records the renderer-narrative debt (bench.py:1883-1892, :1942-1947) in 11-HYGIENE-RECORD.md; the post-Phase-12 rewrite owns the renderer-narrative update.
 
 ## Environment Availability
 

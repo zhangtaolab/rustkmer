@@ -19,17 +19,17 @@ created: "2026-11-16"
 
 | Property | Value |
 |----------|-------|
-| **Framework** | pytest (harness tests in `scripts/bench/tests/`, unittest-style via unittest runner) + `cargo test` (Rust gates, untouched by this phase) |
+| **Framework** | unittest discover (stdlib runner; harness tests in `scripts/bench/tests/`, unittest-style) + `cargo test` (Rust gates, untouched by this phase) |
 | **Config file** | none — existing `scripts/bench/tests/` suite + harness self-checks |
-| **Quick run command** | `python3 -m pytest scripts/bench/tests/ -x -q` |
-| **Full suite command** | `python3 -m pytest scripts/bench/tests/ -q` && slice-scale dress rehearsal (`bench.py` slice protocol) |
+| **Quick run command** | `python3 -m unittest discover -s scripts/bench/tests -t .` |
+| **Full suite command** | `python3 -m unittest discover -s scripts/bench/tests -t .` && slice-scale dress rehearsal (`bench.py` slice protocol) |
 | **Estimated runtime** | ~60 seconds (unit) / ~10–20 min (slice rehearsal) |
 
 ---
 
 ## Sampling Rate
 
-- **After every task commit:** Run `python3 -m pytest scripts/bench/tests/ -x -q`
+- **After every task commit:** Run `python3 -m unittest discover -s scripts/bench/tests -t .`
 - **After every plan wave:** Run full harness test suite + the phase's own protocol checks (schema validation, gate unit checks, renderer render test)
 - **Before `/gsd-verify-work`:** Full suite must be green; dress rehearsal evidence present
 - **Max feedback latency:** 60 seconds
@@ -40,11 +40,11 @@ created: "2026-11-16"
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| (filled by planner) | | | MBENCH-01 | — | provenance integrity (sha256 + Total recorded per artifact) | unit | `python3 -m pytest scripts/bench/tests/ -k provenance` | ❌ W0 | ⬜ pending |
-| (filled by planner) | | | MBENCH-02 | — | parity gate rejects conservation-only passes | unit | `python3 -m pytest scripts/bench/tests/ -k parity` | ❌ W0 | ⬜ pending |
-| (filled by planner) | | | MBENCH-05 | — | no second results schema (schema_version unchanged) | unit | `python3 -m pytest scripts/bench/tests/test_schema.py` | ✅ | ⬜ pending |
-| (filled by planner) | | | HYG-01 | — | stale verdict no longer presented as current | source assertion | `grep` banner in `docs/benchmark-report.md` + drift grep script | ✅ (file exists) | ⬜ pending |
-| (filled by planner) | | | HYG-02/03 | — | validation records + SECURITY.md exist | source assertion | `ls` milestone archive targets | ❌ W0 | ⬜ pending |
+| 11-02 T1+T2 | 11-02 | 1 | MBENCH-01 | T-11-01 | provenance integrity (sha256 + Total recorded per artifact) | unit | `python3 -m unittest discover -s scripts/bench/tests -t . -k test_prepare_inputs` | ❌ W0 | ⬜ pending |
+| 11-04 T2 | 11-04 | 2 | MBENCH-02 | — | parity gate rejects conservation-only passes | unit | `python3 -m unittest discover -s scripts/bench/tests -t . -k test_merge_arms` | ❌ W0 | ⬜ pending |
+| 11-01 T2+T3 | 11-01 | 1 | MBENCH-05 | — | no second results schema (schema_version unchanged) | unit | `python3 -m unittest discover -s scripts/bench/tests -t . -k test_schema` | ✅ | ⬜ pending |
+| 11-03 T1+T2 | 11-03 | 1 | HYG-01 | T-11-05 | stale verdict no longer presented as current | source assertion | `grep` banner in `docs/benchmark-report.md` + drift grep script | ✅ (file exists) | ⬜ pending |
+| 11-08 T1+T2 | 11-08 | 1 | HYG-02/03 | T-11-07 | validation records + SECURITY.md exist | source assertion | `ls` milestone archive targets | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
