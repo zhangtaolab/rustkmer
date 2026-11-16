@@ -1,0 +1,85 @@
+# Requirements: rustkmer — Milestone v2.1 Merge Verdict & Producer Research
+
+**Defined:** 2026-11-16
+**Core Value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools (KMC / Jellyfish class), from both the CLI and Python.
+
+## v2.1 Requirements
+
+Requirements for this milestone. Each maps to roadmap phases.
+
+### Merge Benchmark & Verdict
+
+- [ ] **MBENCH-01**: Harness gains jellyfish merge arms — two same-`-m/-s/-C` jellyfish per-part count artifacts plus a `jellyfish merge` command arm wired into bench.py's counterbalanced protocol, with input fingerprints, provenance recording, and honest per-rep `cache_state`
+- [ ] **MBENCH-02**: Three-way merge parity gate is defined in writing and executed BEFORE any timing: rustkmer merge == independent recount of the union == jellyfish merge, exact per-k-mer — with a slice-scale dump-vs-dump deep gate AND per-k-mer deep validation at full scale (user-selected); the `total_kmers` definition (record-count vs sum-of-counts) is named per check
+- [ ] **MBENCH-03**: Full-scale merge verdict is measured and recorded at BOTH k=21 and k=31 — counterbalanced ≥3 reps, wall (primary decision axis), `max(rss, phys_footprint)` (context), disk (recorded); invest/no-invest verdict recorded via the 0/1/2 exit-code contract; methodology block captures threads/flags/merge-route/sha256 per arm including a like-for-like `rustkmer merge --num-threads 1` arm
+- [ ] **MBENCH-04**: Mechanical merge-verdict report — byte-identical re-render proof, entry-rate / byte-rate metrics, the single-threaded-comparator asymmetry disclosed, and a predicted-vs-measured cost-model check (linear-in-entries, single-threaded)
+- [ ] **MBENCH-05**: CI degradation rung for the merge arm — extends the existing synthetic two-part merge arm; no second results schema
+
+### Producer Research & Conditional Extraction
+
+- [ ] **PEXT-01**: Producer stage attribution is measured at FULL scale on the shipped engine, both k, with fingerprinted builds — stage table (inflate / parse / extract / route-send) via the plain-vs-gzip differential plus a pure-read control; slice-scale numbers and pre-Phase-7 profiles never feed the gate
+- [ ] **PEXT-02**: Predicted-win model names both ceilings (parallelizable share × worker-side scaling) and the D3-gate go/no-go decision is recorded as the research deliverable
+- [ ] **PEXT-03**: CONDITIONAL — executes only if the D3 gate fires: parallel extraction implemented with the topology decided in phase planning from attribution data, preserving all ten engine invariants (partition disjointness; byte-exact differentials; `.rkdb` sha256 identity across thread counts; honestly-extended thread-observability gate; flush/token happens-before; true t1 sequential path; bounded in-flight memory; frozen 12-name `PyCounter` surface; no-unwrap/error contracts; clean teardown with error-injection tests)
+- [ ] **PEXT-04**: CONDITIONAL (paired with PEXT-03) — MEM guardrail re-measured at full scale post-change: peak RSS stays below the jellyfish references at both k
+
+### Hygiene
+
+- [ ] **HYG-01**: `docs/benchmark-report.md` drift resolved (superseded banner or v2.0-based regeneration) BEFORE the Phase 2 merge verdict lands; the stale dataset description (two parts ~5.2 GB → six parts ~16.7 GB) corrected in PROJECT.md/docs
+- [ ] **HYG-02**: Nyquist validation gaps for Phases 5–8 filled (per `/gsd-validate-phase` scope)
+- [ ] **HYG-03**: SECURITY.md threat-model verification produced for Phases 9 and 10 (per `/gsd-secure-phase`)
+- [ ] **HYG-04**: Backlog 999.1–999.3 handled opportunistically when touched by other work (not gate-blocking)
+
+### Memory Guardrail
+
+- [ ] **MEM-01**: Any landed performance change keeps full-scale peak RSS below jellyfish (k=21 43.97 GiB, k=31 68.52 GiB references) — re-measured, not asserted
+
+## v2.2+ Requirements (Deferred)
+
+### Merge Follow-ons (post-INVEST only)
+
+- **MBF-01**: rustkmer merge flag tuning / config sweep — only if the verdict says INVEST
+- **MBF-02**: N-way merge scaling and r1+r2 input variants — post-verdict
+- **PEXT-05**: extractor topology refinements beyond the first landed design — post-verdict
+
+## Out of Scope
+
+Explicitly excluded. Documented to prevent scope creep.
+
+| Feature | Reason |
+|---------|--------|
+| MINIM-01..03 minimizer/CQF memory restructuring | User decision 2026-11-16: memory bar is "below jellyfish", already met at both k; KMC-class RAM is not a goal |
+| KMC3 / kmc_tools comparison (BENCH-V2-01) | User decision 2026-11-16: not a reference for this project; cutoff-capped KMC counters change SUM semantics; jellyfish stays the sole comparator |
+| Memory-win claims in the merge verdict | jellyfish merge is streaming with O(1)-per-input memory (measured 6.8 MB RSS) — RSS is context, not a decision axis, for merge |
+| New user-facing features / new commands | v2.1 is measurement, research, and hygiene |
+| Query / prefix-query / fuzzy-query micro-optimization | The stated bottleneck is counting and now merge evidence; lookups stay out |
+| Mixed-canonicality / mixed-k merge benchmark arms | Both tools reject mixed-k; jellyfish's silent canonicality acceptance is a documented bug, not a comparison axis |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| MBENCH-01 | — | Pending |
+| MBENCH-02 | — | Pending |
+| MBENCH-03 | — | Pending |
+| MBENCH-04 | — | Pending |
+| MBENCH-05 | — | Pending |
+| PEXT-01 | — | Pending |
+| PEXT-02 | — | Pending |
+| PEXT-03 | — | Pending |
+| PEXT-04 | — | Pending |
+| HYG-01 | — | Pending |
+| HYG-02 | — | Pending |
+| HYG-03 | — | Pending |
+| HYG-04 | — | Pending |
+| MEM-01 | — | Pending |
+
+**Coverage:**
+- v1 requirements: 14 total (2 conditional on the D3 gate)
+- Mapped to phases: 0
+- Unmapped: 14 ⚠️ (filled by roadmap)
+
+---
+*Requirements defined: 2026-11-16*
+*Last updated: 2026-11-16 after initial definition*
