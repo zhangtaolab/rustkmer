@@ -6,10 +6,10 @@ current_phase: 12
 current_phase_name: Full-Scale Merge Verdict
 status: planning
 stopped_at: Phase 12 context gathered
-last_updated: "2026-11-16T23:23:33.599Z"
+last_updated: "2026-11-16T23:53:06.518Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 11 complete, transitioned to Phase 12
-state_head: "0b049421d2c98e2e0f123ca24d2141e02fd36798"
+state_head: 89b6776761df7443bbfce7075d95d7122f7ff4f6
 progress:
   total_phases: 4
   completed_phases: 1
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-16)
 Phase: 12 — Full-Scale Merge Verdict
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-17 — Phase 11 complete, transitioned to Phase 12
+Last activity: 2026-11-17 - Completed quick task 261117-ala: retarget archived test paths + WR-04 README fix (full suite green)
 
 Progress: [███░░░░░░░] 25%
 
@@ -111,6 +111,13 @@ None yet.
 - [v2.1 planning note] MBENCH-02's gate is built in Phase 11 (written spec + slice-scale deep gate); its full-scale execution (per-k-mer deep validation) runs inside Phase 12's protocol — parity before timing binds both phases.
 - [v2.1 research gap] jellyfish merge runtime/memory at 20-90 GiB is extrapolated until Phase 11's intermediate-scale characterization; disk pre-flight 150-400 GiB is an estimate — re-derive from v2.0 measured DB sizes and expect to raise `--disk-floor-gb`.
 - Pre-existing (not 11-01): test_phase10_verdict.py reads archived .planning/phases/10-benchmark-verdict/ paths moved to .planning/milestones/v2.0-phases/ by 97c497c — 3 full-suite tests red; path retarget needed (see 11-01 deferred-items.md)
+- [Resolved 2026-11-17] The path-retarget line above was fixed by quick task 261117-ala (commits 20caf42 + 89b6776) — full suite green (644 tests, exit 0); README WR-04 rehearsal commands also fixed.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 261117-ala | Retarget 3 test_phase10_verdict.py archived-path failures to .planning/milestones/v2.0-phases/ + fix WR-04 README rehearsal command flags | 2026-11-17 | 89b6776 | [261117-ala-retarget-3-test-phase10-verdict-py-archi](./quick/261117-ala-retarget-3-test-phase10-verdict-py-archi/) |
 
 ## Deferred Items
 
