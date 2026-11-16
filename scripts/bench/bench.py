@@ -1338,6 +1338,224 @@ def assert_arm_ordering(arm_specs):
                     f"a count arm within a tool")
 
 
+def assert_merge_parity(by_name):
+    """Three-way aggregate merge-parity pre-gate (MBENCH-02, PARITY-GATE.md §2).
+
+    Checks the aggregate conservation invariants of a merge comparison and
+    raises BEFORE any median is trusted:
+
+      - rustkmer-merge Total == jellyfish-merge Total
+        == count-A Total + count-B Total
+      - rustkmer-merge Distinct == jellyfish-merge Distinct
+      - merged Distinct >= max input Distinct (boundary exact-at-max passes;
+        one count short raises — GREEN/RED unit-proven)
+
+    Every Total read here is the SUM-OF-COUNTS definition carried on the arm
+    dicts by the protocol's stats readers (stats() / jellyfish_stats() ->
+    unique_kmers/total_kmers) — NEVER the DatabaseHeader record-count field
+    (the IN-03 collision; mixing the two definitions fails mysteriously or
+    passes vacuously, milestone Pitfall 2). Aggregate conservation alone
+    cannot prove parity — it holds even under jellyfish's silent canonicality
+    mixing — so this pre-gate is the fast failure path; the per-k-mer
+    dump-vs-dump leg (dump_vs_dump_equal) is the verdict gate.
+
+    Args:
+        by_name: Mapping arm name -> arm dict with distinct_kmers and
+            total_kmers keys ('count-A', 'count-B', 'merge',
+            'jellyfish-merge' required).
+
+    Raises:
+        RuntimeError: On any violated invariant, naming the arms and values.
+    """
+    merged_total = (by_name["count-A"]["total_kmers"]
+                    + by_name["count-B"]["total_kmers"])
+    if by_name["merge"]["total_kmers"] != merged_total:
+        raise RuntimeError(
+            f"merge parity: rustkmer merge Total "
+            f"{by_name['merge']['total_kmers']} != sum of input Totals "
+            f"{merged_total} (count-A {by_name['count-A']['total_kmers']} + "
+            f"count-B {by_name['count-B']['total_kmers']}; sum-of-counts "
+            f"definition)")
+    if by_name["jellyfish-merge"]["total_kmers"] != merged_total:
+        raise RuntimeError(
+            f"merge parity: jellyfish-merge Total "
+            f"{by_name['jellyfish-merge']['total_kmers']} != sum of input "
+            f"Totals {merged_total} (sum-of-counts definition) — "
+            f"methodology finding, not a comparable measurement")
+    if (by_name["merge"]["distinct_kmers"]
+            != by_name["jellyfish-merge"]["distinct_kmers"]):
+        raise RuntimeError(
+            f"merge parity: merged Distinct differs across tools: rustkmer "
+            f"{by_name['merge']['distinct_kmers']} vs jellyfish "
+            f"{by_name['jellyfish-merge']['distinct_kmers']} — union "
+            f"key-spaces must agree exactly")
+    max_input = max(by_name["count-A"]["distinct_kmers"],
+                    by_name["count-B"]["distinct_kmers"])
+    if by_name["merge"]["distinct_kmers"] < max_input:
+        raise RuntimeError(
+            f"merge parity: merged Distinct "
+            f"{by_name['merge']['distinct_kmers']} < max input Distinct "
+            f"{max_input} — a merge cannot lose the largest input's "
+            f"key space")
+
+
+def normalize_dump_lines(text):
+    """Normalize a rustkmer dump / `jellyfish dump -c` text to sorted-comparable
+    "kmer<TAB>count" lines (MBENCH-02, PARITY-GATE.md §4).
+
+    Skips '#'-prefixed comment lines (the rustkmer dump header) and blank
+    lines, splits each data line on whitespace, and emits one
+    "kmer<TAB>count" string per entry. Both tools' dump formats normalize to
+    this same shape so the gate can byte-compare them after an LC_ALL=C-
+    ordered sort (keys are unique, so sorted-line byte equality is per-k-mer
+    count equality).
+
+    Fail-loud parsing (threat T-11-09): any line that does not parse into
+    exactly a k-mer and an integer count raises RuntimeError naming the
+    offending line; empty or whitespace-only input raises as well — a
+    tolerant parser would let the gate run against nothing (the vacuous-gate
+    class, MBENCH-02/empty).
+
+    Args:
+        text: Full stdout of one dump command.
+
+    Returns:
+        List of normalized "kmer<TAB>count" strings in input order.
+
+    Raises:
+        RuntimeError: On empty input or any malformed data line.
+    """
+    normalized = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            continue
+        fields = line.split()
+        if len(fields) != 2:
+            raise RuntimeError(
+                f"dump parse: expected exactly 'kmer count', got "
+                f"{len(fields)} fields in line: {raw_line!r}")
+        kmer, count_text = fields
+        try:
+            int(count_text)
+        except ValueError:
+            raise RuntimeError(
+                f"dump parse: count field {count_text!r} is not an integer "
+                f"in line: {raw_line!r}") from None
+        normalized.append(f"{kmer}\t{count_text}")
+    if not normalized:
+        raise RuntimeError(
+            "dump parse: empty dump output (zero data lines) — an empty "
+            "dump can never pass the gate (MBENCH-02/empty)")
+    return normalized
+
+
+def _dump_rustkmer_stdout(rkdb_path, rustkmer, workdir):
+    """Run `rustkmer dump` (list form) and return its dump text.
+
+    Output goes to a file inside workdir via the dump CLI's -o flag rather
+    than through a giant stdout pipe; fail-loud on non-zero exit.
+    """
+    out_path = Path(workdir) / "parity-rk-dump.txt"
+    argv = [str(rustkmer), "dump", str(rkdb_path), "-o", str(out_path)]
+    proc = subprocess.run(argv, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"rustkmer dump failed rc={proc.returncode}: {argv}\n"
+            f"trailing stderr:\n{proc.stderr[-500:]}")
+    return out_path.read_text(encoding="utf-8")
+
+
+def _dump_jellyfish_stdout(jf_path, workdir):
+    """Run `jellyfish dump -c` (list form) and return its dump text.
+
+    stdout is redirected to a file inside workdir (`jellyfish dump -c` writes
+    2-column kmer<TAB>count lines); fail-loud on non-zero exit.
+    """
+    out_path = Path(workdir) / "parity-jf-dump.txt"
+    with open(out_path, "w", encoding="utf-8") as fh:
+        proc = subprocess.run(["jellyfish", "dump", "-c", str(jf_path)],
+                              stdout=fh, stderr=subprocess.PIPE, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"jellyfish dump -c failed rc={proc.returncode} on {jf_path}\n"
+            f"trailing stderr:\n{proc.stderr[-500:]}")
+    return out_path.read_text(encoding="utf-8")
+
+
+def dump_vs_dump_equal(rkdb_path, jf_path, rustkmer, workdir,
+                       dump_rk=None, dump_jf=None):
+    """Cross-tool verdict gate (MBENCH-02, PARITY-GATE.md §4): exact per-k-mer
+    equality of the two merged outputs.
+
+    Runs `rustkmer dump` on the merged .rkdb and `jellyfish dump -c` on the
+    merged .jf (list-form subprocesses, fail-loud on non-zero exit),
+    normalizes both to (kmer, count) lines, sorts both with LC_ALL=C byte
+    ordering, and demands byte equality. Keys are unique within each dump, so
+    byte equality after sorting is per-k-mer count equality at every shared
+    key — the gate accepts nothing less than identity, which is the
+    structural defense jellyfish's silent canonicality mixing cannot pass.
+
+    LC_ALL=C ordering: the sort runs in-process with Python str ordering,
+    which over the pure-ASCII k-mer/digit/tab alphabet of both dump formats
+    is byte-order identical to LC_ALL=C sort — deterministic regardless of
+    the host locale, no external sort process.
+
+    Empty or whitespace-only dump output from either side is a loud
+    RuntimeError — a zero-line dump can never pass (MBENCH-02/empty).
+
+    The dump helpers are injectable seams defaulting at CALL time to the
+    module-level subprocess runners, so unit tests drive the real
+    normalize/sort/compare logic on fixture text without binaries (the
+    phase10 run_rounds injectable-seam pattern).
+
+    Args:
+        rkdb_path: Path to the rustkmer merged .rkdb.
+        jf_path: Path to the jellyfish merged .jf.
+        rustkmer: Path to the rustkmer binary.
+        workdir: Directory for the intermediate dump files (created if
+            missing; files are removed after reading).
+        dump_rk: Optional seam replacing _dump_rustkmer_stdout.
+        dump_jf: Optional seam replacing _dump_jellyfish_stdout.
+
+    Returns:
+        True when the two dumps are exactly equal.
+
+    Raises:
+        RuntimeError: On non-zero dump exit, empty output, malformed lines,
+            or any mismatch (naming the first differing line pair or the
+            length difference).
+    """
+    dump_rk = _dump_rustkmer_stdout if dump_rk is None else dump_rk
+    dump_jf = _dump_jellyfish_stdout if dump_jf is None else dump_jf
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    rk_text = dump_rk(rkdb_path, rustkmer, workdir)
+    jf_text = dump_jf(jf_path, workdir)
+    for leftover in ("parity-rk-dump.txt", "parity-jf-dump.txt"):
+        try:
+            (workdir / leftover).unlink()
+        except OSError:
+            pass
+    rk_sorted = sorted(normalize_dump_lines(rk_text))
+    jf_sorted = sorted(normalize_dump_lines(jf_text))
+    if rk_sorted == jf_sorted:
+        return True
+    for position, (rk_line, jf_line) in enumerate(zip(rk_sorted, jf_sorted)):
+        if rk_line != jf_line:
+            raise RuntimeError(
+                f"dump-vs-dump gate: dumps differ at sorted line {position}: "
+                f"rustkmer={rk_line!r} vs jellyfish={jf_line!r} — per-k-mer "
+                f"parity violated")
+    raise RuntimeError(
+        f"dump-vs-dump gate: dumps differ in length: rustkmer "
+        f"{len(rk_sorted)} lines vs jellyfish {len(jf_sorted)} lines (the "
+        f"first {min(len(rk_sorted), len(jf_sorted))} sorted lines agree) — "
+        f"per-k-mer parity violated")
+
+
 def run_comparison_protocol(arm_specs, reps, cooldown_s, rustkmer):
     """Interleaved, counterbalanced, honestly-recorded protocol (BENCH-02).
 
@@ -1529,6 +1747,13 @@ def run_bench(args):
                 f"rustkmer unique={by_name['count-A']['distinct_kmers']} "
                 f"total={by_name['count-A']['total_kmers']} — methodology "
                 f"finding (Pitfall 10), not a comparable measurement")
+
+        # Three-way merge parity pre-gate (MBENCH-02, PARITY-GATE.md §2):
+        # raises BEFORE any median is trusted when any aggregate invariant
+        # fails. Guarded on the jellyfish-merge arm being present (a
+        # comparison run without --skip-merge).
+        if "jellyfish-merge" in by_name:
+            assert_merge_parity(by_name)
     else:
         # Single-rep run (CI path): rustkmer-only arms, no jellyfish needed.
         arms = [
@@ -1560,20 +1785,24 @@ def run_bench(args):
                         f" = {expected_total}")
         merged_total = (by_name["count-A"]["total_kmers"]
                         + by_name["count-B"]["total_kmers"])
-        if "merge" in by_name:
-            # Merge assertions apply only when the merge arm ran
-            # (--skip-merge keeps a run to the counting comparison).
-            if by_name["merge"]["total_kmers"] != merged_total:
+        for merge_name in ("merge", "merge-t1"):
+            if merge_name not in by_name:
+                # Merge assertions apply only when the merge arm ran
+                # (--skip-merge keeps a run to the counting comparison); the
+                # merge-t1 arm, when present, satisfies the same Total-
+                # conservation and Distinct-union invariants as merge.
+                continue
+            if by_name[merge_name]["total_kmers"] != merged_total:
                 raise RuntimeError(
-                    f"self-check: merged total_kmers "
-                    f"{by_name['merge']['total_kmers']} != sum of inputs "
+                    f"self-check: {merge_name} total_kmers "
+                    f"{by_name[merge_name]['total_kmers']} != sum of inputs "
                     f"{merged_total} (count conservation)")
-            if by_name["merge"]["distinct_kmers"] < max(
+            if by_name[merge_name]["distinct_kmers"] < max(
                     by_name["count-A"]["distinct_kmers"],
                     by_name["count-B"]["distinct_kmers"]):
                 raise RuntimeError(
-                    "self-check: merged distinct_kmers "
-                    f"{by_name['merge']['distinct_kmers']} < max input "
+                    f"self-check: {merge_name} distinct_kmers "
+                    f"{by_name[merge_name]['distinct_kmers']} < max input "
                     f"distinct ({by_name['count-A']['distinct_kmers']}, "
                     f"{by_name['count-B']['distinct_kmers']})")
 

@@ -7,14 +7,23 @@ copying between jellyfish subcommands), `build_merge_cmd(num_threads=...)`
 precede merge arms within each tool — the warmup-runs-first-spec guard).
 One class per function under test, stdlib unittest only, following
 test_merge_input.py conventions.
+
+Also covers the MBENCH-02 three-way merge parity gate (PARITY-GATE.md):
+`assert_merge_parity` GREEN/RED on every aggregate invariant,
+`normalize_dump_lines` on both dump formats' fixture strings, and
+`dump_vs_dump_equal` through its injectable dump seams — the live two-tool
+comparator run stays out of the unit suite (binary-light).
 """
 
 import unittest
 
 from scripts.bench.bench import (
     assert_arm_ordering,
+    assert_merge_parity,
     build_merge_cmd,
+    dump_vs_dump_equal,
     jellyfish_merge_cmd,
+    normalize_dump_lines,
 )
 
 SEVEN_ARM_ORDER = (
@@ -138,6 +147,158 @@ class TestAssertArmOrdering(unittest.TestCase):
                  spec("count-A", "jellyfish"),
                  spec("merge", "jellyfish")]
         assert_arm_ordering(cross)  # must not raise
+
+
+class TestAssertMergeParity(unittest.TestCase):
+    """assert_merge_parity: GREEN on conserved arms, RED on every invariant.
+
+    The gate's boundary semantics are pinned here (MBENCH-02/boundary):
+    merged Distinct exactly at the max input Distinct passes; one count
+    short raises. Every Total in these fixtures stands for the sum-of-counts
+    definition carried on the arm dicts.
+    """
+
+    @staticmethod
+    def arms(merge_total=900, jf_total=900, count_a_total=500,
+             count_b_total=400, merge_distinct=300, jf_distinct=300,
+             count_a_distinct=250, count_b_distinct=260):
+        """A conserved fixture arm dict; keyword overrides bend one value."""
+        return {
+            "count-A": {"distinct_kmers": count_a_distinct,
+                        "total_kmers": count_a_total},
+            "count-B": {"distinct_kmers": count_b_distinct,
+                        "total_kmers": count_b_total},
+            "merge": {"distinct_kmers": merge_distinct,
+                      "total_kmers": merge_total},
+            "jellyfish-merge": {"distinct_kmers": jf_distinct,
+                                "total_kmers": jf_total},
+        }
+
+    def test_green_on_conserved_fixture(self):
+        """A fully conserved fixture (all four invariants hold) passes."""
+        assert_merge_parity(self.arms())
+
+    def test_green_at_exact_max_input_distinct_boundary(self):
+        """Merged Distinct exactly equal to max input Distinct PASSES
+        (the invariant is >=); the boundary is not a violation."""
+        assert_merge_parity(
+            self.arms(merge_distinct=260, jf_distinct=260,
+                      count_b_distinct=260))
+
+    def test_red_on_rustkmer_total_mismatch(self):
+        """rustkmer merge Total != sum of input Totals raises (named as the
+        sum-of-counts definition)."""
+        with self.assertRaisesRegex(RuntimeError, "rustkmer merge Total"):
+            assert_merge_parity(self.arms(merge_total=901))
+
+    def test_red_on_jellyfish_total_mismatch(self):
+        """jellyfish-merge Total != sum of input Totals raises."""
+        with self.assertRaisesRegex(RuntimeError, "jellyfish-merge Total"):
+            assert_merge_parity(self.arms(jf_total=899))
+
+    def test_red_on_distinct_inequality(self):
+        """Merged Distinct differing across tools (union key-spaces) raises."""
+        with self.assertRaisesRegex(RuntimeError, "differs across tools"):
+            assert_merge_parity(self.arms(jf_distinct=299))
+
+    def test_red_on_distinct_below_max_input(self):
+        """Merged Distinct one count below max input Distinct raises — the
+        boundary case just short of the GREEN boundary test."""
+        with self.assertRaisesRegex(RuntimeError, "max input Distinct"):
+            assert_merge_parity(
+                self.arms(merge_distinct=259, jf_distinct=259,
+                          count_b_distinct=260))
+
+
+class TestNormalizeDumpLines(unittest.TestCase):
+    """normalize_dump_lines: both formats' fixtures, comments, fail-loud."""
+
+    def test_parses_rustkmer_dump_fixture_skipping_comments(self):
+        """'#' header lines and blank lines are skipped; data lines become
+        'kmer<TAB>count' strings."""
+        text = ("# rustkmer database dump\n"
+                "# k: 5\n"
+                "# total_kmers: 3\n"
+                "\n"
+                "ACGTAAA\t2\n"
+                "ACGTAAC\t1\n")
+        self.assertEqual(normalize_dump_lines(text),
+                         ["ACGTAAA\t2", "ACGTAAC\t1"])
+
+    def test_parses_jellyfish_dump_c_fixture(self):
+        """`jellyfish dump -c` two-column lines parse identically; extra
+        whitespace collapses to the single-tab normalized shape."""
+        text = "ACGTAAG   3\nACGTAAT\t7\n"
+        self.assertEqual(normalize_dump_lines(text),
+                         ["ACGTAAG\t3", "ACGTAAT\t7"])
+
+    def test_raises_on_malformed_line(self):
+        """A line with the wrong field count or a non-integer count raises,
+        naming the offending line — a tolerant parser would let the gate run
+        against nothing (MBENCH-02/empty)."""
+        for bad in ("ACGTAAA\t2\textra\n", "ACGTAAA\n", "ACGTAAA\tnotanint\n"):
+            with self.assertRaisesRegex(RuntimeError, "ACGTAAA"):
+                normalize_dump_lines(bad)
+
+    def test_raises_on_empty_text(self):
+        """Empty or comment-only input (zero data lines) raises — a zero-line
+        dump can never pass."""
+        for empty in ("", "   \n", "# rustkmer database dump\n# k: 5\n"):
+            with self.assertRaises(RuntimeError):
+                normalize_dump_lines(empty)
+
+
+RK_DUMP_FIXTURE = ("# rustkmer database dump\n"
+                   "# k: 5\n"
+                   "ACGTAAC\t1\n"
+                   "ACGTAAA\t2\n"
+                   "ACGTAAG\t3\n")
+JF_DUMP_FIXTURE = ("ACGTAAA\t2\n"
+                   "ACGTAAC\t1\n"
+                   "ACGTAAG\t3\n")
+
+
+class TestDumpVsDumpEqual(unittest.TestCase):
+    """dump_vs_dump_equal through its injectable dump seams (binary-light).
+
+    The live two-tool comparator run on real merged artifacts is the Task 3
+    slice-scale proof; these fixtures drive the real normalize/sort/compare
+    logic on text only.
+    """
+
+    @staticmethod
+    def run_with(rk_text, jf_text):
+        """Call dump_vs_dump_equal with fixture-seamed dump helpers."""
+        return dump_vs_dump_equal(
+            "merged.rkdb", "merged.jf", "rustkmer", "/tmp",
+            dump_rk=lambda path, rk, workdir: rk_text,
+            dump_jf=lambda path, workdir: jf_text)
+
+    def test_equal_fixture_pair_passes(self):
+        """Byte-equal-after-normalize-and-sort fixtures return True."""
+        self.assertTrue(self.run_with(RK_DUMP_FIXTURE, JF_DUMP_FIXTURE))
+
+    def test_altered_count_fails_with_mismatch_report(self):
+        """A single altered count line fails, naming the differing pair."""
+        altered = JF_DUMP_FIXTURE.replace("ACGTAAG\t3", "ACGTAAG\t4")
+        with self.assertRaisesRegex(RuntimeError,
+                                    r"ACGTAAG\\t3.*ACGTAAG\\t4"):
+            self.run_with(RK_DUMP_FIXTURE, altered)
+
+    def test_length_mismatch_fails(self):
+        """A k-mer present on only one side fails (length mismatch), even
+        though every shared line agrees."""
+        shorter = JF_DUMP_FIXTURE.replace("ACGTAAG\t3\n", "")
+        with self.assertRaisesRegex(RuntimeError, "differ in length"):
+            self.run_with(RK_DUMP_FIXTURE, shorter)
+
+    def test_empty_side_fails_loudly(self):
+        """An empty dump from either side raises — a zero-line dump can
+        never pass (MBENCH-02/empty)."""
+        with self.assertRaisesRegex(RuntimeError, "empty"):
+            self.run_with("", JF_DUMP_FIXTURE)
+        with self.assertRaisesRegex(RuntimeError, "empty"):
+            self.run_with(RK_DUMP_FIXTURE, "")
 
 
 if __name__ == "__main__":
