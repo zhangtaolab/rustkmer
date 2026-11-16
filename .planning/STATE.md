@@ -5,16 +5,16 @@ milestone_name: Merge Verdict & Producer Research
 current_phase: 11
 current_phase_name: Merge Characterization & Harness Prep
 status: executing
-stopped_at: Phase 11 context gathered
-last_updated: "2026-11-16T12:33:02.139Z"
+stopped_at: Completed 11-01-PLAN.md
+last_updated: "2026-11-16T13:04:25.633Z"
 last_activity: 2026-11-16
-last_activity_desc: v2.1 roadmap created (Phases 11-14; research complete; 14/14 requirements mapped)
-state_head: 6a0fef6ccb8c72704c5db3c0de3fd5c4771249cd
+last_activity_desc: Phase 11 execution started
+state_head: 8aa44dd1e1ce874357aa8994398944d5d13986ff
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 8
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-16)
 
 ## Current Position
 
-Phase: 11 (Merge Characterization & Harness Prep) — READY TO EXECUTE
-Plan: — (phase not yet planned)
+Phase: 11 (Merge Characterization & Harness Prep) — EXECUTING
+Plan: 2 of 8
 Status: Ready to execute
-Last activity: 2026-11-16 — v2.1 roadmap created (Phases 11-14; research complete; 14/14 requirements mapped)
+Last activity: 2026-11-16 — Phase 11 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -53,6 +53,11 @@ Progress: [░░░░░░░░░░] 0%
 - v2.1 not started; v2.0 baseline ~31 min/plan (see `milestones/v2.0-ROADMAP.md`)
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 11 P01 | 18min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -64,6 +69,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [v2.1 roadmap, 2026-11-16]: Phases 11-14 continue v2.0 numbering (v2.0's Phase 11 never created); only two hard dependencies — 13→14 (D3 gate) and 12→14 (provenance stability); 13 is independent and may overlap 11-12 (measurement-only); hygiene is woven into Phase 11 with HYG-01 pulled forward before the merge verdict
 - [D3 pattern reused]: Phase 14 executes ONLY if Phase 13's predicted-win memo says GO; PEXT-03/PEXT-04 are conditional requirements
 - [v2.0 D3, 2026-11-14]: the prior Phase 11 (MINIM) did NOT execute — Stage A hit parity and memory was below jellyfish; MINIM descoped outright on 2026-11-16
+- [Phase 11]: 11-01 renderer scope: merge row gains jellyfish-merge deltas via _arm_row merge_base param; merge-t1/jellyfish-merge table rows deferred to Phase 12 renderer work
+- [Phase 11]: 11-01: --skip-merge excludes all three merge arms symmetrically; jellyfish-count-B from cfg_b with byte-identical -m/-s/-C per D-01
 
 ### Pending Todos
 
@@ -77,6 +84,7 @@ None yet.
 - [Carried W1, OPEN] push dev so local commits get remote CI validation.
 - [v2.1 planning note] MBENCH-02's gate is built in Phase 11 (written spec + slice-scale deep gate); its full-scale execution (per-k-mer deep validation) runs inside Phase 12's protocol — parity before timing binds both phases.
 - [v2.1 research gap] jellyfish merge runtime/memory at 20-90 GiB is extrapolated until Phase 11's intermediate-scale characterization; disk pre-flight 150-400 GiB is an estimate — re-derive from v2.0 measured DB sizes and expect to raise `--disk-floor-gb`.
+- Pre-existing (not 11-01): test_phase10_verdict.py reads archived .planning/phases/10-benchmark-verdict/ paths moved to .planning/milestones/v2.0-phases/ by 97c497c — 3 full-suite tests red; path retarget needed (see 11-01 deferred-items.md)
 
 ## Deferred Items
 
@@ -92,6 +100,6 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-16T10:45:43.369Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-merge-characterization-harness-prep/11-CONTEXT.md
+Last session: 2026-11-16T13:04:25.616Z
+Stopped at: Completed 11-01-PLAN.md
+Resume file: None
