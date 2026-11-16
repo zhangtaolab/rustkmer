@@ -1,0 +1,1041 @@
+{
+  "created": "2026-11-16T15:46:04.408606+00:00",
+  "kind": "merge-characterization-ladder",
+  "rungs": [
+    {
+      "counts": {
+        "definition": "distinct/total are the SUM-OF-COUNTS definition from the stats readers \u2014 never the header record-count field (PARITY-GATE.md \u00a75)",
+        "hash_size_plan": {
+          "distinct_per_part": {
+            "part_001": 199722642,
+            "part_006": 199764725
+          },
+          "hash_size": "500M",
+          "max_per_part_distinct": 199764725,
+          "occupancy": 0.38102097511291505,
+          "occupancy_target": 0.75,
+          "slots": 524288000
+        },
+        "jellyfish_per_part": {
+          "part_001": {
+            "command_line": [
+              "jellyfish",
+              "count",
+              "-m",
+              "21",
+              "-s",
+              "500M",
+              "-t",
+              "16",
+              "-C",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/part_001.k21.jf",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_001.n3500000.seed4242.fq"
+            ],
+            "distinct": 199722642,
+            "hash_size": "500M",
+            "jf_bytes": 1997227972,
+            "jf_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/part_001.k21.jf",
+            "jf_sha256": "79d5a03fdf138cb733fab7318f4f0d712e312ac6c8e195bc89604f63b425f24b",
+            "tool": "jellyfish",
+            "total": 454310397
+          },
+          "part_006": {
+            "command_line": [
+              "jellyfish",
+              "count",
+              "-m",
+              "21",
+              "-s",
+              "500M",
+              "-t",
+              "16",
+              "-C",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/part_006.k21.jf",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_006.n3500000.seed4242.fq"
+            ],
+            "distinct": 199764725,
+            "hash_size": "500M",
+            "jf_bytes": 1997648802,
+            "jf_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/part_006.k21.jf",
+            "jf_sha256": "629b822c8782991c977ac3a782dd578ea7d7fbf95878986611e464d0aba959a2",
+            "tool": "jellyfish",
+            "total": 454311750
+          }
+        },
+        "rustkmer_per_part": {
+          "part_001": {
+            "command_line": [
+              "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+              "count",
+              "-k",
+              "21",
+              "-C",
+              "--threads",
+              "16",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/part_001.k21.rkdb",
+              "-i",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_001.n3500000.seed4242.fq"
+            ],
+            "distinct": 199722642,
+            "rkdb_bytes": 3994452882,
+            "rkdb_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/part_001.k21.rkdb",
+            "rkdb_sha256": "0fb7123d8be9192da9339e386fa9a5659b1ba6716420505e1232652d4eaa3100",
+            "tool": "rustkmer",
+            "total": 454310397
+          },
+          "part_006": {
+            "command_line": [
+              "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+              "count",
+              "-k",
+              "21",
+              "-C",
+              "--threads",
+              "16",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/part_006.k21.rkdb",
+              "-i",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_006.n3500000.seed4242.fq"
+            ],
+            "distinct": 199764725,
+            "rkdb_bytes": 3995294542,
+            "rkdb_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/part_006.k21.rkdb",
+            "rkdb_sha256": "643bbe3fe19f200a23d25aba65ac37325432c0c66a1052a3c9bda48b29af7ca1",
+            "tool": "rustkmer",
+            "total": 454311750
+          }
+        }
+      },
+      "created": "2026-11-16T16:02:31.333369+00:00",
+      "gates": {
+        "aggregate_parity": "green (assert_merge_parity, sum-of-counts Totals)",
+        "dump_vs_dump": "green (streaming PARITY-GATE.md \u00a74 form: fail-loud normalization, LC_ALL=C external sort, exact per-k-mer identity)",
+        "legs_executed": [
+          "aggregate-conservation",
+          "distinct-union",
+          "dump-vs-dump"
+        ]
+      },
+      "k": 21,
+      "merges": [
+        {
+          "cache_state": "unavailable",
+          "command_line": [
+            "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+            "merge",
+            "-i",
+            "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/part_001.k21.rkdb",
+            "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/part_006.k21.rkdb",
+            "-o",
+            "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/merged.k21.rkdb"
+          ],
+          "distinct": 318506459,
+          "output_bytes": 6370129222,
+          "output_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/merged.k21.rkdb",
+          "peak_bytes": 1603207168,
+          "peak_footprint_bytes": 1602536888,
+          "peak_rss_bytes": 1603207168,
+          "provenance": {
+            "binary": {
+              "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+              "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b",
+              "size_bytes": 2966832
+            },
+            "build_profile": "release",
+            "created": "2026-11-16T15:46:04.357780+00:00",
+            "git_commit": "aa3390f10301e9688efd8c03c5018371dba62480",
+            "git_dirty": true,
+            "platform": "darwin-arm64",
+            "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)"
+          },
+          "reps": 1,
+          "route": "not-reported",
+          "tool": "rustkmer",
+          "total": 908622147,
+          "wall_s": 15.23
+        },
+        {
+          "cache_state": "unavailable",
+          "command_line": [
+            "jellyfish",
+            "merge",
+            "-o",
+            "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/merged.k21.jf",
+            "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/part_001.k21.jf",
+            "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/part_006.k21.jf"
+          ],
+          "distinct": 318506459,
+          "output_bytes": 3185066126,
+          "output_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/k21/merged.k21.jf",
+          "peak_bytes": 6782976,
+          "peak_footprint_bytes": 2097560,
+          "peak_rss_bytes": 6782976,
+          "provenance": {
+            "binary": {
+              "path": "/opt/homebrew/Cellar/jellyfish/2.3.1/bin/jellyfish",
+              "sha256": "e99c676bbead8f5f520b84359088740aa853b0a0b3b122a21373fe93ae8091ee",
+              "size_bytes": 374544
+            },
+            "build_profile": "pinned-comparator-2.3.1",
+            "created": "2026-11-16T15:46:04.408493+00:00",
+            "git_commit": "aa3390f10301e9688efd8c03c5018371dba62480",
+            "git_dirty": true,
+            "platform": "darwin-arm64",
+            "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)"
+          },
+          "reps": 1,
+          "route": "not-reported",
+          "tool": "jellyfish",
+          "total": 908622147,
+          "wall_s": 25.34
+        }
+      ],
+      "n_reads": 3500000,
+      "scale_label": "~10% of part scale",
+      "scale_pct_of_part": 10.14,
+      "seed": 4242,
+      "slices": [
+        "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_001.n3500000.seed4242.manifest.json",
+        "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_006.n3500000.seed4242.manifest.json"
+      ],
+      "slices_detail": {
+        "part_001": {
+          "manifest_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_001.n3500000.seed4242.manifest.json",
+          "output_sha256": "c9cc1b656e59212888113c7f95027aebc2b56e6c4c6dfbd921957bda2ba7d4b6",
+          "seed": 4242,
+          "selected_reads": 3500000,
+          "slice": "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_001.n3500000.seed4242.fq",
+          "source_part": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+          "source_sha256": "dae91042e42c1a0562a2bda66b7a3409665cddc87e702d99b922e44160c1b0de"
+        },
+        "part_006": {
+          "manifest_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_006.n3500000.seed4242.manifest.json",
+          "output_sha256": "650a75b1a0fdd15eb7fa1f3a8c600a3fa5f9e767f5bf3080e92ec89dae518ec5",
+          "seed": 4242,
+          "selected_reads": 3500000,
+          "slice": "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_006.n3500000.seed4242.fq",
+          "source_part": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz",
+          "source_sha256": "b197f16c31dd34094858adcb25f811194f532ed3ce95523df6ae709f2a37f07e"
+        }
+      }
+    },
+    {
+      "counts": {
+        "definition": "distinct/total are the SUM-OF-COUNTS definition from the stats readers \u2014 never the header record-count field (PARITY-GATE.md \u00a75)",
+        "hash_size_plan": {
+          "distinct_per_part": {
+            "part_001": 227322410,
+            "part_006": 227321492
+          },
+          "hash_size": "500M",
+          "max_per_part_distinct": 227322410,
+          "occupancy": 0.4335830879211426,
+          "occupancy_target": 0.75,
+          "slots": 524288000
+        },
+        "jellyfish_per_part": {
+          "part_001": {
+            "command_line": [
+              "jellyfish",
+              "count",
+              "-m",
+              "31",
+              "-s",
+              "500M",
+              "-t",
+              "16",
+              "-C",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/part_001.k31.jf",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_001.n3500000.seed4242.fq"
+            ],
+            "distinct": 227322410,
+            "hash_size": "500M",
+            "jf_bytes": 2727870672,
+            "jf_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/part_001.k31.jf",
+            "jf_sha256": "6eb27ff0b3b4394904d2d3736b6aee652e8364ada4cf44974c37bcb37bdd2708",
+            "tool": "jellyfish",
+            "total": 419281928
+          },
+          "part_006": {
+            "command_line": [
+              "jellyfish",
+              "count",
+              "-m",
+              "31",
+              "-s",
+              "500M",
+              "-t",
+              "16",
+              "-C",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/part_006.k31.jf",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_006.n3500000.seed4242.fq"
+            ],
+            "distinct": 227321492,
+            "hash_size": "500M",
+            "jf_bytes": 2727859656,
+            "jf_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/part_006.k31.jf",
+            "jf_sha256": "30cc94000aa5eee4f0f3a333e896adfff573ac6cde9608e7f92c84c5a3aca015",
+            "tool": "jellyfish",
+            "total": 419283179
+          }
+        },
+        "rustkmer_per_part": {
+          "part_001": {
+            "command_line": [
+              "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+              "count",
+              "-k",
+              "31",
+              "-C",
+              "--threads",
+              "16",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/part_001.k31.rkdb",
+              "-i",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_001.n3500000.seed4242.fq"
+            ],
+            "distinct": 227322410,
+            "rkdb_bytes": 4546448242,
+            "rkdb_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/part_001.k31.rkdb",
+            "rkdb_sha256": "8461849017ef340fc8e90618c68aecbef88202a8ab26a7fb914162afa6c3107b",
+            "tool": "rustkmer",
+            "total": 419281928
+          },
+          "part_006": {
+            "command_line": [
+              "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+              "count",
+              "-k",
+              "31",
+              "-C",
+              "--threads",
+              "16",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/part_006.k31.rkdb",
+              "-i",
+              "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_006.n3500000.seed4242.fq"
+            ],
+            "distinct": 227321492,
+            "rkdb_bytes": 4546429882,
+            "rkdb_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/part_006.k31.rkdb",
+            "rkdb_sha256": "4f45f9dbf63f977a56a07ebbeb42d7bd13af500b0e2c34dc84de6d4cd8811c2c",
+            "tool": "rustkmer",
+            "total": 419283179
+          }
+        }
+      },
+      "created": "2026-11-16T16:21:31.495137+00:00",
+      "gates": {
+        "aggregate_parity": "green (assert_merge_parity, sum-of-counts Totals)",
+        "dump_vs_dump": "green (streaming PARITY-GATE.md \u00a74 form: fail-loud normalization, LC_ALL=C external sort, exact per-k-mer identity)",
+        "legs_executed": [
+          "aggregate-conservation",
+          "distinct-union",
+          "dump-vs-dump"
+        ]
+      },
+      "k": 31,
+      "merges": [
+        {
+          "cache_state": "unavailable",
+          "command_line": [
+            "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+            "merge",
+            "-i",
+            "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/part_001.k31.rkdb",
+            "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/part_006.k31.rkdb",
+            "-o",
+            "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/merged.k31.rkdb"
+          ],
+          "distinct": 372965505,
+          "output_bytes": 7459310142,
+          "output_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/merged.k31.rkdb",
+          "peak_bytes": 1603207168,
+          "peak_footprint_bytes": 1602536888,
+          "peak_rss_bytes": 1603207168,
+          "provenance": {
+            "binary": {
+              "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+              "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b",
+              "size_bytes": 2966832
+            },
+            "build_profile": "release",
+            "created": "2026-11-16T15:46:04.357780+00:00",
+            "git_commit": "aa3390f10301e9688efd8c03c5018371dba62480",
+            "git_dirty": true,
+            "platform": "darwin-arm64",
+            "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)"
+          },
+          "reps": 1,
+          "route": "not-reported",
+          "tool": "rustkmer",
+          "total": 838565107,
+          "wall_s": 16.02
+        },
+        {
+          "cache_state": "unavailable",
+          "command_line": [
+            "jellyfish",
+            "merge",
+            "-o",
+            "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/merged.k31.jf",
+            "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/part_001.k31.jf",
+            "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/part_006.k31.jf"
+          ],
+          "distinct": 372965505,
+          "output_bytes": 4475587796,
+          "output_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/k31/merged.k31.jf",
+          "peak_bytes": 6815744,
+          "peak_footprint_bytes": 2130328,
+          "peak_rss_bytes": 6815744,
+          "provenance": {
+            "binary": {
+              "path": "/opt/homebrew/Cellar/jellyfish/2.3.1/bin/jellyfish",
+              "sha256": "e99c676bbead8f5f520b84359088740aa853b0a0b3b122a21373fe93ae8091ee",
+              "size_bytes": 374544
+            },
+            "build_profile": "pinned-comparator-2.3.1",
+            "created": "2026-11-16T15:46:04.408493+00:00",
+            "git_commit": "aa3390f10301e9688efd8c03c5018371dba62480",
+            "git_dirty": true,
+            "platform": "darwin-arm64",
+            "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)"
+          },
+          "reps": 1,
+          "route": "not-reported",
+          "tool": "jellyfish",
+          "total": 838565107,
+          "wall_s": 27.59
+        }
+      ],
+      "n_reads": 3500000,
+      "scale_label": "~10% of part scale",
+      "scale_pct_of_part": 10.14,
+      "seed": 4242,
+      "slices": [
+        "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_001.n3500000.seed4242.manifest.json",
+        "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_006.n3500000.seed4242.manifest.json"
+      ],
+      "slices_detail": {
+        "part_001": {
+          "manifest_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_001.n3500000.seed4242.manifest.json",
+          "output_sha256": "c9cc1b656e59212888113c7f95027aebc2b56e6c4c6dfbd921957bda2ba7d4b6",
+          "seed": 4242,
+          "selected_reads": 3500000,
+          "slice": "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_001.n3500000.seed4242.fq",
+          "source_part": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+          "source_sha256": "dae91042e42c1a0562a2bda66b7a3409665cddc87e702d99b922e44160c1b0de"
+        },
+        "part_006": {
+          "manifest_path": "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_006.n3500000.seed4242.manifest.json",
+          "output_sha256": "650a75b1a0fdd15eb7fa1f3a8c600a3fa5f9e767f5bf3080e92ec89dae518ec5",
+          "seed": 4242,
+          "selected_reads": 3500000,
+          "slice": "/private/tmp/rustkmer-phase11/ladder/n3500000/slices/part_006.n3500000.seed4242.fq",
+          "source_part": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz",
+          "source_sha256": "b197f16c31dd34094858adcb25f811194f532ed3ce95523df6ae709f2a37f07e"
+        }
+      }
+    },
+    {
+      "counts": {
+        "definition": "distinct/total are the SUM-OF-COUNTS definition from the stats readers \u2014 never the header record-count field (PARITY-GATE.md \u00a75)",
+        "hash_size_plan": {
+          "distinct_per_part": {
+            "part_001": 461344902,
+            "part_006": 461485792
+          },
+          "hash_size": "1G",
+          "max_per_part_distinct": 461485792,
+          "occupancy": 0.4297921359539032,
+          "occupancy_target": 0.75,
+          "slots": 1073741824
+        },
+        "jellyfish_per_part": {
+          "part_001": {
+            "command_line": [
+              "jellyfish",
+              "count",
+              "-m",
+              "21",
+              "-s",
+              "1G",
+              "-t",
+              "16",
+              "-C",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/part_001.k21.jf",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_001.n14000000.seed4242.fq"
+            ],
+            "distinct": 461344902,
+            "hash_size": "1G",
+            "jf_bytes": 4613450588,
+            "jf_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/part_001.k21.jf",
+            "jf_sha256": "e60c01a965c920221be13aed45c60469071529494b93b351cb27d6bdbfb42897",
+            "tool": "jellyfish",
+            "total": 1817226918
+          },
+          "part_006": {
+            "command_line": [
+              "jellyfish",
+              "count",
+              "-m",
+              "21",
+              "-s",
+              "1G",
+              "-t",
+              "16",
+              "-C",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/part_006.k21.jf",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_006.n14000000.seed4242.fq"
+            ],
+            "distinct": 461485792,
+            "hash_size": "1G",
+            "jf_bytes": 4614859488,
+            "jf_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/part_006.k21.jf",
+            "jf_sha256": "e0307a820ca7a24e5b90e56da414c48e959a8fd5af673579d3dbfd0da99586da",
+            "tool": "jellyfish",
+            "total": 1817232712
+          }
+        },
+        "rustkmer_per_part": {
+          "part_001": {
+            "command_line": [
+              "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+              "count",
+              "-k",
+              "21",
+              "-C",
+              "--threads",
+              "16",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/part_001.k21.rkdb",
+              "-i",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_001.n14000000.seed4242.fq"
+            ],
+            "distinct": 461344902,
+            "rkdb_bytes": 9226898082,
+            "rkdb_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/part_001.k21.rkdb",
+            "rkdb_sha256": "1710cc969c069eb5c6f66823b0c8fbc6198261e3b29a08fdb65cd61a8cd13691",
+            "tool": "rustkmer",
+            "total": 1817226918
+          },
+          "part_006": {
+            "command_line": [
+              "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+              "count",
+              "-k",
+              "21",
+              "-C",
+              "--threads",
+              "16",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/part_006.k21.rkdb",
+              "-i",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_006.n14000000.seed4242.fq"
+            ],
+            "distinct": 461485792,
+            "rkdb_bytes": 9229715882,
+            "rkdb_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/part_006.k21.rkdb",
+            "rkdb_sha256": "6b7f36c58da0315fe655b82756b3d7cdebb9864475dad94dab13757fa98e3eae",
+            "tool": "rustkmer",
+            "total": 1817232712
+          }
+        }
+      },
+      "created": "2026-11-16T16:32:54.721412+00:00",
+      "gates": {
+        "aggregate_parity": "green (assert_merge_parity, sum-of-counts Totals)",
+        "dump_vs_dump": "not-run: deep dump-vs-dump leg scheduled at the 10% rung only (Plan 11-06 action)",
+        "legs_executed": [
+          "aggregate-conservation",
+          "distinct-union"
+        ]
+      },
+      "k": 21,
+      "merges": [
+        {
+          "cache_state": "unavailable",
+          "command_line": [
+            "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+            "merge",
+            "-i",
+            "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/part_001.k21.rkdb",
+            "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/part_006.k21.rkdb",
+            "-o",
+            "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/merged.k21.rkdb"
+          ],
+          "distinct": 612991988,
+          "output_bytes": 12259839802,
+          "output_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/merged.k21.rkdb",
+          "peak_bytes": 2333966336,
+          "peak_footprint_bytes": 2333673440,
+          "peak_rss_bytes": 2333966336,
+          "provenance": {
+            "binary": {
+              "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+              "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b",
+              "size_bytes": 2966832
+            },
+            "build_profile": "release",
+            "created": "2026-11-16T15:46:04.357780+00:00",
+            "git_commit": "aa3390f10301e9688efd8c03c5018371dba62480",
+            "git_dirty": true,
+            "platform": "darwin-arm64",
+            "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)"
+          },
+          "reps": 1,
+          "route": "not-reported",
+          "tool": "rustkmer",
+          "total": 3634459630,
+          "wall_s": 34.88
+        },
+        {
+          "cache_state": "unavailable",
+          "command_line": [
+            "jellyfish",
+            "merge",
+            "-o",
+            "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/merged.k21.jf",
+            "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/part_001.k21.jf",
+            "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/part_006.k21.jf"
+          ],
+          "distinct": 612991988,
+          "output_bytes": 6129921432,
+          "output_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/k21/merged.k21.jf",
+          "peak_bytes": 6799360,
+          "peak_footprint_bytes": 2113944,
+          "peak_rss_bytes": 6799360,
+          "provenance": {
+            "binary": {
+              "path": "/opt/homebrew/Cellar/jellyfish/2.3.1/bin/jellyfish",
+              "sha256": "e99c676bbead8f5f520b84359088740aa853b0a0b3b122a21373fe93ae8091ee",
+              "size_bytes": 374544
+            },
+            "build_profile": "pinned-comparator-2.3.1",
+            "created": "2026-11-16T15:46:04.408493+00:00",
+            "git_commit": "aa3390f10301e9688efd8c03c5018371dba62480",
+            "git_dirty": true,
+            "platform": "darwin-arm64",
+            "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)"
+          },
+          "reps": 1,
+          "route": "not-reported",
+          "tool": "jellyfish",
+          "total": 3634459630,
+          "wall_s": 51.76
+        }
+      ],
+      "n_reads": 14000000,
+      "scale_label": "~40% of part scale",
+      "scale_pct_of_part": 40.58,
+      "seed": 4242,
+      "slices": [
+        "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_001.n14000000.seed4242.manifest.json",
+        "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_006.n14000000.seed4242.manifest.json"
+      ],
+      "slices_detail": {
+        "part_001": {
+          "manifest_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_001.n14000000.seed4242.manifest.json",
+          "output_sha256": "6999e556fff5021c8ba17e2b5e8eabab43be741bb893a8b207992b348bfeabc8",
+          "seed": 4242,
+          "selected_reads": 14000000,
+          "slice": "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_001.n14000000.seed4242.fq",
+          "source_part": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+          "source_sha256": "dae91042e42c1a0562a2bda66b7a3409665cddc87e702d99b922e44160c1b0de"
+        },
+        "part_006": {
+          "manifest_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_006.n14000000.seed4242.manifest.json",
+          "output_sha256": "6525a1aaee9371525e5edccdaef860a0a86c252b95eef6acd57d789c7b07de58",
+          "seed": 4242,
+          "selected_reads": 14000000,
+          "slice": "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_006.n14000000.seed4242.fq",
+          "source_part": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz",
+          "source_sha256": "b197f16c31dd34094858adcb25f811194f532ed3ce95523df6ae709f2a37f07e"
+        }
+      }
+    },
+    {
+      "counts": {
+        "definition": "distinct/total are the SUM-OF-COUNTS definition from the stats readers \u2014 never the header record-count field (PARITY-GATE.md \u00a75)",
+        "hash_size_plan": {
+          "distinct_per_part": {
+            "part_001": 557446677,
+            "part_006": 557610429
+          },
+          "hash_size": "1G",
+          "max_per_part_distinct": 557610429,
+          "occupancy": 0.5193151803687215,
+          "occupancy_target": 0.75,
+          "slots": 1073741824
+        },
+        "jellyfish_per_part": {
+          "part_001": {
+            "command_line": [
+              "jellyfish",
+              "count",
+              "-m",
+              "31",
+              "-s",
+              "1G",
+              "-t",
+              "16",
+              "-C",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/part_001.k31.jf",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_001.n14000000.seed4242.fq"
+            ],
+            "distinct": 557446677,
+            "hash_size": "1G",
+            "jf_bytes": 6689361892,
+            "jf_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/part_001.k31.jf",
+            "jf_sha256": "abd5e554077d4e0e828c138fbb31841277572066c708ee9e0362c532b1d8c0ca",
+            "tool": "jellyfish",
+            "total": 1677108520
+          },
+          "part_006": {
+            "command_line": [
+              "jellyfish",
+              "count",
+              "-m",
+              "31",
+              "-s",
+              "1G",
+              "-t",
+              "16",
+              "-C",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/part_006.k31.jf",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_006.n14000000.seed4242.fq"
+            ],
+            "distinct": 557610429,
+            "hash_size": "1G",
+            "jf_bytes": 6691326916,
+            "jf_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/part_006.k31.jf",
+            "jf_sha256": "41a989f1fc4e7bb9a6d1871e8921a1587eedfe4130406d23f1c6b98c20c8d7a9",
+            "tool": "jellyfish",
+            "total": 1677114333
+          }
+        },
+        "rustkmer_per_part": {
+          "part_001": {
+            "command_line": [
+              "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+              "count",
+              "-k",
+              "31",
+              "-C",
+              "--threads",
+              "16",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/part_001.k31.rkdb",
+              "-i",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_001.n14000000.seed4242.fq"
+            ],
+            "distinct": 557446677,
+            "rkdb_bytes": 11148933582,
+            "rkdb_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/part_001.k31.rkdb",
+            "rkdb_sha256": "9c835a2abe35f4bcb9e529f80ea627689fbfc326144163ad8a4b56f4c204f611",
+            "tool": "rustkmer",
+            "total": 1677108520
+          },
+          "part_006": {
+            "command_line": [
+              "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+              "count",
+              "-k",
+              "31",
+              "-C",
+              "--threads",
+              "16",
+              "-o",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/part_006.k31.rkdb",
+              "-i",
+              "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_006.n14000000.seed4242.fq"
+            ],
+            "distinct": 557610429,
+            "rkdb_bytes": 11152208622,
+            "rkdb_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/part_006.k31.rkdb",
+            "rkdb_sha256": "5cdf81b59056dfe88ef20a8b2b8458ee2a6ed4b2930e943110b9f270b0fdb760",
+            "tool": "rustkmer",
+            "total": 1677114333
+          }
+        }
+      },
+      "created": "2026-11-16T16:44:15.967803+00:00",
+      "gates": {
+        "aggregate_parity": "green (assert_merge_parity, sum-of-counts Totals)",
+        "dump_vs_dump": "not-run: deep dump-vs-dump leg scheduled at the 10% rung only (Plan 11-06 action)",
+        "legs_executed": [
+          "aggregate-conservation",
+          "distinct-union"
+        ]
+      },
+      "k": 31,
+      "merges": [
+        {
+          "cache_state": "unavailable",
+          "command_line": [
+            "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+            "merge",
+            "-i",
+            "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/part_001.k31.rkdb",
+            "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/part_006.k31.rkdb",
+            "-o",
+            "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/merged.k31.rkdb"
+          ],
+          "distinct": 762068515,
+          "output_bytes": 15241370342,
+          "output_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/merged.k31.rkdb",
+          "peak_bytes": 2085240832,
+          "peak_footprint_bytes": 2084833080,
+          "peak_rss_bytes": 2085240832,
+          "provenance": {
+            "binary": {
+              "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+              "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b",
+              "size_bytes": 2966832
+            },
+            "build_profile": "release",
+            "created": "2026-11-16T15:46:04.357780+00:00",
+            "git_commit": "aa3390f10301e9688efd8c03c5018371dba62480",
+            "git_dirty": true,
+            "platform": "darwin-arm64",
+            "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)"
+          },
+          "reps": 1,
+          "route": "not-reported",
+          "tool": "rustkmer",
+          "total": 3354222853,
+          "wall_s": 44.87
+        },
+        {
+          "cache_state": "unavailable",
+          "command_line": [
+            "jellyfish",
+            "merge",
+            "-o",
+            "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/merged.k31.jf",
+            "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/part_001.k31.jf",
+            "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/part_006.k31.jf"
+          ],
+          "distinct": 762068515,
+          "output_bytes": 9144823932,
+          "output_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/k31/merged.k31.jf",
+          "peak_bytes": 6799360,
+          "peak_footprint_bytes": 2113944,
+          "peak_rss_bytes": 6799360,
+          "provenance": {
+            "binary": {
+              "path": "/opt/homebrew/Cellar/jellyfish/2.3.1/bin/jellyfish",
+              "sha256": "e99c676bbead8f5f520b84359088740aa853b0a0b3b122a21373fe93ae8091ee",
+              "size_bytes": 374544
+            },
+            "build_profile": "pinned-comparator-2.3.1",
+            "created": "2026-11-16T15:46:04.408493+00:00",
+            "git_commit": "aa3390f10301e9688efd8c03c5018371dba62480",
+            "git_dirty": true,
+            "platform": "darwin-arm64",
+            "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)"
+          },
+          "reps": 1,
+          "route": "not-reported",
+          "tool": "jellyfish",
+          "total": 3354222853,
+          "wall_s": 66.8
+        }
+      ],
+      "n_reads": 14000000,
+      "scale_label": "~40% of part scale",
+      "scale_pct_of_part": 40.58,
+      "seed": 4242,
+      "slices": [
+        "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_001.n14000000.seed4242.manifest.json",
+        "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_006.n14000000.seed4242.manifest.json"
+      ],
+      "slices_detail": {
+        "part_001": {
+          "manifest_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_001.n14000000.seed4242.manifest.json",
+          "output_sha256": "6999e556fff5021c8ba17e2b5e8eabab43be741bb893a8b207992b348bfeabc8",
+          "seed": 4242,
+          "selected_reads": 14000000,
+          "slice": "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_001.n14000000.seed4242.fq",
+          "source_part": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+          "source_sha256": "dae91042e42c1a0562a2bda66b7a3409665cddc87e702d99b922e44160c1b0de"
+        },
+        "part_006": {
+          "manifest_path": "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_006.n14000000.seed4242.manifest.json",
+          "output_sha256": "6525a1aaee9371525e5edccdaef860a0a86c252b95eef6acd57d789c7b07de58",
+          "seed": 4242,
+          "selected_reads": 14000000,
+          "slice": "/private/tmp/rustkmer-phase11/ladder/n14000000/slices/part_006.n14000000.seed4242.fq",
+          "source_part": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz",
+          "source_sha256": "b197f16c31dd34094858adcb25f811194f532ed3ce95523df6ae709f2a37f07e"
+        }
+      }
+    }
+  ],
+  "schema_version": 1,
+  "scratch_cleaned": true,
+  "summary": {
+    "bytes_per_entry": {
+      "jellyfish_k21": {
+        "n14000000": 10.000002531843858,
+        "n3500000": 10.000004822508167
+      },
+      "jellyfish_k31": {
+        "n14000000": 12.000002299005883,
+        "n3500000": 12.000004654585952
+      },
+      "note": "rkdb entries are 20 bytes on disk (42-byte header + 20-byte records, format.rs) so ~20 B/entry is the expected constant; .jf bytes/entry is the measured capacity-derived asymmetry MBENCH-04 will surface",
+      "rustkmer_k21": {
+        "n14000000": 20.000000068516393,
+        "n3500000": 20.00000013186546
+      },
+      "rustkmer_k31": {
+        "n14000000": 20.000000055113155,
+        "n3500000": 20.00000011261095
+      }
+    },
+    "extrapolated_full_scale": {
+      "caveat": "slice-scale extrapolation under a two-point linear model \u2014 MBENCH-04's predicted-vs-measured check at full scale is the backstop (D-07); no slice-scale number is presented as a full-scale prediction without this caveat and the backstop named (milestone Pitfall 14)",
+      "entries_source": "committed Phase-10 union Distinct anchors (10-results-full-k{21,31}.json); merged Distinct == union Distinct (disjoint key spaces)",
+      "full_scale_entries": {
+        "21": 897266581,
+        "31": 1146353600
+      },
+      "jellyfish_k21": {
+        "flagged_nonlinear": false,
+        "method": "two-point linear: wall(n=3500000) + slope x (full_scale_entries - entries(n=3500000))",
+        "predicted_full_scale_wall_s": 77.26391787523114
+      },
+      "jellyfish_k31": {
+        "flagged_nonlinear": false,
+        "method": "two-point linear: wall(n=3500000) + slope x (full_scale_entries - entries(n=3500000))",
+        "predicted_full_scale_wall_s": 105.52449658729188
+      },
+      "rustkmer_k21": {
+        "flagged_nonlinear": false,
+        "method": "two-point linear: wall(n=3500000) + slope x (full_scale_entries - entries(n=3500000))",
+        "predicted_full_scale_wall_s": 53.84865958547661
+      },
+      "rustkmer_k31": {
+        "flagged_nonlinear": false,
+        "method": "two-point linear: wall(n=3500000) + slope x (full_scale_entries - entries(n=3500000))",
+        "predicted_full_scale_wall_s": 73.36277547930045
+      }
+    },
+    "linearity": {
+      "jellyfish_k21": {
+        "ratio_40_over_10": 1.0613316187752264,
+        "verdict": "linear"
+      },
+      "jellyfish_k31": {
+        "ratio_40_over_10": 1.1849483195538433,
+        "verdict": "linear"
+      },
+      "rule": "wall-per-entry ratio between the 10% and 40% rungs; ratio > 2.0 is flagged non-linear \u2014 a recorded finding for MBENCH-04's full-scale backstop, never silently smoothed",
+      "rustkmer_k21": {
+        "ratio_40_over_10": 1.1899809762738682,
+        "verdict": "linear"
+      },
+      "rustkmer_k31": {
+        "ratio_40_over_10": 1.3707814072270537,
+        "verdict": "linear"
+      },
+      "threshold_ratio": 2.0
+    },
+    "slopes": {
+      "jellyfish_k21": {
+        "linear": true,
+        "per_rung": {
+          "14000000": {
+            "bytes_per_entry": 10.000002531843858,
+            "entries": 612991988,
+            "output_bytes": 6129921432,
+            "wall_per_entry": 8.443829774819177e-08,
+            "wall_s": 51.76
+          },
+          "3500000": {
+            "bytes_per_entry": 10.000004822508167,
+            "entries": 318506459,
+            "output_bytes": 3185066126,
+            "wall_per_entry": 7.955882615240779e-08,
+            "wall_s": 25.34
+          }
+        },
+        "ratio_40_over_10": 1.0613316187752264,
+        "slope_wall_s_per_entry": 8.971578362344588e-08
+      },
+      "jellyfish_k31": {
+        "linear": true,
+        "per_rung": {
+          "14000000": {
+            "bytes_per_entry": 12.000002299005883,
+            "entries": 762068515,
+            "output_bytes": 9144823932,
+            "wall_per_entry": 8.76561604175446e-08,
+            "wall_s": 66.8
+          },
+          "3500000": {
+            "bytes_per_entry": 12.000004654585952,
+            "entries": 372965505,
+            "output_bytes": 4475587796,
+            "wall_per_entry": 7.397466958774109e-08,
+            "wall_s": 27.59
+          }
+        },
+        "ratio_40_over_10": 1.1849483195538433,
+        "slope_wall_s_per_entry": 1.0077023048472433e-07
+      },
+      "rustkmer_k21": {
+        "linear": true,
+        "per_rung": {
+          "14000000": {
+            "bytes_per_entry": 20.000000068516393,
+            "entries": 612991988,
+            "output_bytes": 12259839802,
+            "wall_per_entry": 5.690123310388194e-08,
+            "wall_s": 34.88
+          },
+          "3500000": {
+            "bytes_per_entry": 20.00000013186546,
+            "entries": 318506459,
+            "output_bytes": 6370129222,
+            "wall_per_entry": 4.7816926689075405e-08,
+            "wall_s": 15.23
+          }
+        },
+        "ratio_40_over_10": 1.1899809762738682,
+        "slope_wall_s_per_entry": 6.672653853901257e-08
+      },
+      "rustkmer_k31": {
+        "linear": true,
+        "per_rung": {
+          "14000000": {
+            "bytes_per_entry": 20.000000055113155,
+            "entries": 762068515,
+            "output_bytes": 15241370342,
+            "wall_per_entry": 5.887922032837165e-08,
+            "wall_s": 44.87
+          },
+          "3500000": {
+            "bytes_per_entry": 20.00000011261095,
+            "entries": 372965505,
+            "output_bytes": 7459310142,
+            "wall_per_entry": 4.295303395417225e-08,
+            "wall_s": 16.02
+          }
+        },
+        "ratio_40_over_10": 1.3707814072270537,
+        "slope_wall_s_per_entry": 7.414489032094611e-08
+      }
+    }
+  }
+}
