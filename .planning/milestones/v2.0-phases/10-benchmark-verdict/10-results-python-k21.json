@@ -205,7 +205,7 @@
   "pre_gate": {
     "path": "/tmp/rustkmer-phase10/scratch/pre_gate_k21.json",
     "sha256": "4f958c19053dc1297f4998f7dfe1258b35f5d4610a0859234c71c65e4d5e8ea3",
-    "committed_copy": ".planning/phases/10-benchmark-verdict/evidence/pre_gate_k21.json"
+    "committed_copy": ".planning/milestones/v2.0-phases/10-benchmark-verdict/evidence/pre_gate_k21.json"
   },
   "memory_preflight": {
     "decision": "PROCEED",
@@ -214,15 +214,15 @@
     "budget_bytes": 118111600640,
     "headroom_bytes": 40946674674,
     "observed_peak_bytes": 46470447104,
-    "source": ".planning/phases/10-benchmark-verdict/10-results-full-k21.json",
+    "source": ".planning/milestones/v2.0-phases/10-benchmark-verdict/10-results-full-k21.json",
     "source_sha256": "757c923a7278c06b663ab8720d22cf32abdc10b35a81d65a85765a50be900d6f",
-    "committed_copy": ".planning/phases/10-benchmark-verdict/evidence/historical_cli_k21.json",
+    "committed_copy": ".planning/milestones/v2.0-phases/10-benchmark-verdict/evidence/historical_cli_k21.json",
     "supersession_note": "source_sha256 pins the historical CLI-document bytes the run-time gate consumed; the WR-01 warmup-order metadata correction changed that document's bytes. The corrected current file (sha256 f76cb1c6002c234b34291ab6ec676e0d8417daa5d4ecbf03281286c69e0d19b6) is the current render input, and the historical bytes are preserved verbatim under committed_copy for pin verification. No measured value changed."
   },
   "cross_session": {
-    "cli_doc": ".planning/phases/10-benchmark-verdict/10-results-full-k21.json",
+    "cli_doc": ".planning/milestones/v2.0-phases/10-benchmark-verdict/10-results-full-k21.json",
     "cli_doc_sha256": "757c923a7278c06b663ab8720d22cf32abdc10b35a81d65a85765a50be900d6f",
-    "committed_copy": ".planning/phases/10-benchmark-verdict/evidence/historical_cli_k21.json",
+    "committed_copy": ".planning/milestones/v2.0-phases/10-benchmark-verdict/evidence/historical_cli_k21.json",
     "supersession_note": "cli_doc_sha256 pins the historical CLI-document bytes this session consumed; the corrected current document (sha256 f76cb1c6002c234b34291ab6ec676e0d8417daa5d4ecbf03281286c69e0d19b6) is the current render input, and the historical bytes are preserved verbatim under committed_copy for pin verification. No measured value changed."
   },
   "schedule": {

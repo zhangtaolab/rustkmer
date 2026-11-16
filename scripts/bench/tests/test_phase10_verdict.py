@@ -739,8 +739,8 @@ class TestCommittedPreflightArtifact(unittest.TestCase):
     """
 
     def test_committed_preflight_revalidates_for_both_k(self):
-        path = (Path(__file__).resolve().parents[3] / ".planning" / "phases"
-                / "10-benchmark-verdict" / "10-python-preflight.json")
+        path = (Path(__file__).resolve().parents[3] / ".planning" / "milestones"
+                / "v2.0-phases" / "10-benchmark-verdict" / "10-python-preflight.json")
         self.assertTrue(path.is_file(), f"missing committed artifact {path}")
         for k in p10.SLICE_GATE_K_VALUES:
             record, sha256 = p10._load_python_preflight(path, k)
@@ -759,8 +759,8 @@ class TestCommittedHistoricalCliEvidence(unittest.TestCase):
     of being recoverable only from git history.
     """
 
-    PHASE_DIR = (Path(__file__).resolve().parents[3] / ".planning" / "phases"
-                 / "10-benchmark-verdict")
+    PHASE_DIR = (Path(__file__).resolve().parents[3] / ".planning" / "milestones"
+                 / "v2.0-phases" / "10-benchmark-verdict")
 
     def test_each_historical_pin_matches_its_committed_copy(self):
         for k in p10.SLICE_GATE_K_VALUES:
