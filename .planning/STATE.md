@@ -4,17 +4,17 @@ milestone: v2.1
 milestone_name: Merge Verdict & Producer Research
 current_phase: 11
 current_phase_name: Merge Characterization & Harness Prep
-status: executing
-stopped_at: Completed 11-06-PLAN.md
-last_updated: "2026-11-16T16:49:34.540Z"
+status: verifying
+stopped_at: Completed 11-07-PLAN.md
+last_updated: "2026-11-16T17:20:39.291Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 11 execution started
-state_head: 2e1a16eee0fbb3985a761c22b9524feb05c7e5a2
+state_head: 7e837f10f64d759344dc5fcd26b82c2823df924e
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-16)
 
 Phase: 11 (Merge Characterization & Harness Prep) — EXECUTING
 Plan: 8 of 8
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-16 — Phase 11 execution started
 
 Progress: [░░░░░░░░░░] 0%
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 11 P04 | 15 min | 3 tasks | 3 files |
 | Phase 11 P05 | 63min | 3 tasks | 1 files |
 | Phase 11 P06 | 80min | 3 tasks | 2 files |
+| Phase 11 P07 | 24min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 11]: 11-05: artifact budget approved on measured reality — 86.74 GiB actual vs D-01 ~70 GiB estimate (superseded by measurement, inside the recorded 85.8-109.8 GiB projection band); merge-output occupancy pre-computed for 11-07 floor: k21 0.836, k31 0.534
 - [Phase 11]: 11-06: rung gates execute per PARITY-GATE.md before record acceptance; the deep dump-vs-dump leg runs the written spec's streaming form at ladder scale (measured 318.5M/373.0M lines per side — the in-process variant would need ~120-150 GB heap), implemented in merge_characterize.py with bench.py untouched
 - [Phase 11]: 11-06: ladder slopes all linear (40/10 wall-per-entry ratios 1.06-1.37, under the 2x flag) — jellyfish 8.97e-8/1.008e-7 s/entry k=21/31, rustkmer 6.67e-8/7.41e-8; extrapolated full-scale merge walls rustkmer 53.8/73.4 s, jellyfish 77.3/105.5 s with the MBENCH-04 backstop caveat — the Phase 12 scheduling input and the 11-07 D-10 transient term
+- [Phase 11]: [11-07]: disk floor DERIVED = 136 GiB (inputs 93,135,484,166 B + largest ladder-extrapolated single-arm transient 22,927,072,000 B) x 1.25 margin; replaces stale 150 (count-era -s 10G regime); import-time tripwire pins the literal to derive_disk_floor(recorded inputs)
+- [Phase 11]: [11-07]: D-11/D-12 live — every under-floor path states the GiB shortfall (exit-3 block; --disk-floor-override prints-and-continues), ensure_disk_headroom runs before each measured rep of any comparison protocol; slice/rehearsal runs pass scaled budgets explicitly
+- [Phase 11]: [11-07]: dress rehearsal green — 4 staged slice runs (A 50k×2 gate-proof / B 200k×3 full protocol, k=21+31), seven arms counterbalanced, parity + dump-vs-dump green pre-acceptance; B-k21 exactly reproduces 11-04 proof (29,730,885/51,936,393); RSS context-only, t1 = 2-thread pool contract at N=1 (A6)
+- [Phase 11]: [11-07]: HYG-04 WARNING-2 closed in the same README touch — 'requested + 1' replaced by exactly-2-at-N=1 / 2N+1-at-N>1 with tests/thread_pool_size_tests.rs cited; 999.1-999.3 remain not-triggered
 
 ### Pending Todos
 
@@ -120,6 +125,6 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-16T16:49:18.655Z
-Stopped at: Completed 11-06-PLAN.md
+Last session: 2026-11-16T17:20:39.274Z
+Stopped at: Completed 11-07-PLAN.md
 Resume file: None
