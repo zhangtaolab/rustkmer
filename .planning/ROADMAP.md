@@ -74,7 +74,16 @@ Full detail: [milestones/v2.0-ROADMAP.md](milestones/v2.0-ROADMAP.md) · Require
   4. `docs/benchmark-report.md` no longer presents the superseded v1.0 k=21 "+420%" verdict as current (superseded banner or v2.0-based regeneration), and the dataset description (six single-member gzip parts, ~16.7 GB total) is corrected in PROJECT.md/docs — BEFORE the Phase 12 verdict lands (HYG-01).
   5. Evidence debts are closed: Nyquist validation records exist for Phases 5-8 (HYG-02), SECURITY.md threat-model verification exists for Phases 9-10 (HYG-03), and every backlog 999.1-999.3 item whose file is touched by milestone work is resolved in the same touch — opportunistic, remaining items stay tracked and are not gate-blocking (HYG-04).
 
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+- [ ] 11-01-PLAN.md — Harness merge-arm extension: seven-arm counterbalanced set + ordering assertion + schema/renderer compat (MBENCH-01, MBENCH-05)
+- [ ] 11-02-PLAN.md — prepare-inputs stage: build/revalidate/manifest with -s derivation and provenance records (D-01/D-03/D-04 mechanics)
+- [ ] 11-03-PLAN.md — Evidence hygiene: benchmark-report banner + dataset correction + drift sweep, Nyquist 5-8 via /gsd-validate-phase, SECURITY.md 9-10 via /gsd-secure-phase (HYG-01, HYG-02, HYG-03, HYG-04)
+- [ ] 11-04-PLAN.md — Three-way parity gate: written PARITY-GATE.md spec + implementation + live slice-scale proof (MBENCH-02)
+- [ ] 11-05-PLAN.md — Full-scale artifact builds: 8 per-part .rkdb/.jf with -s decision gate and manifest revalidation (D-01/D-02/D-04)
+- [ ] 11-06-PLAN.md — Characterization ladder: 2-point × both-k × both-tools with slope/linearity evidence (D-07/D-08/D-09)
+- [ ] 11-07-PLAN.md — Disk floor (derive/block/override/per-rep) + full-protocol dress rehearsal + README stage docs/WARNING-2 (D-10/D-11/D-12, MBENCH-02 proof, HYG-04)
 
 **Research flag**: none — research is unusually complete (jellyfish merge semantics pinned on the installed 2.3.1 binary AND official source; harness integration points file:line-anchored). The one open question — jellyfish merge runtime/memory at 20-90 GiB — is closed by this phase's own intermediate-scale characterization.
 **Note**: Phase 11 delivers MBENCH-02's gate (written spec + implementation + slice-scale proof); its full-scale execution, including the user-selected per-k-mer deep validation, runs inside Phase 12's protocol (MBENCH-03). Also decide here: reuse vs regenerate the per-part input artifacts (either way sha256 + Total revalidation before round 0), and re-derive the disk pre-flight from v2.0 measured DB sizes — expect to raise `--disk-floor-gb` (its 150 GiB default was sized for count artifacts; merge transients estimate 150-400 GiB).
