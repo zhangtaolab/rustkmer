@@ -1,10 +1,10 @@
 # Pitfalls Research
 
-**Domain:** Adding minimizer-partitioned / disk-backed / faster-hasher counting to an EXISTING exact-count k-mer system (rustkmer v2.0 "k=21 Counting Parity")
-**Researched:** 2026-11-11
-**Confidence:** MEDIUM-HIGH — codebase findings are HIGH (direct code reading, file:line anchors below); external algorithm/ecosystem claims are MEDIUM (cross-checked, ≥2 sources); a few single-source doc claims are flagged LOW.
+**Domain:** Adding (a) a full-scale rustkmer merge vs `jellyfish merge` benchmark and (b) a producer-bound / parallel-extraction research track to an EXISTING shipped exact-count k-mer system (rustkmer v2.1 "Merge Verdict & Producer Research")
+**Researched:** 2026-11-16
+**Confidence:** MEDIUM-HIGH — codebase findings are HIGH (direct code reading, file:line anchors); jellyfish merge semantics are HIGH (official manpage + experiments run on the pinned 2.3.1 binary installed on this host); macOS thermal/cache methodology claims are MEDIUM (cross-checked, ≥2 sources); gzip-parallelization claims are MEDIUM (carried from the 2026-11-11 v2.0 research cache, cross-checked there).
 
-This document replaces the v1.0 pitfalls research (2025-06-30). The v1.0 pitfalls were largely *paid for and fixed* — this round is about not re-paying them while adding KMC-class architecture to a system that already has exact-count contracts, golden baselines, and two public surfaces.
+This document covers only the two v2.1 investigation targets. The v2.0 pitfalls research (2026-11-11, below in git history) remains valid for minimizer/disk-backed/hasher work — that track is descoped this milestone. Here the system already ships and the exact-count contract, golden baselines, and parity gates are *paid for*: the risks are measurement verdicts corrupted by semantic mismatch, confounds, and stale evidence.
 
 ---
 
@@ -14,589 +14,475 @@ This document replaces the v1.0 pitfalls research (2025-06-30). The v1.0 pitfall
 
 | Label | Working name | Scope |
 |-------|--------------|-------|
-| **P1** | Root-Cause Profiling & Foundations | Evidence before architecture (user directive 2026-11-11): decompression-vs-counting split, hashing-cost validation, binary fingerprinting, CLI/Python extraction-semantics decision, shared-core groundwork |
-| **P2** | Minimizer Partitioning Core (MINIM-01) | Canonical minimizer/signature, super-mers, exact per-bucket counting, globally sorted `.rkdb` output |
-| **P3** | Disk-Backed Bounding (MINIM-02/03) | `--max-memory` for counting, spill, bucket admission + adaptive granularity, temp lifecycle reuse |
-| **P4** | I/O & Parallel Pipeline | Producer/consumer overlap, multi-file/member decompression parallelism, chunk granularity, hasher swap **only if P1 evidence demands it** |
-| **P5** | Dual-Surface Delivery & Verdict | Python routing through the new engine, 1-vs-N + old-vs-new golden matrix, KMC3 comparison (BENCH-V2-01), CI baseline regeneration |
+| **P1** | Merge Characterization & Harness Prep | Pin `jellyfish merge` semantics, define the parity gate (what equals what), extend the harness, fingerprint merge inputs, full-protocol dry run at slice scale |
+| **P2** | Full-Scale Merge Verdict | Counterbalanced full-scale runs, gates, measured verdict → invest/no-invest, renderer-generated report |
+| **P3** | Producer Attribution Research | Decompress-vs-extract split measured on the SHIPPED engine, predicted-win sizing at full scale, D3-gate decision for P4 |
+| **P4** | Parallel Extraction (conditional) | Executes only if the P3 verdict justifies it (v2.0 D3 pattern) |
+| **HYG** | Hygiene (cross-cutting) | `docs/benchmark-report.md` drift fix, Nyquist validation, SECURITY.md — woven through P1/P2 |
 
-P1 must come first: PROJECT.md Key Decisions records "v2.0 approach chosen from profiling evidence, not guesswork." Every "which phase" answer below assumes that ordering.
+P1 precedes P2 (characterize before burning multi-hour counterbalanced reps); P3 precedes P4 (evidence before architecture — the standing user directive). Every "phase to address" below assumes that ordering.
 
-**v1.0 lessons already paid for — leverage, do not re-pay:**
+**Empirical basis established during this research** (pinned `jellyfish 2.3.1`, Homebrew, this host; stored in `research-store`):
 
-| Lesson (paid in v1.0) | Where it lives now | What v2.0 must do with it |
-|------------------------|--------------------|---------------------------|
-| Exact-count contract is sacred (Chorus3 saturating 2-bit counters rejected) | `.planning/PROJECT.md` Out of Scope; `src/hash/table.rs:265-301` | Every new counter path stays exact u32, fail-loud at `u32::MAX` (Pitfall 8) |
-| Parity gate before timing (caught the single-member gzip bug on the real full run) | `scripts/bench/bench.py:540-595`, incident note `:1291-1300`, fix commit `8102985` | Extend the gate to KMC3 with matched exact-count flags (Pitfall 18); run it on every new decoder (Pitfall 11) |
-| 1-vs-N differentials vs committed goldens (PCOUNT-04) | v1.0 Phase 2 tests | Extend to old-path-vs-new-path differentials across the k/canonical matrix (Pitfall 9) |
-| Byte-identity through refactors (DENSE-02 golden sha256 captured BEFORE refactor) | `tests/golden_sha256_tests.rs`, `tests/fixtures/` | Capture/keep goldens before the partitioning refactor; prove sortedness through consumers (Pitfall 15) |
-| RAII temp lifecycle + TTL sweep; `panic="abort"` skips RAII | `src/database/temp_lifecycle.rs` (prefix `:45`, 7-day TTL `:82`, sweep `:135`) | Reuse the mechanism with a counting prefix AND extend the sweep selector (Pitfall 5) |
-| Memory honesty: admission charges real bytes; peak = max(rss, phys_footprint); never mmap spill when RSS is the budget | v1.0 Phase 3 model; PROJECT.md Context | Same discipline for counting spill (Pitfall 7) |
-| MSRV 1.80 is a hard gate (`is_multiple_of` incident: 8 pre-existing calls became clippy failures under `-D warnings`) | both `Cargo.toml` `rust-version`, `clippy::incompatible_msrv` | MSRV-audit every new dependency and API (Pitfall 17) |
-| Benchmark honesty: true cache_state per rep, counterbalanced reps, medians, per-platform baselines from the CI runner class | `scripts/bench/`, `baselines/bench_baseline.{darwin,linux}.json` | Keep all of it; regenerate baselines only from CI artifacts (Pitfall 19) |
-| PyO3: `py.detach` (not deprecated `allow_threads`); global allocator swap disqualified; installed `.so` is prebuilt | `pyo3/src/counter.rs:359-367`; backlog 999.2 | No GIL regressions; rebuild before pytest (Pitfalls 13, 19) |
+| Fact | Evidence | Consequence |
+|------|----------|-------------|
+| `merge` has NO `-s` output-hash-size option (manpage `-s` is input-buffer size; installed help shows no `-s` at all) | manpage + `jellyfish merge --help` | The pre-registered worry "merge's `-s` distorting RSS" is moot; sizing is internal |
+| Merge operation defaults to additive SUM (`-m` min / `-M` max / `-j` jaccard are opt-in alternatives) | `--help` + measured: Total 48M = 24M + 24M | Same additive semantics as rustkmer merge — parity is meaningful |
+| k-mer length mismatch is refused loudly: `Can't merge hashes of different key lengths (6, 10)`, exit 1 | tiny-fixture experiment | Good fail-loud; no guard needed |
+| **Canonical vs non-canonical mismatch is NOT refused**: merging a non-canonical hash with a canonical hash of the same reads exits 0 and produces 12 distinct keys where the canonical truth is 7 — while Total stays conserved (32 = 16 + 16) | tiny-fixture experiment | Pitfall 1: conservation checks cannot catch key-space mixing; only per-key parity can |
+| Merge peak RSS is tiny and scale-weak: 6.8 MB merging two 240 MB `.jf` files (2M-entry hashes), vs 212 MB for count of the same data | `/usr/bin/time -l` on this host | Pitfall 6: merge is a streaming k-way merge — memory-superiority framing is vacuous here |
+| Merge output `.jf` file size is capacity-derived (240,000,834 B ≈ input's 240,000,890 B), not content-derived | `ls` on outputs | Disk planning must budget by hash capacity, not distinct keys |
+| `jellyfish dump` default is FASTA-like (count in header); `-c` gives 2-column `kmer<TAB>count`; `-L/-U` filter counts | `--help` + manpage | Parity pipeline uses `-c`, sorts both sides identically |
+| jellyfish counts use variable-length encoding ("there is no maximum value in the hash", `-c` default 7 bits, `--out-counter-len` default 4 B) | manpage | Exact counts on both sides at our scale; overflow semantics differ but cannot fire at k=21/31 human coverage |
 
 ---
 
 ## Critical Pitfalls
 
-### Category A — Minimizer partitioning
+### Category A — Merge benchmark: semantics & correctness
 
-### Pitfall 1: Canonical-unaware minimizer splits every non-palindromic k-mer's count
+### Pitfall 1: Canonicality mismatch silently merges different key spaces — and every aggregate check still passes
 
 **What goes wrong:**
-A k-mer and its reverse complement get different minimizers, land in different buckets, and are counted as two distinct keys with split counts. In canonical mode the output has up to ~2× the distinct k-mers and roughly half the per-key counts. This is the single most destructive bug possible in this milestone: it silently breaks the exact-count contract on *both* surfaces and invalidates every benchmark.
+The merge-bench arms get fed databases whose canonical flags disagree (one tool counted canonical, the other didn't; or one part-database was produced by a different code path). `rustkmer merge` refuses (its `validate_merge_compatibility` checks k AND canonical mode), but **`jellyfish merge` exits 0** and emits a plausible file: forward-strand keys and canonical keys coexist as distinct keys, counts split across them. Demonstrated on the pinned binary: non-canonical (11 distinct) + canonical (7 distinct) of the *same reads* → merged "12 distinct, Total 32" with `ACG 4` — a semantically meaningless database. If the parity gate compares only `jellyfish stats` totals against rustkmer stats, both sides agree (totals are conserved!) and the verdict ships on garbage.
 
 **Why it happens:**
-The naive minimizer takes the lexicographic min over the m-mers of the forward strand only. The window set of `revcomp(kmer)` is the reverse-complemented window set in reverse order — the forward-strand minimum is not invariant under that transform. KMC-class tools explicitly select `min(m-mer, revcomp(m-mer))` per window so both strands agree (IJC 2020 §2.3; WABI 2022; PMC6280066 — MEDIUM, cross-checked). rustkmer's canonical form is `min(kmer, revcomp)` (`src/kmer/canonical.rs:72-82`); the minimizer must use the *same* orientation convention and the same `<=` tie-breaking, or palindromic m-mers and equal-pair ties drift.
+Canonicality is baked into the database at count time, not at merge time. jellyfish merge treats whatever keys are stored as opaque bit patterns and validates only key *length*. rustkmer's own guard cannot warn about the *comparator's* inputs. The failure is invisible in every aggregate.
 
 **How to avoid:**
-- Define the minimizer over canonical m-mers: for each window, `min(enc(m), revcomp(enc(m)))`, then take the window minimum with a deterministic tie-break (e.g., leftmost). One implementation, shared by partitioning and any bucket-local re-check.
-- Property test (proptest, already a dev-dep): for random k-mers across k ∈ {1..64}, `minimizer(x) == minimizer(revcomp(x))`; include palindromes, homopolymers, and all-A/all-T edge cases.
-- Differential: partitioned path vs current counter on the committed golden inputs, canonical AND non-canonical modes (non-canonical mode must still partition each distinct key to exactly one bucket — co-locating both strands is fine, splitting one key is not).
-- Do this in P2's first plan, before any disk machinery exists, so the property is proven on the in-memory partitioner first.
+- Pin canonicality in the harness config, not in discipline: one `BenchmarkConfig` drives BOTH command lines (the v1.0 `bench.py:172-173` pattern) and asserts `canonical=True` for every input it produces or consumes.
+- Re-verify each input's canonical mode at P1: `rustkmer stats <db>.rkdb` reports canonical mode; for `.jf` inputs, dump a sample and check that revcomp keys are absent (`GGT` must appear as `ACC`-style canonical forms when -C was on), or simpler: regenerate `.jf` inputs from the same count runs that the parity gate already validated rather than resurrecting unverified files.
+- Make per-key equality the gate (Pitfall 2), so this class of failure structurally cannot pass.
 
 **Warning signs:**
-Distinct count ≈ 2× the current counter on the same canonical input; per-bucket count sums disagree with the global total; the bench parity gate fails with "jellyfish Distinct != rustkmer unique_kmers"; histograms show paired k-mers with complementary counts.
+`jellyfish stats` Distinct on merged output ≈ sum of input Distincts (near-zero key overlap) when the inputs demonstrably share most keys; dump shows both a k-mer and its reverse complement as separate keys; per-key diff reports missing/complementary keys in complementary pairs.
 
-**Phase to address:** P2 (design + property tests), P5 (differential proof). Confidence: HIGH on mechanism (code + cross-checked literature).
+**Phase to address:** P1 (harness config + input verification). Confidence: HIGH (empirically demonstrated on the pinned binary).
 
 ---
 
-### Pitfall 2: Bucket-local key representations leak into counts or output
+### Pitfall 2: "What equals what" left undefined until after the runs — conservation invariants become the whole gate
 
 **What goes wrong:**
-KMC-class counters store bucket-local keys — the k-mer suffix after the minimizer, or a (signature, remainder) packing — to save space. If that bucket-local integer is fed to `KmerCounter::increment` or written to `.rkdb`, two distinct k-mers from different buckets alias onto one key, or the output file contains keys that decode to wrong sequences.
+The team runs 3 counterbalanced reps per arm (hours each), then discovers nobody specified the correctness contract for a *merged* output. The cheap checks that exist (merged Total == sum of input Totals; merged Distinct within union bounds — the v1.0 slice-run checks, `docs/benchmark-report.md:51-52`) all pass, and the report calls it "parity". But Total conservation holds even under Pitfall 1's key-space corruption, and rustkmer's saturating-add merge summation (`streaming_merge.rs:509`, triaged debt WR-02) would also conserve totals while clipping. The verdict rests on checks that structurally cannot fail.
 
 **Why it happens:**
-The existing dense path narrows `u128 → u64` with only a `debug_assert!` guarding the high bits (`narrow_to_dense`, `src/hash/table.rs:223-232`, threat T-03-09). Release builds elide it. A bucket-local packing that puts signature bits in the high positions passes silently in release and merges counts of unrelated k-mers. The `.rkdb` entry writer expects the FULL canonical k-mer as u128 LE (`KmerEntry::write_to`, single writer in `src/database/format.rs`).
+Merge correctness is a three-way question and only its easiest leg is cheap: (a) rustkmer-merge vs **independent recomputation** — a single count over the union of the reads that produced the inputs (the merge of disjoint-part databases must equal one count over all parts — this is the only check anchored outside the two tools); (b) rustkmer-merge vs jellyfish-merge **per key**; (c) aggregate conservation. (a) costs ~2.5 min per k at v2.0 measured rates (147 s count wall) — cheap enough that skipping it saves nothing.
 
 **How to avoid:**
-- Make the bucket boundary a reconstruction point: decode the bucket-local key back to the full canonical u128 before it touches the counter, the sorter, or the writer. Keep the reconstruction in one function with a round-trip property test (`reconstruct(pack(x)) == x` for all k ≤ 64).
-- Keep the T-03-09 `debug_assert!`; add a conservation test that runs in release (sum of per-bucket distinct keys == global distinct; spot-check decoded sequences against the input).
-- Golden sha256 byte-identity (DENSE-02 discipline) catches any leaked packing in the output immediately — run it from the first P2 plan that writes a file.
+- Define the gate in P1, in writing, before any full-scale rep:
+  1. **Pre-gate (fast):** conservation — merged Total == Σ input Totals; merged Distinct ≥ max input Distinct; every input Total itself matches the committed Phase-10 parity values (897,266,581 / 8,967,099,203 at k=21; 1,146,353,600 / 8,275,694,030 at k=31).
+  2. **Ground truth (once per k):** independent recomputation — count the full read set with rustkmer and diff against the merged database, per key, byte-exact. If inputs are NOT a clean partition of one read set, this leg is redesigned, not skipped silently.
+  3. **Cross-tool parity (the verdict gate):** dump both merged outputs, normalize to `(canonical k-mer string, count)` pairs, sort identically, diff — equality must be exact.
+- State which `total_kmers` definition every check uses: `DatabaseHeader::total_kmers` is the **record count** (`entries.len()`, `format.rs:659,737`) while `KmerCounter::total_kmers` and `rustkmer stats` report the **sum of counts** (`stats.rs:196`) — the IN-03 collision. A conservation check that mixes them fails mysteriously or passes vacuously. Recompute sums by streaming entries; never trust the header field for conservation.
+- Overflow note: rustkmer merge uses `saturating_add` (WR-02) while jellyfish's variable-length counters don't cap. At k=21/31 human coverage (max count ~10⁴–10⁵) neither can fire — record that in the report as a stated scope condition, and keep the u32::MAX boundary tests from v1.0 covering the merge path.
 
 **Warning signs:**
-`debug_assert` fires in `cargo test` but release output "looks fine"; decoded k-mers from the new database contain impossible prefixes; distinct counts *shrink* vs the old path (aliasing merges keys); golden sha256 mismatch.
+The gate spec is written after the first full-scale run; "parity" sections cite only Distinct/Total equality; a per-key diff is deferred as "phase 2 work"; someone compares `header.total_kmers` against `stats.total_kmers` and gets a 897-million-vs-9-billion mismatch that "must be a harness bug".
 
-**Phase to address:** P2. Confidence: HIGH (code-anchored).
+**Phase to address:** P1 (define), P2 (execute). Confidence: HIGH (code-anchored + v1.0 precedent).
 
 ---
 
-### Pitfall 3: One giant bucket defeats the memory bound (minimizer skew is severe on real genomes)
+### Pitfall 3: Comparator-shape asymmetries — each tool merges its own representation, at different thread counts, possibly with different merge semantics
 
 **What goes wrong:**
-Bucket sizes are wildly non-uniform: published binning studies show max/mean bucket ratios up to ~80 and >90% of k-mers concentrating in ~50 minimizers on real data (Discount 2020; Gerbil/AdaOrder 2021; IIIT binning study — MEDIUM, cross-checked). Poly-A tails, adapter dimers, and low-complexity repeats all share a handful of minimizers. One bucket exceeds the RAM budget → OOM, or the "bounded" counter silently falls back to an unbounded path, or one rayon task runs for the entire second pass while other cores idle.
+Three asymmetries hide inside "rustkmer merge vs jellyfish merge":
+1. **Input representation:** rustkmer reads `.rkdb`; jellyfish reads `.jf`. The inputs are different files encoding the same k-mer counts. That is the honest design (each tool consumes its native format), but if unstated, readers assume identical inputs and either distrust the verdict or "fix" it by converting formats — which measures a different workload (dump → re-ingest).
+2. **Parallelism:** jellyfish merge is single-threaded (manpage BUGS: "has not been parallelized and is relatively slow"; no `-t` option exists; measured 10.8G cycles vs count's 53.8G on the same fixture host). rustkmer merge defaults to all cores via rayon. A raw wall comparison is 16-threads-vs-1; a verdict that doesn't say so overstates the gap, and a reviewer who discovers it dismisses the whole report.
+3. **Merge operation:** `-m`/`-M`/`-j` produce entirely different outputs (min/max/jaccard). Running defaults gives SUM — fine — but nothing records that choice, and a later re-run with a stray flag compares apples to min.
 
 **Why it happens:**
-Lexicographic minimizers systematically favor low-complexity m-mers (AAAA… sorts first). KMC2's signature rules exist precisely for this: exclude m-mers starting AAA or ACA, or containing AA internally (~11% smaller super-k-mer volume as a side effect). KMC3 additionally samples the input, builds a signature-frequency histogram, and packs signatures into a capped number of bins (~2000). A fixed `hash(minimizer) % n_buckets` scheme reproduces the skew.
+Each asymmetry is individually defensible ("that's how the tool works"); together they make the comparison underspecified. The v1.0 report survived this only because its methodology section recorded thread counts, `-s 10G`, and the decompression arrangement explicitly.
 
 **How to avoid:**
-- Adopt signature-style filtering (KMC2 rules) OR frequency-aware signature→bin packing from a sampled pass (KMC3). Decide in P2 from a measured bucket histogram on the real CRR slice, not from theory.
-- Per-bucket admission control in P3: estimate bucket size from the distribution pass; a bucket that exceeds the budget gets recursively re-partitioned (longer minimizer / secondary signature — this is exactly MINIM-03 "adaptive shard/prefix granularity").
-- Log the bucket-size histogram (top-10, max/mean) every run at `--verbose`; warn when max/mean > 5 (v1.0 research already proposed this threshold for merge).
-- Test with an adversarial input: synthetic poly-A-heavy reads + real adapter sequences. The CI synthetic generator (`scripts/bench/gen_synthetic.py`) should gain a low-complexity mode.
+- Record in the harness config and print in the report: input files + sha256 per side, thread counts per arm (`--num-threads` pinned, not defaulted), and the full comparator flag set (`merge -o out.jf in1.jf in2.jf` — defaults only, stated).
+- Add a **secondary like-for-like arm**: `rustkmer merge --num-threads 1` at least once per k, so the report contains a single-thread-vs-single-thread row alongside the "what a user gets" row. (rustkmer's `--num-threads` is accepted and mapped; parallel merge work is rayon-based — record what 1 thread actually changes in the route.)
+- State in the report that "each tool merges its own representation of identical, parity-validated input data" — one sentence, prevents a review cycle.
 
 **Warning signs:**
-Bucket file sizes span orders of magnitude; progress shows one bucket at 1% while others finish; RSS spikes during a single bucket's count phase; wall time dominated by one worker (flamegraph shows a single long `count_bucket` task).
+The report has no thread-count line for merge arms; someone proposes piping a dump through the other tool "to make inputs identical"; two reps of the same arm disagree wildly and the diff discussion never mentions parallelism.
 
-**Phase to address:** P2 (signature design + histogram), P3 (admission + re-partition). Confidence: MEDIUM on the published ratios, HIGH that the failure mode applies here.
+**Phase to address:** P1 (harness), P2 (report). Confidence: HIGH (manpage + binary help + measured cycles).
 
 ---
 
-### Pitfall 4: Super-mer boundary and read-end k-mers lost or double-counted
+### Pitfall 4: Discovering a jellyfish merge limitation AFTER burning full-scale reps
 
 **What goes wrong:**
-Super-mer construction (merging consecutive k-mers that share a minimizer) drops or duplicates windows at super-mer joins, at read ends, at N-interrupted runs, or for reads shorter than the minimizer window. Counts are off by small amounts that only show up on real data — the worst kind of exact-count bug.
+The first thing learned about `jellyfish merge` at full scale is learned mid-protocol: e.g. it turns out to take hours on 20 GiB inputs (single-threaded, "relatively slow"), or its `.jf`-capacity-derived output files (measured: output file size ≈ input capacity, 240 MB for a hash whose content is a fraction of that) blow the disk budget between reps, or the Phase-10 `.jf` outputs were deleted and regenerating them re-runs count. Any mid-protocol surprise invalidates counterbalancing (arms must interleave in rounds) and costs hours per rep.
 
 **Why it happens:**
-Off-by-one at the joins: consecutive super-mers are adjacent in window space; the boundary window belongs to exactly one of them. Reads shorter than `k + w - 1` have fewer than w windows — the "window" is the whole read and must still yield every one of its `len - k + 1` k-mers. The current extractor's semantics are pinned: `for i in 0..=(seq.len() - k)`, windows containing invalid characters are *skipped* (not stripped), sequences shorter than k contribute zero (`process_one_record`, `src/cli/commands/count.rs:377-411`). Edge k-mers appear in only one window (selection probability 1/w vs ~2/(w+1) — PeerJ syncmers; Zheng review) — for *counting* this is a balance issue, not correctness, because the minimizer is a pure function of the k-mer; correctness breaks only if the implementation special-cases edges inconsistently. Also: minimizer length m must be ≤ k — the API supports k = 1..64 (`KmerCounter::new`), so small-k inputs need a defined fallback (shorter m, or a direct dense table for tiny k), not a panic.
+Everything so far (v1.0 slice-scale merge, v2.0 count verdicts) characterized jellyfish *count*, not *merge*. The research for this document pinned the semantics on small fixtures, but runtime/memory at 20–90 GiB remains extrapolated until a scaled dry run executes.
 
 **How to avoid:**
-- Conservation invariant as a first-class test (v1.0 merge discipline: two phase-independent conservation checks, not a tautology): for every read, `sum(windows assigned to buckets) == number of valid windows per the current extractor`. Run it against the naive per-window extractor on an edge matrix: len ∈ {k-1, k, k+1, k+w-2, k+w-1, k+w}, N at start/middle/end, all-N, lowercase, palindromes, k ∈ {1, 5, 21, 31, 32, 33, 64}.
-- Reuse `process_one_record`'s window semantics verbatim in the partitioner (or better: extract it into the shared core so there is literally one definition — see Pitfall 10).
-- If reads are split into segments for parallelism, overlap segments by a full window length and deduplicate by window identity (Zheng review) — or simpler, never split below record granularity (the current CHUNK_SIZE design already keeps records whole).
+- P1 ends with a **full-protocol dress rehearsal at slice scale**: same harness code path, same parity pipeline (dump → normalize → sort → diff), same RSS/thermal/cache capture, jellyfish merge included. Exit criteria: every gate green, every artifact fingerprinted, protocol timings recorded.
+- Characterize remaining unknowns at an intermediate scale first (e.g. 2–4 GiB `.jf` inputs): wall time scaling, output file size, stderr/exit codes. Extrapolate to full scale and sanity-check disk/wall budgets against them before scheduling the counterbalanced rounds.
+- Decide input shape in P1 and stick to it: which databases (2 part-databases per k from the split parts), produced fresh or reused from Phase 10 (see Pitfall 8), same shape both tools.
 
 **Warning signs:**
-`total_kmers` differs from the old path by an amount proportional to read count (boundary loss) or to N count (semantic drift); conservation test fails only on short reads; k < m inputs panic or silently count zero.
+The first full-scale round is also the first time `jellyfish merge` runs at >1 GiB scale; the harness grows a "retry with different flags" branch during P2; counterbalancing degrades to "rustkmer first because it's faster to get results".
 
-**Phase to address:** P2. Confidence: HIGH on the code semantics, MEDIUM on the literature framing.
+**Phase to address:** P1. Confidence: HIGH on the mechanism (v1.0's parity-gate halt on attempt 1 is the exact precedent, `docs/benchmark-report.md:109-111`).
 
 ---
 
-### Category B — Disk-backed counting
-
-### Pitfall 5: Reinventing temp-file lifecycle — orphan accumulation and ENOSPC
+### Pitfall 5: Full-scale confounds — disk exhaustion, thermal history, page-cache warmth, and write-back
 
 **What goes wrong:**
-Disk-backed counting writes hundreds of bucket files. A crash (SIGKILL, OOM, panic under `panic="abort"`) leaves them behind; retries hit "No space left on device"; the disk fills with orphans. KMC-class temp usage is enormous — up to 350 GB for GIAB (WABI 2022), ~596 GB temp for a 729 Gbase human dataset at k=28 (NUS notes), 32 GB RAM / 389 GB temp for 614 GB input (KMC README) — MEDIUM, cross-checked. ENOSPC mid-count is a when, not an if, on dev laptops.
+At 40–90 GiB scale the merge benchmark measures the machine as much as the tools:
+- **Disk:** per full-scale rep, each tool writes an output of the same order as its inputs (rustkmer `.rkdb` ≈ 20 B/entry → ~18 GiB at k=21, ~21 GiB at k=31 per input; jellyfish `.jf` capacity-derived, likely tens of GiB each), plus prefix-cache merge temp chunks on the same or another volume. Three reps × two tools × two k ≈ 150–400 GiB transient (estimate) — ENOSPC mid-rep kills the round and, worse, a near-full APFS volume silently changes write performance.
+- **Thermal history:** fanless-class Apple Silicon shows up to ~54% sequential-order bias in sustained sweeps; back-to-back long I/O+memory-bandwidth reps heat-soak the machine, and the counterbalancing (round-robin) exists precisely for this — but only if rounds actually interleave and cooldown is real. The v2.0 protocol's 5 s cooldown was tuned for 2.5-min count runs; 40–90 GiB merge reps need a longer, pre-registered cooldown, and `pmset -g therm` state should be recorded per rep (readable without sudo).
+- **Page cache:** merge reads 20+ GiB inputs sequentially — rep 1 cold, rep 3 warm can differ on the order of 2× on an I/O-dominated arm. `sudo purge` on Apple Silicon reclaims only ~50–800 MB and cannot evict active pages, so cold-cache cannot be *guaranteed* on this host — exactly why the v1.0/v2.0 honesty discipline (record true `cache_state` per rep; declare cold-cache "PARTIALLY satisfied") exists and must carry into P2 verbatim.
+- **Write-back:** neither tool fsyncs; rep N's dirty output pages flush during rep N+1's window. A too-short cooldown imports the previous rep's flush cost into the next measurement.
 
 **Why it happens:**
-v1.0 already solved this for merge: process-unique `rustkmer-merge-<rand>/` subdirs, RAII cleanup, and a 7-day-TTL startup sweep that also reclaims loose chunk files (`src/database/temp_lifecycle.rs:45,82,135`). The sweep's selector is **prefix-based** — a new counting path that writes `rustkmer-count-*` (or worse, generic names) gets RAII only, and RAII does not run under `panic="abort"` (release profile) or SIGKILL. The existing `DiskOverflow` (`src/hash/overflow.rs`) is a trap for the unwary: its `Drop` only flushes/closes (`:149-153`) — it never deletes the directory, it is not registered with any sweep, its keys are u64-only (breaks k > 32), and it `sync_all`s every file (`:95`). It predates the v1.0 lifecycle discipline.
+Count-arm confound controls were sized for count-arm costs; merge arms are 10× the bytes moved. "It worked at slice scale" is the trap — at slice scale all of these effects are noise-level.
 
 **How to avoid:**
-- Generalize `temp_lifecycle.rs`: add a counting prefix constant paired with the sweep selector exactly like `MERGE_TEMP_PREFIX` / `CHUNK_FILE_PREFIXES` (the doc comment there already warns the prefix is the sweep's only selector). Reuse `create_merge_temp_subdir`'s pattern and `sweep_stale_merge_dirs`' TTL logic — do not write a second lifecycle module.
-- Pre-flight disk estimate from the distribution pass (super-mer volume ≈ input volume, KMC-class) + a guardrail refusal before writing (the bench harness already has a disk guardrail to copy).
-- ENOSPC mid-run: abort loudly, preserve shards for diagnosis, log paths — the v1.0 merge precedent ("failed prefix buckets abort the merge loudly with their shards preserved and logged").
-- Tests: SIGKILL orphan → next-run sweep reclaims; ENOSPC injection (small tmpfs / RLIMIT_FSIZE) → clean error, no silent truncation; sweep never deletes a *live* run's files (TTL test).
+- Pre-flight disk budget in the harness (the v1.0 harness already has a disk guardrail to copy): refuse to start unless free space ≥ budget for all planned outputs + temps; clean per-rep outputs (or write to a scratch volume) with the temp-lifecycle discipline.
+- Keep counterbalanced rounds truly interleaved; pre-register a cooldown scaled to rep duration (e.g. cooldown ≥ 10–20% of rep wall, or until `pmset -g therm` thermal pressure drops); record thermal state per rep in the results JSON.
+- Record `cache_state` per rep per arm exactly as v2.0 did; state the cold-cache caveat honestly in the report rather than claiming purged caches.
+- One warmup per tool, discarded, as in v2.0 — this also stabilizes allocator/page-cache state.
 
 **Warning signs:**
-`df` fills across runs; orphan dirs after a killed run; sweep log line reports 0 files while orphans exist (prefix mismatch); `DiskOverflow` appearing in a v2 diff.
+CV wall on a merge arm >10% (the v1.0 k=31 jellyfish count arm hit 14.8% — flagged); free-space drops by hundreds of GiB during the run; later rounds systematically faster than earlier rounds within the same arm; `pmset -g therm` shows sustained thermal pressure during rounds 2–3.
 
-**Phase to address:** P3. Confidence: HIGH (code + v1.0 precedent; KMC disk figures MEDIUM).
+**Phase to address:** P2 (protocol), P1 (disk pre-flight + dry run). Confidence: MEDIUM-HIGH (thermal/cache claims cross-checked web; disk figures are arithmetic on committed entry counts).
 
 ---
 
-### Pitfall 6: Disk I/O becomes the new bottleneck — fsync overkill and fd exhaustion
+### Pitfall 6: Porting the count-arm memory framing to merge — jellyfish merge is a streaming tool, so "leaner than jellyfish" is vacuous in this comparison
 
 **What goes wrong:**
-The two-pass design writes and re-reads the whole dataset; I/O cost is the dominant performance factor for disk-based counters (Bioinformatics btab797 — MEDIUM). Per-file or per-chunk `fsync` multiplies wall time for zero benefit (temp files are regenerable). Hundreds of simultaneously-open bucket writers hit the macOS default file-descriptor limit (256) — KMC's own docs tell macOS users to raise `ulimit -n 2048` because it creates "hundreds of intermediate files."
+The milestone's standing guardrail is "peak RSS below jellyfish" — true and meaningful for count (43.97 vs 46.84 GiB k=21; 68.52 vs 88.00 GiB k=31). Carrying that framing into the merge comparison predicts a false win: measured on the pinned binary, jellyfish merge of two 240 MB hashes peaked at **6.8 MB RSS** (streaming heap-based k-way merge) — it will hold ~tens of MB at full scale too. rustkmer merge streams at 32 B/k-mer *charge* but its chunk buffers and prefix-cache machinery will measure orders of magnitude above jellyfish merge's RSS. Two wrong conclusions are available: "rustkmer merge is 1000× worse on memory" (true, meaningless — both are trivially small) or "our merge needs memory work to beat jellyfish" (misdirected investment).
 
 **Why it happens:**
-Durability habits copied from database code (`DiskOverflow::close_current_file` does `sync_all`, `overflow.rs:95`); one-open-writer-per-bucket designs with 4^m buckets; assuming SSD bandwidth is free while 16 threads append interleaved to hundreds of files (random-ish write patterns).
+The guardrail was written for the count comparison where jellyfish's `-s`-sized hash dominates RSS. Merge has no `-s`, no in-memory rebuild — the RSS floor disappears. The pre-registered measurement discipline (max(rss, phys_footprint)) is still right; the *framing* of what the number means is what breaks.
 
 **How to avoid:**
-- No `fsync` on temp bucket files; `flush` at close only. Durability is required for the FINAL `.rkdb` exactly as much as it is today (the current count path does not fsync either — keep parity, don't "improve" it silently).
-- Buffered sequential appends; cap concurrently-open writers (LRU writer pool or per-worker bucket buffers flushed in large blocks — measure, don't guess). Keep bucket count in the hundreds (KMC3 caps bins ~2000), not 4^m.
-- Measure with `iostat -x 1` during P3 development; if pass-2 I/O wait dominates, the answer is bigger buckets / fewer passes, not more threads.
-- Handle EMFILE explicitly with an actionable error message (and document the ulimit guidance for macOS in the counting docs).
+- Pre-register in P1 what the merge verdict's decision axes are: wall time (primary), disk cost (outputs + temp, recorded), peak RSS (recorded honestly with max(rss, phys_footprint) — but reported as context, not as a win/loss axis).
+- Record which rustkmer merge route each rep took (streaming vs prefix-cache vs in-memory — the admission control routes by `--max-memory` and input size, `format.rs:989-1015`): a route change between reps silently compares different algorithms. Benchmark the default route ("what a user gets") and state the chosen route in the results JSON.
+- Keep the MEM guardrail where it belongs: any *performance change* to counting/extraction (P4) keeps full-scale count peak RSS below jellyfish. Merge benchmarking adds no such constraint.
 
 **Warning signs:**
-`iostat` shows 100% utilization with low throughput; flamegraph time in `sync_all`/`fsync`; "Too many open files" errors on macOS only; pass 2 slower than pass 1.
+A draft report table shows "RSS vs jellyfish: +4000%" as a loss; someone proposes raising `--max-memory` "to win the memory column"; results JSON lacks a route field for rustkmer merge arms.
 
-**Phase to address:** P3 (design), P4 (I/O tuning). Confidence: HIGH on mechanisms, MEDIUM on KMC operational figures.
+**Phase to address:** P1 (pre-registration), P2 (report). Confidence: HIGH (measured 6.8 MB on pinned binary; admission constants code-anchored).
 
 ---
 
-### Pitfall 7: mmap spill under an RSS budget, and dishonest admission accounting
+### Pitfall 7: Stale-doc contamination — old verdicts leak into the new one (and the new verdict lands next to a contradicting headline)
 
 **What goes wrong:**
-Spill files are memory-mapped "for speed"; mapped pages count into RSS, the measured peak blows the budget, and the CI memory gate fails — or worse, the budget check passes on paper while the process actually OOMs. Alternatively, admission control charges fantasy bytes-per-entry and the "bounded" counter exceeds the cap on real data.
+`docs/benchmark-report.md` still leads with the v1.0 k=21 **+420%** verdict — measured on a substitute dataset (CRR2044018, since deleted from disk) with the pre-engine binary. The authoritative v2.0 verdict (k=21 CLI 144.69 s vs 194.85 s — rustkmer *faster*) lives in planning artifacts. Three concrete contamination paths: (a) the merge report or its summaries quote v1.0 numbers as current context ("rustkmer is 5× slower at k=21, so merge is probably bad too"); (b) the PEXT research sizes the producer win against the stale 505 s k=21 wall instead of 144.69 s — inflating the predicted win ~3.5×; (c) HYG's drift fix happens *after* P2 ships, so the repo's visible benchmark doc and the fresh merge verdict contradict each other on the same page set.
 
 **Why it happens:**
-This is a pre-registered v1.0 lesson (PROJECT.md Context, Chorus3 investigation): "never mmap spill files when RSS is the budget" and "peak measured as max(rss, phys_footprint)". The merge admission model charges real measured bytes (96 B/k-mer in-memory, 32 B/k-mer streaming; the counter models 24 B hash overhead + key + 4 B count, `src/hash/table.rs:16-19`). A new counting path that estimates "k-mer = 8 bytes" and forgets table overhead, bucket buffers, and the sort arena repeats the v1.0 OOM-on-estimate bug in a new place.
+The stale file is mechanically rendered and internally consistent — it looks authoritative. The v1.0 report even says its input "no longer present on disk (verified 2026-11-14)", which is easy to miss. LLM- or human-summarized context tends to cite the most readable doc.
 
 **How to avoid:**
-- Read spill with `BufReader`, never mmap, when RSS is the budgeted resource. (mmap remains fine for read-only query paths where it already lives.)
-- Charge every component: per-bucket hash/sort arena, write buffers, decompression chunk, in-flight super-mer buffers. Reuse the merge admission pattern: estimate → hard route, not suggestion.
-- Pre-register the peak gate before measuring: max(rss, phys_footprint), measured live (the v1.0 bounded-memory tests already do red/green RSS assertions — copy that harness shape for counting).
+- Fix the drift FIRST (HYG item pulled into P1, not deferred): add a superseded banner or re-render `docs/benchmark-report.md` with a provenance line ("v1.0 snapshot; superseded by v2.0 Phase-10 verdicts; dataset deleted") so no later artifact can cite it unqualified.
+- The merge verdict report is generated by the same mechanical renderer discipline (`bench.py --render-report`; renderer contains no measurement literals; re-render reproduces byte-for-byte) from committed result JSONs — no hand-written numbers.
+- Every PEXT sizing computation cites v2.0 measured walls (144.69 / 147.08 s CLI) as its baseline, and the citation names the source run, not "the benchmark report".
 
 **Warning signs:**
-Measured peak ≈ budget + spill-file size (mmap signature); admission estimate vs live RSS diverge >20% on a 200M-record test; memory gate passes on Linux but fails on macOS (phys_footprint vs RSS divergence).
+Any sentence in new planning docs containing "+420%", "505 s", "CRR2044018", or "5× slower at k=21" without the word "superseded"; the merge report's context section citing a report whose input fingerprint says "no longer present on disk".
 
-**Phase to address:** P3. Confidence: HIGH (v1.0 measured precedent).
+**Phase to address:** HYG pulled into P1 (before P2 writes anything); P3 for sizing baselines. Confidence: HIGH (file contents verified 2026-11-16).
 
 ---
 
-### Category C — Exact-count preservation
-
-### Pitfall 8: Saturation / overflow semantics drift in the new counters
+### Pitfall 8: Unfingerprinted or missing merge inputs — the verdict rests on unreproducible data
 
 **What goes wrong:**
-A new per-bucket counter uses `saturating_add`, a smaller counter type (u8/u16 "like KMC"), or wrapping arithmetic. High-coverage k-mers (poly-A, adapters, rRNA, mitochondrial) clip silently; the exact-count contract dies without any error. Note the contrast: **KMC's default `-cs 255` clips counters at 255** (KMC issue #136, official source — MEDIUM cross-checked) — "KMC does it" is not a defense; rustkmer's product is exact u32.
+The merge arms need input databases: 2 rustkmer `.rkdb` (one per split part, per k) and 2 jellyfish `.jf`. If they are regenerated ad hoc without fingerprints, or reused from Phase 10 without revalidation (and possibly deleted since — the v1.0 report's own inputs vanished this way), then the parity gate validates nothing, and a mid-run regeneration silently changes the workload mid-counterbalancing.
 
 **Why it happens:**
-Space pressure tempts small counters (the Chorus3 2-bit saturating design was researched and REJECTED for exactly this reason, PROJECT.md Out of Scope). The current semantics are precise and pinned: `increment` returns `Err` when a count would exceed `u32::MAX`, with a verbatim message (`src/hash/table.rs:265-301`); `total_kmers` counts only successful increments (WR-03). Merge's `saturating_add` is a known carried debt (WR-02), not a precedent to copy. Cross-chunk summation in pass 2 (`count += chunk_count`) is a NEW overflow site that does not exist today.
+v2.0's count arms counted the complete r1 set per run; per-part databases may never have been persisted as artifacts. Reusing count *outputs* feels free until provenance questions start.
 
 **How to avoid:**
-- u32 exact counters everywhere; the overflow predicate and the verbatim error message stay identical on every path (the message is contract-pinned by tests).
-- Pass-2 summation uses checked arithmetic and surfaces the same overflow error — never `saturating_add`, never silent wrap.
-- Boundary tests at `u32::MAX - 1` / `u32::MAX` / overflow-attempt, per bucket and across chunk sums (extend the v1.0 merge tests that proved 2,000,000 and 16,777,216 round-trips).
-- Detection statistic: a histogram spike at exactly the counter maximum is the classic saturation fingerprint — add it to `stats` output review during verification.
+- P1 decides: reuse vs regenerate. Either way, every input artifact gets size + sha256 recorded in the results JSON (the harness already fingerprints inputs — keep it), plus a revalidation pass: the pre-gate of Pitfall 2 (input Totals match the committed Phase-10 parity values) runs before round 0.
+- Keep inputs on disk for the whole milestone and note their retention in the report (the anti-v1.0-lesson: committed fingerprints make numbers re-runnable via `--input` even after deletion).
+- If regenerating `.jf` inputs: they come from the same count runs whose parity rustkmer already proved — do not accept "close enough" `.jf` files from an unrecorded run.
 
 **Warning signs:**
-Counts plateau at 255 / 65535 / 4294967295; totals disagree between 1-thread and N-thread runs only on high-coverage inputs; the overflow error message text changes (tests catch it — do not "fix" the tests).
+Results JSON lists inputs without sha256; a merge arm's input Total differs from the committed 897,266,581 / 8,967,099,203 (k=21) or 1,146,353,600 / 8,275,694,030 (k=31) values; someone deletes 40 GiB of inputs "to free space" between rounds.
 
-**Phase to address:** P2/P3 (implementation), P5 (boundary proof). Confidence: HIGH.
+**Phase to address:** P1. Confidence: HIGH (v1.0 measured precedent; parity values from PROJECT.md v2.0 record).
 
 ---
 
-### Pitfall 9: Double-counting across buckets or passes; merge accumulation drift
+### Category B — Producer research & parallel extraction (PEXT)
+
+### Pitfall 9: Decompression vs extraction mis-attribution — sizing the win on the wrong half of the producer
 
 **What goes wrong:**
-The same canonical k-mer is counted in two buckets (partition function not disjoint), or a super-mer straddling a chunk boundary is processed twice, or pass 2 adds a bucket's partial counts twice. Totals inflate; distinct counts may even look right while per-key counts are wrong.
+The producer bundle is: open → gzip inflate → bio record parse → `for_each_window` encode → partition-route → batch send (`count_file_inner`, `src/count/engine.rs:803-871`). Phase 7 established the count phase is producer-bound (single producer ≈99.99% of parallel wall), but "producer" is exactly the bundle PEXT wants to split. If attribution is wrong, the D3 gate is fed a phantom predicted win: e.g. extraction parallelism is built (P4 executes) when gzip inflate — which is *inherently serial* on a single stream — was 60% of the producer wall and got no faster. The phase spends its budget and moves the full-scale wall by the residual fraction. This is the single most expensive failure mode available to v2.1.
 
-**Why it happens:**
-Two-pass pipelines have three independent summation boundaries (windows→super-mers, super-mers→buckets, bucket chunks→final) and each is an off-by-one opportunity. Canonical drift (Pitfall 1) is one cause; nondeterministic rayon fold/split boundaries (rayon docs: split points are nondeterministic — LOW, official docs) are another if fold accumulators are not order-independent.
+Two specific mis-reads to guard against:
+- **Kernel-wait is not extraction:** the Phase 5 profile showed 57.86% kernel wait/spin/syscall self-time — on-CPU self-time tables that don't subtract wait make any stage look hot. That profile is also from the *old DashMap engine* — citing its 38% "DashMap increment/hash" number against the current partitioned engine is stale evidence of the same kind as Pitfall 7.
+- **Byte-volume asymmetry:** the gz-vs-plain comparison (T_gz − T_plain ≈ inflate share) has a confound — the plain run reads ~3.1× the bytes from disk (~16 GiB vs ~5.2 GB for CRR1936095 r1). On this host's NVMe that's likely seconds, not tens of seconds, but it must be measured (pure-read control), not assumed.
 
-**How to avoid:**
-- Disjointness property test: for random k-mers, `bucket(canonical(x))` is a single value; for random reads, every valid window appears in exactly one super-mer (conservation, Pitfall 4).
-- Two phase-independent conservation checks (the v1.0 merge lesson: the "can-never-fire integrity tautology" was replaced by checks that could actually fail): (a) sum of per-bucket window counts == producer's window count; (b) sum of final counts == `total_kmers` atomic.
-- The full differential matrix in P5: old-path vs new-path AND `--threads 1` vs N, on committed golden baselines, across k ∈ {21, 31, 32, 33, 64} × canonical {on, off} (PCOUNT-04 discipline extended with an old-vs-new axis).
+**How to avoid (the concrete measurement design, all on the SHIPPED engine, builds fingerprinted with sha256 + commit):**
+1. **Arm A — stock:** gz input at a fixed random-record slice; record wall + `producer_nanos` (profiling feature; exists at `engine.rs:195-204`).
+2. **Arm B — pre-decompressed:** the same records pre-inflated to plain `.fq` at rest; `producer_nanos(A) − producer_nanos(B)` ≈ inflate share, corrected by a pure-read control that reads both files with no parsing (calibrates the byte-volume effect).
+3. **Arm C — stage sub-timers:** extend the profiling feature with per-stage producer timers (inflate / parse / extract / route-send), default builds untouched. This decomposes the producer without behavior change; the existing `producer_nanos` plumbing is the template.
+4. **Arm D — null consumer:** parse + `for_each_window` encode, discard keys (no routing, no tables). B vs D isolates encode; D vs A isolates table/route cost.
+- Deliverable: a written attribution table (fraction of producer wall per stage, with evidence per cell) that the D3 gate cites. If inflate dominates, the honest PEXT levers are file-level parallelism across the 2 split parts and producer/consumer overlap — not "parallel extraction" of a serial stream.
+- Re-run attribution on the current engine even where Phase 5 numbers exist — the engine changed twice since (Phases 7–8).
 
 **Warning signs:**
-`total_kmers` > sum of `len - k + 1` valid windows; new-path totals exceed old-path totals on the same input; 1-vs-N differential fails only at specific chunk sizes.
+The P3 report has one number labeled "producer" with no stage split; the gz-vs-plain delta is reported without a pure-read control; any attribution citing the 2026-11-11 Phase 5 breakdowns as current; predicted win computed as "(extraction share) × threads" where extraction share actually includes inflate.
 
-**Phase to address:** P2 (invariants), P5 (matrix proof). Confidence: HIGH.
+**Phase to address:** P3 (primary deliverable), P4 (only builds what the table justifies). Confidence: HIGH on the design; the code anchors (`engine.rs:803-871`, profiling feature) are HIGH.
 
 ---
 
-### Pitfall 10: Extraction-semantics drift between paths — INCLUDING a divergence that already exists between CLI and Python
+### Pitfall 10: Over-threading / wrong lever — parallelizing extraction when the gz stream is the ceiling
 
 **What goes wrong:**
-The partitioned path, the old path, and the Python path disagree about what a "counted k-mer" is. **Verified in code today:** the CLI skips windows containing non-ACGT characters (`process_one_record`, `count.rs:385-408` — the window is dropped, flanks are NOT joined), while the PyO3 file paths **strip non-ACGT bytes and concatenate the flanks** before extraction (`pyo3/src/counter.rs:737-741` FASTA, `:798-801` FASTQ: `.filter(|&b| matches!(b.to_ascii_uppercase(), b'A'|b'C'|b'G'|b'T'))`). On an N-containing read the Python surface counts chimeric k-mers spanning the N that the CLI never counts. Real Illumina reads contain Ns. v2.0's acceptance ("byte-identical optimized counts on BOTH surfaces") is ill-defined until this is surfaced and decided.
+"Parallel extraction" is interpreted as many extractors reading one gz stream. A single gzip stream inflates serially on one core (~150–400 MB/s/core; pigz's man page is explicit that decompression cannot be parallelized without specially prepared streams). N extractors then either (a) all block on one inflate (zero win, N−1 idle), or (b) someone splits the compressed stream at deflate-block boundaries — which requires speculative block discovery plus 32 KiB window reconstruction (rapidgzip-class, arXiv 2308.08955), a new dependency with real correctness surface (false-positive block finds must be trial-decoded), an MSRV audit, and gzip-block boundaries that do NOT align with FASTQ record boundaries. Meanwhile the safe lever — file-level parallelism across the two split parts (`part_001`, `part_006`) — is nearly free of these hazards but is left unexplored because "we already read both files in one loop".
 
 **Why it happens:**
-The two surfaces grew separate extraction loops (v1.0 parallelized the CLI path; the PyO3 file path kept its own sequential line-based loop). A rolling 2-bit encoder (a likely v2.0 optimization) adds a third semantics risk: the rolling value must be masked to 2k bits and the valid-window run counter RESET at every N and every record boundary, or it emits k-mers spanning invalid bases — silently reproducing the Python bug in the CLI.
+Thread-count is the visible knob. The Amdahl structure is invisible: predicted win = parallelizable-fraction × scaling-efficiency, and scaling-efficiency is capped by the *worker* side too — if extraction gets fast, workers' increment loops (memory-bandwidth-bound) become the new joint bottleneck, and extrapolating the producer win linearly overpromises.
 
 **How to avoid:**
-- P1 must run a CLI-vs-Python differential on N-containing and lowercase reads, record the divergence, and surface the semantics decision to the user (the v1.0 WR-04 precedent: user-visible behavior changes are surfaced, never silently "fixed"). The CLI semantics are the ones the jellyfish parity gate validated — they are the reference.
-- Extract ONE window-extraction function into the shared core; CLI, Python, and the partitioner all call it (this is also the delivery vehicle for Pitfall 16).
-- If a rolling encoder is introduced: differential-test it against the per-window `encode_kmer_bytes_u128` on the edge matrix (N at every position, record boundaries, lowercase, k ∈ {1..64}) before it replaces anything.
+- P3's sizing model names the ceiling explicitly: predicted full-scale win ≤ (producer parallelizable share from Pitfall 9's table) × min(worker-side scaling ceiling, measured producer scaling). No P4 gate without this model.
+- Order the levers: (1) file-level parallelism (2 producers, one per split part, each with its own partition tables merged via the exact checked `merge_local_counts` path — `engine.rs:494-517` precedent); (2) producer/consumer overlap refinement; (3) member-level parallel inflate for concatenated gzip; (4) rapidgzip-class only with a dependency audit (MSRV ≤ 1.82, no global allocator, multi-member regression 8102985 green, parity gate on real reads).
+- RSS guard: every added producer/buffer multiplies partition-table memory at full scale — the MEM guardrail (peak RSS < jellyfish at both k) must be re-measured, not asserted, since v2.0's Phase 6 already saw per-worker partitioned RSS rise once before (25 GiB) and had to be re-engineered (down to ~18 GiB).
 
 **Warning signs:**
-CLI vs Python distinct/total differ on the same real-read file (they do today, on N reads); rolling-encoder counts exceed per-window counts by ≈ (N count × k); parity vs jellyfish holds on synthetic ACGT-only data but fails on real reads.
+A PEXT prototype shows great extraction-stage speedup but <10% full-scale wall movement; `top` shows threads mostly in `inflate` waiting; a dependency proposal mentions zstd/rapidgzip without an MSRV note; projected RSS at 16 producers × partition tables exceeds the jellyfish ceiling on paper before any run.
 
-**Phase to address:** P1 (measure + decide), P2 (shared core). Confidence: HIGH (direct code observation — this is a finding, not a hypothesis).
+**Phase to address:** P3 (sizing model), P4 (lever order + guardrail re-measure). Confidence: HIGH on mechanism; MEDIUM on inflate throughput figures (cross-checked ecosystem data).
 
 ---
 
-### Category D — Parallelism
-
-### Pitfall 11: Single-threaded decompression masks every counting gain — and the current loop doesn't even overlap
+### Pitfall 11: Backpressure deadlocks and unclean teardown in the layered pipeline
 
 **What goes wrong:**
-Counting gets 5× faster and wall time barely moves, because gzip decompression is single-threaded (D-02) AND the producer loop **blocks during each chunk's `par_iter`** (`count.rs:481-506`: fill 4096 records → synchronous `try_fold/try_reduce` → clear → resume reading). Decompression and counting alternate; total ≈ T_decompress + T_count, never max(...). Amdahl caps the visible win at the decompression fraction. Worse, a "fix" that swaps in a parallel decoder can silently corrupt input: rustkmer already shipped a single-member gzip bug that read only member 1 of a concatenated-gzip input — caught by the parity gate on the first full-run attempt (bench.py:1291-1300, fix `8102985`, `MultiGzDecoder` at `src/io/fastq.rs:78`).
+The engine's parallel path is a contract: per-worker bounded `sync_channel(8)` batch queues + per-worker ack channels + token-checked flush barriers + Drop-joins-every-worker (`engine.rs:1125-1130`). Adding producer-side parallelism layers another bounded queue in front (or behind) and creates the classic failure set: (a) a worker error must unblock **every** blocked sender — today the worker drops its receiver and the producer's next send fails loud; with an intermediate stage, the error can strand a stage holding a full queue and the process hangs instead of failing; (b) `Drop` joins workers but a new producer thread that isn't in the join set leaks or hangs process exit (the `engine_drop_joins_workers` watchdog test exists precisely for this class); (c) queue depths tuned for the old producer rate misbehave at the new one — too deep inflates RSS (in-flight batches), too shallow serializes the pipeline the change was meant to parallelize. Separately, the known-flaky macOS `sample`-based thread-count test gets reused as a P4 acceptance gate and flakes under the new thread topology's races, burning verification cycles on phantom failures.
 
 **Why it happens:**
-Sequential `bio` readers over `GzDecoder` were the v1.0 scope; overlap was deferred. Teams reach for "use pigz" — but pigz's man page is explicit that decompression cannot be parallelized without specially prepared streams; pigz parallelizes *compression* only (MEDIUM, man page + rapidgzip paper). True parallel inflate of arbitrary gzip needs speculative deflate-block discovery + 32 KiB window reconstruction (rapidgzip, arXiv 2308.08955), whose block finder produces false positives that must be validated by trial decode — a new dependency with real correctness surface.
+Bounded backpressure is load-bearing correctness machinery, not an implementation detail — its invariants (senders drop on error; every thread in a join set; ack-before-flush-return) are easy to break while adding "just one more thread". The engine's own module docs enumerate these contracts (`engine.rs:44-53`); a parallel producer must extend them, not bypass them.
 
 **How to avoid:**
-- P1 measures the split FIRST: same input gz vs pre-decompressed, record T_decompress and T_count separately. This number decides how much of the 5× gap counting work can even address, and whether P4 should precede P2.
-- Cheapest safe wins, in order: (1) producer/consumer pipeline — a bounded queue decouples the reading thread from rayon workers (overlap without any new decoder); (2) file-level parallelism across the split parts / multiple inputs; (3) member-level parallelism for concatenated-gzip files; (4) only then consider a rapidgzip-class crate (MSRV + correctness audit, Pitfall 17).
-- ANY new decoder path must pass: the multi-member regression test, the parity gate on the measured input, and a concatenated-member fixture (two gz members whose second member alone changes the counts).
+- Design the new stage against the written contract: one owner per queue; any error drops all senders in its layer and propagates; the engine's join set covers every thread it spawned (Drop must return — keep the watchdog test shape and extend it to the new topology).
+- Error-injection tests at every boundary: worker dies mid-stream (exists: `worker_overflow_returns_verbatim_error_without_hanging` — keep green); NEW: producer-side stage dies mid-stream; upstream reader errors mid-file; flush barrier racing a failing send. Every failure path must join everything and return the first error.
+- Queue depth is a measured knob (sweep via the harness), never a guess; record chosen depths in the results JSON alongside RSS.
+- Replace the flaky `sample`-based thread-count gate with deterministic assertions: `engine.worker_count()` (public API) plus named-thread enumeration (`rustkmer-count-{i}`) in tests; if `sample` is used at all, tolerate races (retry/threshold), never single-shot gate.
 
 **Warning signs:**
-CPU utilization sawtooth (one core busy, then all cores, then one); gz input runs ≈ uncompressed run + constant; a "faster" build reports suspiciously small `total_kmers` (prefix-only read — the 8102985 fingerprint); `--threads` scaling flat on gz but linear on plain FASTQ.
+A hang in CI that never reproduces locally; RSS growth proportional to queue depth changes; a PR that adds `std::thread::spawn` without adding the thread to a Drop-join path; verification flake reports on the `sample` test that get "fixed" by re-running.
 
-**Phase to address:** P1 (measure), P4 (fix). Confidence: HIGH on the code structure, MEDIUM on decoder ecosystem claims.
+**Phase to address:** P4 (design + tests). Confidence: HIGH (contracts code-anchored; flake fact from milestone context).
 
 ---
 
-### Pitfall 12: Rayon granularity, per-chunk barriers, and thread-precedence regressions
+### Pitfall 12: Ordering and boundary semantics — order-independent counting hides order-dependent contracts
 
 **What goes wrong:**
-Tiny tasks (one 150 bp record per task) drown in work-stealing overhead; giant tasks (one bucket per task, skewed sizes — Pitfall 3) leave cores idle; a new partitioned engine builds its OWN thread pool and ignores the `--threads > RUSTKMER_THREADS > RAYON_NUM_THREADS > num_cpus` precedence chain (`resolve_thread_count`, `count.rs:802-847`), or nests manual threads inside the global pool and oversubscribes (the v1.0 Pitfall 14 reborn).
+Counting itself is commutative (sum per key; 1-vs-N differentials prove it), which invites "records can go anywhere". But three artifacts are order- or boundary-dependent:
+1. **Skip-warning batches:** the CLI prints one `Warning: Skipped {} k-mer{} with invalid characters in chunk` per 4096-record batch containing skips (`count.rs:255-260`; engine `SkipWarningBatch`, `engine.rs:1405-1444`) — legacy wording, batch grouping, and per-batch skip counts are all observable. Parallel record distribution regroups the 4096-record batches; a differential on warning *output text* breaks even when counts are byte-identical.
+2. **Rolling-encoder record boundaries:** any parallel batching that slices the byte *stream* (not records) can split a record across extractors; a rolling 2-bit encoder state carried across the boundary emits chimeric k-mers spanning records — the exact bug class v2.0 paid for on the Python surface (D2: 33 chimeric k-mers eliminated). Multi-line FASTQ records also break fixed-byte-offset splitting.
+3. **`skipped_windows` totals:** parallel producers make every aggregate a new summation site — the engine's convention is `checked_add` with verbatim overflow messages (`engine.rs:83-90`); a parallel-extraction path that sums with `+=` silently weakens it.
 
 **Why it happens:**
-The global pool is built ONCE per process (`count.rs:100-103`; `PyCounter::new` `counter.rs:188-197` — second construction is logged and ignored, IN-04). A v2 engine that calls `ThreadPoolBuilder::build_global` again, or creates a private pool sized from `num_cpus` directly, silently breaks the documented precedence and the Python `threads=` contract. rayon's `with_min_len`/`with_max_len` are hints, not guarantees (official docs — LOW single-fetch); fold/reduce split points are nondeterministic, so accumulators must be order-independent.
+The extractor is funneled through ONE `for_each_window` (`engine.rs:1008,1025`) — a parallel producer that keeps that funnel inherits the semantics; the risk is a "faster" path that forks a second extractor or slices raw bytes for throughput.
 
 **How to avoid:**
-- Route every new pool/thread decision through `resolve_thread_count` (CLI) and the existing `PyCounter::new` resolution (Python); keep the build-once idiom and the IN-04 warn.
-- Keep record-chunk batching (CHUNK_SIZE=4096 is the measured v1.0 starting point); if task granularity is tuned, sweep it in P4 with the bench harness, not by intuition. Bucket-level tasks in pass 2 should be sub-split when skewed (Pitfall 3's re-partition also fixes parallelism).
-- Differential `--threads 1` vs N stays green at every step (PCOUNT-04) — it catches both lost updates and precedence breakage.
-- Do not nest a second parallel runtime inside rayon workers; one pool, work-stealing handles the rest.
+- Records are the unit of parallel work. No byte-stream slicing below record granularity; no lookahead across record boundaries; the rolling encoder (if introduced) resets per record and is differential-tested against `encode_kmer_bytes_u128` on the edge matrix before adoption (v2.0 pitfall 10 carried forward, now scoped to PEXT paths).
+- Decide in P4's plan whether warning-batch grouping is contract or incidental: if contract, the parallel path must regroup warnings in sequential record order (or the decision to change output text is surfaced like every user-visible change — WR-04/D2 precedent). Whatever is decided, a differential asserts it.
+- All new summation sites use `checked_add` + verbatim messages; the message text is contract-pinned by tests.
+- Extend the 2N+1 gate (byte-identical `.rkdb` across thread counts, reachable RED control) to the new topologies — new thread counts, new producer counts, same fixture matrix.
 
 **Warning signs:**
-`--threads 64` slower than `--threads 16`; `top` shows more busy threads than the flag requested; scaling collapses after 4-8 threads; a second `PyCounter(threads=...)` in one process changes nothing (expected today — must stay documented, not become a surprise).
+Warning lines change count or wording under a thread-count change; distinct counts rise slightly on N-containing reads only (chimeric emission fingerprint); a 1-vs-2-producer differential fails only on multi-line-FASTQ fixtures; totals differ between producer topologies by amounts proportional to skip counts.
 
-**Phase to address:** P2/P4. Confidence: HIGH on code contracts, LOW on the rayon doc nuances (official docs, single fetch).
+**Phase to address:** P4 (design), P4 verification (differentials). Confidence: HIGH (all anchors in code; chimeric precedent from v2.0 Phase 9).
 
 ---
 
-### Pitfall 13: GIL and PyO3 regressions in the new engine
+### Pitfall 13: Page-cache warmth mis-attributed to extraction wins in the PEXT microbenches
 
 **What goes wrong:**
-A new counting entry point spawns rayon workers without `py.detach` → deadlock (worker blocks on GIL acquisition while the calling thread holds it — the official PyO3 parallelism guide's central warning, corroborated by the in-repo rationale at `pyo3/src/counter.rs:359-367`). Or workers touch Python objects → serialization on the GIL erase the speedup. Or someone reintroduces `allow_threads` (deprecated since 0.26) or a global allocator swap (disqualified for the Python surface — PROJECT.md).
+Arm B of the attribution design (Pitfall 9) requires pre-decompressing ~16 GiB to plain `.fq` — which *warms the page cache for exactly the file the plain arm then reads*. A/B arms run sequentially and B wins partly on cache. The same applies to any repeat-rep microbench: second-and-later reps read from cache, first reps don't; interleaving matters. A "1.5× producer win" that is really "1.5× on warm cache" inflates the D3 gate the same way Pitfall 9's mis-attribution would, just from the I/O side. (Merge-bench arms have the identical issue at 20+ GiB scale — Pitfall 5 — but PEXT microbenches are where it interacts with attribution.)
 
 **Why it happens:**
-The partitioned engine adds new call paths (bucket workers, spill I/O threads) that were not covered by v1.0's detach audit. Closures that capture `Bound<'_, PyAny>` instead of owned Send types compile-fail or force GIL re-acquisition. Progress callbacks tempt calling Python from workers.
+Pre-decompression is unavoidable for Arm B; the confound is in the design, not a mistake. v2.0 already learned the general lesson ("honest `cache_state: unavailable` x30"; counterbalanced reps), and the +6.6%-shrinks-to-3.5% back-to-back measurement effect is the canonical warning.
 
 **How to avoid:**
-- Every PyO3 method that spawns threads or blocks on I/O wraps the work in `py.detach`; closures capture only owned `Send` Rust types (the existing `process_*_file_on_counter` pattern is the template).
-- No Python callbacks from workers; progress goes through the Rust `log` facade / atomics polled from the Python side.
-- Keep the no-global-allocator rule; keep `py.detach` (not `allow_threads`).
-- Rebuild the extension before every pytest run (`maturin develop --release`) — the installed `.so` is prebuilt and stale-site-packages shadowing is a known backlog item (999.2). Assert the loaded module's version/commit in the test session header.
+- Counterbalance arm order at the rep level (A,B,B,A / B,A,A,B) and record `cache_state` per rep per arm, exactly as the v2.0 protocol did.
+- The pure-read control (Pitfall 9, step 2's correction) doubles as the cache-sensitivity probe: run it cold-ish first and warm; if its delta is material, report attribution bounds rather than a point estimate.
+- Slices fit in RAM more easily than full inputs — say so in the report: slice-scale cache effects are *larger*, another reason the D3 gate sizes at full scale (Pitfall 14).
 
 **Warning signs:**
-Python count hangs with one core at 100% (deadlock fingerprint); pytest passes but benchmarks show no speedup (stale `.so`); `PyCounter` methods that used to release the GIL now hold it (thread-scaling test in `pyo3/tests` goes flat).
+Arm B beats Arm A in every rep regardless of order; the pure-read control's time is nonzero and unreported; attribution deltas shrink when the schedule is counterbalanced after being designed sequentially.
 
-**Phase to address:** P5 (delivery), every phase's verification. Confidence: HIGH (official guide + in-repo corroboration).
+**Phase to address:** P3 (protocol). Confidence: MEDIUM-HIGH (protocol precedent in-repo; cache claims cross-checked web).
 
 ---
 
-### Category E — Faster hasher
-
-### Pitfall 14: Hasher swap without evidence — quality, shard balance, and iteration order
+### Pitfall 14: Sizing the D3 gate from slice scale — the slice wall is dominated by output sort/write, not the producer
 
 **What goes wrong:**
-`ahash` is replaced with a "faster" hasher and (a) the win is ~0 because hashing was never the bottleneck, (b) structured 2-bit-packed keys cluster SwissTable probe groups AND DashMap shards, reintroducing v1.0's lock contention through the back door, or (c) iteration order changes and `--no-sort` output / any order-sensitive golden drifts.
+Phase 8's measured finding: after the output-stage work, **"the slice wall is now dominated by output sort/write"** (PROJECT.md Phase 7/8 record: real 4M slice t16 23.83 → 9.31 s, sort delta 8.91 → 1.70 s). At slice scale, a producer improvement therefore moves the wall only a little — and a naive P3 measurement at slice scale *understates* the producer share, while a naive prototype *celebration* at slice scale overstates nothing at all because the wall doesn't move. Either way, slice-scale numbers mis-size the predicted full-scale win, and the D3 gate (execute P4 only if the win is worth it) fires wrong in both directions. The v1.0 k=21 "+420% from a slice on a substitute dataset" is the paid precedent for slice-scale verdicts.
 
 **Why it happens:**
-The Chorus3 small-k result (direct-address ~5× over DashMap at k=17) is *hypothesis-grade* for rustkmer — it was measured on saturating semantics at a different k on a 135 Mbp reference (PROJECT.md explicitly requires validation on the real workload). Meanwhile the evidence says ahash is already near-optimal for integer keys: rustc measured fxhash→ahash as 1-4% SLOWER (Rust Performance Book — MEDIUM cross-checked). k=21 keys are 42-bit structured integers; SwissTable uses top hash bits for control bytes and low bits for bucket index, and hashbrown's own benchmarks show 4.2-6.75× swings between hashers on serial/high-bit-heavy keys (hashbrown README — MEDIUM). DashMap derives its shard index from the hash, so weak avalanche = hot shards = the v1.0 RwLock bottleneck reborn. ahash is per-process randomly seeded; DashMap iteration is already run-to-run nondeterministic (the D-09 default-sort rationale, `count.rs:66-71`) — the default sort is what protects `.rkdb` byte-identity, not the hasher.
+Full-scale runs cost ~2.5 min each — cheap by P2 standards but 100× a slice run, so the temptation is to extrapolate. The composition of the wall (producer vs sort/write vs output) changes with scale because distinct-k-mer volume and output size grow superlinearly relative to records.
 
 **How to avoid:**
-- P1 profiles hashing cost on the REAL k=21 workload (flamegraph + `perf stat` cache misses; a synthetic key-distribution microbench of candidate hashers on actual counted keys). No swap without that evidence — user directive.
-- If evidence supports a swap: choose an SMHasher-passing hasher (wyhash/foldhash class; rustc-hash 2.x changed its algorithm and has MSRV 1.77 — verify any candidate's MSRV ≤ 1.80), measure per-shard entry-count histograms on real keys (max/mean shard ratio), and keep the default sort untouched.
-- Never weaken the hasher to fxhash-class for 2-bit keys without the shard histogram; "fast" hashers are fast precisely because they skip mixing.
-- Golden fixtures are sorted-mode only; if any `--no-sort` fixture exists, treat order drift as a surfaced decision, not a test update.
+- P3 sizes the predicted win at full scale: at least one attribution pass (Pitfall 9 arms A/C) on the full CRR1936095 r1 set per k. At ~2.5 min per count run this is minutes of machine time for the decision that gates an entire conditional phase.
+- If slice runs are used for development iteration, calibrate the sort/write share at full scale and *subtract it* before quoting producer shares — state the correction in the report.
+- The predicted-win model (Pitfall 10) consumes full-scale producer shares only.
 
 **Warning signs:**
-Hasher swap yields <5% on the full pipeline (Amdahl — hashing wasn't hot); per-shard histogram max/mean > 2; throughput collapses at higher thread counts only (shard contention); `--no-sort` output bytes change between builds.
+The P3 report's producer-share table cites only 4M-record slices; the D3 gate decision text references "at slice scale"; a prototype's full-scale A/B is deferred "until P4".
 
-**Phase to address:** P1 (decide), P4 (apply only if evidence). Confidence: MEDIUM (cross-checked ecosystem data), HIGH on the iteration-order/default-sort mechanics (code).
-
----
-
-### Category F — Integration & migration
-
-### Pitfall 15: Breaking `.rkdb` v2 byte-identity — bucket order is NOT sorted order
-
-**What goes wrong:**
-Partitioned counting emits counts in bucket order; concatenating buckets produces a file that is NOT globally ascending by canonical key. If the header still says `sorted: true`, the binary-search consumers (`src/database/query.rs`, prefix query) silently return wrong answers. Even with a correct sort, header-field drift (flags, offsets, totals) breaks the golden sha256 fixtures and downstream compatibility.
-
-**Why it happens:**
-v1.0 merge learned this exact lesson: first-4-bases prefix bucketing concatenates ascending ONLY because the first bases are the high bytes of the encoding (the CR-01/WR-03 fixes; "sorted: true header is truthful by construction — proven by querying through both binary-search consumers"). **Minimizer order has no relationship to key order** — the prefix trick does not transfer. The header literal is pinned (`count.rs:725-736`: `data_offset=42`, `index_offset=0`, `total_kmers`/`unique_kmers` = record count, `file_size` in-memory only) and the entry writer is the single source of truth in `format.rs` (FOUND-03). Note the IN-03 name collision: `KmerCounter::total_kmers` = SUM of counts, `DatabaseHeader::total_kmers` = RECORD count (`table.rs:460-473`) — a new writer that "fixes" the header to the sum breaks byte-identity.
-
-**How to avoid:**
-- Final stage = k-way merge of per-bucket sorted runs into one globally ascending stream (reuse the v1.0 `streaming_merge.rs` VecDeque-backed k-way merge — it exists, is record-aligned and tail-carrying) or an external sort. Stream it; do not materialize (Pitfall in Performance Traps: `get_all_counts`).
-- Prove sortedness through BOTH binary-search consumers, not by inspecting the flag (v1.0 pattern); golden sha256 byte-identity vs the current counter's output on the committed fixtures, captured BEFORE the refactor lands.
-- Header semantics frozen: same literals, same single writer. Any format change is a surfaced decision per PROJECT.md Constraints — not a side effect.
-
-**Warning signs:**
-Golden sha256 mismatch; `query` returns None for k-mers that `dump` shows present; prefix query results change; header `sorted` flag true while a linear scan finds a descending pair.
-
-**Phase to address:** P2 (output stage), P5 (proof). Confidence: HIGH.
-
----
-
-### Pitfall 16: Dual-surface divergence — the CLI gets the win, Python doesn't
-
-**What goes wrong:**
-The new engine is wired into `execute_count` only. `pyrustkmer` keeps its own file-counting loops — which are **sequential today** (verified: `process_fasta_file_on_counter` / `process_fastq_file_on_counter`, `pyo3/src/counter.rs:700-809`, contain no rayon parallelism at all; there is no `par_iter` anywhere in `pyo3/src/`). The CLI closes the k=21 gap; Python stays ≥5× slower (worse than the CLI, since it never got the chunked parallel path). The milestone acceptance explicitly includes the Python surface — this fails it.
-
-**Why it happens:**
-The shared core is the *table* (`KmerCounter`), but the *pipelines* diverged: CLI has chunked rayon + bio readers; Python has line-based sequential loops + its own extraction semantics (Pitfall 10). Swapping the table implementation under both does not deliver pipeline wins to Python. v1.0 merge solved the identical problem with a shared path-shaped entry point (`merge_databases_to_path`) that both front-ends call — the counting equivalent does not exist yet.
-
-**How to avoid:**
-- P1/P2 build ONE counting entry point in the core (input paths → extraction → counting → output), consumed by `execute_count` AND `PyCounter::add_from_*`. The PyO3 layer becomes argument validation + `py.detach` + error mapping, nothing else.
-- P5 adds a Python-surface benchmark to the gate (revive the commented-out `python_cli_comparison` criterion bench or a pytest-benchmark equivalent) with its own committed baseline — "no Python regression" must be measured, not asserted.
-- Public API frozen: `PyCounter(kmer_length, canonical, initial_capacity, threads)` signatures and error types unchanged; `--size` may become advisory for the partitioned engine but must still parse (document, don't remove).
-
-**Warning signs:**
-CLI benchmark improves while the Python benchmark is flat; `pyo3/tests` still pass (they assert correctness, not speed — that's the trap); grep shows counting logic still living in `pyo3/src/counter.rs` after P2.
-
-**Phase to address:** P1 (groundwork), P2 (shared entry point), P5 (measured proof). Confidence: HIGH (code-verified).
-
----
-
-### Pitfall 17: MSRV and dependency traps
-
-**What goes wrong:**
-New code or a new dependency uses post-1.80 APIs and the `clippy::incompatible_msrv` gate (`-D warnings`, both crates, 3-OS CI) turns the PR red — the `is_multiple_of` incident (8 pre-existing calls, stable 1.87) is the paid precedent. Or a dependency drags in a global allocator, a newer PyO3, or an MSRV > 1.80 transitively.
-
-**Why it happens:**
-Dev hosts run current stable, so local `cargo clippy` passes while the MSRV gate fails. Attractive v2.0 dependencies (rapidgzip-class decoders, foldhash, wyhash, CQF crates) have unvetted MSRVs; rustc-hash 2.x is MSRV 1.77 (OK) but that was verified, not assumed. The constraint is explicit: work within the established dependency set (PROJECT.md Constraints); a global allocator is disqualified for the PyO3 surface.
-
-**How to avoid:**
-- Every phase's verification runs clippy with the 1.80 toolchain (or the MSRV-aware lint as CI does) on BOTH crates — not just the dev-host stable.
-- Before adding any crate: check `rust-version` in its manifest, its transitive tree (`cargo tree`), and that it does not set `#[global_allocator]` or bump PyO3. Prefer std/existing-dep solutions (a bounded-queue pipeline needs no new crate; `std::sync::mpsc`/existing parking_lot suffice).
-- New std APIs: check stabilization against 1.80 before use (the lint catches most, but not all patterns).
-
-**Warning signs:**
-CI clippy red while local green; `cargo tree -i pyo3` shows two PyO3 versions; a dependency's README mentions allocator features.
-
-**Phase to address:** All phases; P4 especially (new-dep pressure). Confidence: HIGH.
-
----
-
-### Category G — Measurement
-
-### Pitfall 18: Benchmark unfairness — KMC3's defaults are NOT exact counting
-
-**What goes wrong:**
-The BENCH-V2-01 KMC3 comparison runs `kmc -k21 ...` with defaults and either (a) the parity gate "fails" and someone weakens rustkmer to match, or (b) the gate is skipped and the timing comparison is meaningless. Verified against the official KMC source (`kmc_CLI/kmc.cpp` usage text) and issue #136 (MEDIUM, cross-checked): **`-ci` defaults to 2** (singleton k-mers excluded), **`-cs` defaults to 255** (counters SATURATE at 255), **`-cx` defaults to 1e9** (ultra-frequent k-mers excluded), `-m` defaults to 12 GB RAM, `-sm` strict-memory mode is off. rustkmer counts every k-mer exactly into u32. These tools are not counting the same thing out of the box.
-
-**Why it happens:**
-The v1.0 parity discipline (one `BenchmarkConfig` drives both command lines, `bench.py:172-173`) was built for jellyfish, whose matched settings are already pinned (generous `-s`, `-C` canonical, matched `-t`). KMC3 has three independent filtering/clipping knobs that jellyfish doesn't, and its counter width scales with `-cs` — so configuring it for exact u32 counting CHANGES its memory/speed profile. Comparing rustkmer-exact against KMC-default is comparing different products.
-
-**How to avoid:**
-- Extend `BenchmarkConfig` with a KMC3 member that derives: `-ci1 -cx4294967295 -cs4294967295`, matched `-t`, canonical on, `-m` set to the agreed budget (and record whether `-sm` is used). Re-verify defaults via `kmc` help at benchmark time (the source checked here is master, not a pinned release).
-- Parity gate BEFORE any timing, on the measured input itself (the existing gate's contract: exit 0 parity / 1 mismatch / 2 methodology) — a KMC3 mismatch is a methodology finding, never a reason to touch rustkmer's semantics.
-- Record the config honestly in the report: "KMC3 with u32 counters and no count filtering" is a different (fair) comparison than KMC3 defaults, and the report must say which ran. Note KMC3's disk-backed nature: its temp disk usage is part of its cost — record temp-dir size and disk class.
-
-**Warning signs:**
-KMC3 distinct count < rustkmer unique_kmers by roughly the singleton fraction; KMC3 max count == 255; parity gate skipped "to save time"; KMC3 numbers look dramatically better than published exact-count benchmarks.
-
-**Phase to address:** P5. Confidence: MEDIUM (official source + issue cross-check; re-verify at run time).
-
----
-
-### Pitfall 19: Profiling a stale binary, warm cache, or a non-representative slice
-
-**What goes wrong:**
-P1's root-cause profile measures the wrong thing: a stale release binary (or stale prebuilt `.so` — backlog 999.2's site-packages shadowing), a warm page cache (decompression/IO fraction collapses), a head-of-file slice (one flowcell region, unrepresentative N/error/poly-A profile), or synthetic reads (no adapter dimers, no quality decay, no low-complexity skew — exactly the features that drive k=21 behavior and bucket skew). The architecture decision then rests on garbage evidence — violating the user's "evidence before architecture" directive in the most expensive way.
-
-**Why it happens:**
-v1.0 paid for every one of these: a dev-host baseline breached CI thresholds (→ per-platform baselines bootstrapped from the CI runner class, `baselines/bench_baseline.{darwin,linux}.json`); cold-cache purge was unavailable (→ honest per-rep `cache_state` recording, "PARTIALLY satisfied" stated); the first full run was halted by the parity gate (→ timing never trusted before parity). Profiling is benchmarking with the same failure modes plus one more: attribution (decompression vs hashing vs memory bandwidth vs rayon scheduling).
-
-**How to avoid:**
-- Fingerprint every profile artifact: binary path + sha256 + git commit + build profile; for Python, the loaded module's `__file__` + version, asserted after `maturin develop --release`. The bench harness already records binary path and harness commit — extend the same discipline to P1's profiling notes.
-- Attribution runs: gz vs pre-decompressed same input (isolates decompression); `--threads 1` vs N (isolates parallel efficiency); uncompressed + pre-encoded synthetic keys (isolates hashing/table cost); real CRR slice vs synthetic (isolates distribution effects). Record true cache_state per rep; counterbalanced reps; medians.
-- Slices are random subsamples of records (not `head`), large enough to stabilize the distinct-k-mer curve; the degradation ladder stays honest about what each tier can and cannot show.
-- P1's deliverable is a written attribution table (fraction of wall time per component, with evidence) that P2-P4 scope decisions cite. If the table says decompression dominates, P4 goes first — the roadmap must allow that reordering.
-
-**Warning signs:**
-Profile totals don't match the bench harness's wall time for the same input; "hot" functions vanish after a rebuild; slice-based distinct counts extrapolate linearly (they shouldn't — distinct curves saturate); Python profile shows an old version string.
-
-**Phase to address:** P1 (primary), P5 (final verdict). Confidence: HIGH (v1.0 measured precedent).
+**Phase to address:** P3. Confidence: HIGH (Phase 8 measured record; v1.0 precedent).
 
 ---
 
 ## Technical Debt Patterns
 
-Shortcuts that seem reasonable but create long-term problems.
-
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Small/saturating counters (u8/u16/2-bit) per bucket | Big memory win | Breaks the exact-u32 contract; the product's core value | **Never** (Chorus3 precedent, PROJECT.md Out of Scope) |
-| CQF as the counting structure without exact-mode proof | Memory-efficient, cache-friendly | A quotient filter is approximate membership; false positives corrupt counts unless an exact counting variant with full remainders + verification is used | Only with an exactness proof on the golden matrix; training-knowledge claim — verify at architecture decision (LOW) |
-| Reuse `DiskOverflow` as-is for spill | Code already exists | No deletion on Drop, no sweep registration, u64-only keys, per-file fsync — orphan + k>32 + perf bugs | Prototype throwaway only; P3 must use `temp_lifecycle.rs` |
-| Skip the final global sort, set `sorted: false` | Saves the k-way merge stage | Breaks byte-identity goldens; binary-search consumers disabled; user-visible break | **Never** as default; only via explicit surfaced decision |
-| Silently "fix" the Python N-stripping semantics | Surfaces agree | Changes counts for existing Python users without consent | **Never** silently — surface as a decision (WR-04 precedent), then fix in the shared core |
-| Hasher swap without P1 evidence | Feels like progress | Possibly zero win, shard imbalance risk, iteration-order drift | **Never** (user directive: evidence before architecture) |
-| fsync on temp buckets "for safety" | Crash-durability illusion | Multiplies wall time; temp data is regenerable | **Never** for temp; final output keeps today's semantics |
-| mmap spill files | Easy random access | RSS accounting blows the budget (v1.0 pre-registered lesson) | **Never** when RSS is the budgeted resource |
-| Update golden fixtures to make the diff green | Unblocks CI | Destroys the only byte-identity evidence | **Never** — goldens change only by explicit decision with old-vs-new differential |
+| Parity via `jellyfish stats` totals only (skip per-key diff) | Minutes saved on gate design | Structurally cannot catch key-space mixing (Pitfall 1); verdict untrustworthy | **Never** as the whole gate; fine as the fast pre-gate |
+| Quoting stale reports (v1.0 k=21 +420%) as context | Saves a look-up | Contaminates verdicts and sizing (Pitfall 7); contradicts shipped results | **Never** unqualified; only with a "superseded, substitute dataset" label |
+| Comparing merge walls without recording thread counts/routes | Simpler config | Report unverifiable; route changes between reps silently compare algorithms (Pitfalls 3, 6) | **Never**; record both, add the 1-thread arm |
+| Reusing intermediate databases without sha256 + Total revalidation | Hours saved on regeneration | Parity gate validates nothing; unreproducible verdict (Pitfall 8) | Only with fingerprints + pre-gate revalidation |
+| Skipping the full-protocol slice dry run | One day saved in P1 | Mid-protocol surprises invalidate counterbalancing (Pitfall 4) | **Never** before first full-scale round |
+| Slice-scale extrapolation for the D3 gate | Fast iteration | Wall composition differs at scale; verdict mis-sized both directions (Pitfall 14) | Dev iteration only; never for the gate decision |
+| `+=` on new aggregate sites in parallel paths | Saves typing | Wraps silently; violates the checked-sum convention (`engine.rs:83-119`) | **Never** |
+| Forking a second extractor in a parallel reader | Feels faster | Chimeric k-mers at boundaries; semantics drift (Pitfall 12) | **Never**; extend the single `for_each_window` funnel |
+| Trusting `sample`-based thread counts as gates | Easy to write | Known flake under races burns verification cycles (Pitfall 11) | Only with retry/tolerance; prefer `worker_count()` asserts |
+| Deep queues "to be safe" | No stalls in dev | RSS inflation at full scale; MEM guardrail risk (Pitfall 11) | Measured knob, recorded in results |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| `.rkdb` writer | Inlining a second header/entry writer in the new engine | Delegate to `DatabaseHeader::write_to` / `KmerEntry::write_to` in `format.rs` (FOUND-03 single source); header literals frozen (`count.rs:725-736`) |
-| Binary-search consumers | Trusting the `sorted` flag | Prove ascending order by querying through `DatabaseQuery` AND prefix query (v1.0 merge pattern) |
-| PyO3 GIL | Spawning workers without `py.detach`; capturing `Bound` types | detach + owned Send captures (`counter.rs:359-367` template); no Python callbacks from workers |
-| rayon global pool | Second `build_global` or private pool bypassing precedence | Build-once idiom + `resolve_thread_count` chain; IN-04 warn on re-init |
-| Temp lifecycle | New prefix without extending the sweep selector | Prefix constant paired with sweep (temp_lifecycle.rs doc warns: prefix is the only selector) |
-| gzip input | Single-member decode; assuming pigz parallelizes reads | `MultiGzDecoder` semantics preserved (regression 8102985); pigz decompresses sequentially |
-| Bench parity gate | Timing first, parity later; KMC3 defaults | Parity on the measured input before timing; KMC3 `-ci1 -cx<u32max> -cs<u32max>` |
-| CI baselines | Regenerating from a dev host | Bootstrap only from the CI runner class's own artifacts (documented procedure in scripts/bench/README.md) |
-| MSRV gate | Local stable clippy only | 1.80-aware clippy on both crates; MSRV-audit new deps |
-| Error strings | Rewording pinned messages | `tests/007-api-compatibility/` asserts exact text; overflow message verbatim (`table.rs:296-301`) |
-| `--size` / `initial_capacity` | Removing or honoring it literally in a partitioned engine | Keep parsing; document advisory semantics if the engine changes |
+| `jellyfish merge` | Assuming count-arm knowledge transfers (e.g. `-s` sizing; expecting parallel speed) | Merge has no `-s`, is single-threaded, additive; characterize on the pinned binary (done in this research; re-verify at P1) |
+| `jellyfish dump` → parity pipeline | Parsing FASTA-style headers; unsorted diff | Use `dump -c` (2-column), `LC_ALL=C sort` both sides, `cmp` the streams; keys are unique so no stability concern |
+| rustkmer `stats` vs `.rkdb` header | Mixing the two `total_kmers` definitions (sum-of-counts vs record count, IN-03) | Name the definition per check; stream entries for conservation sums |
+| Merge admission routing | Benchmarking "rustkmer merge" without recording which route (streaming / prefix-cache / in-memory) ran | Record route per rep in results JSON (`format.rs:989-1015`); benchmark the default route, state it |
+| Harness (`scripts/bench/`) | Adding merge arms outside the `BenchmarkConfig` single-source pattern | Extend `BenchmarkConfig`; both command lines derive from it (v1.0 `bench.py:172-173` pattern) |
+| Results reporting | Hand-editing the verdict report | Renderer-generated from committed JSONs (`--render-report` discipline); hand-edits are detectable by re-render |
+| Input lifecycle | Deleting multi-GiB artifacts mid-milestone to free space | Retention plan in P1; fingerprints make post-deletion re-runs possible via `--input` |
+| Thermal state | Trusting the 5 s v2.0 cooldown for 40–90 GiB reps | Pre-register scaled cooldown; record `pmset -g therm` per rep |
+| macOS page cache | Believing `sudo purge` gives cold caches on Apple Silicon | It reclaims ~50–800 MB of inactive pages only; keep honest `cache_state` recording |
+| PyO3 surface (if P4 runs) | Measuring Python parity with a stale `.so` | Rebuild `pyrustkmer` (`maturin develop --release`, `.venv313`, unset CONDA_PREFIX) and assert module version in the session header |
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Per-chunk producer barrier (`count.rs:481-506`) | CPU sawtooth; gz wall ≈ decompress + count | Bounded-queue producer/consumer overlap (P4) | Any input where decompression ≥ 20% of wall |
-| Per-window O(k) encoding (`encode_kmer_bytes_u128`, `encoding.rs:221-252`) | Encode hot in flamegraph; cost scales with k | Rolling 2-bit encoder with mask + N-reset, differential-tested (P1 measures, P4 applies) | Every run; ~k base-ops per window vs O(1) rolling |
-| `get_all_counts` full materialization (`table.rs:340-347`) | Output-time RSS ≈ 2× table; OOM at write | Stream sorted bucket runs to the writer; never collect the whole table into `Vec<(u128,u32)>` (24 B/entry second copy) | >100M distinct k-mers; fatal at human scale |
-| Text-output sort decodes both keys to String per comparison (`count.rs:662-667`) | Text dump takes hours at scale | Sort by numeric key (same order for fixed k), decode once at write | >10M entries; catastrophic at 1B+ |
-| Single-threaded gzip (D-02) | One core pegged during read phases | Pipeline overlap; file/member parallelism; rapidgzip-class only with audit | gz inputs always; ~100-200 MB/s/core ceiling |
-| Tiny rayon tasks (per-record) | Stealing overhead dominates; scaling flat | Keep 4096-record chunks; granularity sweeps via harness | Task work < ~10 µs |
-| Hundreds of open bucket writers | EMFILE on macOS (default 256) | Writer pool / capped open files; document ulimit (KMC precedent) | Bucket count > fd limit |
-| Warm page cache in reps | 2× variance; "cold" claims false | Record true cache_state; counterbalanced reps; medians | Every repeated-input benchmark |
+| Serial inflate inside the producer | gz wall ≈ plain wall + inflate; extraction wins invisible in gz runs | Attribute first (Pitfall 9); file-level parallelism before stream splitting | Any gz input ≥ ~20% of producer wall |
+| Kernel-wait read as stage cost | "Extraction is 57% hot" from self-time tables | Subtract wait; use profiling-feature stage timers on-CPU only | Every profile on I/O-coupled paths |
+| Warm-cache A/B | Later arm wins consistently | Counterbalance + `cache_state` per rep | Every repeated-input benchmark |
+| Write-back bleed | Rep N+1 slower than rep N within an arm | Cooldown scaled to rep size; warmup discarded | Reps ≥ tens of GiB written |
+| Worker-side becomes joint bottleneck | Producer 2× faster, wall moves 10% | Model the joint ceiling (Pitfall 10); full-scale A/B before the gate | After any producer speedup lands |
+| Disk near-full during rounds | Wall variance grows; ENOSPC kills round 3 | Pre-flight disk budget + per-rep cleanup | 150–400 GiB transient (estimate) |
+| Slice-scale D3 gating | Prototype wins at 4M records, not at 5.2 GB gz | Full-scale attribution before the gate | Always (wall composition is scale-dependent) |
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Parsing bucket/temp files with unchecked indexing | Malformed spill file → panic → `panic="abort"` → no RAII cleanup (≈150 non-test `unwrap()` sites across parsers/merge already flagged in CONCERNS.md) | New spill readers use `?` + length validation; fuzz the bucket reader; TTL sweep is the backstop, not the plan |
-| Predictable temp names | Symlink/collision attacks on shared tmp | Keep process-unique random subdirs (temp_lifecycle pattern) |
-| `env::set_var` while rayon workers live | UB-adjacent std hazard (config/manager.rs:492-498, CONCERNS.md) | New code passes config explicitly; never mutate env after pool spawn |
-| Adversarial low-complexity input | Bucket blowup → OOM/disk exhaustion DoS | Bucket admission + re-partition (Pitfall 3); disk guardrail (Pitfall 5) |
-| Unbounded temp growth on repeated crashes | Disk exhaustion across runs | TTL sweep extended to counting prefix; sweep logs what it reclaimed |
+| Unvalidated parsing of the parity dump pipeline (sorting/normalizing tool output) | Malformed tool output crashes the harness mid-round; partial results mistaken for verdicts | Treat tool outputs as untrusted data; fail loud with exit codes; keep harness parsing separate from measurement |
+| Temp/scratch sprawl in `scripts/bench/scratch/` | Hundreds of GiB of stale slice/temp outputs accumulate on the dev host | Reuse the temp-lifecycle discipline (TTL sweep pattern, `temp_lifecycle.rs`); scratch cleanup step in the harness |
+| Running long counterbalanced rounds with sudo-purge workarounds from random blogs | Unvetted system modifications on the dev host | Only the documented no-sudo protocol (`cache_state` honesty); no new system-level hacks |
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| Silent spill: count suddenly 10× slower when budget exceeded | "rustkmer got slow" bug reports | Report the chosen mode + temp dir + estimated temp usage at start (merge already routes loudly) |
-| Second `PyCounter(threads=N)` ignored | Python users think they control parallelism | Keep IN-04 warn; document build-once semantics in the docstring |
-| Two-pass progress looks hung | Users kill pass 2 mid-run (orphan files) | Per-pass progress via indicatif (existing dep); document temp cleanup on interrupt |
-| Temp disk surprise (hundreds of GB, KMC-class) | Filled disks on laptops | Pre-flight estimate + refusal with a clear message; document the disk/RAM tradeoff |
-| Error-message drift | Pipeline scripts matching on text break | Contract-pinned strings stay verbatim |
+| Merge verdict report doesn't state thread counts, routes, or "each tool merges its own representation" | Readers can't judge what was compared; review cycles re-litigate methodology | One methodology block per the v1.0 report shape — it already carries these lines for count |
+| PEXT research report jargon ("producer-bound", "D3 gate") without the 2-line plain statement | Stakeholders can't act on the invest/no-invest recommendation | Every report opens with the decision, the number, and the condition |
+| Slow `jellyfish merge` surprises users of the *repo docs* | "rustkmer merge is slow" FUD from misread benchmarks | The report states comparator parallelism explicitly (single-threaded comparator; like-for-like 1-thread row present) |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Partitioned counting:** conservation + disjointness property tests pass on the edge matrix (len k-1/k/k+1/k+w-2/k+w-1, N positions, lowercase, palindromes, k ∈ {1,5,21,31,32,33,64}) — not just "tests green on the golden input"
-- [ ] **Canonical minimizer:** `minimizer(x) == minimizer(revcomp(x))` proptest exists and runs in CI
-- [ ] **Exact counts:** overflow boundary tests at u32::MAX-1/MAX per bucket AND across chunk sums; overflow message verbatim
-- [ ] **Byte-identity:** golden sha256 vs pre-refactor output, sorted mode, both surfaces; sortedness proven through BOTH binary-search consumers
-- [ ] **1-vs-N AND old-vs-new:** differential matrix across k × canonical, committed baselines (PCOUNT-04 extended)
-- [ ] **CLI vs Python:** N-containing-read differential run and the semantics decision recorded (Pitfall 10) — surfaces actually agree
-- [ ] **Python speed:** a Python-surface benchmark with a committed baseline shows the win (not just pytest correctness)
-- [ ] **Multi-member gzip:** regression 8102985 green on every decoder path introduced
-- [ ] **Temp lifecycle:** SIGKILL orphan → sweep test; ENOSPC injection test; sweep selector covers the counting prefix
-- [ ] **Memory budget:** live RSS/phys_footprint red/green test at the declared cap (v1.0 bounded-memory harness shape); no mmap spill
-- [ ] **Bucket skew:** histogram logged; adversarial poly-A input bounded; max/mean warning fires
-- [ ] **KMC3 parity:** `-ci1 -cx<u32max> -cs<u32max>` config recorded; parity gate ran on the measured input BEFORE timing
-- [ ] **MSRV:** 1.80 clippy green on both crates; new deps MSRV-audited
-- [ ] **Baselines:** regenerated from the CI runner class, per platform; report states true cache_state
-- [ ] **Binary provenance:** profile/bench artifacts carry binary sha256 + commit; Python module version asserted after rebuild
+- [ ] **Parity gate:** per-key three-way equality implemented (rustkmer-merge vs jellyfish-merge vs independent recount) — not just stats totals; pre-gate conservation used the *sum-of-counts* definition explicitly
+- [ ] **Canonicality:** both sides' inputs verified canonical at P1; harness config asserts it; jellyfish silent-mix behavior documented in the report
+- [ ] **Dry run:** full protocol (both tools, parity pipeline, RSS/thermal/cache capture) executed green at slice scale BEFORE round 0
+- [ ] **Provenance:** every input and output artifact has size + sha256 in the results JSON; input Totals match committed Phase-10 values before round 0; retention plan stated
+- [ ] **Methodology:** thread counts, comparator flags, merge route per rep, cooldown, `pmset -g therm`, `cache_state` per rep per arm — all recorded; like-for-like 1-thread arm present
+- [ ] **Report:** generated by the renderer from committed JSONs; no measurement literals in code; supersedes-drift handled (`docs/benchmark-report.md` banner/regeneration landed BEFORE P2)
+- [ ] **Verdict axes:** wall (primary) + disk (recorded) + RSS (context, max(rss, phys_footprint)) — no memory-win claims over streaming jellyfish merge
+- [ ] **PEXT attribution:** stage table (inflate/parse/extract/route) measured on the SHIPPED engine, full scale, builds fingerprinted; pure-read control included; Phase-5-era profiles not cited as current
+- [ ] **PEXT sizing:** predicted-win model names both ceilings (parallelizable share × worker-side scaling); D3 gate decision cites full-scale numbers only
+- [ ] **P4 (if executed):** records-as-unit confirmed; warning-batch contract decision surfaced and differential-asserted; checked sums on new aggregates; 2N+1 differential extended to new topologies with reachable RED control; Drop-join watchdog extended; error-injection tests at every new boundary; `sample` flake not load-bearing; MEM guardrail re-measured at full scale
+- [ ] **PyO3 (if P4 touches Python surface):** `.so` rebuilt and version-asserted before pytest; dual-surface benchmark shows the win on both
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Count-splitting / aliasing shipped (1, 2, 9) | HIGH | Databases produced are untrustworthy: recount from raw reads. Revert to the old path (keep it behind a flag until P5 proves the new one), fix, re-run the full differential matrix before re-enable |
-| Byte-identity break (15) | MEDIUM | Revert the output stage; re-run goldens; if the change was intentional, surface the decision and regenerate fixtures with old-vs-new evidence attached |
-| Orphan temp accumulation (5) | LOW | TTL sweep reclaims on next run; manual `rustkmer-count-*` removal per documented prefix; fix the selector pairing |
-| Giant-bucket OOM (3) | MEDIUM | Re-partition fallback (MINIM-03) or raise budget; add the offending distribution to the adversarial test set |
-| CI baseline breach (19) | MEDIUM | Re-bootstrap from CI artifacts per scripts/bench/README.md procedure — never from a dev host |
-| Stale `.so` measured (13, 19) | LOW | `maturin develop --release`, verify module `__file__`/version, re-run; add the session-header assertion so it can't recur silently |
-| KMC3 parity mismatch (18) | LOW | Methodology finding: fix the KMC3 flags, re-run parity, then timing; never touch rustkmer semantics to "match" |
+| Canonicality mixing discovered post-run (1) | MEDIUM | Discard the affected rounds (aggregates untrustworthy); fix input verification; re-run counterbalanced rounds from scratch — partial data must not be merged with post-fix data |
+| Gate found vacuous after runs (2) | MEDIUM | Runs are reusable IF raw outputs + inputs are retained: implement the missing per-key/recount legs against retained artifacts; no re-measurement needed unless outputs were deleted |
+| Comparator asymmetry raised in review (3) | LOW | Add the 1-thread arm + methodology lines; re-render report; no re-runs if arms were already recorded |
+| Mid-protocol jellyfish limitation (4) | HIGH | Halt; characterize at intermediate scale; re-plan the counterbalanced schedule from round 0 (partial rounds are not counterbalanced) |
+| ENOSPC / thermal / cache confound suspected (5) | MEDIUM | Check `cache_state`/thermal columns for systematic arm-order effects; if present, re-run affected rounds with fixed budget/cooldown; if absent, disclose and proceed |
+| Memory framing error in draft report (6) | LOW | Move RSS to context column; re-state axes; re-render |
+| Stale citation found in shipped verdict (7) | LOW-MEDIUM | Correct the citation, re-render; if sizing used stale baselines, redo the sizing math and re-run the D3 gate decision (not the measurements) |
+| Input provenance gap (8) | MEDIUM | Regenerate + fingerprint inputs; revalidate pre-gate; re-run affected arms (counterbalancing forces round-level redo) |
+| Wrong-half optimization built (9/10) | HIGH | The honest attribution table is written first; if P4 already executed on a phantom win, stop, re-baseline the model, and surface the sunk cost in the verdict — do not "finish" the phase to justify it |
+| Deadlock / leak in P4 prototype (11) | LOW-MEDIUM | Extend watchdog + error-injection tests; fix tear-down contract; no verification credit until all injection paths pass |
+| Boundary semantics regression (12) | MEDIUM | Differential matrix pinpoints the topology that breaks; fix within the single-extractor funnel; re-run 2N+1 matrix before merge to main |
+| Cache-warm "win" (13) | LOW | Counterbalanced re-run of the affected arms; report attribution bounds |
 
 ## Pitfall-to-Phase Mapping
 
 | # | Pitfall | Prevention Phase | Verification |
 |---|---------|------------------|--------------|
-| 1 | Canonical-unaware minimizer | P2 | proptest strand-invariance + old-vs-new differential (canonical on/off) |
-| 2 | Bucket-local key leakage | P2 | round-trip property + release-mode conservation + golden sha256 |
-| 3 | Giant buckets / skew | P2 design, P3 enforcement | bucket histogram on real slice + adversarial poly-A input bounded |
-| 4 | Super-mer / read-end loss | P2 | conservation vs naive extractor on the edge matrix |
-| 5 | Temp lifecycle / ENOSPC | P3 | SIGKILL sweep test, ENOSPC injection, prefix-selector pairing test |
-| 6 | Disk I/O / fsync / fd limits | P3, P4 | iostat traces; macOS EMFILE test; no-fsync-on-temp review |
-| 7 | mmap spill / dishonest admission | P3 | live max(rss, phys_footprint) red/green at the cap |
-| 8 | Saturation / overflow drift | P2/P3, P5 proof | u32::MAX boundary tests + verbatim message + histogram review |
-| 9 | Double-count across passes | P2, P5 | two conservation checks + 1-vs-N + old-vs-new matrix |
-| 10 | Extraction-semantics drift (CLI/Python N divergence) | P1 decision, P2 shared core | CLI-vs-Python N-read differential; rolling-vs-per-window differential |
-| 11 | Decompression masks gains | P1 measure, P4 fix | attribution table (gz vs plain); multi-member regression; parity gate |
-| 12 | Rayon granularity / precedence | P2, P4 | --threads scaling runs; precedence unit tests stay green |
-| 13 | GIL / PyO3 regressions | P5 + all verification | detach audit; thread-scaling pytest; rebuild+version assert |
-| 14 | Hasher swap risks | P1 decide, P4 apply | profile evidence first; shard histogram; default-sort untouched |
-| 15 | .rkdb byte-identity / sorted truth | P2 output, P5 proof | golden sha256 + both binary-search consumers |
-| 16 | Dual-surface divergence | P1/P2 shared entry, P5 proof | Python benchmark with committed baseline shows the win |
-| 17 | MSRV / dependency traps | All (P4 pressure) | 1.80 clippy both crates; dep MSRV audit |
-| 18 | KMC3 benchmark unfairness | P5 | parity gate with exact-count KMC3 flags before timing |
-| 19 | Stale binary / warm cache / bad slice | P1, P5 | binary fingerprint in artifacts; cache_state honesty; random slices |
+| 1 | Canonicality silent mixing | P1 | Harness asserts canonical on all inputs; per-key gate passes on fixtures where the known-bad case is a reachable RED control |
+| 2 | Undefined "what equals what" | P1 define, P2 execute | Three-way gate spec in writing before round 0; independent-recount leg green at both k |
+| 3 | Comparator-shape asymmetry | P1 harness, P2 report | Methodology block lists threads/flags/representation; 1-thread arm present |
+| 4 | Late jellyfish characterization | P1 | Full-protocol slice dry run green, including jellyfish merge arm and parity pipeline |
+| 5 | Full-scale confounds | P1 pre-flight, P2 protocol | Disk pre-flight refusal works; `cache_state`/thermal columns populated; CV per arm < 10% or cv_warning flagged |
+| 6 | Memory framing on merge | P1 pre-registration, P2 report | Verdict axes pre-registered; route recorded per rep; no RSS win/loss claims vs streaming comparator |
+| 7 | Stale-doc contamination | HYG pulled into P1; P3 sizing | Drift fix landed before P2; grep of new artifacts shows no unqualified v1.0 numbers |
+| 8 | Input provenance | P1 | sha256 + Total revalidation green before round 0; retention plan in report |
+| 9 | Decompress-vs-extract attribution | P3 | Stage table on shipped engine at full scale; pure-read control reported; no Phase-5 citations as current |
+| 10 | Over-threading / wrong lever | P3 model, P4 order | Predicted-win model with both ceilings; lever order documented; MEM guardrail re-measured if P4 executes |
+| 11 | Backpressure / teardown | P4 | Watchdog drop test extended; error-injection matrix green at every boundary; no `sample` single-shot gates |
+| 12 | Ordering / boundary semantics | P4 + verification | Warning-batch differential (contract decision recorded); 2N+1 byte-identity matrix extended; chimeric edge fixtures green |
+| 13 | Cache-warm microbenches | P3 | Counterbalanced schedule in protocol; attribution reported as bounds where cache sensitivity is material |
+| 14 | Slice-scale gating | P3 | D3 gate decision text cites full-scale numbers; sort/write share calibrated or subtracted |
 
 ## Sources
 
-**Codebase (HIGH confidence — direct reading, 2026-11-11):**
-- `src/hash/table.rs` (overflow Err semantics :265-301; narrow_to_dense T-03-09 :223-232; get_all_counts :340-347; IN-03 :460-473; overhead model :16-19)
-- `src/cli/commands/count.rs` (CHUNK_SIZE/D-02 :21-30; per-chunk barrier :481-506; window semantics :377-411; header literal :725-736; default-sort D-09 :66-72; precedence :802-847)
-- `pyo3/src/counter.rs` (sequential file loops + ACGT-strip :700-809; detach rationale :359-367; pool build-once/IN-04 :175-197)
-- `src/hash/overflow.rs` (DiskOverflow: Drop closes only :149-153; sync_all :95; u64 keys)
-- `src/database/temp_lifecycle.rs` (prefix :45; TTL :82; sweep :135), `src/database/streaming_merge.rs` (k-way merge)
-- `src/kmer/canonical.rs:72-82`, `src/kmer/encoding.rs:221-252`, `src/io/fastq.rs:78` (MultiGzDecoder)
-- `scripts/bench/bench.py` (parity gate :540-595; matched config :172-173; gzip incident :1291-1300), `scripts/bench/baselines/`
-- `.planning/PROJECT.md`, `.planning/MILESTONES.md` (Known Gaps), `.planning/milestones/v1.0-REQUIREMENTS.md` (MINIM-01..03 :62-64), `.planning/codebase/CONCERNS.md` (note: pre-v1.0-close; its "counting single-threaded" claim is stale — current code is parallel)
+**Codebase (HIGH — direct reading, 2026-11-16):**
+- `src/count/engine.rs` (producer bundle `count_file_inner` :803-871; flush/ack/backpressure contracts :44-53, :1255-1299; Drop-join :1125-1130; checked-sum convention :83-119; `merge_into` exact path :494-517; skip-warning batches :1405-1444; profiling `producer_nanos` :195-204)
+- `src/cli/commands/count.rs` (verbatim warning wording :255-260; thread precedence chain)
+- `src/database/format.rs` (admission constants 96/32 B/k-mer :81-97; routing :989-1015; header `total_kmers` = record count :659, :737; saturating-add sites)
+- `src/database/streaming_merge.rs:509` (merge `saturating_add` — WR-02 triaged debt), `src/database/stats.rs:196` (stats total = sum of counts)
+- `src/cli/commands/merge.rs` (compatibility validation; `--num-threads`/route flags)
+- `docs/benchmark-report.md` (v1.0 verdict +420%; substitute dataset; deleted-input note :96-98; parity-gate halt precedent :109-111; methodology shape)
+- `scripts/bench/` (harness, `BenchmarkConfig` pattern, counterbalanced protocol, baselines), `.planning/research/profiling/` (Phase 5 breakdowns — marked STALE for current-engine claims)
+- `.planning/PROJECT.md` (v2.0 measured verdicts; Phase 7 producer-bound record; Phase 8 slice-wall-composition record; D3 pattern; MEM guardrail numbers)
 
-**External (MEDIUM — cross-checked, ≥2 sources unless noted):**
-- [KMC2/KMC3 benchmark study (GigaScience giy125 / PMC6280066)](https://pmc.ncbi.nlm.nih.gov/articles/PMC6280066/) — signatures, two-phase design, disk figures
-- [IJC 2020 GPU super-k-mer counting](https://computingonline.net/files/journals/1/archieve/IJC_2020_19_4_01.pdf) — canonical minimizers §2.3
-- [WABI 2022 (LIPIcs vol 242)](https://drops.dagstuhl.de/storage/00lipics/lipics-vol242-wabi2022/LIPIcs.WABI.2022.12/LIPIcs.WABI.2022.12.pdf) — temp-space limits, GIAB 350 GB
-- [Discount: compact evenly distributed k-mer binning](https://www.biorxiv.org/content/biorxiv/early/2020/10/12/2020.10.12.335364.full.pdf) and [Gerbil/AdaOrder](https://www.biorxiv.org/content/10.1101/2021.12.02.470910v2.full.pdf) and [IIIT binning study](https://cdn.iiit.ac.in/cdn/rndshowcase.iiit.ac.in/tto2023/TTO_website_data/PDF/33.pdf) — bucket skew ratios
-- [HKUST GPU counting thesis](https://repository.hkust.edu.hk/ir/bitstream/1783.1-167764/1/1783.1-167764.pdf) — MSP, super-mer boundaries, m vs bucket count
-- [Syncmers (Edgar, PeerJ)](https://peerj.com/articles/10805/) and [Zheng minimizers review](https://kingsfordlab.cbd.cmu.edu/pdf/2023-zheng-minreview.pdf) — edge-window bias, segment overlap
-- [pigz man page](https://man.freebsd.org/cgi/man.cgi?query=pigz&sektion=1&apropos=0&manpath=NetBSD+10.0) — decompression not parallelizable
-- [Rapidgzip (arXiv 2308.08955)](https://arxiv.org/html/2308.08955v1) — speculative block finding, false positives, window reconstruction
-- [Rust Performance Book — Hashing](https://nnethercote.github.io/perf-book/hashing.html) — fxhash/ahash/SipHash rustc measurements
-- [hashbrown README benchmarks](https://raw.githubusercontent.com/rust-lang/hashbrown/0a62c3ec75ee3d3f039952d8ab218ee021d3a1e4/README.md) — hasher sensitivity on structured keys; [hashbrown bench suite](https://deepwiki.com/rust-lang/hashbrown/7-performance-and-benchmarks)
-- [rustc-hash overview](https://deepwiki.com/rust-lang/rustc-hash/1-overview) — 2.x algorithm change, MSRV 1.77
-- [KMC README](https://github.com/refresh-bio/KMC) — hundreds of temp files, ulimit -n 2048, 32 GB/389 GB figure
-- [KMC source kmc_CLI/kmc.cpp usage text](https://raw.githubusercontent.com/refresh-bio/KMC/master/kmc_CLI/kmc.cpp) — -ci 2 / -cx 1e9 / -cs 255 / -m 12 / -sm off defaults; [KMC issue #136](https://github.com/refresh-bio/KMC/issues/136) — -cs 255 saturation cross-check
-- [NUS CS4330 k-mer counting notes](https://www.comp.nus.edu.sg/~wongls/courses/cs4330/2024/08-kmers-counting-on-disk.pdf) — human-scale KMC3 RAM/disk figures
-- [Bioinformatics btab797](https://academic.oup.com/bioinformatics/article-pdf/38/4/933/42319968/btab797.pdf) — I/O cost dominates disk-based counters
+**Pinned-binary experiments (HIGH — jellyfish 2.3.1, Homebrew, this host, 2026-11-16; digests stored via `research-store`):**
+- `jellyfish merge --help` / `jellyfish dump --help` (no `-s`; additive default; `-c/-t/-L/-U`)
+- K-mismatch refusal + canonical-mismatch silence + conservation-despite-mixing (tiny fixtures)
+- Merge RSS 6.8 MB vs count 212 MB on 240 MB inputs; output file capacity-derived
 
-**External (LOW — single official-doc fetch; ctx7 CLI unavailable, context7 MCP not visible to this agent):**
-- [rayon IndexedParallelIterator docs](https://docs.rs/rayon/latest/rayon/iter/trait.IndexedParallelIterator.html) — with_min_len/with_max_len hint semantics
-- [PyO3 0.27 parallelism guide](https://pyo3.rs/v0.27.2/parallelism) — detach-around-spawn deadlock rule (corroborated by in-repo code comments, which raises practical confidence)
+**Official docs (HIGH):**
+- [jellyfish(1) man page (Ubuntu resolute, 2.3.x)](https://manpages.ubuntu.com/manpages/resolute/man1/jellyfish.1.html) — merge BUGS section ("not parallelized... relatively slow"; hash does not grow in memory), dump format, variable-length counters ("no maximum value in the hash")
+- [Debian jellyfish 2.3.0 UserGuide source](https://sources.debian.org/src/jellyfish/2.3.0-15/doc/UserGuide.lyx/) — hash sizing rules, merge guidance
+- [Jellyfish GitHub](https://github.com/gmarcais/Jellyfish) — upstream (raw fetch blocked from this host; semantics pinned via manpage + local binary instead)
 
-**Research cache:** 9 digests stored via `research-store` (keys from `research-plan`), 2026-11-11.
+**Web (MEDIUM — cross-checked, ≥2 sources; digests stored):**
+- [Does sudo purge actually work on Apple Silicon?](https://www.theodorehq.com/shiny/blog/does-sudo-purge-work-apple-silicon) and [sudo purge how-to](https://www.theodorehq.com/shiny/blog/sudo-purge-apple-silicon-howto) — limited reclaim (~50–800 MB), inactive-pages only
+- [Fanless Mac thermal-throttling benchmark study (round-robin + median mitigation)](http://uvp.y42u.net/blog/uwview-pro-thermal-throttling-benchmark/) — up to 54% sequential-order bias
+- [USENIX Security '23 M1 study](https://www.usenix.org/system/files/usenixsecurity23-taneja.pdf) — fan-cooled frequency-constrained vs passively-cooled thermally-constrained
+- [macOS purge how-to (macperformanceguide)](https://macperformanceguide.com/CommandLine-howto-purge-disk-cache.html) — purge semantics, "approximate initial boot conditions"
+- [Apple-silicon-bench FAQ](https://github.com/carlosacchi/apple-silicon-bench/wiki/FAQ#1) — variance norms
+- Carried from the 2026-11-11 v2.0 research cache (cross-checked there): pigz man page (decompression not parallelizable); rapidgzip arXiv 2308.08955 (speculative block discovery, window reconstruction)
+
+**Research cache:** 6 digests stored via `research-store` (keys from `research-plan`), 2026-11-16.
 
 ---
-*Pitfalls research for: rustkmer v2.0 k=21 Counting Parity (minimizer/disk-backed/hasher additions to an exact-count system)*
-*Researched: 2026-11-11*
+*Pitfalls research for: rustkmer v2.1 Merge Verdict & Producer Research (merge benchmark semantics/confounds + parallel-extraction attribution)*
+*Researched: 2026-11-16*

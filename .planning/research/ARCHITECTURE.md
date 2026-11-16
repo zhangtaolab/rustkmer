@@ -1,400 +1,226 @@
-# Architecture Research — v2.0 k=21 Counting Parity
+# Architecture Research: v2.1 Integration — MERGE-BENCH & PEXT
 
-**Domain:** k-mer counting toolkit at human-genome scale (Rust core + CLI + PyO3)
-**Researched:** 2026-11-12
-**Confidence:** HIGH (root cause is empirically measured on real data, not inferred)
-**Mode:** Ecosystem + Feasibility, with **empirical root-cause profiling** as the core deliverable
-
-> **Headline finding (evidence-based, overturns the standing hypothesis):**
-> The ~5× k=21 gap is **NOT** decompression, **NOT** k-mer encoding, and **NOT** a
-> memory-capacity / data-structure problem. rustkmer's **single-thread** counting core is
-> already competitive with jellyfish (190–250 ns/window vs jellyfish's 227 ns/window).
-> The gap is **parallel-scaling efficiency**: jellyfish scales **8.9×** on 16 cores
-> (118 s → 13.3 s); rustkmer scales only **~3×** because (a) `--threads` is silently a
-> no-op (so wall-clock looks flat across thread counts), (b) the per-chunk rayon fork-join pipeline leaves workers spin-waiting **~58% of
-> CPU**, and (c) the shared DashMap + per-window global atomics contend (~9× the
-> single-thread increment cost). **Fix the parallelism first (in-memory); minimizer /
-> disk-backed partitioning is a memory-ceiling lever, not the speed lever.**
+**Domain:** Benchmark-harness extension (merge verdict) + producer-stage parallelization (count engine) on an existing shipped tool
+**Researched:** 2026-11-16
+**Confidence:** HIGH — every integration point below was read from the actual code this session (file:line anchors). No speculative redesigns; both tracks attach to structures that already exist and are pinned by tests.
 
 ---
 
-## PART 1 — EMPIRICAL ROOT-CAUSE EVIDENCE
+## 1. Verified Integration Surfaces (as built today)
 
-### 1.1 Methodology (reproducible)
+### 1.1 The count engine (PEXT target)
 
-All numbers below are **measured**, not estimated (estimates are flagged). Scripts, raw
-results, and profile breakdowns are persisted in `.planning/research/profiling/`.
-
-| Item | Value |
-|------|-------|
-| Platform | Apple M4 Max, **16 logical cores (12 P + 4 E)**, 128 GiB RAM, macOS 26.6.2, 16 KiB pages |
-| Binary | **fresh** `CARGO_PROFILE_RELEASE_DEBUG=1 cargo build --release --locked` (debug line-info only; codegen identical to release). rustc nightly 1.101, git HEAD `397a1cf`, built 2026-11-11 23:16. The stale July-2 binary was replaced before any measurement. |
-| Reference | jellyfish 2.3.1 (`/opt/homebrew/bin/jellyfish`) |
-| Profiler | samply 0.13.1 (`cargo install samply`, **no sudo**), 1000 Hz; macOS `sample` for thread counts. No dtrace/cargo-flamegraph (needs sudo). |
-| Slice | first **4,000,000 reads** of `CRR1936095_r1.part_001.fq.gz` → 599,294,679 bases, 5,600 Ns, 95% 150 bp. Raw 1.47 GB; re-gzipped 320 MB (sha256 `0c7626d8…`). |
-| Workload | k=21: **519,271,168** instances → **229,694,874** distinct canonical; k=31: 261,863,892 distinct |
-| Measurement | `/usr/bin/time -l` (macOS peak RSS in **bytes**), wall = `real`. rustkmer internal phase split from stderr: `Elapsed time` fires after counting / before output; `Total time` at end → output phase = difference. |
-| Fairness | both tools canonical (`-C`), 16 threads, same slice. jellyfish gz via `gzcat … \| jellyfish count … /dev/stdin` (decompression inside its wall, overlapped as a child process — identical to the v1.0 harness). jellyfish `-s 2G` (generous; v1.0 used 10G). |
-| Cache state | **warm** page cache (slice freshly written). No sudo cold-cache purge available — same limitation v1.0 recorded honestly. |
-
-**Reproduce:**
-```bash
-# slice
-gzcat /Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz \
-  | head -n 16000000 > /tmp/rkmer-v2-prof/data/slice4M.fq
-gzip -c slice4M.fq > slice4M.fq.gz
-# matrix + profiles + microbench + thread-check (sequential, no contention)
-python3 -I .planning/research/profiling/run_matrix.py all
-sh        .planning/research/profiling/post_matrix.sh
+```
+caller thread (THE producer)                       N persistent workers
+─────────────────────────────────────              ─────────────────────────
+open file  DefaultCompressedFileReader
+           (engine.rs:806; gzip/bz2/xz)
+bio FASTA/FASTQ record loop (engine.rs:820/835)
+  └─ count_sequence (engine.rs:1001)
+      └─ for_each_window (extract.rs:90)   ──┐
+         rolling-encode k≤32 / per-window     │  per-key: partition_of
+         u128 for k 33..=64                   │  (partition.rs:72, splitmix64)
+  └─ route_key (engine.rs:1135)            ──┘
+      per-partition RoutingBuffers            ┌─► sync_channel(8 batches) ─► run_worker
+      (engine.rs:543)                         │   CountBatch::{Dense,Wide}    (engine.rs:1307)
+  └─ send_batch (engine.rs:1189) when full ───┘   {partition, keys}           owns disjoint
+                                                                              worker_range tables
+file boundary → Flush{token} → 1 ack/worker                                    (owned_table :1386)
+(engine.rs:1256 flush_pipeline, token :902)                                    LocalKmerCounts::increment
+                                                                              (local.rs:152, u32 checked)
+engine.finish() → join → concat tables in layout order → CountResult
+count.rs: into_filtered_pairs → par_sort_unstable_by (sort_pairs_ascending, count.rs:364)
+→ stream through frozen format.rs writer → .rkdb bytes identical for any thread count
 ```
 
-> **Dataset caveat (report honestly):** this slice is far more repeat-rich than v1.0's
-> CRR2044018 — distinct/instance ratio **2.26** here vs **7.3** there (exact-duplicate read
-> rate is only 2.55%, so the collapse is genuine k-mer repetition, not PCR dup). The ~5×
-> gap **still reproduces** (below), and the bottleneck is structural, so the conclusion is
-> robust to this difference. Absolute seconds differ from v1.0 because the slice is ~1/9
-> of the full dataset and the distinct count is lower.
+Facts that constrain PEXT, verified from the code:
 
-### 1.2 Measurement matrix (wall-clock seconds, peak RSS GiB)
+- **The producer does everything except increment.** Parsing, decompression, rolling encode, partition routing, and batch sends all run on the one caller thread (`count_file_inner`, engine.rs:803–871). Workers only drain queues and increment. Phase 7 measured this producer at ~99.99% of parallel wall — this is the PEXT target.
+- **`for_each_window` is a pure, reentrant function** (extract.rs:90–148): fresh state per call, no cross-record state, sink-callback style. The natural parallel unit is the record (or a chunk of records).
+- **Batches carry their partition tag** (`CountBatch::Dense/Wide { partition, keys }`, batch.rs:25–39) and worker-side `owned_table` (engine.rs:1386) re-validates ownership on every batch. Increments are per-key integer adds — **order-independent** within a partition. Consequently *who* produces a batch (and when) does not affect the final tables; only the file-boundary flush accounting is order-sensitive.
+- **One worker has exactly one `sync_channel` and one ack channel** (engine.rs:711–712). The FIFO send→Flush→ack chain (batch.rs:10–17) is the happens-before edge behind `FileStats`; any multi-producer design must preserve or redefine it.
+- **`--threads 1` is a true sequential path** (engine.rs:612–634) — no threads, no queues. It must stay untouched so the t1 baseline stays honest.
+- **Thread composition is an exact, standing gate**: `expected_total` (tests/thread_pool_size_tests.rs:48–54) = 2 at N=1, **2N+1** for N>1 (1 main/producer + N engine workers + N rayon workers), observed by `.planning/research/profiling/verify_threads.py` in a subprocess. "The exactness is the point: no `>=`."
+- **Profiling diagnostics exist and distinguish producer from workers**: `EngineDiagnostics { wall_nanos, producer_nanos, workers[] }` under `--features profiling` (engine.rs:196–204). The PEXT research phase can measure the producer share without new instrumentation; the predicted-win sizing derives from these numbers plus the extract/parse/decompress split.
 
-| Arm | wall (s) | RSS (GiB) | count phase (s) | output phase (s) |
-|-----|---------:|----------:|----------------:|-----------------:|
-| **rustkmer k21 gz, t16** | **74.76** | 18.4 | 59.80 | 13.36 |
-| **jellyfish k21 gz, t16** | **13.29** | 6.68 | — | — |
-| rustkmer k31 gz, t16 | 70.42 | 25.42 | 54.03 | 14.29 |
-| jellyfish k31 gz, t16 | 14.05 | 11.84 | — | — |
-| rustkmer k21 **raw fq**, t16 | 64.81 | 15.39 | 51.56 | 11.88 |
-| rustkmer k31 raw fq, t16 | 72.87 | 24.36 | 57.20 | 13.80 |
-| jellyfish k21 raw fq, t16 | 14.10 | 6.68 | — | — |
-| `gzcat` only (decompress floor) | **0.90** | ~0 | — | — |
-| rustkmer k21 fq, **t1** | 70.12 | 15.34 | 57.48 | 11.33 |
-| rustkmer k21 fq, **t4** | 74.39 | — | 61.27 | 11.78 |
-| rustkmer k21 fq, **t8** | 69.92 | — | 56.66 | 11.93 |
-| rustkmer k21 gz, t1 | 65.42 | — | 52.64 | 11.48 |
-| rustkmer k21 fq t16 **--no-sort** | 64.82 | — | 59.95 | **3.52** |
-| rustkmer k21 fq t16 **--size 500M** | 69.08 | 29.28 | 53.72 | 12.99 |
-| **jellyfish k21 fq, t1** | **118.17** | 6.68 | — | — |
+### 1.2 The benchmark harness (MERGE-BENCH target)
 
-**Gap: k=21 = 74.76 / 13.29 = 5.63×; k=31 = 70.42 / 14.05 = 5.01×.** The ~5× k=21 gap
-reproduces. **Crucially, rustkmer is ~5× slower at k=31 too on this dataset** — its wall is
-nearly k-independent (70–75 s) while jellyfish is fast at both k (13–14 s). v1.0's "k=31
-win" was an artifact of jellyfish's oversized `-s 10G` hash at k=31 (84 GiB RSS,
-memory-bound, 843 s); with a right-sized hash jellyfish k=31 is also fast. **The gap is a
-general counting-throughput gap, not k-specific.**
+`scripts/bench/bench.py` (2135 lines, stdlib-only, schema v1) already measures merge at slice scale:
 
-### 1.3 Count parity (exact-count contract) — PASS
+- `build_merge_cmd` (bench.py:283) builds `rustkmer merge -i a.rkdb b.rkdb -o merged.rkdb`; the "merge" arm is appended to `arm_specs` whenever `--reps >= 2` and not `--skip-merge` (bench.py:1428–1432, 1460–1464).
+- `run_comparison_protocol` (bench.py:1280) provides: one discarded warmup per **tool**, counterbalanced tool order per round (`round_schedule`, bench.py:1196 — keyed on tool name, so it generalizes to more arms unchanged), per-rep honest `cache_state` (`attempt_cache_purge`, bench.py:1220), cooldown gaps, medians + CV% (`reduce_arm`, bench.py:1239), post-run stats sanity (distinct == 0 aborts, bench.py:1339), and a pre-timing parity assertion between `count-A` and `jellyfish-count-A` (bench.py:1438–1449).
+- Self-check already asserts **merge count conservation** (`merged total == sum of count totals`) and **distinct union** (`merged distinct >= max input distinct`) for every mode (bench.py:1479–1496).
+- Measurement is `/usr/bin/time` wall + honest peak `max(rss, phys_footprint)` (`measure`/`parse_time_output`, bench.py:106–186); results carry full `binary_provenance` and `validate_schema`/`validate_provenance` gates; `check_disk_floor` (bench.py:1263) guards mode=full; `--merge-input` provisions the r1/r2 two-input arrangement (bench.py:529).
+- The renderer already has merge-specific handling: `_arm_row` prints `n/a` deltas for the merge arm because "no jellyfish counterpart exists for the merge operation" (bench.py:1626–1629), and `_slice_section_lines` renders the conservation checks (bench.py:1745–1774).
+- `scripts/bench/phase10.py` is the v2.0 full-scale verdict controller: staged (`synthetic → slice-gate → cli → python → render`), arms built by `build_arm_specs` (:210), rounds driven by `output_stage.rotation_schedule` (output_stage.py:121), exit-code contract 0/1/2 documented in its module docstring. It imports its primitives from bench.py. This is the established pattern for a multi-hour full-scale session.
 
-`jellyfish stats` on both gz and raw arms: **Distinct = 229,694,874; Total = 519,271,168**
-(Unique = 167,905,312; Max_count = 58,609). rustkmer `.rkdb` record count =
-`(file_size − 42) / 20` = **229,694,874**; counter `total_kmers` (sum of counts) logged =
-**519,271,168**. **Both match exactly** → optimized counting must preserve these
-(`.planning/research/profiling/parity_report.json`).
+The Rust merge side is a single shared entry: `rustkmer merge` → header-only compatibility validation (`merge.rs:392`) → `RKDatabase::merge_databases_to_path` (format.rs:1334) → `resolve_merge_route` admission control dispatches to streaming / prefix-cache / in-memory (format.rs:1341–1361). Rayon-parallel; the route is chosen by the header-only admission model, not by the user.
 
-### 1.4 Where the CPU goes — samply self-time breakdown
-
-Lib-aware resolution of samply RVAs against the binary's `nm` (system libs labelled).
-Full tables: `.planning/research/profiling/prof*.breakdown.txt`. Percentages are of total
-weighted CPU samples (~1 ms each); all 16 cores are ~saturated during counting.
-
-| Category (leaf/self) | k21 **gz** | k21 **raw** | k31 raw |
-|----------------------|-----------:|------------:|--------:|
-| **kernel wait / spin / syscall** (rayon workers spin-waiting + main blocked on chunk barrier) | **59.5%** | **57.9%** | **60.5%** |
-| **DashMap increment / hash** (ahash + probe + count bump; locks mostly uncontended) | **36.3%** | **38.0%** | **34.7%** |
-| encode + canonical (inlined in `process_one_record`) | 3.1% | 3.0% | 3.5% |
-| output collect / sort / write | 0.7% | 0.7% | 0.8% |
-| **gzip inflate (libz)** | **0.09%** | 0% | 0% |
-| FASTQ parse (bio) | 0.02% | 0.02% | 0.02% |
-| rayon fork-join plumbing (self) | 0.04% | 0.05% | 0.04% |
-
-Top self symbols (k21 raw): `KmerCounter::increment` **37.3%**, `libsystem_kernel+0x450c`
-(`__psynch_cvwait`) 32.0%, `libsystem_kernel+0xc88` (spin/yield) 25.4%,
-`process_one_record` 3.0%, `dashmap::lock_exclusive_slow` **0.41%** (locks NOT contended),
-stable `quicksort` 0.55%.
-
-**Reading:** the machine looks busy (16 cores saturated) but **~58% of CPU is wasted
-spin-waiting** — rayon workers burn CPU spinning when they finish their chunk share early
-and wait for the slowest worker / the next chunk. The useful work is DashMap increment
-(~37%). Decompression (0.09%), encoding (3%), and parsing (0.02%) are negligible.
-
-### 1.5 Stage isolation — single-thread microbench (ns per k-mer window)
-
-Standalone crate (`.planning/research/profiling/microbench_main.rs`), path-dep on rustkmer,
-**single-threaded**, same real reads, same `KmerCounter`. Rolling keys asserted **identical**
-to production keys (PASS). A=production encode+canon+increment; B=rolling 2-bit encode +
-bit-parallel revcomp + increment; C=increment only (pre-encoded); D=rolling encode only;
-E=production encode only.
-
-| Variant | k21, 200k reads (cache, 16.4M distinct) | k31, 200k | k21, 1M (mem, 66M) | k21, 2M (mem, 119M) |
-|---------|----------------------------------------:|----------:|-------------------:|--------------------:|
-| A production total | **190.8** | 211.0 | — | **249.6** |
-| B rolling+bitrc+increment | **70.9** | 74.6 | 93.3 | — |
-| C increment-only | 75.8 | 73.6 | 97.3 | — |
-| D rolling encode-only | **1.2** | 1.3 | — | — |
-| E production encode-only | **31.7** | 47.1 | — | 31.8 |
-
-**Reading:**
-- Production encode+canon costs **31.7 ns (k21) / 47.1 ns (k31)** — the O(k) per-window
-  re-encode + O(k) revcomp loop. A rolling encoder is **1.2 ns** → **26× cheaper encoding**.
-- **DashMap increment dominates** the optimized cost (~76 ns cache, ~97 ns memory).
-- Switching to rolling encode + bit-parallel revcomp: **190.8 → 70.9 ns = 2.7× single-thread
-  win** (k21). Real, worth doing, but it is the *secondary* lever.
-- In the DRAM regime (2M reads, ~2 GB table) production rises to **249.6 ns/window** —
-  increment balloons with table size while encode stays ~32 ns. **The bigger the table, the
-  more increment dominates and the less encoding matters.**
-
-### 1.6 The `--threads` bug (smoking gun)
-
-`verify_threads.py` sampled a live `rustkmer count --threads 1`: **17 OS threads observed
-(main + 16 workers), expected ~2.** `--threads` is a **complete no-op**; every matrix arm
-ran 16 workers, which is why t1 ≈ t4 ≈ t8 ≈ t16.
-
-**Mechanism (confirmed from rayon-core 1.13 source):** `resolve_thread_count`
-(`src/cli/commands/count.rs:836-847`) passes `rayon::current_num_threads()` as the *eagerly
-evaluated* fallback argument. That call **lazily initializes the global rayon pool with the
-default `num_cpus` = 16** *before* `ThreadPoolBuilder::new().num_threads(resolved).build_global()`
-runs (count.rs:100-103). `build_global` then returns `Err` (pool already exists), which
-`let _ =` discards. Result: the configured thread count never takes effect.
-
-```rust
-// count.rs:836 — the fallback arg initializes the pool BEFORE build_global:
-fn resolve_thread_count(args_threads: Option<usize>) -> usize {
-    resolve_thread_count_from(
-        args_threads,
-        /* RUSTKMER_THREADS */ …,
-        /* RAYON_NUM_THREADS */ …,
-        rayon::current_num_threads(),   // <-- eagerly builds default 16-thread global pool
-    )
-}
-```
-Fix: compute the fallback lazily (e.g. `std::thread::available_parallelism()`), and call
-`build_global` **before** any rayon query. This is a correctness bug in PCOUNT-03's
-`--threads` plumbing (counts stayed identical, so the 1-vs-N differential passed — it never
-checked that the flag actually changed the pool size).
-
-### 1.7 Hypothesis verdicts (the question's a/b/c/d, with numbers)
-
-| Hypothesis | Verdict | Evidence |
-|------------|---------|----------|
-| **(a) single-threaded gzip is the bottleneck** | **REJECTED** | gz→raw saves only ~8–10 s of ~75 s (11–13%); pure `gzcat` inflate = **0.9 s**; libz is **0.09%** of CPU. The ~8 s gz overhead is flate2 `MultiGzDecoder`+`BufReader` path + serialization, not the inflate floor. Parallel decompression is a minor win, not the fix. |
-| **(b) DashMap hashing / contention** | **CONFIRMED (dominant useful cost)** | increment = **36–38%** of CPU; in-vivo increment ≈ **916 ns/window** (476 CPU-s / 519M) vs single-thread **97 ns** → **~9.4× contention multiplier**. Shard locks are NOT the issue (`lock_exclusive_slow` 0.4%); the cost is shared-table DRAM random access + **per-window global atomics** (`total_kmers`/`unique_kmers` `fetch_add` on every window, table.rs:272/309) bouncing cache lines across 16 cores. |
-| **(c) memory bandwidth / cache misses** | **CONFIRMED (part of b)** | increment rises 76→97→~218 ns as the table grows 250 MB→1 GB→2 GB (microbench). 229M-distinct table ≈ 3.5 GB → DRAM/TLB-bound. 16 threads saturate bandwidth. |
-| **(d) encoding / canonicalization significant** | **PARTLY — secondary** | encode+canon = **3%** of in-vivo CPU (31.7 ns of 249.6 ns single-thread). Rolling encode gives a **2.7× single-thread** win but a smaller in-vivo fraction because increment dominates in the DRAM regime. Worth doing; not the primary lever. |
-| **(implicit) rayon scheduling** | **CONFIRMED (dominant wasted cost)** | **~58% of CPU is kernel wait/spin** — the serialized per-chunk `fill → par_iter → clear` pipeline (count.rs:587-609) plus E-core stragglers (4 slow E-cores pace 12 fast P-cores) plus fine-grained fork-join. |
-
-### 1.8 Root-cause decomposition of the 5× gap
-
-| Factor | Multiplier | Evidence |
-|--------|-----------:|----------|
-| **Parallel-scaling efficiency** | **~3.5×** | jellyfish 118 s (t1) → 13.3 s (t16) = **8.9× / 56% efficiency**. rustkmer single-thread ≈ 169 s (extrapolated from 249.6 ns/window @ 2M reads to the 229M-distinct regime) → ~51.6 s count phase = **~3.3× / ~21% efficiency**. |
-| **Single-thread per-window cost** | **~1.4×** | rustkmer DashMap `u64,u32` (13 B/entry + ahash + shard lock) vs jellyfish bit-packed invertible hash (~5 B/entry, lock-free CAS, k-mer-as-hash). 249.6 vs 227 ns/window. |
-| **Combined** | **~4.9× ≈ observed 5×** | |
-
-**Conclusion:** the biggest lever is **recovering parallel scaling** (mostly fixing broken
-parallelism — an engineering problem), not replacing the data structure. jellyfish proves
-the workload fits in memory and runs in 13 s with an in-memory table; rustkmer's 18 GiB also
-fits. **Disk-backed / minimizer partitioning is not required to match jellyfish** — it is the
-lever for the *memory ceiling* and for beating KMC3 (BENCH-V2-01), which is a secondary
-comparison, not the acceptance gate.
+External fact (HIGH, official docs): `jellyfish merge -o out.jf in1.jf in2.jf` sums counts across inputs by default and is **single-threaded**, documented by the authors as "relatively slow"; jellyfish 2 users rarely need it because multi-threaded count self-merges. This asymmetry (no `-t` flag exists on merge) must be recorded in the report methodology like the existing decompression-pipe asymmetry note.
 
 ---
 
-## PART 2 — ARCHITECTURE INTEGRATION
+## 2. MERGE-BENCH: Integration Design
 
-### 2.1 Recommended architecture (staged, evidence-driven)
+### 2.1 What the harness provides for free (nothing new needed)
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Entry surfaces (unchanged public APIs)                                    │
-│  CLI: src/cli/commands/count.rs        Python: pyo3/src/counter.rs         │
-└───────────────┬──────────────────────────────────┬───────────────────────┘
-                │  both delegate to ONE shared engine (NEW)                  │
-                ▼                                                            ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  NEW shared counting engine  src/count/engine.rs                           │
-│  • fixed rayon pool (build_global BEFORE any rayon query; --threads works) │
-│  • producer reads/decompresses records → bounded queue (OVERLAPPED, not    │
-│    serialized fill→par_iter→clear)                                         │
-│  • N persistent workers, each with a THREAD-LOCAL counter (no shared       │
-│    DashMap during counting, no per-window global atomics)                  │
-│  • partition by hash-range / canonical minimizer → disjoint key spaces     │
-│  • rolling 2-bit encode + bit-parallel revcomp (u64 for k≤32)              │
-│  • reduce thread-local totals at the end                                   │
-└───────────────┬──────────────────────────────────────────────────────────┘
-                ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Merge thread-local/partition counters → sorted (u128,u32) stream          │
-│  → EXISTING format.rs writer (.rkdb v2, 42B header + 20B entries)          │
-│  → sort_unstable / rayon par_sort_unstable (was single-thread stable sort) │
-└──────────────────────────────────────────────────────────────────────────┘
-```
+| Capability | Where | Reuse for MERGE-BENCH |
+|---|---|---|
+| Counterbalanced reps, warmup-per-tool, cooldown | `run_comparison_protocol` (bench.py:1280) | Works unchanged for 6 arms — `round_schedule` rotates *tools*, arms of one tool run in spec order |
+| Per-rep cache_state + round/arm_order recording | bench.py:1318–1321 | Free for every new arm |
+| Honest peak memory `max(rss, footprint)` | `parse_time_output` (bench.py:106) | Both merge arms measured identically |
+| Medians + CV% + cv_warning | `reduce_arm` (bench.py:1239) | Free |
+| Zero-count sanity per arm | bench.py:1339–1344 | Catches an empty merged DB (Pitfall 1) |
+| Input fingerprints, provenance, schema validation | bench.py:304–420, 1522–1536 | Free; SCHEMA_VERSION stays 1 (validate_schema tolerates new arm names) |
+| Disk floor guard (mode=full) | `check_disk_floor` (bench.py:1263) | Reuse, but see pitfall §5.2 on the floor value |
+| r1/r2 two-input provisioning | `--merge-input` (bench.py:529, 585) | Exactly the merge-bench input arrangement |
+| Count-parity gate before timing | bench.py:1438–1449 | Keep; it underwrites the merge parity gates below |
 
-**Stage A — recover parallel scaling + hot path (in-memory; targets jellyfish parity):**
-1. Fix `--threads` (lazy fallback; `build_global` first). *~free, unblocks everything.*
-2. Thread-local counters + end-of-run reduction (remove per-window global atomics).
-3. Restructure parallelism: persistent workers + bounded producer/consumer queue (overlap
-   decompression with counting), coarse-grained batches, **no per-chunk fork-join barrier**.
-   Partition keys into N disjoint thread-local tables (hash-range or canonical minimizer) so
-   workers never touch a shared table during counting → no contention, better locality.
-4. Rolling 2-bit encode + bit-parallel revcomp (u64 for k≤32) → ~2.7× single-thread.
-5. Output: `sort_unstable_by_key` (pdqsort, no alloc) or `rayon::par_sort_unstable`; stream write.
+### 2.2 New vs modified components
 
-Expected: recovering ~56% parallel efficiency on a ~169 s single-thread base → ~15–20 s,
-plus rolling-encode and output gains → **competitive with jellyfish's 13 s**. Validate
-against the slice matrix + count parity before claiming parity.
+**New (bench.py):**
 
-**Stage B — memory ceiling / KMC3 (CONDITIONAL; only if Stage A misses parity or for the
-memory target):** minimizer/signature partitioning with cache-sized buckets and disk-backed
-spill (KMC-class). Reuses rayon + the existing external-sort merge + memmap2. This bounds
-peak RAM to the largest bucket (vs 18–55 GiB today) and is the path to beating KMC3 on
-memory. **Not needed for the jellyfish speed gate** — the evidence shows speed is a
-parallelism problem, not a capacity problem.
+1. `jellyfish_merge_cmd(out, input_jfs)` — `["jellyfish", "merge", "-o", out, in1, in2]`, list-form, no shell (inputs are `.jf` files, never `.gz`; still `validate_path`-screen for consistency with T-04-03).
+2. Arm specs added to the comparison matrix (bench.py:1420 block):
+   - `{"name": "jellyfish-count-B", "tool": "jellyfish", "out": jf_b, "cmd": jellyfish_count_cmd(cfg_b, jf_b)}` — **new input**: today only `jf_a` exists (bench.py:1404); jellyfish merge needs a second `.jf`.
+   - `{"name": "merge", ...}` — exists.
+   - `{"name": "jellyfish-merge", "tool": "jellyfish", "out": jf_merged, "cmd": jellyfish_merge_cmd(jf_merged, [jf_a, jf_b])}`.
+3. Merge parity gate in `run_bench` after the protocol (mirroring the existing count-parity block at bench.py:1438):
+   - `merge.total == count-A.total + count-B.total` and `jellyfish-merge.total == same sum` (count conservation; overlapping k-mers contribute their **summed** counts — both tools sum by default, so the invariants coincide),
+   - `merge.distinct == jellyfish-merge.distinct` (identical union semantics),
+   - `merge.distinct >= max(input distinct)` (already in self-check; keep it there too).
+4. **Deep slice-scale gate** (recommended): sorted multiset comparison of `rustkmer dump` vs `jellyfish dump` of the two merged databases — proves per-k-mer count equality including the summed overlap counts, not just the two aggregates. Full scale: stats-level gates only (dumping ~9 B records is prohibitive); state that honestly in the report.
+5. Report renderer additions:
+   - `_merge_arms(results)` helper + a `_merge_verdict` mirroring `_count_verdict` (bench.py:1653): verdict YES iff rustkmer-merge median wall ≤ jellyfish-merge median wall; the memory delta reported alongside (the MEM guardrail: peak RSS below jellyfish for any perf change).
+   - Extend `_arm_row`'s merge special case: when a `jellyfish-merge` arm exists in the same results file, emit real deltas against it instead of hard-coded `n/a` (bench.py:1626–1629); fall back to `n/a` when absent so old results files still render byte-compatibly.
+   - New report section "Merge verdict (invest/no-invest)" following the BENCH-02 verdict section's phrasing, plus a methodology line recording the jellyfish-merge single-threaded asymmetry (modeled on the decompression asymmetry note, bench.py:1823–1828).
+6. Arm-ordering validation: assert in `run_comparison_protocol` (or a unit test in scripts/bench/tests/) that within each tool's spec order, count arms precede the merge arm — the round loop runs same-tool arms in spec order, so `count-A, count-B, merge` and `jellyfish-count-B, jellyfish-merge` orders make the per-round input dependencies hold. Today the rustkmer side relies on this ordering implicitly; make it explicit before adding the jellyfish side.
 
-**Decompression:** producer/consumer overlap (double-buffer) recovers the ~8 s gz overhead;
-file-level parallelism across split parts is free. **Do NOT adopt rapidgzip/pigz-style
-parallel inflate** — libz is 0.09% of CPU; it is overkill (and pigz cannot parallelize
-inflate of arbitrary gzip anyway — cached literature digest, MEDIUM).
+**Modified (bench.py):** `run_bench` arm_specs list; `main()` gains nothing mandatory — full-scale merge is already expressible as `--mode full --reps 3` without `--skip-merge`. Optionally a `--with-jellyfish-merge`/`--merge-only` convenience flag to trim session cost.
 
-### 2.2 Component boundaries — new vs modified (file-level)
+**Modified (scripts/bench/tests/):** unit tests for `jellyfish_merge_cmd` shape, the new parity-gate logic (GREEN/RED), renderer merge sections, and the ordering assertion. The 398-test harness suite is the regression net.
 
-| Component | File | New/Modified | Change |
-|-----------|------|--------------|--------|
-| Shared counting engine | `src/count/engine.rs` (or `src/hash/count_engine.rs`) | **NEW** | Producer/consumer + partitioned thread-local counting; the single delivery vehicle for both surfaces. |
-| Rolling encoder + bit-parallel revcomp | `src/kmer/encoding.rs` | **MODIFY (add fns)** | Add `rolling_canonical_u64` (shift-in fwd/rev, `min`), `revcomp_bits_u64` (byte-swap + complement). Keep existing u128 fns for k>32 / API stability. |
-| Canonical hot path | `src/kmer/canonical.rs` | **MODIFY** | Canonical via rolling fwd/rev `min` (no O(k) `reverse_complement_u128` loop in the hot path). |
-| Counter | `src/hash/table.rs` | **MODIFY** | Thread-local / partitioned variant; move `total_kmers`/`unique_kmers` off the per-window path (thread-local accumulators reduced at end). Preserve `increment`/`get_count`/`get_all_counts` signatures + u32 overflow semantics (PCOUNT-04). |
-| Count command | `src/cli/commands/count.rs` | **MODIFY** | Fix `resolve_thread_count` (lazy fallback, `build_global` first); replace inline `fill→par_iter→clear` with a call to the shared engine; `sort_unstable_by_key`. |
-| FASTQ I/O | `src/io/fastq.rs` | **MODIFY (minor)** | Keep `MultiGzDecoder` (multi-member correctness). Optionally expose a record iterator the engine can overlap. |
-| RKDB writer | `src/database/format.rs` | **UNCHANGED (format)** | `.rkdb` v2 layout untouched; engine feeds the same `DatabaseHeader::write_to` + `KmerEntry::write_to`. |
-| PyO3 counter | `pyo3/src/counter.rs` | **MODIFY** | Route `add_from_fastq`/`add_from_fasta` through the shared engine (currently a **sequential** line-loop, `process_fastq_file_on_counter:763` — no rayon). Fix `save_database` double-sort. |
-| Profiling/regression harness | `scripts/bench/` + `.planning/research/profiling/` | **MODIFY/NEW** | Add a `--threads`-correctness test (assert pool size), thread-scaling gate, count-parity gate on the real slice. |
+**New (optional, recommended): `scripts/bench/phase11.py`** — a thin staged controller modeled on phase10.py (synthetic tracer → slice-gate → full merge session → mechanical render, exit-code contract 0/1/2). Rationale: phase10.py exists precisely because a multi-hour full-scale session needs resumable stages and honest session-level provenance; bench.py remains the shared protocol library both controllers import. If the team prefers one file, bench.py alone can express the run — the staged controller is an ergonomics/provenance choice, not a capability gap.
 
-### 2.3 Data flow changes
+**Rust side: zero changes.** The benchmark measures the shipped merge (admission-routed, `merge_databases_to_path`). Record which route `resolve_merge_route` picked per run as arm metadata (verbose stderr or a `--verbose` parse) so the verdict is attributed honestly ("streaming route, chunk = N records").
 
-- **Before:** producer fills 4096 records → blocking `par_iter` (16 workers hammer one
-  shared DashMap, per-window global atomics) → `clear` → repeat (serialized); then
-  `get_all_counts` (full `Vec<(u128,u32)>` copy) → single-thread stable sort → write.
-- **After:** producer streams records into a bounded queue **while** N workers count into
-  **disjoint thread-local tables** (rolling encode, no global atomics); at EOF reduce
-  thread-local totals, merge/partition-sort the tables, stream sorted `(u128,u32)` to the
-  unchanged `.rkdb` writer. Decompression overlaps counting; workers never starve or spin.
+### 2.3 Verdict structure (what the report must answer)
 
-### 2.4 `.rkdb` v2 preservation (hard constraint)
+Per PROJECT.md, MERGE-BENCH produces an **invest/no-invest** decision. The mechanical inputs:
 
-The engine emits `(u128, u32)` pairs; the **existing** `format.rs` writer produces the same
-42-byte header + 20-byte entries. Partitioned counting merges buckets into a globally sorted
-stream before writing → **byte-identical** output for the same input. Prove with the existing
-golden sha256 tests (`tests/golden_tests.rs`) + the slice count-parity gate (Distinct
-229,694,874 / Total 519,271,168). No format bump needed.
-
-### 2.5 Dual-surface inheritance + a semantic divergence to surface
-
-- Both surfaces depend on the core; routing **both** through the shared engine makes the win
-  flow to CLI **and** `pyrustkmer` automatically (the project's delivery model).
-- **Today the Python file-counting path is sequential** (`add_from_fastq` releases the GIL
-  but runs a single-threaded line loop) — so Python is currently *slower* than the CLI on
-  file counting. The shared engine fixes this.
-- **Semantic divergence (must surface as a decision, not silently change):** the PyO3 path
-  **filters non-ACGT bases before counting** (concatenates flanks across N), while the CLI
-  **skips windows containing N**. On N-containing input they produce **different counts**.
-  Unifying through the engine should adopt the CLI's skip-N semantics (matches jellyfish),
-  but that changes Python output for N-containing reads → flag for the user/requirements.
-- `PyCounter` public API (`add_kmer`/`add_sequence`/`get_count`/`save_database`) preserved;
-  per-k-mer interactive calls can stay on a single partition.
-
-### 2.6 Patterns to follow / anti-patterns to avoid
-
-**Follow:**
-- **Thread-local accumulation, reduce at end** — removes the per-window global-atomic
-  cache-line bouncing (the ~9× contention multiplier).
-- **Disjoint partitioning** (hash-range or canonical minimizer) — workers own private key
-  spaces; no shared-table locking/contention during counting; merge is a separate phase.
-- **Overlap producer/consumer** with a bounded queue — decompression runs concurrently with
-  counting; workers never spin-wait for the next chunk.
-- **Rolling 2-bit encode + word-level revcomp** — O(L) per read, not O(k·L).
-
-**Avoid:**
-- **Per-chunk fork-join barrier** (`fill → par_iter → clear`) — serializes producer and
-  workers and strands fast P-cores waiting on E-core stragglers (the 58% spin-wait).
-- **Eager `rayon::current_num_threads()` before `build_global`** — silently fixes the pool at
-  `num_cpus` and makes `--threads` a no-op.
-- **Per-window global atomics** for totals/unique — contention hotspot.
-- **Single-thread stable `sort_by_key` on hundreds of millions of u128 keys** — use
-  `sort_unstable` (keys are unique → stability irrelevant) or parallel sort.
-- **Premature disk-backed / CQF rewrite for the speed gap** — the evidence says speed is a
-  parallelism problem; disk-backed is for the memory ceiling (Stage B).
-- **Chorus3 shortcuts** (saturating 2-bit counters, `rusty_alloc`) — already rejected: break
-  exact-u32, 4^21 dense table is 1 TiB+, `rusty_alloc` needs MSRV 1.87 (disqualified for PyO3).
-
-### 2.7 Build order (dependency-respecting)
-
-1. **Profiling + regression harness** — reproducible slice bench, count-parity gate,
-   **`--threads`-correctness test**, thread-scaling gate. *Foundation; everything is measured
-   against it.* (`.planning/research/profiling/` scripts are the seed.)
-2. **Fix `--threads` + thread-local counters + rolling encode** (core hot path). *Low-risk,
-   both surfaces inherit; establishes a correct, faster baseline.* Depends on 1.
-3. **Parallelism restructure** — shared engine with persistent workers + partitioned
-   thread-local tables + overlapped producer/consumer. *The big lever (~3.5×).* Depends on 2.
-4. **Output sort/write optimization** (`sort_unstable` / parallel sort, streaming). Depends on 3.
-5. **`.rkdb` writer adaptation + golden/parity proof** — confirm v2 byte-identity. Depends on 3–4.
-6. **Python parity** — route `PyCounter` file methods through the engine; resolve the N-semantics
-   divergence (surface decision). Depends on 3–5.
-7. **(Conditional) minimizer partitioning + disk-backed** for the memory ceiling / KMC3
-   comparison (BENCH-V2-01). *Only if Stage A misses parity or the memory target demands it.*
-   Depends on 3 (reuses the partitioned engine), the external-sort merge, memmap2.
-
-### 2.8 Scaling considerations
-
-| Scale | Adjustment |
-|-------|------------|
-| Slice / CI (≤4M reads) | Stage A in-memory engine; synthetic degradation ladder for CI (existing harness). |
-| Human-scale r1 (~37M reads, 663M distinct) | Stage A in-memory fits (~18–30 GiB); partitioned thread-local tables keep peak bounded. |
-| Memory-constrained / full PE / KMC3-beating | Stage B minimizer partitioning + disk spill; peak RAM = largest bucket; temp disk is the real budget (KMC3 uses hundreds of GB temp — cached literature, MEDIUM). |
-| Many cores / P+E hybrid | Partition count tuned to P-core count; avoid E-core stragglers pacing the pool; consider P-core-only pool or work-stealing with coarse batches. |
+1. Median wall + median peak RSS of `merge` vs `jellyfish-merge`, from recorded medians, counterbalanced reps, equality-is-match rule (same rule shape as `_count_verdict`).
+2. Parity evidence lines proving both tools merged the same thing (conservation + union + slice-scale dump equality).
+3. Methodology block: reps, schedule, cache states, `-s` hash size, the single-threaded-jellyfish asymmetry, fingerprints, provenance — all rendered with zero measurement literals per the T-04-07 contract.
 
 ---
 
-## Confidence Assessment
+## 3. PEXT: Integration Design
 
-| Area | Confidence | Basis |
-|------|------------|-------|
-| Root cause (parallelism + contention) | **HIGH** | Direct measurement: 4 samply profiles, 14-arm matrix, single-thread microbench, live thread-count verification. |
-| `--threads` bug | **HIGH** | 17 threads observed at `--threads 1`; mechanism confirmed in rayon-core source. |
-| Decompression/encode rejected as primary | **HIGH** | libz 0.09% CPU; encode 3% CPU; gz→raw saves only ~11%. |
-| Stage A achieves parity | **MEDIUM** | Extrapolated from measured scaling efficiencies; must be validated by implementation + the slice gate. |
-| Single-thread full-slice estimate (169 s) | **MEDIUM** | Extrapolated from 2M-read microbench (249.6 ns) to 229M-distinct regime; not directly measured (CLI `--threads` bug blocks a true t1 run). |
-| Contention multiplier (~9×) attribution to global atomics vs bandwidth | **MEDIUM** | Inferred from single-vs-multi gap + low lock-slow-path; not separately isolated (would need a multi-thread microbench variant). |
-| Literature (KMC3/jellyfish/ntHash/simd-minimizers/pigz) | **MEDIUM** | Reused from parallel researcher's websearch cache (`.planning/research/.cache/`); not independently re-verified here. |
+### 3.1 Where parallel extraction attaches
 
-## What could NOT be measured (honest limits)
+The attach surface is small and precisely bounded: **everything between `DefaultCompressedFileReader::open_compressed` (engine.rs:806) and the routing buffers (engine.rs:1135)** runs on the producer thread. Two viable designs:
 
-- **No sudo** → no cold-cache purge (warm-cache only, as v1.0); no dtrace/cargo-flamegraph
-  (used samply + `sample`, which need no sudo).
-- **No true single-thread CLI run** — the `--threads` bug forces 16 workers; single-thread
-  costs come from the standalone microbench (which uses the real `KmerCounter`).
-- **samply `--save-only` profiles are unsymbolicated** — resolved rustkmer RVAs via `nm` and
-  labelled system libs by hand; system-lib internal symbols (e.g. exact spin primitive) are
-  identified by address, not name.
-- **Contention sub-attribution** (global atomics vs memory bandwidth) not isolated — both are
-  implicated; a multi-thread microbench variant would separate them (recommended in phase 1).
-- **KMC3 not installed** — BENCH-V2-01 comparison deferred (it is a secondary reference).
+### Design A — per-chunk extraction tasks on the existing rayon pool (RECOMMENDED)
 
-## Sources
+```
+producer thread (dispatcher)                        rayon pool (N threads)          N workers (unchanged)
+──────────────────────────────                      ─────────────────────           ─────────────────────
+read records → raw chunk (≤C records)
+spawn extraction task (bounded in-flight W)
+                                     ─────────────► parse + for_each_window
+                                                    → per-partition key buffers
+                                     ◄─────────────  returned Vec per partition
+drain completed chunks (any order)
+  route_key / send_batch  ──────────────────────────────────────────────────────► UNCHANGED queues,
+(unchanged code path, engine.rs:1135/1189)                                        Flush{token} protocol,
+file boundary: joint flush as today                                              acks, 2N+1 threads
+```
 
-- **Primary (this work, HIGH):** `.planning/research/profiling/` — `evidence.json`,
-  `results.jsonl` (14-arm matrix), `prof*.breakdown.txt` (samply), `microbench_main.rs`,
-  `verify_threads.py`, `parity_report.json`. Raw profiles: `/tmp/rkmer-v2-prof/profiles/*.json.gz`
-  (regenerable via `run_profiles.py`).
-- **Code (HIGH):** `src/cli/commands/count.rs` (chunk pipeline, `resolve_thread_count`),
-  `src/hash/table.rs` (DashMap, per-window atomics), `src/kmer/encoding.rs` / `canonical.rs`
-  (O(k) encode/revcomp), `src/io/fastq.rs` (`MultiGzDecoder`), `src/database/format.rs`
-  (v2 writer), `pyo3/src/counter.rs` (sequential file path, N-filter divergence).
-- **rayon-core 1.13 source (HIGH):** `current_num_threads → global_registry()` default-pool init.
-- **v1.0 benchmark artifacts (HIGH):** `.planning/milestones/v1.0-phases/04-benchmark-validation/04-results-full-k21.json` / `k31.json`, `scripts/bench/bench.py` (methodology).
-- **Literature (MEDIUM, reused cache):** KMC3 two-stage minimizer/signature partitioning;
-  jellyfish2 lock-free invertible hash; ntHash/ntHash2 rolling hash; simd-minimizers (rust-seq,
-  SEA 2025, NEON); qfilter CQF; pigz cannot parallelize inflate; minimizer bucket skew;
-  KMC3 temp-disk budget. (`.planning/research/.cache/`, websearch, MEDIUM.)
+- **New:** a chunk-reader on the producer thread + an extraction closure (records → `RoutingBuffers`-shaped partial buffers); `EngineConfig` grows bounded-in-flight knobs (e.g. `extraction_chunk_records`, `max_in_flight_chunks`). Returns are routed by the **same** `route_key`/`send_batch` code, so `send_batch` remains the *only* sender into each worker queue.
+- **Unmodified:** `CountBatch`/`WorkerStat`, `flush_pipeline` + token/ack protocol, `run_worker`, `owned_table`, `PartitionLayout`, the sequential path, `Drop`, `finish`, and the entire output stage. `count.rs` and `pyo3/` see no API change.
+- **Why the shape is deadlock-safe:** rayon tasks must never block on a worker queue (the module docs already warn the inverse case: engine.rs:20–22). Here tasks only *return* buffers; the dispatcher is the sole sender and applies backpressure by bounding in-flight chunks — a full queue blocks the dispatcher, which stops issuing new chunks; memory is bounded by W × chunk size. This preserves the bounded-memory property the pipeline was designed around.
+- **Thread observability:** extraction tasks run on the global rayon pool sized `resolved_threads` (count.rs:152–155) → process total stays exactly **2N+1**; `thread_pool_size_tests.rs` and `verify_threads.py` pass unchanged.
+
+### Design B — M producer OS threads feeding the same worker queues
+
+- Mechanically possible without touching workers: `SyncSender` is `Clone`, so M producers can hold senders into each worker's single-receiver channel; per-key adds commute, so interleaved batches count identically.
+- **But the flush protocol breaks:** a producer's Flush ack proves only *its own* batches were consumed (the ack answers one FIFO channel; with M senders interleaved, "everything sent so far by all producers" is not established by one ack). File-boundary cumulative `FileStats.stats` — a published, tested contract — becomes ill-defined mid-flight. A correct design needs M flush tokens per barrier and a joint reduction (worker counts outstanding producers, or an M-way ack rendezvous), i.e. a rewrite of `flush_pipeline`/`WorkerStat` plus new shutdown/Drop ordering across producer threads.
+- **Costs beyond the engine:** the 2N+1 exactness gate becomes 2N+M+1 → `expected_total` (thread_pool_size_tests.rs:48) and `verify_threads.py` must change; profiling diagnostics need per-producer splits; file-ownership vs chunk-splitting of one file changes skip-warning batch semantics (the per-4096-record legacy wording, engine.rs:1405–1444).
+- **Verdict:** strictly more surface for the same win. Design A already parallelizes the measured bottleneck (encode/parse/decompress — the routing and send costs are tiny per key) while inheriting every pinned invariant. Choose B only if Design A measurements show the dispatcher's route+send hop is itself significant (measurable via the existing `profiling` feature before committing).
+
+### 3.2 Invariants PEXT must preserve (each one a success criterion)
+
+| # | Invariant | Existing enforcement | PEXT success criterion |
+|---|---|---|---|
+| 1 | **Disjoint partition writes** — every key hits exactly one table | `partition_of` purity (partition.rs:72), `owned_table` range check (engine.rs:1386) | Routing logic unchanged or provably identical; `owned_table` validation still fires on any out-of-range batch (keep a RED-testable mutation) |
+| 2 | **Exact counts, verbatim overflow** | `LocalKmerCounts::increment` u32 checked (local.rs:152); checked aggregate sites (engine.rs:108–171) | 1-vs-N and old-vs-new differentials byte-exact across the k/canonical matrix; seeded-overflow test (engine.rs:1577) still returns the verbatim message without hanging |
+| 3 | **`.rkdb` byte-identity across thread counts** | partition-disjointness + strict total-order sort (count.rs:364) + frozen writer | t1/t4/t16 sha256 equality gate re-run and green on the new engine |
+| 4 | **2N+1 thread observability (Design A)** | `expected_total` (thread_pool_size_tests.rs:48), `verify_threads.py` | Gate passes unchanged; no new named OS threads from extraction |
+| 5 | **Flush/token happens-before** | FIFO channel + token echo (batch.rs:10–17, engine.rs:1256–1299) | `flush_pipeline` untouched; stale-token test still RED-controllable |
+| 6 | **t1 honesty** | sequential path (engine.rs:612–634) | `--threads 1` path byte-for-byte untouched; t1 wall statistically unchanged (it shares no new code) |
+| 7 | **Bounded memory** | bounded queues (8 batches), `into_filtered_pairs` drain-don't-copy, MEM guardrail | In-flight chunk bound W documented and enforced; full-scale peak RSS stays **below jellyfish at both k** (43.97 GiB k=21 / 68.52 GiB k=31 references) |
+| 8 | **Frozen Python surface (12 public `PyCounter` methods)** | Phase 9 freeze (pyo3/src/counter.rs:117–655) | Zero API changes; `count_file_into_counter` (pyo3/src/counter.rs:676) benefits transparently because it constructs a per-call `CountEngine`; 179 pytest green with no new expectations |
+| 9 | **Engine contracts in prose stay true** | module docs (engine.rs:1–53): workers never print/rayon/unwrap | Extraction tasks inherit the same rules (no unwrap, errors fail loud through the established paths) |
+| 10 | **Error/shutdown: no leaked or blocked worker** | `join_workers` idempotent, `Drop` joins (engine.rs:1056–1129) | A failed extraction join-fails loud; Drop still terminates everything under any chunk stage state |
+
+### 3.3 PEXT research-phase leverage (this milestone)
+
+The predicted-win sizing needs no new instrumentation: build with `--features profiling`, run the real slice, and read `EngineDiagnostics.producer_nanos` vs worker `busy_nanos` (engine.rs:196–204) — the same diagnostics that produced the "producer ≈99.99%" finding. Decompress/parse/encode attribution may want one targeted sub-timing inside the producer (a research-phase-local patch or a `profiling`-gated counter), kept out of default builds per the existing pattern. The conditional implementation phase then re-uses the bench harness's rotation/median machinery (output_stage.rotation_schedule, reduce_arm) for its scaling gate, exactly as Phases 6–8 did.
 
 ---
-*Architecture research for: rustkmer v2.0 k=21 Counting Parity*
-*Researched: 2026-11-12 — empirical root-cause profiling on real CRR1936095 data*
+
+## 4. Data Flow Changes
+
+**MERGE-BENCH:** none in Rust. In the harness, the results document gains arms (`jellyfish-count-B`, `jellyfish-merge`), the parity block gains merge-level assertions, and the rendered report gains a merge-verdict section. Flow of measured bytes: `inputs → {rk count A,B; jf count A,B} → {rk merge; jf merge} → stats/dump parity → medians → verdict`.
+
+**PEXT (Design A):** the record→keys flow gains one stage boundary. Producer thread: read raw chunk → rayon task: decompress/parse/encode → returned per-partition buffers → producer routes/sends (unchanged) → workers increment (unchanged) → finish/sort/write (unchanged). Aggregates (skipped windows, warning batches) remain producer-side and exact because the dispatcher sees every chunk's summary in one thread — a deliberate Design A advantage over Design B, where skip accounting would scatter across producers.
+
+---
+
+## 5. Build Order (dependency-aware)
+
+**Recommended sequence — MERGE-BENCH harness first, PEXT research parallel, PEXT implementation last and conditional:**
+
+1. **Harness extension (MERGE-BENCH spine; also serves PEXT later).** Add the jellyfish-count-B/merge arms, merge parity gates, dump-level slice gate, ordering assertion, renderer verdict section, unit tests. Small, fully testable at synthetic scale in CI (`benchmark.yml` runs bench.py synthetics already). *No Rust changes → all subsequent measurements share one harness.*
+2. **PEXT research (independent of 1; can run in parallel).** Profiling builds, producer-share measurement, predicted-win sizing on the real slice, Design A vs B decision memo. Reads the engine only; changes nothing, so step 3's measurements stay attributable to a stable binary.
+3. **Full-scale merge session → invest/no-invest verdict** (user decision point; phase11-style controller optional). Must complete *before* any PEXT implementation lands: a merged binary would change provenance and force re-running the merge session (new binary hash → new provenance block → previous full-scale numbers no longer renderable as final).
+4. **PEXT implementation phase — conditional (D3 pattern).** Executes only if step 2's verdict says the predicted win justifies it. Reuses step 1's harness for its scaling and parity gates (same rotation schedule, same reduce/verdict rules, `.rkdb` sha256 gates). If triggered, its own old-vs-new differential runs *after* the merge verdict is recorded, on a fresh provenance.
+
+**Why this order holds:** the only hard dependency is 2→4 (research gates implementation) and 3-before-4 (provenance stability). Steps 1 and 2 are mutually independent; doing 1 first is cheap insurance because PEXT's implementation phase (if triggered) is the second consumer of the extended harness, and every harness bug is then found at synthetic scale, not mid-session.
+
+---
+
+## 6. Anti-Patterns to Avoid (domain-specific)
+
+1. **Do not let rayon tasks send into worker queues.** Bounded queues + a blocked pool = deadlock (the module docs' warning inverted). Design A's dispatcher-only-send rule is the guard.
+2. **Do not weaken the exactness gates to "counts still equal at the end."** The byte-identity and 2N+1 gates are exact-equality by design ("the exactness is the point"); a `>=` relaxation is how the v1.0 `--threads` no-op survived a year.
+3. **Do not compare merge wall against a jellyfish *count* arm.** The current renderer's `n/a` for merge exists precisely because that delta is semantically void (bench.py:1626); MERGE-BENCH must add the true counterpart arm, not reuse the count baseline.
+4. **Do not let the merge benchmark re-run `jellyfish merge` on self-merged inputs.** jellyfish count with `-t > 1` already merges internally; the two `.jf` inputs must come from two separate single-database count runs (the harness's per-input arm structure gives this naturally — preserve it).
+5. **Do not "fix" the single-threaded jellyfish merge asymmetry by throttling rustkmer.** Record it in the methodology section (the decompression-asymmetry precedent) and compare shipped defaults.
+6. **Do not add PEXT knobs to the Python surface.** Engine config is Rust-side; `PyCounter`'s 12-name API is frozen and `threads=` already covers configuration.
+
+---
+
+## 7. Pitfalls Worth a Phase-Level Flag
+
+| Topic | Pitfall | Mitigation |
+|---|---|---|
+| Full-scale merge disk usage | DEFAULT_DISK_FLOOR_GB = 150 was sized for count artifacts (bench.py:61–63); a full merge session adds 2×.jf + 2×.rkdb merged outputs + scratch | Re-estimate from v2.0 measured DB sizes; raise `--disk-floor-gb` for the merge session |
+| jellyfish counter saturation at merge | Summed counts can exceed what count-time parity exercised | The stats-level parity gates catch any divergence; note `--out-counter-len` if ever needed (default worked at v2.0 scale) |
+| Renderer regression risk | `_arm_row`'s merge special-case is load-bearing for old committed results files | New code path only when `jellyfish-merge` arm present; byte-identity re-render check on the v2.0 committed JSONs |
+| Admission-route attribution | Full-scale merge route (streaming vs prefix-cache) is chosen by the admission model, not visible in results | Record `resolve_merge_route`'s decision as arm metadata; verdict wording names the measured route |
+| In-flight memory bound (PEXT) | Unbounded chunk queue reintroduces v1.0-style RSS blowups | W × chunk bound is a documented EngineConfig invariant with a test |
+
+---
+
+## 8. Sources
+
+- Codebase (this session, HIGH): `src/count/engine.rs` (engine pipeline, producer loop, flush protocol, diagnostics), `src/count/partition.rs` (routing/layout), `src/count/batch.rs` (message contracts), `src/kmer/extract.rs` (`for_each_window` purity), `src/cli/commands/count.rs` (pool init, sort, frozen writer flow), `src/cli/commands/merge.rs` (CLI merge, header-only validation), `src/database/format.rs` (`merge_databases_to_path` + route dispatch), `src/hash/local.rs` (increment/overflow), `pyo3/src/counter.rs` (per-call engine, frozen API), `tests/thread_pool_size_tests.rs` (2N+1 gate), `scripts/bench/bench.py` (protocol, parity, self-check, renderer), `scripts/bench/phase10.py` + `scripts/bench/output_stage.py` (staged full-scale pattern, rotation schedule), `scripts/bench/compare.py` (threshold contract), `.github/workflows/benchmark.yml` (CI gate), `.planning/PROJECT.md` (milestone scope, D3 pattern, MEM guardrail).
+- Web (HIGH, official documentation): Jellyfish 2.3 `merge` subcommand — syntax `jellyfish merge [options] hash1 hash2 ...`, `-o` output, count-summing default, single-threaded and documented "relatively slow":
+  - [Debian jellyfish(1) man page](https://manpages.debian.org/trixie/jellyfish/jellyfish.1.en.html)
+  - [Jellyfish 2.3.0 manual (PDF)](https://gensoft.pasteur.fr/docs/jellyfish/2.3.0/jellyfish.pdf)
+  - [Jellyfish User Guide](http://home.cc.umanitoba.ca/~psgendb/birchhomedir/BIRCHDEV/public_html/doc/jellyfish/JellyfishUserGuide.pdf)
+
+---
+*Architecture research for: rustkmer v2.1 — MERGE-BENCH harness extension & PEXT producer integration*
+*Researched: 2026-11-16*
