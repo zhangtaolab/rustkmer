@@ -1748,12 +1748,18 @@ def run_bench(args):
                 f"total={by_name['count-A']['total_kmers']} — methodology "
                 f"finding (Pitfall 10), not a comparable measurement")
 
-        # Three-way merge parity pre-gate (MBENCH-02, PARITY-GATE.md §2):
-        # raises BEFORE any median is trusted when any aggregate invariant
-        # fails. Guarded on the jellyfish-merge arm being present (a
-        # comparison run without --skip-merge).
+        # Three-way merge parity gate (MBENCH-02, PARITY-GATE.md): the
+        # aggregate pre-gate raises BEFORE any median is trusted when any
+        # aggregate invariant fails; the dump-vs-dump deep leg (§4) is the
+        # per-k-mer verdict gate on the two merged outputs — exact identity,
+        # the defense jellyfish's silent canonicality mixing cannot pass.
+        # Both run before the results doc is written/accepted. Guarded on
+        # the jellyfish-merge arm being present (a comparison run without
+        # --skip-merge); at full scale the deep leg runs inside Phase 12's
+        # protocol (MBENCH-02/03 split).
         if "jellyfish-merge" in by_name:
             assert_merge_parity(by_name)
+            dump_vs_dump_equal(db_merged, jf_merged, args.rustkmer, scratch)
     else:
         # Single-rep run (CI path): rustkmer-only arms, no jellyfish needed.
         arms = [
