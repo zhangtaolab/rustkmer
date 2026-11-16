@@ -8,18 +8,15 @@ rustkmer is a high-performance k-mer counting and querying toolkit written in Ru
 
 Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools (KMC / Jellyfish class), from both the CLI and Python.
 
-## Current Milestone: v2.0 k=21 Counting Parity
+## Current Milestone: v2.1 Merge Verdict & Producer Research
 
-**Goal:** Match or beat Jellyfish2 on human-scale k=21 counting — closing the BENCH-02 gap outright — on both the CLI and Python surfaces, with the approach chosen from profiling evidence rather than guesswork.
+**Goal:** Decide where the next performance investment goes — benchmark merge against `jellyfish merge` at full scale for an invest/no-invest verdict; research the producer-bound counting bottleneck (parallel extraction) with a conditional implementation phase — while closing v2.0 carry-forward hygiene gaps and holding the memory-below-jellyfish guardrail.
 
 **Target features:**
-- ✅ Deep research + profiling (done 2026-11-12): root cause measured — the gap is parallel-scaling efficiency (~3.5x), not decompression/encoding/data-structure; `--threads` is a silent no-op; evidence in `.planning/research/profiling/`
-- **Stage A (spine, in-memory parallelism):** fix `--threads` → thread-local counters + end reduction (kill per-window global atomics) → shared counting engine (`src/count/engine.rs`, persistent workers + disjoint partitioned tables + overlapped producer/consumer) → rolling encode + bit-parallel revcomp → parallel output sort. Targets jellyfish parity on both surfaces.
-- **D2 semantics unification:** one shared window-extraction function adopting CLI skip-N semantics (Python output changes on N-reads, user-accepted)
-- KMC3 comparison as a second validation reference (BENCH-V2-01, exact-count flags)
-- Exact-count contract preserved: 1-vs-N + old-vs-new differentials + golden baselines prove byte-identical counts; `.rkdb` v2 byte-identity
-- Regression gate: standing slice bench + parity gate + CI baselines, no performance regression
-- **Stage B (CONDITIONAL, D3):** hand-rolled minimizer/signature partitioning + disk-backed bins — the memory-ceiling/KMC3-RAM lever; gated on Stage A missing parity or a memory ceiling Stage A cannot meet
+- **MERGE-BENCH**: full-scale rustkmer merge vs `jellyfish merge` (same inputs, parity gate, counterbalanced reps) → measured verdict + invest/no-invest decision
+- **PEXT**: deep research on the producer-bound count phase (single producer ≈99.99% of parallel wall) + predicted-win sizing → conditional implementation phase executes only if the verdict says the win is worth it (v2.0 D3 pattern)
+- **HYG**: Nyquist validation for Phases 5–8, SECURITY.md for Phases 9/10, stale `docs/benchmark-report.md` drift resolved (it still shows the v1.0 k=21 +420% verdict), backlog 999.1–999.3 opportunistic
+- **MEM guardrail**: any performance change keeps full-scale peak RSS below jellyfish at both k (already true: k=21 43.97 vs 46.84 GiB; k=31 68.52 vs 88.00 GiB)
 
 ## Requirements
 
@@ -49,17 +46,21 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 
 ### Active
 
-<!-- Next milestone scope is not yet defined. -->
+<!-- v2.1 scope. Building toward these. -->
 
-- [ ] Backlog 999.1–999.3 (pyo3 `build.rs` link args, stale site-packages `pyrustkmer` shadowing, `deferred-items.md` stale sweep claim) — opportunistic, only if touched by future work
-- [ ] v2.0 carry-forward (see ROADMAP.md Backlog): Nyquist validation for Phases 5/6/7/8; `cargo fmt --all --check` drift; SECURITY.md for Phases 9/10; benchmark-harness CLI gate enforcement + README drift; MINIM-01..03 (deferred Phase 11) if a memory ceiling is wanted
+- [ ] MERGE-BENCH: full-scale merge benchmark vs `jellyfish merge` with parity gate and counterbalanced protocol; verdict drives invest/no-invest
+- [ ] PEXT: producer-bound / parallel-extraction research with predicted-win sizing; conditional implementation phase gated on the verdict (D3 pattern)
+- [ ] HYG: Nyquist validation gaps for Phases 5–8; SECURITY.md for Phases 9/10; `docs/benchmark-report.md` drift resolved; backlog 999.1–999.3 opportunistic
+- [ ] MEM guardrail held: peak RSS < jellyfish at both k for any perf change (status quo; no new build item)
 
 ### Out of Scope
 
 <!-- Explicit boundaries for this round. -->
 
-- Full-scale merge competitiveness — merge is already bounded-memory (v1.0 Phase 3); user chose counting-first 2026-11-11, merge comparison deferred to a later milestone
-- New user-facing features / new commands — this round is performance, not feature expansion; would dilute focus
+- Full-scale merge **implementation** investment — v2.1 measures merge vs `jellyfish merge` and decides; any gap-closing work is deferred until the verdict justifies it
+- MINIM-01..03 minimizer/CQF memory restructuring — user decision 2026-11-16: the memory bar is "below jellyfish", which v2.0 already meets at both k; KMC-class RAM is not a goal
+- KMC3 comparison (BENCH-V2-01) — user decision 2026-11-16: not a reference for this project; jellyfish remains the sole comparator
+- New user-facing features / new commands — v2.1 is measurement, research, and hygiene, not feature expansion
 - Rewriting the `.rkdb` format from scratch — format stays compatible; a bump is a surfaced decision only if a specific win demands it
 - Non-performance tech debt as the milestone's spine (committed backup files, dead PyO3 modules, orphaned `merge_tests.rs`, god-module splits that don't touch hot paths) — tracked in `.planning/codebase/CONCERNS.md`, cleaned opportunistically when the relevant code is touched, not pursued for its own sake this round
 - UI / visualization — N/A (CLI + library)
@@ -124,6 +125,7 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 | Phase 9 Python parity: one shared engine, D2 skip-N, sort-once save, frozen API | Measured on the shipped tree: differential 9/9 cases equal with 0 divergence (33 Python-only chimeric k-mers eliminated); `--compare-baseline` PASS at speedup_t1 2.35x / speedup_default 8.71x vs the committed Phase 5 sequential baseline (N-free control exact counts 129,579,577 / 73,476,107 preserved); public `PyCounter` frozen at 12 names; `format.rs` grew by pure addition (78/0). Review found 0 critical / 4 warnings / 8 info; the 4 warnings were fixed and every gate + evidence artifact regenerated on the post-fix tree | ✅ Verified 38/38 (PY-01..02 complete) |
 | Phase 10 verdict: rustkmer matches-or-beats jellyfish on both surfaces at both k | Overall **YES** from recorded t16 medians in same-session comparisons: k=21 CLI 144.69 vs 194.85 s, Python 165.05 vs 197.95 s; k=31 CLI 147.08 vs 1380.92 s, Python 178.22 vs 187.14 s; exact three-way parity and identical two-part fingerprints; peak memory lower than jellyfish at both k. The k=31 jellyfish CLI-session median is a disclosed 7.38x outlier vs the Python session; the verdict is robust to using the faster reference (both rustkmer arms still win). Three code-review rounds fixed 27 findings (19 unique IDs), 0 open; no measured number or verdict changed | ✅ Verified 8/8 (BENCH-V2-02 complete) |
 | D3 revised 2026-11-14: Phase 11 (minimizer partitioning / memory ceiling) does NOT execute in v2.0 | The conditional trigger (Stage A misses parity OR a memory ceiling Stage A cannot meet) did not fire: Stage A hit parity on both k and both surfaces, and peak memory was below jellyfish (43.97 vs 46.84 GiB at k=21; 68.52 vs 88.00 GiB at k=31). MINIM-01..03 deferred to a later milestone | ✅ User decision 2026-11-14 |
+| v2.1 scope: merge verdict + producer research + hygiene; memory bar is "below jellyfish", MINIM permanently descoped, KMC3 dropped | User decisions 2026-11-16 — memory parity with jellyfish already holds at both k so MINIM-01..03 has no trigger; KMC3 is not a reference the user wants; merge investment is decided by measurement (vs `jellyfish merge`), not assumption; producer-bound parallel extraction researched first with a D3-pattern conditional phase | — Pending |
 
 ## Evolution
 
@@ -143,4 +145,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-14 after v2.0 milestone (k=21 Counting Parity — shipped, overall YES; Phase 11 deferred)*
+*Last updated: 2026-11-16 after v2.1 milestone start (Merge Verdict & Producer Research — MINIM descoped, KMC3 dropped, memory bar = below jellyfish)*

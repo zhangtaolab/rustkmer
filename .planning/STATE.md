@@ -1,21 +1,16 @@
 ---
 gsd_state_version: "1.0"
-milestone: v2.0
-milestone_name: carry-forward (from the milestone audit, 2026-11-14)
-status: Awaiting next milestone
-stopped_at: context exhaustion at 75% (2026-11-15)
-last_updated: "2026-11-15T15:47:47.552Z"
-last_activity: 2026-11-14
-last_activity_desc: Milestone v2.0 completed and archived
-state_head: 7de833a6c106e3150a9486c63cb31a629f0a6639
+milestone: v2.1
+milestone_name: Merge Verdict & Producer Research
+status: planning
+last_updated: "2026-11-16T08:46:00.501Z"
+last_activity: 2026-11-16
 progress:
-  total_phases: 7
-  completed_phases: 6
-  total_plans: 29
-  completed_plans: 29
-  percent: 86
-current_phase: 10
-current_phase_name: Benchmark Verdict
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -29,10 +24,11 @@ See: .planning/PROJECT.md (updated 2026-11-14)
 
 ## Current Position
 
-Phase: Milestone v2.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-11-16 - Completed quick task 261116-mjo: docs/getting-started/first-steps.md:56 flag resolved as false positive (PyCounter.canonical is correct; the stats-only name exists only on PyCounterStats) - no repo change
+Status: Defining requirements
+Last activity: 2026-11-16 — Milestone v2.1 started
+
 
 ## Performance Metrics
 
