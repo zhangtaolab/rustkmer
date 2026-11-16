@@ -480,6 +480,11 @@ impl KmerCounter {
         // modification — i.e. a compare-exchange loop — so concurrent deltas
         // compose. A bare `fetch_add` is deliberately NOT used: it would
         // silently wrap past u64::MAX instead of failing loud.
+        // `AtomicU64::fetch_update` is renamed to `try_update` in Rust 1.95.0.
+        // The project MSRV is 1.82, where `try_update` does not exist, so
+        // renaming would break the CI clippy gate (`-D warnings`). Remove
+        // this allow and rename to `try_update` when the MSRV reaches >= 1.95.
+        #[allow(deprecated)]
         let published = self.total_kmers.fetch_update(
             std::sync::atomic::Ordering::Relaxed,
             std::sync::atomic::Ordering::Relaxed,
