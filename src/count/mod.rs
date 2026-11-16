@@ -13,10 +13,10 @@ pub mod engine;
 pub mod partition;
 
 pub use batch::{CountBatch, WorkerStat};
-#[cfg(feature = "profiling")]
-pub use engine::{EngineDiagnostics, WorkerDiagnostics};
 pub use engine::{
     CountEngine, CountResult, EngineConfig, EngineStats, FileStats, SequenceKind,
     DEFAULT_KEYS_PER_BATCH, DEFAULT_QUEUE_BATCHES, DEFAULT_RECORDS_PER_WARNING_BATCH,
 };
+#[cfg(feature = "profiling")]
+pub use engine::{EngineDiagnostics, WorkerDiagnostics};
 pub use partition::{mix64, partition_of, PartitionLayout, MAX_PARTITIONS, MIN_PARTITIONS};

@@ -145,7 +145,10 @@ fn all_invalid_sequence_emits_nothing_and_skips_every_window() {
     let seq = b"NNNNNNNNNNNNNNNNNNNN";
     for k in [1usize, 3, 10, 21, 33, 64] {
         let (got, skipped) = extract(seq, k, false);
-        assert!(got.is_empty(), "invalid-only sequence must emit nothing (k={k})");
+        assert!(
+            got.is_empty(),
+            "invalid-only sequence must emit nothing (k={k})"
+        );
         let expected = if seq.len() >= k {
             (seq.len() - k + 1) as u64
         } else {
@@ -206,7 +209,11 @@ fn record_boundaries_never_span_calls() {
     let (left_values, _) = extract(left, k, false);
     let (right_values, _) = extract(right, k, false);
     assert_eq!(left_values.len(), 1, "left record emits exactly one window");
-    assert_eq!(right_values.len(), 1, "right record emits exactly one window");
+    assert_eq!(
+        right_values.len(),
+        1,
+        "right record emits exactly one window"
+    );
 
     // If a window could span the call boundary, a chimeric AAAAACCCC window
     // would appear. Assert it never does and the two real windows do.
@@ -214,7 +221,10 @@ fn record_boundaries_never_span_calls() {
     combined.extend(right_values.iter().copied());
     assert_eq!(combined.len(), 2, "two records must emit two windows total");
     let chimeric = encode_kmer_bytes_u128(b"AAAAC").expect("valid");
-    assert!(combined.contains(&chimeric), "left window must be the local one");
+    assert!(
+        combined.contains(&chimeric),
+        "left window must be the local one"
+    );
 }
 
 /// Invalid k values are rejected at the public boundary.
@@ -227,7 +237,10 @@ fn invalid_k_is_rejected() {
                 reported, invalid,
                 "WindowError::InvalidK must report the rejected k"
             ),
-            other => panic!("k={invalid} must be rejected, got {:?}", other.map(|s| s.emitted)),
+            other => panic!(
+                "k={invalid} must be rejected, got {:?}",
+                other.map(|s| s.emitted)
+            ),
         }
     }
 }
@@ -247,7 +260,10 @@ fn sink_error_propagates() {
     });
     match outcome {
         Err(WindowError::Emit("stop")) => {}
-        other => panic!("expected WindowError::Emit(\"stop\"), got {:?}", other.map(|s| s.emitted)),
+        other => panic!(
+            "expected WindowError::Emit(\"stop\"), got {:?}",
+            other.map(|s| s.emitted)
+        ),
     }
     assert_eq!(calls, 2, "emission must stop at the first sink error");
 }

@@ -1382,9 +1382,7 @@ impl ExternalSortMerger {
                     writer.write_all(&buffer[..n])?;
 
                     // Report progress every 1 million k-mers
-                    if processed_kmers % 1_000_000 == 0
-                        || last_report.elapsed().as_secs() >= 5
-                    {
+                    if processed_kmers % 1_000_000 == 0 || last_report.elapsed().as_secs() >= 5 {
                         if let Ok(mem_info) = sys_info::mem_info() {
                             log::info!(
                                 "   Progress: {} M / {} M k-mers | available memory: {:.1} MB",

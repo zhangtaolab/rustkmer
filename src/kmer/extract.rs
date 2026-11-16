@@ -175,10 +175,7 @@ mod tests {
         // is inside the windows starting at 8..=40 (33 of them).
         assert_eq!(summary.skipped, 33);
         assert_eq!(summary.emitted, 15);
-        assert_eq!(
-            summary.emitted + summary.skipped,
-            seq.len() as u64 - 33 + 1
-        );
+        assert_eq!(summary.emitted + summary.skipped, seq.len() as u64 - 33 + 1);
     }
 
     #[test]

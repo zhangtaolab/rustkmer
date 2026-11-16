@@ -149,8 +149,11 @@ impl PyFuzzyResult {
         // Build JSON for exact_match if present
         let exact_match_json = match &self.exact_match {
             Some(exact) => {
-                let positions_json = format!("[{}]", 
-                    exact.mutation_positions.iter()
+                let positions_json = format!(
+                    "[{}]",
+                    exact
+                        .mutation_positions
+                        .iter()
                         .map(|p| p.to_string())
                         .collect::<Vec<_>>()
                         .join(", ")
@@ -163,7 +166,7 @@ impl PyFuzzyResult {
                     exact.match_type,
                     positions_json
                 )
-            },
+            }
             None => "null".to_string(),
         };
 
@@ -196,8 +199,6 @@ impl PyFuzzyResult {
             self.has_position_mutations
         ))
     }
-
-
 
     fn to_csv(&self) -> PyResult<String> {
         let mut csv = String::new();

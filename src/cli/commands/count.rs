@@ -289,7 +289,13 @@ pub fn execute_count(args: &Args) -> ProcessingResult<()> {
 
                 match format.as_str() {
                     "text" => {
-                        output_text_format(count_result, output_path, *quiet, should_sort, &filter)?;
+                        output_text_format(
+                            count_result,
+                            output_path,
+                            *quiet,
+                            should_sort,
+                            &filter,
+                        )?;
                     }
                     _ => {
                         output_binary_format(
@@ -410,9 +416,9 @@ fn output_text_format(
     }
 
     // Explicit flush: a failed final write must never be silent (T-08-04).
-    writer.flush().map_err(|e| {
-        KmerError::FileWriteError(format!("Failed to flush output file: {}", e))
-    })?;
+    writer
+        .flush()
+        .map_err(|e| KmerError::FileWriteError(format!("Failed to flush output file: {}", e)))?;
 
     if !quiet {
         eprintln!("Completed writing {} k-mers", total);
@@ -500,9 +506,9 @@ fn output_binary_format(
     }
 
     // Explicit flush: a failed final write must never be silent (T-08-04).
-    writer.flush().map_err(|e| {
-        KmerError::FileWriteError(format!("Failed to flush output file: {}", e))
-    })?;
+    writer
+        .flush()
+        .map_err(|e| KmerError::FileWriteError(format!("Failed to flush output file: {}", e)))?;
 
     if !quiet {
         eprintln!("Completed writing {} k-mers in RKDB format", kmer_count);

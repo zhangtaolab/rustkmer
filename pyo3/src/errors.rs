@@ -40,4 +40,3 @@ impl RustKmerError {
         &self.error_type
     }
 }
-

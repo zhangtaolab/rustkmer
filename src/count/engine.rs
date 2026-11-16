@@ -131,8 +131,14 @@ fn checked_stats_for(
     tables: &[LocalKmerCounts],
     skipped_windows: u64,
 ) -> ProcessingResult<EngineStats> {
-    let total_kmers = checked_sum(tables.iter().map(LocalKmerCounts::total_kmers), TOTAL_OVERFLOW_MESSAGE)?;
-    let unique_kmers = checked_sum(tables.iter().map(LocalKmerCounts::unique_kmers), UNIQUE_OVERFLOW_MESSAGE)?;
+    let total_kmers = checked_sum(
+        tables.iter().map(LocalKmerCounts::total_kmers),
+        TOTAL_OVERFLOW_MESSAGE,
+    )?;
+    let unique_kmers = checked_sum(
+        tables.iter().map(LocalKmerCounts::unique_kmers),
+        UNIQUE_OVERFLOW_MESSAGE,
+    )?;
     Ok(EngineStats {
         total_kmers,
         unique_kmers,
@@ -606,7 +612,11 @@ impl CountEngine {
         if config.threads <= 1 {
             let tables = (0..layout.partitions())
                 .map(|_| {
-                    LocalKmerCounts::with_capacity(config.k, config.canonical, per_partition_capacity)
+                    LocalKmerCounts::with_capacity(
+                        config.k,
+                        config.canonical,
+                        per_partition_capacity,
+                    )
                 })
                 .collect();
             return Ok(Self {
@@ -624,7 +634,9 @@ impl CountEngine {
         }
 
         let tables = (0..layout.partitions())
-            .map(|_| LocalKmerCounts::with_capacity(config.k, config.canonical, per_partition_capacity))
+            .map(|_| {
+                LocalKmerCounts::with_capacity(config.k, config.canonical, per_partition_capacity)
+            })
             .collect();
         Self::spawn_parallel(config, layout, tables)
     }
@@ -791,14 +803,13 @@ impl CountEngine {
     fn count_file_inner(&mut self, path: &Path, kind: SequenceKind) -> ProcessingResult<FileStats> {
         #[cfg(feature = "profiling")]
         let producer_started = Instant::now();
-        let (reader, _compression) = DefaultCompressedFileReader::open_compressed(path).map_err(
-            |error| {
+        let (reader, _compression) =
+            DefaultCompressedFileReader::open_compressed(path).map_err(|error| {
                 ProcessingError::with_context(
                     format!("Failed to open input file for counting: {}", path.display()),
                     error,
                 )
-            },
-        )?;
+            })?;
 
         let mut warning_batch = SkipWarningBatch::default();
         let mut file_skipped: u64 = 0;
@@ -885,9 +896,7 @@ impl CountEngine {
         #[cfg(feature = "profiling")]
         let flush_started = Instant::now();
         let outcome = match &mut self.mode {
-            EngineMode::Sequential(state) => {
-                checked_stats_for(&state.tables, self.skipped_windows)
-            }
+            EngineMode::Sequential(state) => checked_stats_for(&state.tables, self.skipped_windows),
             EngineMode::Parallel(state) => {
                 let token = self.next_token;
                 self.next_token = self.next_token.wrapping_add(1);

@@ -56,7 +56,12 @@ fn fixture_sequences() -> Vec<Vec<u8>> {
         b"ACGT".to_vec(),
     ];
     // A lowercase record: the extractor accepts ASCII-lowercase ACGT.
-    sequences.push(mixed_sequence(75).iter().map(u8::to_ascii_lowercase).collect());
+    sequences.push(
+        mixed_sequence(75)
+            .iter()
+            .map(u8::to_ascii_lowercase)
+            .collect(),
+    );
     sequences
 }
 
@@ -104,18 +109,10 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 /// Decode a reference map to the CLI text-output key space.
-fn reference_text_map(
-    encoded: &BTreeMap<u128, u32>,
-    k: usize,
-) -> BTreeMap<String, u32> {
+fn reference_text_map(encoded: &BTreeMap<u128, u32>, k: usize) -> BTreeMap<String, u32> {
     encoded
         .iter()
-        .map(|(key, count)| {
-            (
-                rustkmer::kmer::encoding::decode_kmer_u128(*key, k),
-                *count,
-            )
-        })
+        .map(|(key, count)| (rustkmer::kmer::encoding::decode_kmer_u128(*key, k), *count))
         .collect()
 }
 
@@ -161,7 +158,14 @@ fn read_rkdb_keys(path: &Path) -> Vec<u128> {
 }
 
 /// Run the real CLI `count` command with the given thread count and format.
-fn run_cli(input: &Path, k: usize, canonical: bool, threads: usize, format: &str, output: &Path) -> Output {
+fn run_cli(
+    input: &Path,
+    k: usize,
+    canonical: bool,
+    threads: usize,
+    format: &str,
+    output: &Path,
+) -> Output {
     run_cli_with(&[input], k, canonical, threads, format, output, &["-q"])
 }
 
@@ -257,7 +261,8 @@ fn sequential_engine_map_matches_reference_across_k_and_canonical() {
                 "engine total must be the sum of counts (k={k}, canonical={canonical})"
             );
             assert_eq!(
-                stats.unique_kmers, want.len() as u64,
+                stats.unique_kmers,
+                want.len() as u64,
                 "engine unique must be the distinct-key count (k={k}, canonical={canonical})"
             );
             assert_eq!(
@@ -265,8 +270,7 @@ fn sequential_engine_map_matches_reference_across_k_and_canonical() {
                 "per-file stats must match the final stats (k={k}, canonical={canonical})"
             );
             assert_eq!(
-                file_stats.stats.skipped_windows,
-                stats.skipped_windows,
+                file_stats.stats.skipped_windows, stats.skipped_windows,
                 "per-file skipped windows must match the final stats"
             );
             assert!(!got.is_empty(), "fixture must produce k-mers (k={k})");
@@ -325,7 +329,10 @@ fn cli_t1_engine_matches_legacy_and_rkdb_sha256() {
             let want_text: BTreeMap<String, u32> = want
                 .iter()
                 .map(|(encoded, count)| {
-                    (rustkmer::kmer::encoding::decode_kmer_u128(*encoded, k), *count)
+                    (
+                        rustkmer::kmer::encoding::decode_kmer_u128(*encoded, k),
+                        *count,
+                    )
                 })
                 .collect();
             assert_eq!(
@@ -662,8 +669,16 @@ fn multi_file_stats_and_warnings_are_preserved() {
 
     let cumulative_totals = stderr_values(&combined, "Total k-mers processed");
     let cumulative_uniques = stderr_values(&combined, "Unique k-mers found");
-    assert_eq!(cumulative_totals.len(), 2, "one cumulative stat line per file");
-    assert_eq!(cumulative_uniques.len(), 2, "one cumulative stat line per file");
+    assert_eq!(
+        cumulative_totals.len(),
+        2,
+        "one cumulative stat line per file"
+    );
+    assert_eq!(
+        cumulative_uniques.len(),
+        2,
+        "one cumulative stat line per file"
+    );
     assert!(
         cumulative_totals[1] >= cumulative_totals[0],
         "cumulative totals must be monotone"
@@ -792,13 +807,11 @@ fn count_filters_are_unchanged() {
             "filter {extra:?} must keep identical keys on both paths"
         );
 
-        let want: BTreeMap<String, u32> = reference_text_map(
-            &reference_map(&borrowed, 21, false),
-            21,
-        )
-        .into_iter()
-        .filter(|(_, count)| filter.passes(*count as u64))
-        .collect();
+        let want: BTreeMap<String, u32> =
+            reference_text_map(&reference_map(&borrowed, 21, false), 21)
+                .into_iter()
+                .filter(|(_, count)| filter.passes(*count as u64))
+                .collect();
         assert_eq!(t1_map, want, "filter {extra:?} must match the reference");
 
         let t1_stats = stderr_text(&t1);
@@ -808,19 +821,29 @@ fn count_filters_are_unchanged() {
             "K-mers filtered out",
             "Filtering retention",
         ] {
-            let t1_lines: Vec<&str> = t1_stats.lines().filter(|line| line.contains(label)).collect();
-            let t4_lines: Vec<&str> = t4_stats.lines().filter(|line| line.contains(label)).collect();
+            let t1_lines: Vec<&str> = t1_stats
+                .lines()
+                .filter(|line| line.contains(label))
+                .collect();
+            let t4_lines: Vec<&str> = t4_stats
+                .lines()
+                .filter(|line| line.contains(label))
+                .collect();
             assert_eq!(
                 t1_lines, t4_lines,
                 "filtering statistic {label:?} must be identical on both paths"
             );
-            assert!(!t1_lines.is_empty(), "filtering statistic {label:?} must be reported");
+            assert!(
+                !t1_lines.is_empty(),
+                "filtering statistic {label:?} must be reported"
+            );
         }
 
         let kept = stderr_values(&t1, "K-mers kept after filtering");
         assert_eq!(kept.len(), 1);
         assert_eq!(
-            kept[0], want.len() as u64,
+            kept[0],
+            want.len() as u64,
             "reported kept-after count must equal the reference-filtered key count"
         );
     }
@@ -1068,12 +1091,7 @@ fn engine_multi_file_cumulative_is_exact_with_workers() {
 // --- 07-02 Task 3: determinism, gzip completeness, conservation ------------
 
 /// Count one file through a fresh engine at the requested thread count.
-fn count_path_with_engine(
-    input: &Path,
-    k: usize,
-    canonical: bool,
-    threads: usize,
-) -> CountResult {
+fn count_path_with_engine(input: &Path, k: usize, canonical: bool, threads: usize) -> CountResult {
     let mut engine = CountEngine::new(EngineConfig::new(k, canonical, threads, 1024))
         .expect("valid k must construct the engine");
     engine
@@ -1101,7 +1119,9 @@ fn gzip_member(payload: &[u8]) -> Vec<u8> {
     encoder
         .write_all(payload)
         .expect("writing to an in-memory encoder is infallible");
-    encoder.finish().expect("finishing an in-memory gzip member is infallible")
+    encoder
+        .finish()
+        .expect("finishing an in-memory gzip member is infallible")
 }
 
 /// Sorted `.rkdb` bytes and text maps must be identical at t1/t4/t16 — this
@@ -1132,9 +1152,7 @@ fn t1_t4_t16_maps_and_rkdb_sha256_are_identical() {
                 assert_cli_success(&binary_out, "determinism binary output");
 
                 text_maps.push(read_text_counts(&text));
-                hashes.push(sha256_hex(
-                    &fs::read(&rkdb).expect("read determinism rkdb"),
-                ));
+                hashes.push(sha256_hex(&fs::read(&rkdb).expect("read determinism rkdb")));
             }
 
             assert_eq!(
@@ -1332,18 +1350,17 @@ proptest! {
 #[test]
 fn multi_member_gzip_counts_every_member_at_t1_and_t4() {
     let member_a_sequences = vec![mixed_sequence(60), mixed_sequence(40)];
-    let member_b_sequences = vec![
-        mixed_sequence(50),
-        mixed_sequence(70),
-        mixed_sequence(30),
-    ];
+    let member_b_sequences = vec![mixed_sequence(50), mixed_sequence(70), mixed_sequence(30)];
 
     let mut bytes = gzip_member(&fastq_payload(&member_a_sequences));
     bytes.extend_from_slice(&gzip_member(&fastq_payload(&member_b_sequences)));
     // Fixture sanity: exactly two gzip members (magic 1f 8b) must be present,
     // or this regression proves nothing.
     assert_eq!(
-        bytes.windows(2).filter(|window| *window == b"\x1f\x8b").count(),
+        bytes
+            .windows(2)
+            .filter(|window| *window == b"\x1f\x8b")
+            .count(),
         2,
         "the fixture must contain two independent gzip members"
     );
