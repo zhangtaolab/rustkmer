@@ -43,7 +43,7 @@ Full detail: [milestones/v2.0-ROADMAP.md](milestones/v2.0-ROADMAP.md) · Require
 
 **Milestone Goal:** Decide where the next performance investment goes — benchmark `rustkmer merge` against `jellyfish merge` at full scale for a measured invest/no-invest verdict (wall time is the primary decision axis; jellyfish is the sole comparator), research the producer-bound counting bottleneck (parallel extraction) with predicted-win sizing and a conditional implementation phase (v2.0 D3 pattern), close v2.0 carry-forward hygiene gaps, and hold the memory-below-jellyfish guardrail (k=21 43.97 GiB / k=31 68.52 GiB references).
 
-- [ ] **Phase 11: Merge Characterization & Harness Prep** - Jellyfish-merge arms + the three-way parity gate defined in writing and proven at slice scale + intermediate-scale jellyfish merge characterization + full-protocol dress rehearsal; hygiene pulled forward (stale `docs/benchmark-report.md`, Nyquist 5-8, SECURITY.md 9/10) so nothing new cites stale evidence
+- [x] **Phase 11: Merge Characterization & Harness Prep** - Jellyfish-merge arms + the three-way parity gate defined in writing and proven at slice scale + intermediate-scale jellyfish merge characterization + full-protocol dress rehearsal; hygiene pulled forward (stale `docs/benchmark-report.md`, Nyquist 5-8, SECURITY.md 9/10) so nothing new cites stale evidence (completed 2026-11-17)
 - [ ] **Phase 12: Full-Scale Merge Verdict** - Counterbalanced merge benchmark at BOTH k with parity executed before timing (including full-scale per-k-mer deep validation); invest/no-invest verdict recorded via the 0/1/2 exit-code contract; mechanical report with methodology block + predicted-vs-measured cost-model check
 - [ ] **Phase 13: Producer Attribution Research** - Full-scale stage attribution (inflate / parse / extract / route-send) on the SHIPPED engine at both k with fingerprinted builds; predicted-win model naming both ceilings; recorded D3 go/no-go memo (independent — may overlap Phases 11-12)
 - [ ] **Phase 14: Parallel Extraction** - CONDITIONAL (D3 gate): parallel producer with all ten engine invariants + MEM guardrail re-measured at full scale — executes ONLY if Phase 13's memo says GO and Phase 12's verdict is recorded
@@ -74,7 +74,7 @@ Full detail: [milestones/v2.0-ROADMAP.md](milestones/v2.0-ROADMAP.md) · Require
   4. `docs/benchmark-report.md` no longer presents the superseded v1.0 k=21 "+420%" verdict as current (superseded banner or v2.0-based regeneration), and the dataset description (six single-member gzip parts, ~16.7 GB total) is corrected in PROJECT.md/docs — BEFORE the Phase 12 verdict lands (HYG-01).
   5. Evidence debts are closed: Nyquist validation records exist for Phases 5-8 (HYG-02), SECURITY.md threat-model verification exists for Phases 9-10 (HYG-03), and every backlog 999.1-999.3 item whose file is touched by milestone work is resolved in the same touch — opportunistic, remaining items stay tracked and are not gate-blocking (HYG-04).
 
-**Plans**: 8/8 plans executed
+**Plans**: 8/8 plans complete
 
 Plans:
 **Wave 1**
@@ -159,7 +159,7 @@ Plans:
 | 8. Output Pipeline & .rkdb v2 Parity | v2.0 | 4/4 | Complete | 2026-11-13 |
 | 9. Python Parity | v2.0 | 5/5 | Complete | 2026-11-13 |
 | 10. Benchmark Verdict | v2.0 | 4/4 | Complete | 2026-11-14 |
-| 11. Merge Characterization & Harness Prep | v2.1 | 8/8 | In Progress | - |
+| 11. Merge Characterization & Harness Prep | v2.1 | 8/8 | Complete    | 2026-11-17 |
 | 12. Full-Scale Merge Verdict | v2.1 | 0/TBD | Not started | - |
 | 13. Producer Attribution Research | v2.1 | 0/TBD | Not started | - |
 | 14. Parallel Extraction | v2.1 | 0/TBD | Not started (conditional — D3) | - |
