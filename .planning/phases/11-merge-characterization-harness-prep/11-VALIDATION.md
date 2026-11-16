@@ -40,11 +40,11 @@ created: "2026-11-16"
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 11-02 T1+T2 | 11-02 | 1 | MBENCH-01 | T-11-01 | provenance integrity (sha256 + Total recorded per artifact) | unit | `python3 -m unittest discover -s scripts/bench/tests -t . -k test_prepare_inputs` | ❌ W0 | ⬜ pending |
+| 11-02 T1+T2 | 11-02 | 1 | MBENCH-01 | T-11-03 | provenance integrity (sha256 + Total recorded per artifact) | unit | `python3 -m unittest discover -s scripts/bench/tests -t . -k test_prepare_inputs` | ❌ W0 | ⬜ pending |
 | 11-04 T2 | 11-04 | 2 | MBENCH-02 | — | parity gate rejects conservation-only passes | unit | `python3 -m unittest discover -s scripts/bench/tests -t . -k test_merge_arms` | ❌ W0 | ⬜ pending |
 | 11-01 T2+T3 | 11-01 | 1 | MBENCH-05 | — | no second results schema (schema_version unchanged) | unit | `python3 -m unittest discover -s scripts/bench/tests -t . -k test_schema` | ✅ | ⬜ pending |
-| 11-03 T1+T2 | 11-03 | 1 | HYG-01 | T-11-05 | stale verdict no longer presented as current | source assertion | `grep` banner in `docs/benchmark-report.md` + drift grep script | ✅ (file exists) | ⬜ pending |
-| 11-08 T1+T2 | 11-08 | 1 | HYG-02/03 | T-11-07 | validation records + SECURITY.md exist | source assertion | `ls` milestone archive targets | ❌ W0 | ⬜ pending |
+| 11-03 T1+T2 | 11-03 | 1 | HYG-01 | T-11-07 | stale verdict no longer presented as current | source assertion | `grep` banner in `docs/benchmark-report.md` + drift grep script | ✅ (file exists) | ⬜ pending |
+| 11-08 T1+T2 | 11-08 | 1 | HYG-02/03 | T-11-19 | validation records + SECURITY.md exist | source assertion | `ls` milestone archive targets | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
