@@ -460,8 +460,26 @@ as two staged runs per k per PARITY-GATE.md's execution order:
 
 | Stage | Shape | What it proves |
 |---|---|---|
-| A (gate proof) | `bench.py --mode slice --slice-reads 50000 --reps 2 --self-check` | the gate pipeline is green at small scale — gates raise before results are accepted, so a green exit IS the proof |
-| B (full protocol) | `bench.py --mode slice --slice-reads 200000 --k {21,31} --reps 3 --self-check` | all seven arms at both k, counterbalanced rounds, honest per-rep `cache_state`, medians + CV, with the three-way parity + dump-vs-dump gates green before medians are accepted |
+| A (gate proof) | slice mode on the pinned input-parts dir, 50000 reads, 2 reps, run once per k — real commands below | the gate pipeline is green at small scale — gates raise before results are accepted, so a green exit IS the proof |
+| B (full protocol) | slice mode on the pinned input-parts dir, 200000 reads, 3 reps, run once per k — real commands below | all seven arms at both k, counterbalanced rounds, honest per-rep `cache_state`, medians + CV, with the three-way parity + dump-vs-dump gates green before medians are accepted |
+
+The real recorded commands (flag-for-flag identical to the four
+`command_line` strings in `11-REHEARSAL-RESULTS.json`; one explicit `--k`
+per invocation, small explicit disk floor per the D-12 note above):
+
+```bash
+DATA=/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split
+# Stage A (gate proof): 50k reads, 2 reps, both k
+for k in 21 31; do
+  python3 scripts/bench/bench.py --mode slice --input "$DATA" --slice-reads 50000 --k "$k" --reps 2 \
+    --self-check --disk-floor-gb 2 --out "/private/tmp/rustkmer-phase11/rehearsal/A-k$k/results.json"
+done
+# Stage B (full protocol): 200k reads, 3 reps, both k
+for k in 21 31; do
+  python3 scripts/bench/bench.py --mode slice --input "$DATA" --slice-reads 200000 --k "$k" --reps 3 \
+    --self-check --disk-floor-gb 2 --out "/private/tmp/rustkmer-phase11/rehearsal/B-k$k/results.json"
+done
+```
 
 Evidence lands in the phase dir as `11-REHEARSAL-RESULTS.json`. RSS is
 recorded as context only — no memory-win claim over the streaming jellyfish
