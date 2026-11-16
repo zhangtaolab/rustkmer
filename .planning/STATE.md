@@ -1,13 +1,13 @@
 ---
 gsd_state_version: "1.0"
 milestone: v2.0
-milestone_name: k=21 Counting Parity
+milestone_name: carry-forward (from the milestone audit, 2026-11-14)
 status: Awaiting next milestone
-stopped_at: Phase 10 complete — verified 8/8, review disposition 0 open; D3 answered (Phase 11 not executed); ready for milestone audit
-last_updated: "2026-11-14T04:39:24.823Z"
+stopped_at: context exhaustion at 75% (2026-11-15)
+last_updated: "2026-11-15T15:47:47.552Z"
 last_activity: 2026-11-14
 last_activity_desc: Milestone v2.0 completed and archived
-state_head: 73f9451d13bfa93a9861313b87ecc5150369482b
+state_head: 7de833a6c106e3150a9486c63cb31a629f0a6639
 progress:
   total_phases: 7
   completed_phases: 6
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-14)
 Phase: Milestone v2.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-14 — Milestone v2.0 completed and archived
+Last activity: 2026-11-16 - Completed quick task 261116-ks7: Fix cargo fmt drift across source files
 
 ## Performance Metrics
 
@@ -203,6 +203,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 261112-jwl | Raise Rust MSRV 1.80 to 1.82 | 2026-11-12 | 69a82cf | [261112-jwl-raise-rust-msrv-1-80-1-82-user-approved-](./quick/261112-jwl-raise-rust-msrv-1-80-1-82-user-approved-/) |
+| 261116-ks7 | Fix cargo fmt drift across source files | 2026-11-16 | ee742dc | [261116-ks7-fix-cargo-fmt-drift-across-source-files-](./quick/261116-ks7-fix-cargo-fmt-drift-across-source-files-/) |
 
 ## Deferred Items
 
@@ -211,14 +212,14 @@ Items acknowledged and carried forward, most recent first:
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
 | Deferred items | Phase 06 `deferred-items.md`: pre-existing `cargo fmt` drift in `src/database/prefix_cache_merge.rs:1382` and `pyo3/src/counter.rs:197` (both later normalized by 06-03) | Acknowledged at v2.0 close (override closeout) | 2026-11-14 |
-| Deferred items | Phase 08 `deferred-items.md`: pre-existing `cargo fmt --all --check` drift on 7 files not touched by 08-02; owner = next plan touching the CI format gate or a formatting quick task | Acknowledged at v2.0 close (override closeout) | 2026-11-14 |
+| Deferred items | Phase 08 `deferred-items.md`: pre-existing `cargo fmt --all --check` drift on 7 files not touched by 08-02; owner = next plan touching the CI format gate or a formatting quick task | Resolved by quick 261116-ks7 (commit ee742dc) | 2026-11-14 |
 | Review findings | IN-06/07/09 (Phase-04 harness/test code) | Deferred (triaged 261111-spz) | 2026-11-11 |
 | Backlog | 999.1 pyo3 build.rs link args; 999.2 stale site-packages shadowing; 999.3 deferred-items stale sweep claim | Opportunistic in v2.0 if touched | 2026-10-09 |
 
 ## Session Continuity
 
-Last session: 2026-11-14T05:00:00Z
-Stopped at: Phase 10 complete — verified 8/8, overall YES; ready for milestone audit
+Last session: 2026-11-15T15:47:47.537Z
+Stopped at: context exhaustion at 75% (2026-11-15)
 Resume file: None
 
 ## Operator Next Steps
