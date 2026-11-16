@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 2
-waived_count: 6
-fixed_count: 17
+open_count: 0
+waived_count: 7
+fixed_count: 18
 total_count: 25
-last_updated: 2026-11-16T07:17:45.584Z
+last_updated: 2026-11-16T07:50:34.301Z
 ---
 
 # Broken Windows Ledger
@@ -38,8 +38,8 @@ last_updated: 2026-11-16T07:17:45.584Z
 | 21 | 05 | skipped-test | tests/thread_pool_size_tests.rs | 205 | PROF-02 standing gate pool_size_matches_requested_threads is #[ignore]d — expected RED until Phase 6 fixes --threads; Phase 6 must un-ignore it and invert/remove the pool_size_baseline_records_default_pool characterization | fixed |  | 2026-11-12T08:13:20.227Z | 2026-11-12T11:44:46.008Z |
 | 22 | 06 | deviation | src/hash/table.rs |  | 06-02 serial per-file local reduction left t4/t16 scaling below the standing 1.3 gate on the post-hot-path binary (measured 1.197/1.253); fixed in 06-04 by parallel per-local reduction (commit 149379b), with the exactness suite green | fixed |  | 2026-11-12T13:04:44.712Z | 2026-11-12T13:04:58.105Z |
 | 23 | 7 | deviation | src/core/monitoring.rs |  | Pre-existing broken profiling feature repaired minimally so the -features profiling probe builds; default release binary unchanged | fixed |  | 2026-11-12T15:55:58.371Z | 2026-11-12T15:56:28.934Z |
-| 24 | quick-261116-ks7 | lint-warning | src/hash/table.rs | 483 | Pre-existing (out of ks7 scope): AtomicU64::fetch_update deprecated warning fires on local newer-stable rustc; CI clippy pins 1.82.0 where it does not fire | open |  | 2026-11-16T07:15:15.892Z |  |
-| 25 | quick-261116-ks7 | deviation | .planning/quick/261116-ks7-fix-cargo-fmt-drift-across-source-files-/261116-ks7-PLAN.md |  | Plan T2V1 literal gate 'grep -c 261116-ks7 >= 3' is line-counting and unsatisfiable under the plan's own action spec (only the deferred row and quick-tasks row may mention the ID = 2 lines, 4 occurrences); discriminating evidence used instead: occurrence count >= 3 (4), 'Resolved by quick 261116-ks7' exactly 1, quick-task row line present | open |  | 2026-11-16T07:17:45.584Z |  |
+| 24 | quick-261116-ks7 | lint-warning | src/hash/table.rs | 483 | Pre-existing (out of ks7 scope): AtomicU64::fetch_update deprecated warning fires on local newer-stable rustc; CI clippy pins 1.82.0 where it does not fire | fixed |  | 2026-11-16T07:15:15.892Z | 2026-11-16T07:49:46.495Z |
+| 25 | quick-261116-ks7 | deviation | .planning/quick/261116-ks7-fix-cargo-fmt-drift-across-source-files-/261116-ks7-PLAN.md |  | Plan T2V1 literal gate 'grep -c 261116-ks7 >= 3' is line-counting and unsatisfiable under the plan's own action spec (only the deferred row and quick-tasks row may mention the ID = 2 lines, 4 occurrences); discriminating evidence used instead: occurrence count >= 3 (4), 'Resolved by quick 261116-ks7' exactly 1, quick-task row line present | waived | Accepted deviation, waived 2026-11-16: the ks7 T2V1 gate form was unsatisfiable by construction — a line-counting grep -c over plan-ID mentions cannot reach 3 matching lines when the plan own action spec permits the ID on only 2 lines (4 occurrences), so the gate could not pass without corrupting the actions it verifies. The discriminating evidence stands and proved the property the literal gate approximated: occurrence count 4 >= 3, exactly one Resolved-by-quick-261116-ks7 line, and the quick-task row present. Same defect class as waived rows 12 and 13: the literal grep was the wrong instrument, not a code defect. | 2026-11-16T07:17:45.584Z | 2026-11-16T07:50:34.301Z |
 
 ````json
 [
@@ -349,10 +349,10 @@ last_updated: 2026-11-16T07:17:45.584Z
     "file": "src/hash/table.rs",
     "line": 483,
     "description": "Pre-existing (out of ks7 scope): AtomicU64::fetch_update deprecated warning fires on local newer-stable rustc; CI clippy pins 1.82.0 where it does not fire",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-16T07:15:15.892Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-16T07:49:46.495Z",
     "milestone": "v2.0"
   },
   {
@@ -362,10 +362,10 @@ last_updated: 2026-11-16T07:17:45.584Z
     "file": ".planning/quick/261116-ks7-fix-cargo-fmt-drift-across-source-files-/261116-ks7-PLAN.md",
     "line": null,
     "description": "Plan T2V1 literal gate 'grep -c 261116-ks7 >= 3' is line-counting and unsatisfiable under the plan's own action spec (only the deferred row and quick-tasks row may mention the ID = 2 lines, 4 occurrences); discriminating evidence used instead: occurrence count >= 3 (4), 'Resolved by quick 261116-ks7' exactly 1, quick-task row line present",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Accepted deviation, waived 2026-11-16: the ks7 T2V1 gate form was unsatisfiable by construction — a line-counting grep -c over plan-ID mentions cannot reach 3 matching lines when the plan own action spec permits the ID on only 2 lines (4 occurrences), so the gate could not pass without corrupting the actions it verifies. The discriminating evidence stands and proved the property the literal gate approximated: occurrence count 4 >= 3, exactly one Resolved-by-quick-261116-ks7 line, and the quick-task row present. Same defect class as waived rows 12 and 13: the literal grep was the wrong instrument, not a code defect.",
     "recorded_at": "2026-11-16T07:17:45.584Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-16T07:50:34.301Z",
     "milestone": "v2.0"
   }
 ]

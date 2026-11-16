@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-14)
 Phase: Milestone v2.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-16 - Completed quick task 261116-ks7: Fix cargo fmt drift across source files
+Last activity: 2026-11-16 - Completed quick task 261116-lhq: Silence AtomicU64 fetch_update deprecation warning and close WINDOWS rows 24-25
 
 ## Performance Metrics
 
@@ -204,6 +204,7 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 261112-jwl | Raise Rust MSRV 1.80 to 1.82 | 2026-11-12 | 69a82cf | [261112-jwl-raise-rust-msrv-1-80-1-82-user-approved-](./quick/261112-jwl-raise-rust-msrv-1-80-1-82-user-approved-/) |
 | 261116-ks7 | Fix cargo fmt drift across source files | 2026-11-16 | ee742dc | [261116-ks7-fix-cargo-fmt-drift-across-source-files-](./quick/261116-ks7-fix-cargo-fmt-drift-across-source-files-/) |
+| 261116-lhq | Silence AtomicU64 fetch_update deprecation warning (MSRV-gated allow); close WINDOWS 24/25 | 2026-11-16 | 3655086 | [261116-lhq-silence-atomicu64-fetch-update-deprecati](./quick/261116-lhq-silence-atomicu64-fetch-update-deprecati/) |
 
 ## Deferred Items
 
