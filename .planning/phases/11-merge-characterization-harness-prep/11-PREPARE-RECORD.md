@@ -82,3 +82,33 @@ Derivation rule: smallest standard ladder size with `max_per_part_distinct <= 0.
 ## 9. Retention (D-02)
 
 All artifacts stay on disk until the Phase 12 verdict lands, then cleanup. No early `.jf` deletion — regeneration costs more than ~22 GiB of disk and forces re-running the jellyfish merge arms.
+
+## 10. Per-part .jf build (`build --stage jf`, 2026-11-16T14:42–15:07 UTC, wall ~25 min incl. the stage's pre-build .rkdb identity re-verification)
+
+**Executed -s matches the Task 2 approved values exactly** (asserted against §7 in the plan verify): -s 1G for the k=21 pair, -s 2G for the k=31 pair; no jellyfish auto-grow occurred (occupancy confirmed from records, below).
+
+| Artifact | size_bytes | sha256 | k | -s | occupancy (distinct/slots) | B/entry (measured) | B/slot (measured) |
+|---|---|---|---|---|---|---|---|
+| part_001.k21.jf | 6,646,418,886 | `5f14f78eaee40591…f00bc309e` | 21 | 1G | 0.6190 | 10.0000 | 6.190 |
+| part_006.k21.jf | 6,647,243,076 | `136803aca29972cc…943e6729` | 21 | 1G | 0.6191 | 10.0000 | 6.191 |
+| part_001.k31.jf | 9,984,817,368 | `a6a40944ba783fcb…23c8c369` | 31 | 2G | 0.3875 | 12.0000 | 4.650 |
+| part_006.k31.jf | 9,985,623,828 | `41647a68e729eeba…504c812c61` | 31 | 2G | 0.3875 | 12.0000 | 4.650 |
+
+.jf measured total: 33,264,103,158 bytes = 30.98 GiB (A1 band was 30.0–54.0 GiB — actual at the low end; B/entry is exactly 10.000 at k=21 and 12.000 at k=31 — 6-byte/4-byte-counter vs 8-byte/4-byte-counter layouts).
+
+## 11. Final inventory + actual vs estimate (manifest `stage: complete`)
+
+| Component | Measured | Projected (§5) |
+|---|---|---|
+| .rkdb ×4 | 59,871,381,008 B (55.75 GiB) | — (measured pre-checkpoint) |
+| .jf ×4 | 33,264,103,158 B (30.98 GiB) | 32.21–57.99 GB (30.0–54.0 GiB) |
+| **Total** | **93,135,484,166 B = 86.74 GiB** | 85.75–109.81 GiB |
+
+- **vs D-01's ~70 GiB estimate:** actual 86.74 GiB (+24% over the estimate, inside the recorded projection band, near its low end). The estimate was superseded by measured numbers at the Task 2 checkpoint, as designed.
+- **Revalidation proof (Task 3 verify):** `revalidate` green — 4 artifacts + 4 jellyfish inputs re-hashed and re-stat'd against the manifest; k-pair hash-size equality `{21: ['1G'], 31: ['2G']}`; occupancy numeric and ≤ 0.75 on all four (max 0.6191); `jellyfish info` parsed fail-loud on all four (command/where/when/canonical present); approved-vs-executed -s asserted.
+- **Free space after the full build:** 372.50 GiB (re-sample taken after APFS settled, per the §6 lesson).
+- **Deviation note (verify-command only):** the plan's Task 3 verify snippet expected `occupancy` inside the per-.jf `jellyfish_info` records; the Plan 11-02 stage deliberately keeps occupancy in `hash_size_plan` (jellyfish 2.3.1 `info` carries no occupancy field — probed verbatim, 11-02 decision). The verify was corrected to compute per-.jf occupancy from the manifest's own records (`hash_size_plan.distinct_per_part / slots`) with identical fails_when semantics (non-numeric or > 0.75 fails). No stage or data change; recorded as Rule 3 deviation in 11-05-SUMMARY.md.
+
+## 12. Retention status (D-02, post-build)
+
+All 8 artifacts + manifest on disk at `/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/`; retention unchanged — keep until the Phase 12 verdict lands, then cleanup. No early deletion.
