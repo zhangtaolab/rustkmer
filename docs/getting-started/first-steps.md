@@ -345,8 +345,8 @@ Congratulations! You've completed your first k-mer counting operations with Rust
 - **[Installation Help](installation.md)** - Installation problems
 
 ### 💬 Community Support
-- **[GitHub Issues](https://github.com/rustkmer/rustkmer/issues)** - Bug reports and feature requests
-- **[GitHub Discussions](https://github.com/rustkmer/rustkmer/discussions)** - Questions and discussions
+- **[GitHub Issues](https://github.com/zhangtaolab/rustkmer/issues)** - Bug reports and feature requests
+- **[GitHub Discussions](https://github.com/zhangtaolab/rustkmer/discussions)** - Questions and discussions
 
 ---
 

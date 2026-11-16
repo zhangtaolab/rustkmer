@@ -150,9 +150,9 @@ db.fuzzy_query()    # → 推荐使用 db.query_fuzzy()
 |---------|---------|------|
 | query() | query_exact() | ✅ 已更新 |
 | query_batch() | query_exact_batch() | ✅ 已更新 |
-| extract_by_prefix() | query_prefix() | ✅ 已移除冗余 |
+| extract_by_prefix() | query_prefix() | ⚠️ 仍保留（向后兼容入口），推荐 query_prefix() |
 | query_prefix_optimized() | query_prefix() | ✅ 已统一 |
-| extract_by_pattern() | query_hybrid() | ✅ 已移除冗余 |
+| extract_by_pattern() | query_hybrid() | ⚠️ 仍保留（向后兼容入口），推荐 query_hybrid() |
 | fuzzy_query() | query_fuzzy() | ✅ 已更新 |
 
 ---

@@ -39,7 +39,7 @@ If you're new to RustKmer, start with the [Getting Started](../getting-started/)
 - **Database format**: Efficient binary storage (.rkdb)
 
 ### Performance Characteristics
-- **Counting speed**: ~1 million k-mers/second
+- **Counting speed**: Order-of-magnitude indicative figure only — actual throughput varies substantially with k-mer size, input format, and hardware (the companion [concepts.md](concepts.md) gives a more conservative 100,000+ k-mers/second figure) <!-- VERIFY: indicative throughput figure; re-benchmark before relying on it -->
 - **Query performance**: ~4 million queries/second
 - **Memory efficiency**: Streaming processing with minimal overhead
 

@@ -16,22 +16,19 @@ PyO3 Python binding 提供了完整的 Python 接口来使用 RustKmer 的前缀
 
 ### 1. 构建 PyO3 扩展
 
-```bash
-cd rustkmer/pyo3
+maturin 会编译 Rust 扩展模块，并将其直接安装到当前激活的 Python 虚拟环境中（无需手动设置 PYTHONPATH）：
 
-# 清理环境变量
-unset VIRTUAL_ENV
+```bash
+cd pyo3
+
+# 在已激活的虚拟环境中安装 maturin
+pip install 'maturin>=1.0,<2.0'
+
+# conda 环境下 maturin 可能拒绝构建，先清理环境变量
 unset CONDA_PREFIX
 
-# 设置构建标志
-export RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup"
-export PYO3_PYTHON=/usr/bin/python3
-
-# 构建
-cargo build
-
-# 设置 Python 路径
-export PYTHONPATH="/Users/forrest/Github/rustkmer/pyo3/target/debug:$PYTHONPATH"
+# 编译（release 模式）并安装到当前虚拟环境
+maturin develop --release
 ```
 
 ### 2. 测试导入

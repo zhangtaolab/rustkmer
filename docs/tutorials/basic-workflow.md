@@ -77,7 +77,7 @@ ATCGATCGATCGATCGATCGATCGATCGATCGATCG
     print("   - tutorial_queries.txt (test k-mers)")
 
 if __name__ == "__main__":
-    create_sample_data()
+    create_sample_files()
 ```
 
 ```bash
@@ -488,12 +488,16 @@ Not found: AAAAAAAAAAAAAAAAAAAAA: 0   (Not present)
 ```
 
 ### Performance Metrics
+
+The figures below are rough, illustrative numbers measured on a single development machine; actual performance varies with hardware, dataset size, and k-mer settings.
 ```
 Processing Speed: ~10,000 k-mers/second
 Database Creation: ~1 second
 Query Speed: ~100,000 queries/second
 Memory Usage: <5MB for this tutorial
 ```
+
+<!-- VERIFY: illustrative runtime figures; re-measure on target hardware -->
 
 ---
 

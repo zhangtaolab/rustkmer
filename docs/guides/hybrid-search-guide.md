@@ -18,7 +18,7 @@ Where:
 ### Examples
 
 ```bash
-# Find 10-mers starting with "ATAC", followed by 5 wildcards, ending with "GTAC"
+# Find 13-mers starting with "ATAC", followed by 5 wildcards, ending with "GTAC"
 rustkmer prefix-query database.rkdb -p "ATAC{N5}GTAC"
 
 # Shorthand notation for single N

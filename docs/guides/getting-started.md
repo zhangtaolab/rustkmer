@@ -92,7 +92,7 @@ The repository ships a small compressed rice-genome sample at `examples/data/dem
 ./target/release/rustkmer count -k 21 -i examples/data/demo_rice_genome.fa.gz -o demo_k21.rkdb
 ```
 
-Expected output (abridged; the elapsed time depends on your machine):
+Expected output (abridged; the elapsed time depends on your machine). Like the query command below, every progress line — including the `Writing results ...`, `Sorting ...`, `DEBUG: Writing header with data_offset: 42`, and timing lines omitted here — is a diagnostic written to stderr:
 
 ```text
 Processing file 1/1: examples/data/demo_rice_genome.fa.gz

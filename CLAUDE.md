@@ -39,7 +39,12 @@ Auto-generated from all feature plans. Last updated: 2025-11-28
 
 ```text
 src/
+pyo3/
 tests/
+examples/
+scripts/
+docs/
+tools/
 ```
 
 ## Commands

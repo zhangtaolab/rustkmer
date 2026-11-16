@@ -100,9 +100,10 @@ Add a single k-mer to the counter. The string must contain only `A`, `C`,
 fn add_sequence(&self, sequence: &Bound<'_, PyString>) -> PyResult<()> {
 ```
 
-Extract and add k-mers from a sequence string. Invalid characters (`N`,
-etc.) are filtered out before extraction; k-mers spanning invalid
-characters are not counted. Sequences shorter than k are no-ops.
+Extract and add k-mers from a sequence string. Windows containing
+non-ACGT characters such as `N` are skipped during window extraction;
+k-mers spanning invalid characters are not counted. Sequences shorter
+than k are no-ops.
 
 #### PyCounter::add_from_fasta
 

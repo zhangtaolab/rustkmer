@@ -130,7 +130,7 @@ print(f"Memory usage: {process.memory_info().rss / (1024**2):.1f} MB")
 **Error Messages:**
 ```
 FileNotFoundError: [Errno 2] No such file or directory: 'input.fa'
-SequenceError: File not found: input.fa
+ValueError: File not found: input.fa
 ```
 
 **Solutions:**
@@ -161,7 +161,7 @@ chmod 644 input.fa  # if needed
 **Error Messages:**
 ```
 ParseError: Invalid FASTA format
-SequenceError: Invalid nucleotide sequence
+ValueError: Invalid nucleotide sequence
 ```
 
 **Solutions:**
