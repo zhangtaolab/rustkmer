@@ -280,10 +280,35 @@ def jellyfish_count_cmd(cfg, out):
     return ["jellyfish", "count", *common, *inputs]
 
 
-def build_merge_cmd(rustkmer, out_db, input_dbs):
-    """rustkmer merge command (list form)."""
-    return [str(rustkmer), "merge", "-i", *[str(p) for p in input_dbs],
+def build_merge_cmd(rustkmer, out_db, input_dbs, num_threads=None):
+    """rustkmer merge command (list form).
+
+    num_threads (MBENCH-01): append --num-threads only when not None — the
+    flag exists on the CLI (src/cli/args.rs Merge variant, default "0" =
+    all cores); the merge-t1 arm pins a like-for-like single-thread run
+    while the merge arm keeps the tool default.
+    """
+    argv = [str(rustkmer), "merge", "-i", *[str(p) for p in input_dbs],
             "-o", str(out_db)]
+    if num_threads is not None:
+        argv += ["--num-threads", str(num_threads)]
+    return argv
+
+
+def jellyfish_merge_cmd(out_jf, input_jfs):
+    """jellyfish merge argv (list form): defaults only, never flag copying.
+
+    Inputs are .jf files (never .gz), so there is NO sh -c pipeline here;
+    every path still passes validate_path for T-04-03 consistency. Defaults
+    only — SUM semantics; -m/-M/-j/-t/-s are NOT passed because in merge
+    -m is MIN mode, a flag collision with count's mer length: flag strings
+    are never copied between jellyfish subcommands. The count arms' byte-
+    identical -m/-s/-C sets make the jellyfish-merge arm's hash-size
+    equality precondition hold by construction (MBENCH-01).
+    """
+    out_v = validate_path(out_jf)
+    inputs = [validate_path(p) for p in input_jfs]
+    return ["jellyfish", "merge", "-o", out_v, *inputs]
 
 
 def stats(db_path, rustkmer):
@@ -1277,6 +1302,42 @@ def check_disk_floor(directory, floor_gb):
     return free_bytes
 
 
+def assert_arm_ordering(arm_specs):
+    """Fail loud unless, per tool, every count arm precedes every merge arm.
+
+    run_comparison_protocol executes the FIRST spec of each tool as the
+    discarded warmup (the `next(s for s in arm_specs ...)` lookup) and runs
+    same-tool arms in spec order — a spec list whose merge arm precedes a
+    count arm would silently change what the warmup measures (T-11-02).
+    The invariant is generic over any arm list, not just the shipped seven:
+    within one tool's spec order, an arm whose name contains 'merge' must
+    not precede an arm whose name contains 'count' (e.g. jellyfish-merge
+    preceding jellyfish-count-B, or merge-t1 preceding count-A).
+
+    Raises:
+        RuntimeError: On any count-after-merge ordering violation within a
+            tool, naming both arms and their positions.
+    """
+    tools = []
+    for spec in arm_specs:
+        if spec["tool"] not in tools:
+            tools.append(spec["tool"])
+    for tool in tools:
+        order = [s["name"] for s in arm_specs if s["tool"] == tool]
+        first_merge = None
+        for position, name in enumerate(order):
+            if "merge" in name and first_merge is None:
+                first_merge = position
+            if "count" in name and first_merge is not None:
+                raise RuntimeError(
+                    f"arm spec ordering violated for tool {tool!r}: count "
+                    f"arm {name!r} (position {position}) follows merge arm "
+                    f"{order[first_merge]!r} (position {first_merge}) — "
+                    f"warmup (first spec per tool) and in-round execution "
+                    f"follow spec order, so a merge arm must never precede "
+                    f"a count arm within a tool")
+
+
 def run_comparison_protocol(arm_specs, reps, cooldown_s, rustkmer):
     """Interleaved, counterbalanced, honestly-recorded protocol (BENCH-02).
 
@@ -1401,7 +1462,10 @@ def run_bench(args):
     db_a = scratch / "db_count-A.rkdb"
     db_b = scratch / "db_count-B.rkdb"
     db_merged = scratch / "db_merged.rkdb"
+    db_merged_t1 = scratch / "db_merged-t1.rkdb"
     jf_a = scratch / "db_jellyfish-A.jf"
+    jf_b = scratch / "db_jellyfish-B.jf"
+    jf_merged = scratch / "db_jellyfish-merged.jf"
 
     # Both tools' count commands derive from ONE BenchmarkConfig per input —
     # the fairness matrix in code (matched k/canonical/threads; gz piped for
@@ -1422,14 +1486,32 @@ def run_bench(args):
              "cmd": rustkmer_count_cmd(cfg_a, db_a, args.rustkmer)},
             {"name": "count-B", "tool": "rustkmer", "out": db_b,
              "cmd": rustkmer_count_cmd(cfg_b, db_b, args.rustkmer)},
+        ]
+        if not args.skip_merge:
+            # Merge arms consume their tool's count-arm outputs, so within
+            # each tool they stay AFTER every count arm in spec order — the
+            # warmup executes the first spec per tool and same-tool arms run
+            # in spec order (assert_arm_ordering guards this below).
+            arm_specs += [
+                {"name": "merge", "tool": "rustkmer", "out": db_merged,
+                 "cmd": build_merge_cmd(args.rustkmer, db_merged,
+                                        [db_a, db_b])},
+                {"name": "merge-t1", "tool": "rustkmer", "out": db_merged_t1,
+                 "cmd": build_merge_cmd(args.rustkmer, db_merged_t1,
+                                        [db_a, db_b], num_threads=1)},
+            ]
+        arm_specs += [
             {"name": "jellyfish-count-A", "tool": "jellyfish", "out": jf_a,
              "cmd": jellyfish_count_cmd(cfg_a, jf_a)},
+            {"name": "jellyfish-count-B", "tool": "jellyfish", "out": jf_b,
+             "cmd": jellyfish_count_cmd(cfg_b, jf_b)},
         ]
         if not args.skip_merge:
             arm_specs.append(
-                {"name": "merge", "tool": "rustkmer", "out": db_merged,
-                 "cmd": build_merge_cmd(args.rustkmer, db_merged,
-                                        [db_a, db_b])})
+                {"name": "jellyfish-merge", "tool": "jellyfish",
+                 "out": jf_merged,
+                 "cmd": jellyfish_merge_cmd(jf_merged, [jf_a, jf_b])})
+        assert_arm_ordering(arm_specs)
         arms, round_sched = run_comparison_protocol(
             arm_specs, args.reps, args.cooldown_s, args.rustkmer)
 
