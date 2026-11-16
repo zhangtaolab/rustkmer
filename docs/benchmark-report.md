@@ -1,3 +1,20 @@
+> **SUPERSEDED — v1.0 snapshot.** This report is the v1.0 benchmark snapshot, mechanically
+> rendered from results produced on the CRR2044018 substitute dataset (that dataset has
+> since been deleted from disk). It is superseded by the v2.0 Phase-10 verdicts committed
+> under
+> [`.planning/milestones/v2.0-phases/10-benchmark-verdict/`](../../.planning/milestones/v2.0-phases/10-benchmark-verdict/):
+> k=21 CLI 144.69 s vs jellyfish 194.85 s; k=31 CLI 147.08 s — rustkmer faster at both k,
+> overall verdict YES, measured on the real CRR1936095 dataset (six single-member gzip
+> parts of read 1, ~2.79 GB each, ~16.7 GB total; the earlier "two split parts, ~5.2 GB"
+> description in project docs was inaccurate). **Every number below is historical v1.0
+> evidence.**
+>
+> *Hand-added banner (2026-11-16, Phase 11 HYG-01 / decision D-05): this is the single
+> acknowledged exception to the generated-file contract stated in the footer below — a
+> re-render from the v1.0 JSONs reproduces the original file and drops this banner. The
+> exception and the renderer-narrative debt are recorded in
+> `.planning/phases/11-merge-characterization-harness-prep/11-HYGIENE-RECORD.md`.*
+
 # rustkmer vs Jellyfish2 — milestone benchmark report
 
 *Mechanically rendered from the committed results JSONs by `scripts/bench/bench.py --render-report`. Every measurement below is read from those JSONs — the renderer contains no measurement literals — and re-rendering reproduces this file byte-for-byte, so a hand-edited number is detectable (BENCH-02/T-04-07).*

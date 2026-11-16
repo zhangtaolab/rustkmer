@@ -350,7 +350,7 @@ rustkmer prefix-query <DATABASE> (-p <PATTERN> | -x <PREFIX>) [OPTIONS]
 | 场景 | RustKmer | Jellyfish2 | 对比 |
 |------|----------|------------|------|
 | k=31 全量计数 | 494.19 s / 55.22 GiB | 843.02 s / 84.00 GiB | wall −41.4%，峰值 RSS −34.3% |
-| k=21 全量计数 | 505.77 s / 49.27 GiB | 97.26 s / 46.84 GiB | wall +420.0%，RSS +5.2% |
+| k=21 全量计数 | 505.77 s / 49.27 GiB | 97.26 s / 46.84 GiB | wall +420.0%，RSS +5.2%（superseded：v2.0 在 CRR1936095 上实测 144.69 s，见 `.planning/milestones/v2.0-phases/10-benchmark-verdict/`） |
 | k=31 切片计数 | 16.17 s / 5.59 GiB | 22.90 s / 84.84 GiB | wall −29.4%，峰值 RSS −93.4% |
 
 报告结论明确指出：RustKmer 在 k=31 全量计数上快于 Jellyfish2，在 k=21 全量计数上慢于 Jellyfish2；不同 k 值和规模下的结果并不一致。

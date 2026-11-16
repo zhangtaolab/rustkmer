@@ -85,7 +85,7 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 
 **Shared core.** Both entry points depend on the same `rustkmer` library crate; the PyO3 crate (`pyo3/`) wraps `rustkmer::hash`, `rustkmer::io`, `rustkmer::kmer`, `rustkmer::database`. Core-layer wins flow to both surfaces automatically.
 
-**Benchmark dataset (real, human-scale).** Real Illumina WGS data is available locally at `/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/`: `CRR1936095` is a GSA-human human WGS sample, NovaSeq 150 bp paired-end, currently two split parts of read 1 (`part_001`, `part_006`, ~5.2 GB gzipped total; valid standard gzip). This sits outside the repo and is **not** committed — the benchmark harness references the path and degrades gracefully to smaller slices / synthetic inputs on machines without the data. Use it as the primary performance target; synthetic inputs fill in for CI matrix and edge cases.
+**Benchmark dataset (real, human-scale).** Real Illumina WGS data is available locally at `/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/`: `CRR1936095` is a GSA-human human WGS sample, NovaSeq 150 bp paired-end, six single-member gzip parts of read 1 (~2.79 GB each, ~16.7 GB total; valid standard gzip); the pinned benchmark arrangement is still part_001 + part_006. This sits outside the repo and is **not** committed — the benchmark harness references the path and degrades gracefully to smaller slices / synthetic inputs on machines without the data. Use it as the primary performance target; synthetic inputs fill in for CI matrix and edge cases.
 
 ## Constraints
 
@@ -93,7 +93,7 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 - **Compatibility**: preserve the `.rkdb` v2 on-disk format and the public CLI / Python APIs unless a specific perf win justifies a breaking change — and then only after surfacing the tradeoff explicitly
 - **Dual surface**: changes must benefit (or at least not regress) both the CLI and `pyrustkmer`; the shared core is the delivery vehicle
 - **Memory**: human-genome-scale count/merge must fit within practical RAM; the concrete ceiling is set when the reference tool is pinned
-- **Benchmark**: real human-scale Illumina WGS data (CRR1936095, 150 bp PE, ~5.2 GB gzipped r1 across split parts) is available locally and is the primary target; the harness must be reproducible, run in CI as a regression gate, and degrade to slices/synthetic inputs where the full dataset is absent
+- **Benchmark**: real human-scale Illumina WGS data (CRR1936095, 150 bp PE, ~16.7 GB gzipped r1 across six single-member split parts) is available locally and is the primary target; the harness must be reproducible, run in CI as a regression gate, and degrade to slices/synthetic inputs where the full dataset is absent
 - **Version policy (normalized 2026-11-11; MSRV raise user-approved 2026-11-12)**: Rust MSRV 1.82 enforced via `rust-version = "1.82"` in both `Cargo.toml` manifests; Python floor 3.11+ per `pyo3/pyproject.toml`. New code must use only APIs available at 1.82 (the `clippy::incompatible_msrv` gate is active under `-D warnings`)
 
 ## Key Decisions
