@@ -5,16 +5,16 @@ milestone_name: Merge Verdict & Producer Research
 current_phase: 11
 current_phase_name: Merge Characterization & Harness Prep
 status: executing
-stopped_at: Completed 11-01-PLAN.md
-last_updated: "2026-11-16T13:04:25.633Z"
+stopped_at: Completed 11-02-PLAN.md
+last_updated: "2026-11-16T13:27:07.157Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 11 execution started
-state_head: 8aa44dd1e1ce874357aa8994398944d5d13986ff
+state_head: 1c65d5d8b4c583bebf01e05978132050b8e3d920
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 8
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-16)
 ## Current Position
 
 Phase: 11 (Merge Characterization & Harness Prep) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-11-16 — Phase 11 execution started
 
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 11 P01 | 18min | 3 tasks | 5 files |
+| Phase 11 P02 | 17min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [v2.0 D3, 2026-11-14]: the prior Phase 11 (MINIM) did NOT execute — Stage A hit parity and memory was below jellyfish; MINIM descoped outright on 2026-11-16
 - [Phase 11]: 11-01 renderer scope: merge row gains jellyfish-merge deltas via _arm_row merge_base param; merge-t1/jellyfish-merge table rows deferred to Phase 12 renderer work
 - [Phase 11]: 11-01: --skip-merge excludes all three merge arms symmetrically; jellyfish-count-B from cfg_b with byte-identical -m/-s/-C per D-01
+- [Phase 11]: prepare_inputs reconcile_anchors(totals_by_k, anchors=None, ks=None) is the single anchor enforcement point: build calls ks=(k,) per k mid-build (abort before next k / -s derivation); default full-set shape raises on missing k
+- [Phase 11]: prepare_inputs DEFAULT_RUSTKMER is REPO_ROOT-resolved absolute (stage runs from any cwd); jf stage re-verifies recorded .rkdb identity + source fingerprints before building .jf inputs (the -s plan depends on those Distinct values)
+- [Phase 11]: hash_size_plan carries slots/occupancy computed by the stage (jellyfish 2.3.1 info reports only command/where/when/canonical, probed 2026-11-16); empty .rkdb stats exit-1 normalized into the zero-count abort (MBENCH-01/empty)
 
 ### Pending Todos
 
@@ -100,6 +104,6 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-16T13:04:25.616Z
-Stopped at: Completed 11-01-PLAN.md
+Last session: 2026-11-16T13:27:07.139Z
+Stopped at: Completed 11-02-PLAN.md
 Resume file: None
