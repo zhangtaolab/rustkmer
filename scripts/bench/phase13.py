@@ -1519,6 +1519,11 @@ def render_memo_text(doc):
         "Composition rule (D-09): predicted_full_wall = "
         "max(parallelizable floor, worker floor) + output_stage_s.")
     lines.append("")
+    lines.append(
+        "probe-vs-CLI topology: arm C/D probes count ONE file per "
+        "invocation with a fresh engine, while CLI arms A/B count the "
+        "pinned pair in ONE engine (RESEARCH Pitfall 7).")
+    lines.append("")
     for k in GATE_KS:
         block = per_k_predicted.get(str(k))
         if not isinstance(block, dict):
@@ -1640,10 +1645,8 @@ def render_memo_text(doc):
         lines.append("## 6. Phase-14 sizing context (excluded from the gate)")
         lines.append("")
         lines.append(
-            "probe-vs-CLI topology: arm C/D probes count ONE file per "
-            "invocation with a fresh engine, while CLI arms A/B count the "
-            "pinned pair in ONE engine (RESEARCH Pitfall 7) — the per-part "
-            "spread below is sizing context, never a gate input.")
+            "The per-part spread below is sizing context, never a gate "
+            "input.")
         lines.append("")
         lines.append("| Part | Input | Source | Wall |")
         lines.append("|---|---|---|---|")
@@ -1715,6 +1718,7 @@ def _assert_memo_contract(text, doc):
         "binary-fingerprint caveat",
         "Lifecycle / deletion record",
         f"{D3_BAR_FULL_WALL_IMPROVEMENT_PCT:.1f}",
+        "probe-vs-CLI topology",
     ]
     missing = [token for token in required if token not in text]
     if missing:
@@ -1733,7 +1737,7 @@ def _assert_memo_contract(text, doc):
                     "memo contract: a bounds-mode model must render the "
                     f"interval bounds and {token!r}")
     if decision == "GO":
-        for token in ("Phase-14 sizing context", "probe-vs-CLI topology"):
+        for token in ("Phase-14 sizing context",):
             if token not in text:
                 raise RuntimeError(
                     f"memo contract: a GO memo must carry {token!r}")

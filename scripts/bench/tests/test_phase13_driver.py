@@ -933,6 +933,7 @@ class TestRunMemoSeams(unittest.TestCase):
             memo = Path(args.out).read_text(encoding="utf-8")
             self.assertIn("DECISION: NO-GO", memo)
             self.assertIn("Revisit conditions", memo)
+            self.assertIn("probe-vs-CLI topology", memo)
             self.assertNotIn("Phase-14 sizing context", memo)
 
     def test_double_render_is_byte_identical(self):
