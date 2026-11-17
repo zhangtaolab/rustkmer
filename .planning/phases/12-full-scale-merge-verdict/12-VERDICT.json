@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "kind": "phase11-merge-verdict",
+  "phase": 12,
+  "session": "merge-verdict",
+  "created": "2026-11-17T09:03:34.999329+00:00",
+  "overall": "YES",
+  "decision": "NO-INVEST",
+  "exit_code": 0,
+  "rule": "acceptance compares merge-arm wall medians only; rustkmer merge is YES at a k when its median wall <= the jellyfish-merge median wall at that k (equality is match-or-beat; no tolerance band); overall YES requires YES at both k=21 and k=31; merge-t1 is scaling evidence and never enters the verdict",
+  "verdicts": [
+    {
+      "k": 21,
+      "result": "YES",
+      "rustkmer_wall_s": 63.34,
+      "jellyfish_wall_s": 88.44,
+      "scaling": {
+        "arm": "merge-t1",
+        "threads": 1,
+        "wall_s": 62.15
+      },
+      "rule": "acceptance compares merge-arm wall medians only; rustkmer merge is YES at a k when its median wall <= the jellyfish-merge median wall at that k (equality is match-or-beat; no tolerance band); overall YES requires YES at both k=21 and k=31; merge-t1 is scaling evidence and never enters the verdict"
+    },
+    {
+      "k": 31,
+      "result": "YES",
+      "rustkmer_wall_s": 82.86,
+      "jellyfish_wall_s": 114.7,
+      "scaling": {
+        "arm": "merge-t1",
+        "threads": 1,
+        "wall_s": 83.39
+      },
+      "rule": "acceptance compares merge-arm wall medians only; rustkmer merge is YES at a k when its median wall <= the jellyfish-merge median wall at that k (equality is match-or-beat; no tolerance band); overall YES requires YES at both k=21 and k=31; merge-t1 is scaling evidence and never enters the verdict"
+    }
+  ],
+  "inputs": [
+    {
+      "path": ".planning/phases/12-full-scale-merge-verdict/12-RESULTS-FULL-K21.json",
+      "size_bytes": 12616,
+      "sha256": "fd4cd5f0f1e794ac4adfb0fc092b806f604e60c133aa7b2a229a6acd4b91b97d"
+    },
+    {
+      "path": ".planning/phases/12-full-scale-merge-verdict/12-RESULTS-FULL-K31.json",
+      "size_bytes": 12637,
+      "sha256": "a2551ebbe768d70582c1a17228155b92d0b63fe49a6d99a6db90cdbebcb023d5"
+    }
+  ],
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 2966832,
+      "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b"
+    },
+    "git_commit": "e9df71af0ba086ed4d50e0bcc7901ab7766c2e5b",
+    "git_dirty": true,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-17T08:05:19.010323+00:00"
+  }
+}

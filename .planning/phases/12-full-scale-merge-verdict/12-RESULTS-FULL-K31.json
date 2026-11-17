@@ -1,0 +1,395 @@
+{
+  "schema_version": 1,
+  "mode": "full",
+  "phase": 12,
+  "session": "merge",
+  "params": {
+    "k": 31,
+    "reps": 3,
+    "arms": [
+      "merge",
+      "merge-t1",
+      "jellyfish-merge"
+    ],
+    "cooldown_s": 5,
+    "disk_floor_gb": 282,
+    "warmup_provenance": [
+      {
+        "tool": "rustkmer",
+        "warmup": true,
+        "argv": [
+          "target/release/rustkmer",
+          "merge",
+          "-i",
+          "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k31.rkdb",
+          "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k31.rkdb",
+          "-o",
+          "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k31.rkdb"
+        ],
+        "wall_s": 70.37,
+        "cache_state": "unavailable"
+      },
+      {
+        "tool": "jellyfish",
+        "warmup": true,
+        "argv": [
+          "jellyfish",
+          "merge",
+          "-o",
+          "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k31.jf",
+          "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k31.jf",
+          "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k31.jf"
+        ],
+        "wall_s": 108.78,
+        "cache_state": "unavailable"
+      }
+    ]
+  },
+  "platform": {
+    "system": "Darwin",
+    "release": "25.6.0",
+    "machine": "arm64",
+    "python": "3.13.11"
+  },
+  "created": "2026-11-17T09:02:35.037744+00:00",
+  "input_fingerprint": [
+    {
+      "path": "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k31.rkdb",
+      "size_bytes": 16641359442,
+      "sha256": "c2c7ebdf6bb15f967c794c423cd69e303aa22ff66b7a48a889c5842fd5c07f23"
+    },
+    {
+      "path": "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k31.rkdb",
+      "size_bytes": 16642703542,
+      "sha256": "9ab882e29c5a35acfb418784c6b14183aa5c3070c0b63808e6281f77a3eb4f7d"
+    },
+    {
+      "path": "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k31.jf",
+      "size_bytes": 9984817368,
+      "sha256": "a6a40944ba783fcb4107014ffb6cd4d14f0325b393622f9365c5e65823c8c369"
+    },
+    {
+      "path": "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k31.jf",
+      "size_bytes": 9985623828,
+      "sha256": "41647a68e729eeba24d7c6daa78f6a2333218d8142de24246d4524504c812c61"
+    }
+  ],
+  "arms": [
+    {
+      "name": "merge",
+      "tool": "rustkmer",
+      "threads": null,
+      "command_line": [
+        "target/release/rustkmer",
+        "merge",
+        "-i",
+        "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k31.rkdb",
+        "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k31.rkdb",
+        "-o",
+        "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k31.rkdb"
+      ],
+      "reps": [
+        {
+          "wall_s": 101.51,
+          "peak_rss_bytes": 1603125248,
+          "peak_footprint_bytes": 1602536888,
+          "peak_bytes": 1603125248,
+          "route": "not-reported",
+          "distinct": 1146353600,
+          "total": 8275694030,
+          "output_bytes": 22927072042,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 82.86,
+          "peak_rss_bytes": 1603452928,
+          "peak_footprint_bytes": 1602815416,
+          "peak_bytes": 1603452928,
+          "route": "not-reported",
+          "distinct": 1146353600,
+          "total": 8275694030,
+          "output_bytes": 22927072042,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 2
+        },
+        {
+          "wall_s": 82.49,
+          "peak_rss_bytes": 1603076096,
+          "peak_footprint_bytes": 1602782648,
+          "peak_bytes": 1603076096,
+          "route": "not-reported",
+          "distinct": 1146353600,
+          "total": 8275694030,
+          "output_bytes": 22927072042,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 1
+        }
+      ],
+      "medians": {
+        "wall_s": 82.86,
+        "peak_rss_bytes": 1603125248,
+        "peak_bytes": 1603125248,
+        "cv_wall_pct": 12.226597306631282,
+        "cv_warning": true
+      },
+      "unique_kmers": 1146353600,
+      "total_kmers": 8275694030,
+      "output_bytes": 22927072042,
+      "output_sha256": "c2b974d905b9877589c99ea19964b5cd0b8d85f5e62ef1a8add26318949b1362",
+      "route": "not-reported",
+      "provenance": {
+        "binary": {
+          "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+          "size_bytes": 2966832,
+          "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b"
+        },
+        "git_commit": "e9df71af0ba086ed4d50e0bcc7901ab7766c2e5b",
+        "git_dirty": true,
+        "build_profile": "release",
+        "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+        "platform": "darwin-arm64",
+        "created": "2026-11-17T09:02:10.137611+00:00"
+      }
+    },
+    {
+      "name": "merge-t1",
+      "tool": "rustkmer",
+      "threads": 1,
+      "command_line": [
+        "target/release/rustkmer",
+        "merge",
+        "-i",
+        "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k31.rkdb",
+        "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k31.rkdb",
+        "-o",
+        "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k31.rkdb",
+        "--num-threads",
+        "1"
+      ],
+      "reps": [
+        {
+          "wall_s": 81.41,
+          "peak_rss_bytes": 1603747840,
+          "peak_footprint_bytes": 1602995640,
+          "peak_bytes": 1603747840,
+          "route": "not-reported",
+          "distinct": 1146353600,
+          "total": 8275694030,
+          "output_bytes": 22927072042,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 84.68,
+          "peak_rss_bytes": 1603649536,
+          "peak_footprint_bytes": 1602930104,
+          "peak_bytes": 1603649536,
+          "route": "not-reported",
+          "distinct": 1146353600,
+          "total": 8275694030,
+          "output_bytes": 22927072042,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 0
+        },
+        {
+          "wall_s": 83.39,
+          "peak_rss_bytes": 1603665920,
+          "peak_footprint_bytes": 1602946488,
+          "peak_bytes": 1603665920,
+          "route": "not-reported",
+          "distinct": 1146353600,
+          "total": 8275694030,
+          "output_bytes": 22927072042,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 2
+        }
+      ],
+      "medians": {
+        "wall_s": 83.39,
+        "peak_rss_bytes": 1603665920,
+        "peak_bytes": 1603665920,
+        "cv_wall_pct": 1.9806257095618804,
+        "cv_warning": false
+      },
+      "unique_kmers": 1146353600,
+      "total_kmers": 8275694030,
+      "output_bytes": 22927072042,
+      "output_sha256": "c2b974d905b9877589c99ea19964b5cd0b8d85f5e62ef1a8add26318949b1362",
+      "route": "not-reported",
+      "provenance": {
+        "binary": {
+          "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+          "size_bytes": 2966832,
+          "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b"
+        },
+        "git_commit": "e9df71af0ba086ed4d50e0bcc7901ab7766c2e5b",
+        "git_dirty": true,
+        "build_profile": "release",
+        "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+        "platform": "darwin-arm64",
+        "created": "2026-11-17T09:02:10.137611+00:00"
+      }
+    },
+    {
+      "name": "jellyfish-merge",
+      "tool": "jellyfish",
+      "threads": null,
+      "command_line": [
+        "jellyfish",
+        "merge",
+        "-o",
+        "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k31.jf",
+        "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k31.jf",
+        "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k31.jf"
+      ],
+      "reps": [
+        {
+          "wall_s": 114.33,
+          "peak_rss_bytes": 6782976,
+          "peak_footprint_bytes": 2064792,
+          "peak_bytes": 6782976,
+          "route": "not-reported",
+          "distinct": 1146353600,
+          "total": 8275694030,
+          "output_bytes": 13756245008,
+          "cache_state": "unavailable",
+          "round": 0,
+          "arm_order": 2
+        },
+        {
+          "wall_s": 114.7,
+          "peak_rss_bytes": 6832128,
+          "peak_footprint_bytes": 2113944,
+          "peak_bytes": 6832128,
+          "route": "not-reported",
+          "distinct": 1146353600,
+          "total": 8275694030,
+          "output_bytes": 13756245008,
+          "cache_state": "unavailable",
+          "round": 1,
+          "arm_order": 1
+        },
+        {
+          "wall_s": 114.96,
+          "peak_rss_bytes": 6799360,
+          "peak_footprint_bytes": 2081176,
+          "peak_bytes": 6799360,
+          "route": "not-reported",
+          "distinct": 1146353600,
+          "total": 8275694030,
+          "output_bytes": 13756245008,
+          "cache_state": "unavailable",
+          "round": 2,
+          "arm_order": 0
+        }
+      ],
+      "medians": {
+        "wall_s": 114.7,
+        "peak_rss_bytes": 6799360,
+        "peak_bytes": 6799360,
+        "cv_wall_pct": 0.27610961084683233,
+        "cv_warning": false
+      },
+      "unique_kmers": 1146353600,
+      "total_kmers": 8275694030,
+      "output_bytes": 13756245008,
+      "output_sha256": "3843f69f014cd4fa7e4495291dc3296c7ed2d1e698a799ad3aac29a7f5af5ad6",
+      "route": "not-reported",
+      "provenance": {
+        "binary": {
+          "path": "/opt/homebrew/Cellar/jellyfish/2.3.1/bin/jellyfish",
+          "size_bytes": 374544,
+          "sha256": "e99c676bbead8f5f520b84359088740aa853b0a0b3b122a21373fe93ae8091ee"
+        },
+        "git_commit": "e9df71af0ba086ed4d50e0bcc7901ab7766c2e5b",
+        "git_dirty": true,
+        "build_profile": "pinned-comparator-2.3.1",
+        "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+        "platform": "darwin-arm64",
+        "created": "2026-11-17T09:02:10.211206+00:00"
+      }
+    }
+  ],
+  "scratch": "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch",
+  "schedule": [
+    [
+      "merge",
+      "merge-t1",
+      "jellyfish-merge"
+    ],
+    [
+      "merge-t1",
+      "jellyfish-merge",
+      "merge"
+    ],
+    [
+      "jellyfish-merge",
+      "merge",
+      "merge-t1"
+    ]
+  ],
+  "input_revalidation": {
+    "revalidate": "green (revalidate_stage re-hash + re-stats at stage start \u2014 input-swap defense)",
+    "binary_identity": "green (pinned ladder sha256 verified at stage start)",
+    "anchors": {
+      "21": {
+        "sum": 8967099203,
+        "expected": 8967099203,
+        "exact": true
+      },
+      "31": {
+        "sum": 8275694030,
+        "expected": 8275694030,
+        "exact": true
+      }
+    }
+  },
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 2966832,
+      "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b"
+    },
+    "git_commit": "e9df71af0ba086ed4d50e0bcc7901ab7766c2e5b",
+    "git_dirty": true,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-17T09:02:10.137611+00:00"
+  },
+  "comparator_provenance": {
+    "rustkmer": {
+      "binary": {
+        "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+        "size_bytes": 2966832,
+        "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b"
+      },
+      "git_commit": "e9df71af0ba086ed4d50e0bcc7901ab7766c2e5b",
+      "git_dirty": true,
+      "build_profile": "release",
+      "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+      "platform": "darwin-arm64",
+      "created": "2026-11-17T09:02:10.137611+00:00"
+    },
+    "jellyfish": {
+      "binary": {
+        "path": "/opt/homebrew/Cellar/jellyfish/2.3.1/bin/jellyfish",
+        "size_bytes": 374544,
+        "sha256": "e99c676bbead8f5f520b84359088740aa853b0a0b3b122a21373fe93ae8091ee"
+      },
+      "git_commit": "e9df71af0ba086ed4d50e0bcc7901ab7766c2e5b",
+      "git_dirty": true,
+      "build_profile": "pinned-comparator-2.3.1",
+      "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+      "platform": "darwin-arm64",
+      "created": "2026-11-17T09:02:10.211206+00:00"
+    }
+  }
+}
