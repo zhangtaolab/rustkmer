@@ -44,7 +44,7 @@ Full detail: [milestones/v2.0-ROADMAP.md](milestones/v2.0-ROADMAP.md) · Require
 **Milestone Goal:** Decide where the next performance investment goes — benchmark `rustkmer merge` against `jellyfish merge` at full scale for a measured invest/no-invest verdict (wall time is the primary decision axis; jellyfish is the sole comparator), research the producer-bound counting bottleneck (parallel extraction) with predicted-win sizing and a conditional implementation phase (v2.0 D3 pattern), close v2.0 carry-forward hygiene gaps, and hold the memory-below-jellyfish guardrail (k=21 43.97 GiB / k=31 68.52 GiB references).
 
 - [x] **Phase 11: Merge Characterization & Harness Prep** - Jellyfish-merge arms + the three-way parity gate defined in writing and proven at slice scale + intermediate-scale jellyfish merge characterization + full-protocol dress rehearsal; hygiene pulled forward (stale `docs/benchmark-report.md`, Nyquist 5-8, SECURITY.md 9/10) so nothing new cites stale evidence (completed 2026-11-17)
-- [ ] **Phase 12: Full-Scale Merge Verdict** - Counterbalanced merge benchmark at BOTH k with parity executed before timing (including full-scale per-k-mer deep validation); invest/no-invest verdict recorded via the 0/1/2 exit-code contract; mechanical report with methodology block + predicted-vs-measured cost-model check
+- [x] **Phase 12: Full-Scale Merge Verdict** - Counterbalanced merge benchmark at BOTH k with parity executed before timing (including full-scale per-k-mer deep validation); invest/no-invest verdict recorded via the 0/1/2 exit-code contract; mechanical report with methodology block + predicted-vs-measured cost-model check (completed 2026-11-17)
 - [ ] **Phase 13: Producer Attribution Research** - Full-scale stage attribution (inflate / parse / extract / route-send) on the SHIPPED engine at both k with fingerprinted builds; predicted-win model naming both ceilings; recorded D3 go/no-go memo (independent — may overlap Phases 11-12)
 - [ ] **Phase 14: Parallel Extraction** - CONDITIONAL (D3 gate): parallel producer with all ten engine invariants + MEM guardrail re-measured at full scale — executes ONLY if Phase 13's memo says GO and Phase 12's verdict is recorded
 
@@ -105,7 +105,7 @@ Plans:
   3. The report's methodology block captures threads/flags/merge-route/sha256 per arm — including the like-for-like `rustkmer merge --num-threads 1` arm — and discloses the single-threaded-comparator asymmetry in one stated sentence: each tool merges its own representation of identical, parity-validated input data (MBENCH-03).
   4. The merge-verdict report is mechanically rendered with a byte-identical re-render proof (no measurement literals in code), entry-rate / byte-rate metrics that make the inherent format asymmetry visible (`.jf` ~10 B/entry vs `.rkdb` 20 B/entry), and a predicted-vs-measured cost-model check (linear-in-entries, single-threaded) (MBENCH-04).
 
-**Plans**: 4/4 plans executed
+**Plans**: 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -173,7 +173,7 @@ Plans:
 | 9. Python Parity | v2.0 | 5/5 | Complete | 2026-11-13 |
 | 10. Benchmark Verdict | v2.0 | 4/4 | Complete | 2026-11-14 |
 | 11. Merge Characterization & Harness Prep | v2.1 | 8/8 | Complete    | 2026-11-17 |
-| 12. Full-Scale Merge Verdict | v2.1 | 4/4 | In Progress | - |
+| 12. Full-Scale Merge Verdict | v2.1 | 4/4 | Complete    | 2026-11-17 |
 | 13. Producer Attribution Research | v2.1 | 0/TBD | Not started | - |
 | 14. Parallel Extraction | v2.1 | 0/TBD | Not started (conditional — D3) | - |
 
