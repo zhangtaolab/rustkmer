@@ -1,132 +1,186 @@
-> **SUPERSEDED — v1.0 snapshot.** This report is the v1.0 benchmark snapshot, mechanically
-> rendered from results produced on the CRR2044018 substitute dataset (that dataset has
-> since been deleted from disk). It is superseded by the v2.0 Phase-10 verdicts committed
-> under
-> [`.planning/milestones/v2.0-phases/10-benchmark-verdict/`](../../.planning/milestones/v2.0-phases/10-benchmark-verdict/):
-> k=21 CLI 144.69 s vs jellyfish 194.85 s; k=31 CLI 147.08 s — rustkmer faster at both k,
-> overall verdict YES, measured on the real CRR1936095 dataset (six single-member gzip
-> parts of read 1, ~2.79 GB each, ~16.7 GB total; the earlier "two split parts, ~5.2 GB"
-> description in project docs was inaccurate). **Every number below is historical v1.0
-> evidence.**
->
-> *Hand-added banner (2026-11-16, Phase 11 HYG-01 / decision D-05): this is the single
-> acknowledged exception to the generated-file contract stated in the footer below — a
-> re-render from the v1.0 JSONs reproduces the original file and drops this banner. The
-> exception and the renderer-narrative debt are recorded in
-> `.planning/phases/11-merge-characterization-harness-prep/11-HYGIENE-RECORD.md`.*
+# rustkmer vs Jellyfish2 — milestone benchmark report (v2.0 counting + Phase-12 merge verdict)
 
-# rustkmer vs Jellyfish2 — milestone benchmark report
-
-*Mechanically rendered from the committed results JSONs by `scripts/bench/bench.py --render-report`. Every measurement below is read from those JSONs — the renderer contains no measurement literals — and re-rendering reproduces this file byte-for-byte, so a hand-edited number is detectable (BENCH-02/T-04-07).*
+*Number contract: every measurement number in this document is transcribed from the mechanically rendered
+Phase-12 merge-verdict report (`.planning/phases/12-full-scale-merge-verdict/12-MERGE-REPORT.md`), which is
+itself rendered from the committed evidence JSONs by `python3 scripts/bench/phase11.py --stage render` — that
+renderer holds no measurement literals and consults no clock, so re-rendering reproduces the mechanical report
+byte-for-byte (proof recorded in `12-RENDER-PROOF.json`) and a hand-edited number is detectable (T-12-01). This
+document is hand-shaped prose bound to that report: its measurement numbers must be greppable in the mechanical
+report, and the only decimals outside it are the pinned context numbers (dataset part sizes, cleanup size, v2.0
+verdict references), each traceable to committed provenance and labeled as context. The evidence JSONs named in
+the footer are the regeneration source.*
 
 ## Dataset provenance
 
-**CRR2044018 is the user-approved substitute for CRR1936095** (CRR1936095 was absent from this host's disk; the substitution was approved 2026-10-09). The harness is path-configurable: when CRR1936095 returns, the same protocol re-runs on it via `--input`.
+**CRR1936095** (GSA-human WGS, NovaSeq 150 bp paired-end) is the benchmark dataset: six single-member gzip
+parts of read 1, ~2.79 GB each, ~16.7 GB total, at
+`/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/` — outside the repo, not committed. The pinned
+benchmark and merge arrangement is the **part_001 + part_006** pair; its source fingerprints as recorded at
+build time and committed in `.planning/phases/11-merge-characterization-harness-prep/11-PREPARE-RECORD.md`
+(section 1):
 
-## Headline (primary): k=31 — full-scale counting
+- `CRR1936095_r1.part_001.fq.gz` — 2,785,381,389 bytes, sha256 `dae91042e42c1a05…1b0de`
+- `CRR1936095_r1.part_006.fq.gz` — 2,785,388,289 bytes, sha256 `b197f16c31dd3409…7f07e`
 
-| arm | tool | median wall (s) | median peak RSS (GiB) | wall vs jellyfish | RSS vs jellyfish | per-rep wall (s) | per-rep RSS (GiB) | CV wall |
-|-----|------|-----------------|----------------------|-------------------|------------------|------------------|-------------------|---------|
-| count-A | rustkmer | 494.19 | 55.22 | -41.4% | -34.3% | 494.19 / 494.18 / 499.98 | 55.42 / 55.22 / 54.56 | 0.7% |
-| count-B | rustkmer | 485.89 | 55.29 | -42.4% | -34.2% | 484.65 / 492.59 / 485.89 | 56.28 / 55.22 / 55.29 | 0.9% |
-| jellyfish-count-A | jellyfish | 843.02 | 84.00 | baseline | baseline | 843.02 / 657.82 / 875.18 | 83.97 / 86.40 / 84.00 | 14.8% **[cv_warning]** |
+(An earlier "two split parts" dataset description that circulated in project docs was inaccurate; it was
+corrected to the six-part description above on 2026-11-16.)
 
-**Verdict (k=31):** rustkmer matches-or-beats jellyfish on counting speed — **YES** (rule: every rustkmer count-arm median wall <= jellyfish median wall; rustkmer [494.19, 485.89] s vs jellyfish 843.02 s). Peak-memory deltas are in the table above — memory wins/losses are as visible as speed (BENCH-03).
+**Merge-input lifecycle (Phase 11 build → Phase 12 wrap-up deletion).** The 8 full-scale merge-input artifacts
+(4 `.rkdb` + 4 `.jf`, ~86.74 GiB total) were pre-built from the pinned pair by
+`scripts/bench/prepare_inputs.py` (rkdb stage then jf stage, 2026-11-16; per-artifact sha256 and sizes in the
+input-fingerprints section below and in `11-PREPARE-RECORD.md`), parity-validated, and retained on disk until
+the Phase-12 verdict landed (Phase-11 retention decision D-02). In the Phase-12 wrap-up (decision D-03, plan
+12-03) the 8 artifacts were deleted — strictly after every verdict-evidence commit (round-0 record + parity
+JSONs + timed results JSONs + verdict + mechanical report + render proof, plus this document's rewrite commit)
+had landed in git. `manifest.json` is retained beside them at
+`/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/manifest.json` and records every artifact's sha256
+and size, so nothing one-way was destroyed: the artifact set is rebuildable with
+`python3 scripts/bench/prepare_inputs.py build` (roughly 30–90 minutes).
 
-## Secondary: k=21 — full-scale counting
+## Headline: full-scale merge verdict (Phase 12 session, 2026-11-17)
 
-| arm | tool | median wall (s) | median peak RSS (GiB) | wall vs jellyfish | RSS vs jellyfish | per-rep wall (s) | per-rep RSS (GiB) | CV wall |
-|-----|------|-----------------|----------------------|-------------------|------------------|------------------|-------------------|---------|
-| count-A | rustkmer | 505.77 | 49.27 | +420.0% | +5.2% | 492.89 / 507.78 / 505.77 | 49.27 / 49.23 / 49.73 | 1.6% |
-| count-B | rustkmer | 494.14 | 49.73 | +408.1% | +6.2% | 492.42 / 494.14 / 506.47 | 49.73 / 49.60 / 49.73 | 1.5% |
-| jellyfish-count-A | jellyfish | 97.26 | 46.84 | baseline | baseline | 92.89 / 97.26 / 102.52 | 46.84 / 46.84 / 46.84 | 4.9% |
+Both tools merged their own representation of the identical, parity-validated input pair at full scale;
+exactly 3 counterbalanced reps per arm per k; verdict medians read from the recorded walls:
 
-**Verdict (k=21):** rustkmer matches-or-beats jellyfish on counting speed — **NO** (rule: every rustkmer count-arm median wall <= jellyfish median wall; rustkmer [505.77, 494.14] s vs jellyfish 97.26 s). Peak-memory deltas are in the table above — memory wins/losses are as visible as speed (BENCH-03).
+| k | verdict | rustkmer merge median wall (s) | jellyfish merge median wall (s) |
+|---|---|---|---|
+| 21 | YES | 63.34 | 88.44 |
+| 31 | YES | 82.86 | 114.7 |
 
-## BENCH-02 verdict (counting speed, from recorded medians)
+**Overall: YES — decision NO-INVEST (exit code 0).** Both outcomes are valid recorded results.
 
-**NO** — rustkmer matches-or-beats Jellyfish2 on counting speed across the full-scale tables above (k=31: YES; k=21: NO; rule: every rustkmer count-arm median wall <= jellyfish median wall in every full-scale table). A NO on any k is a valid measured outcome and is reported as-is.
+Rule (verbatim from `12-VERDICT.json`): acceptance compares merge-arm wall medians only; rustkmer merge is YES
+at a k when its median wall <= the jellyfish-merge median wall at that k (equality is match-or-beat; no
+tolerance band); overall YES requires YES at both k=21 and k=31; merge-t1 is scaling evidence and never enters
+the verdict
 
-## Count parity evidence (recorded distinct/total equality)
+## Comparator-shape asymmetry
 
-- mode=full k=31: jellyfish-count-A distinct=787,508,352 total=4,448,351,631 vs count-A distinct=787,508,352 total=4,448,351,631 -> EQUAL
-- mode=full k=31: count-B distinct=787,508,352 total=4,448,351,631 vs count-A -> EQUAL (same input measured twice)
-- mode=full k=21: jellyfish-count-A distinct=663,276,710 total=4,826,823,600 vs count-A distinct=663,276,710 total=4,826,823,600 -> EQUAL
-- mode=full k=21: count-B distinct=663,276,710 total=4,826,823,600 vs count-A -> EQUAL (same input measured twice)
-- mode=slice k=31: jellyfish-count-A distinct=52,970,251 total=119,972,170 vs count-A distinct=52,970,251 total=119,972,170 -> EQUAL
-- mode=slice k=31: count-B distinct=53,827,714 total=119,939,902 — its input differs from input A (see fingerprints; the r2 side of a merge-input run); no jellyfish arm measured it, so this is not a parity claim
+each tool merges its own representation of identical, parity-validated input data. Threads/flags/merge-route/
+sha256 are recorded per arm below; defaults-only flags during measurement (no flag sweep — MBF-01 is
+post-verdict v2.2+ work, only on INVEST).
 
-## Slice-scale run (k=31) — counting + merge (r1/r2)
+### Per-arm methodology (k=21)
 
-| arm | tool | median wall (s) | median peak RSS (GiB) | wall vs jellyfish | RSS vs jellyfish | per-rep wall (s) | per-rep RSS (GiB) | CV wall |
-|-----|------|-----------------|----------------------|-------------------|------------------|------------------|-------------------|---------|
-| count-A | rustkmer | 16.17 | 5.59 | -29.4% | -93.4% | 16.17 / 16.38 / 16.16 | 5.59 / 5.59 / 5.59 | 0.8% |
-| count-B | rustkmer | 16.32 | 5.66 | -28.7% | -93.3% | 16.75 / 16.31 / 16.32 | 5.65 / 5.66 / 5.66 | 1.5% |
-| jellyfish-count-A | jellyfish | 22.90 | 84.84 | baseline | baseline | 22.90 / 22.44 / 23.07 | 85.06 / 84.79 / 84.84 | 1.4% |
-| merge | rustkmer | 7.55 | 16.94 | n/a | n/a | 7.55 / 7.53 / 7.56 | 16.94 / 16.94 / 16.94 | 0.2% |
+| arm | tool | threads | argv | route | output sha256 | binary sha256 |
+|---|---|---|---|---|---|---|
+| merge | rustkmer | defaults | `target/release/rustkmer merge -i /Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k21.rkdb /Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k21.rkdb -o /Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k21.rkdb` | not-reported | `75ddd231b674a6ec8e48b6eaa1346209de2e5a81b261963f93979d4bbdb0b73c` | `4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b` |
+| merge-t1 | rustkmer | 1 | `target/release/rustkmer merge -i /Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k21.rkdb /Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k21.rkdb -o /Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k21.rkdb --num-threads 1` | not-reported | `75ddd231b674a6ec8e48b6eaa1346209de2e5a81b261963f93979d4bbdb0b73c` | `4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b` |
+| jellyfish-merge | jellyfish | defaults | `jellyfish merge -o /Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k21.jf /Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k21.jf /Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k21.jf` | not-reported | `8de0aeee50ca4595b532ad70a838d7db58c3e87ccb9c1b41fac633f6488146fe` | `e99c676bbead8f5f520b84359088740aa853b0a0b3b122a21373fe93ae8091ee` |
 
-- merge total_kmers 239,912,072 == sum of count-arm totals 239,912,072 -> EQUAL (count conservation)
-- merge distinct_kmers 77,766,811 >= max input distinct 53,827,714 -> OK (distinct union)
+#### Rates (k=21) — computed only from recorded values
 
-## Methodology
+| arm | entry rate (distinct/s) | byte rate (output B/s) | output B/entry |
+|---|---|---|---|
+| merge | 14165875.92358699 | 283317519.1348279 | 20.000000046808832 |
+| merge-t1 | 14437113.129525343 | 288742263.26629126 | 20.000000046808832 |
+| jellyfish-merge | 10145483.729081864 | 101454855.1108096 | 10.000001756445668 |
 
-### Run mode=full k=31 (created 2026-10-10T16:36:28.355467+00:00)
+### Per-arm methodology (k=31)
 
-- reps: 3 measured per arm (one warmup per tool executed and discarded before round 0); cooldown 5 s between runs; threads 16; canonical (-C on both tools)
-- counterbalanced schedule: round 0: rustkmer then jellyfish; round 1: jellyfish then rustkmer; round 2: rustkmer then jellyfish
-- jellyfish `-s 10G` (generous initial hash; recorded in results)
-- decompression arrangement: rustkmer reads the .gz natively; jellyfish receives `gzcat | jellyfish count ... /dev/stdin` — decompression is inside BOTH tools' measured wall; the residual asymmetry (pipe and context-switch overhead on the jellyfish arm only) remains and is stated here per protocol
-- cache_state per arm:
-  - count-A (rustkmer): unavailable x3
-  - count-B (rustkmer): unavailable x3
-  - jellyfish-count-A (jellyfish): unavailable x3
+| arm | tool | threads | argv | route | output sha256 | binary sha256 |
+|---|---|---|---|---|---|---|
+| merge | rustkmer | defaults | `target/release/rustkmer merge -i /Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k31.rkdb /Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k31.rkdb -o /Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k31.rkdb` | not-reported | `c2b974d905b9877589c99ea19964b5cd0b8d85f5e62ef1a8add26318949b1362` | `4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b` |
+| merge-t1 | rustkmer | 1 | `target/release/rustkmer merge -i /Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k31.rkdb /Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k31.rkdb -o /Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k31.rkdb --num-threads 1` | not-reported | `c2b974d905b9877589c99ea19964b5cd0b8d85f5e62ef1a8add26318949b1362` | `4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b` |
+| jellyfish-merge | jellyfish | defaults | `jellyfish merge -o /Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k31.jf /Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k31.jf /Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k31.jf` | not-reported | `3843f69f014cd4fa7e4495291dc3296c7ed2d1e698a799ad3aac29a7f5af5ad6` | `e99c676bbead8f5f520b84359088740aa853b0a0b3b122a21373fe93ae8091ee` |
 
-### Run mode=full k=21 (created 2026-10-10T17:47:23.191284+00:00)
+#### Rates (k=31) — computed only from recorded values
 
-- reps: 3 measured per arm (one warmup per tool executed and discarded before round 0); cooldown 5 s between runs; threads 16; canonical (-C on both tools)
-- counterbalanced schedule: round 0: rustkmer then jellyfish; round 1: jellyfish then rustkmer; round 2: rustkmer then jellyfish
-- jellyfish `-s 10G` (generous initial hash; recorded in results)
-- decompression arrangement: rustkmer reads the .gz natively; jellyfish receives `gzcat | jellyfish count ... /dev/stdin` — decompression is inside BOTH tools' measured wall; the residual asymmetry (pipe and context-switch overhead on the jellyfish arm only) remains and is stated here per protocol
-- cache_state per arm:
-  - count-A (rustkmer): unavailable x3
-  - count-B (rustkmer): unavailable x3
-  - jellyfish-count-A (jellyfish): unavailable x3
+| arm | entry rate (distinct/s) | byte rate (output B/s) | output B/entry |
+|---|---|---|---|
+| merge | 13834825.006034276 | 276696500.62756455 | 20.00000003663791 |
+| merge-t1 | 13746895.311188392 | 274937906.72742534 | 20.00000003663791 |
+| jellyfish-merge | 9994364.428945074 | 119932388.91020052 | 12.00000157717479 |
 
-### Run mode=slice k=31 (created 2026-10-10T17:53:06.628925+00:00)
+The like-for-like arm: merge-t1 (`--num-threads 1`) reads as a like-for-like single-worker scheduling point:
+the CLI child pool contract is exactly 2 OS threads at N=1 (2N+1 at N>1, tests/thread_pool_size_tests.rs), not
+a one-OS-thread measurement; merge-t1 is scaling evidence and never enters the YES/NO verdict. The rate rows
+above also make the output-format asymmetry visible — rustkmer's `.rkdb` entries cost 20 bytes each while
+jellyfish's `.jf` records cost 10 bytes at k=21 and 12 bytes at k=31 — so byte-rate comparisons across tools
+reflect format, not effort.
 
-- reps: 3 measured per arm (one warmup per tool executed and discarded before round 0); cooldown 5 s between runs; threads 16; canonical (-C on both tools)
-- counterbalanced schedule: round 0: rustkmer then jellyfish; round 1: jellyfish then rustkmer; round 2: rustkmer then jellyfish
-- jellyfish `-s 10G` (generous initial hash; recorded in results)
-- decompression arrangement: rustkmer reads the .gz natively; jellyfish receives `gzcat | jellyfish count ... /dev/stdin` — decompression is inside BOTH tools' measured wall; the residual asymmetry (pipe and context-switch overhead on the jellyfish arm only) remains and is stated here per protocol
-- cache_state per arm:
-  - count-A (rustkmer): unavailable x3
-  - count-B (rustkmer): unavailable x3
-  - jellyfish-count-A (jellyfish): unavailable x3
-  - merge (rustkmer): unavailable x3
+## Parity evidence (three-way gate green BEFORE any timed round)
 
-- **Cold cache: PARTIALLY SATISFIED.** Some measured reps recorded cache_state other than purged/runner-fresh (the between-run purge needs sudo and was not run — user-approved no-sudo execution). The cold-cache wording of the BENCH-02 methodology is therefore only partially satisfied; the criterion's evidence is this recording, not a claim.
+- k=21: legs [leg1-aggregate-conservation, leg2-recount-vs-merged, leg3-dump-vs-dump]; anchors exact=True
+  expected=8967099203 actual=8967099203; merges recorded=2
+- k=31: legs [leg1-aggregate-conservation, leg2-recount-vs-merged, leg3-dump-vs-dump]; anchors exact=True
+  expected=8275694030 actual=8275694030; merges recorded=2
 
-- cv_warning flags: mode=full k=31 arm jellyfish-count-A: CV 14.8% (threshold 10%) — treat those medians with care
+Leg 2 recounts the pinned pair as ONE input list and asserts the sum-of-counts Total exactly against the union
+anchor before the per-k-mer diff; leg 3 is the streaming per-k-mer dump-vs-dump deep leg — the only full-scale
+deep-leg route (the in-process comparator form is unit-level only). No timed rep ran before these gates were
+green at both k.
 
-### Input fingerprints (size + sha256 per file, as recorded)
+## Predicted vs measured (ladder extrapolation)
 
-- mode=full k=31: `/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz` (2,637,234,342 bytes) sha256 `131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9` — recorded fingerprint; input no longer present on disk (verified 2026-11-14)
-- mode=full k=31: `/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz` (2,637,234,342 bytes) sha256 `131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9` — recorded fingerprint; input no longer present on disk (verified 2026-11-14)
-- mode=full k=21: `/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz` (2,637,234,342 bytes) sha256 `131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9` — recorded fingerprint; input no longer present on disk (verified 2026-11-14)
-- mode=full k=21: `/Users/forrest/Downloads/CRR2044018/CRR2044018_r1.fq.gz` (2,637,234,342 bytes) sha256 `131ca561b851956077b3f15b95e6afc65e6d4f7ffc986c2d2f1973049a559ce9` — recorded fingerprint; input no longer present on disk (verified 2026-11-14)
-- mode=slice k=31: `scripts/bench/scratch/slice-0.fq` (359,504,511 bytes) sha256 `2dd773f99f0207144d2ed8a3c9564fd5e9ac0c4783873f1b7f88fd3696369520`
-- mode=slice k=31: `scripts/bench/scratch/slice-1.fq` (359,504,511 bytes) sha256 `1c0d213e1be5742152e5456d841df8295d29ac291e35f2b0b46f8ed09c3e22b4` — recorded fingerprint; scratch file no longer present on disk (verified 2026-11-14)
+| k | arm | predicted wall (s) | measured median wall (s) | delta (s) |
+|---|---|---|---|---|
+| 21 | merge | 53.84865958547661 | 63.34 | 9.491340414523393 |
+| 21 | jellyfish-merge | 77.26391787523114 | 88.44 | 11.176082124768854 |
+| 31 | merge | 73.36277547930045 | 82.86 | 9.497224520699547 |
+| 31 | jellyfish-merge | 105.52449658729188 | 114.7 | 9.175503412708125 |
 
-### Harness provenance
+Caveat (verbatim from the recorded ladder doc): slice-scale extrapolation under a two-point linear model —
+MBENCH-04's predicted-vs-measured check at full scale is the backstop (D-07); no slice-scale number is
+presented as a full-scale prediction without this caveat and the backstop named (milestone Pitfall 14)
 
-- harness: `scripts/bench/bench.py` @ git commit `78e5eec409f0fede27e69167357f82a630b096f2`; results schema_version 1
-- platform (as recorded): Darwin 25.6.0 arm64, python 3.12.8
-- rustkmer binary path (as recorded): `target/release/rustkmer`
+The predicted walls were scheduling inputs; the measured medians are the deliverable, and the deltas are
+recorded as findings in the mechanical report — never smoothed or re-run.
 
-### Recorded methodology finding (attempt 1 of the full run)
+## Memory is context, not a decision axis
 
-- The first full-run attempt (2026-10-10) halted at the harness's count-parity gate: rustkmer's single-member gzip decoder silently read only member 1 of the concatenated-gzip input — a small prefix of the 2,637,234,342-byte input fingerprinted below, whose k-mer count was a tiny fraction of jellyfish's full count. The parity gate caught it before any timing was trusted. Fixed in commit `8102985` (MultiGzDecoder + regression test); the results in this report are from the post-fix attempt 2. This is exactly the pre-timing parity gate the methodology mandates.
+Peak RSS and physical footprint are recorded per rep as context only — the merge verdict compares recorded
+wall medians only. No memory-superiority claim over the streaming jellyfish merge comparator is made or
+implied (milestone Pitfall 6).
+
+## Input fingerprints (the 8 merge-input artifacts, as recorded)
+
+- `/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k21.rkdb` —
+  sha256=`409b76362e37f3794de9e8c2d1c12edb9b6157a59d7bcd51a5d51faa25383c63` size_bytes=13292834822
+- `/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k21.rkdb` —
+  sha256=`9748ef7798b54bbac3db0928df3830f383e5f0e62f8c767149a03b03ffcc409d` size_bytes=13294483202
+- `/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k21.jf` —
+  sha256=`5f14f78eaee40591d4fec4c2e8089c4300d8832674438a153359584f00bc309e` size_bytes=6646418886
+- `/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k21.jf` —
+  sha256=`136803aca29972cc6a6d11a2ca60c191cf542d5f2450f4b7cb6dee24943e6729` size_bytes=6647243076
+- `/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k31.rkdb` —
+  sha256=`c2c7ebdf6bb15f967c794c423cd69e303aa22ff66b7a48a889c5842fd5c07f23` size_bytes=16641359442
+- `/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k31.rkdb` —
+  sha256=`9ab882e29c5a35acfb418784c6b14183aa5c3070c0b63808e6281f77a3eb4f7d` size_bytes=16642703542
+- `/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k31.jf` —
+  sha256=`a6a40944ba783fcb4107014ffb6cd4d14f0325b393622f9365c5e65823c8c369` size_bytes=9984817368
+- `/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k31.jf` —
+  sha256=`41647a68e729eeba24d7c6daa78f6a2333218d8142de24246d4524504c812c61` size_bytes=9985623828
+
+All 8 artifacts were deleted at the Phase-12 wrap-up (D-03) after the evidence commits landed; the retained
+`manifest.json` preserves these exact records for revalidation and rebuild.
+
+## Harness provenance
+
+- rustkmer binary: `/Users/forrest/GitHub/rustkmer/target/release/rustkmer` — size_bytes=2966832
+  sha256=`4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b`
+- jellyfish binary: `/opt/homebrew/Cellar/jellyfish/2.3.1/bin/jellyfish` — size_bytes=374544
+  sha256=`e99c676bbead8f5f520b84359088740aa853b0a0b3b122a21373fe93ae8091ee` (build profile
+  pinned-comparator-2.3.1)
+- results build: git commit `e9df71af0ba086ed4d50e0bcc7901ab7766c2e5b`, dirty=True, profile release, rustc
+  1.101.0-nightly (07e526db9 2026-10-19)
+- Renderer source commit (last commit touching the renderer): `68e2f3e5e753ac65c113aba9561bfbc1eaead2b5`
+- Controller: `scripts/bench/phase11.py` staged session (revalidate → parity → timed → verdict → render),
+  results schema_version 1, honest per-rep `cache_state` and route labels; evidence documents committed in
+  `.planning/phases/12-full-scale-merge-verdict/`
+
+## Historical context: the v2.0 counting verdicts (not part of the merge verdict)
+
+The Phase-10 full-scale counting verdict — overall YES at both k on both surfaces — is committed under
+`.planning/milestones/v2.0-phases/10-benchmark-verdict/`. Its rustkmer headline walls (CLI 144.69 s at k=21,
+147.08 s at k=31) and rustkmer peak-memory references (43.97 GiB at k=21, 68.52 GiB at k=31 — below the
+jellyfish comparators recorded there) are historical context for this milestone only and never mix into the
+merge-verdict tables above.
 
 ---
 
-*Generated file — do not edit by hand. Regenerate with `python3 scripts/bench/bench.py --render-report --results <jsons> --out docs/benchmark-report.md`; the evidence JSONs are committed beside this report under `.planning/milestones/v1.0-phases/04-benchmark-validation/`.
+*Generated-file contract — do not hand-edit numbers in this file. Regeneration source: the Phase-12 evidence
+JSONs `.planning/phases/12-full-scale-merge-verdict/12-RESULTS-FULL-K21.json`,
+`12-RESULTS-FULL-K31.json`, `12-PARITY-K21.json`, `12-PARITY-K31.json`, `12-VERDICT.json`, mechanically
+rendered by `python3 scripts/bench/phase11.py --stage render` into `12-MERGE-REPORT.md` (byte-identical
+re-render proof in `12-RENDER-PROOF.json`); phase directory `.planning/phases/12-full-scale-merge-verdict/`.*
