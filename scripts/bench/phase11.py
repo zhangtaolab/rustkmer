@@ -10,8 +10,10 @@ Stages — the order is pinned by construction (parity before timing; the
 streaming deep-leg form is the ONLY full-scale route, WR-01):
 
   revalidate   round-0 gate: re-hash + re-stats the prepared artifacts,
-               union-anchor equality, full disk budget (plan 12-04)
-  parity       three-way parity gate per k; deep legs streamed (plan 12-04)
+               union-anchor equality, full session budget (this file)
+  parity       three-way parity gate per k; deep legs streamed (this file;
+               Leg 2 is the NEW independent-recount diff through the
+               streaming pipeline — the WR-01 structural fix)
   timed        3 merge arms x 3 counterbalanced reps per k (plan 12-04)
   verdict      invest/no-invest from recorded medians (exit 0/1 — this file)
   render       mechanical report + byte-identical re-render proof (this file)
@@ -29,8 +31,13 @@ Python 3.11+ stdlib only — no third-party imports, no pip installs.
 import argparse
 import hashlib
 import json
+import math
+import os
+import shutil
+import statistics
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -41,12 +48,15 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from scripts.bench.bench import (
+    BYTES_PER_GIB,
     DEFAULT_COOLDOWN_S,
     DEFAULT_DISK_FLOOR_GB,
     DEFAULT_RUSTKMER,
+    MEASURED_INPUT_ARTIFACTS_BYTES,
     REPO_ROOT,
     SCHEMA_VERSION,
     BenchmarkConfig,
+    assert_merge_parity,
     attempt_cache_purge,
     binary_provenance,
     build_merge_cmd,
@@ -64,6 +74,7 @@ from scripts.bench.bench import (
 from scripts.bench.output_stage import rotation_schedule
 from scripts.bench.merge_characterize import (
     FULL_SCALE_CAVEAT,
+    UNION_DISTINCT_ANCHORS,
     _normalized_sorted_dump,
     dump_vs_dump_equal_streaming,
     measured_run,
@@ -192,16 +203,22 @@ def invalid(message):
     sys.exit(EXIT_INVALID)
 
 
-def assert_binary_identity():
+def assert_binary_identity(provenance_fn=None):
     """Tripwire: the measured binaries must be the ladder's exact bytes.
 
     Compares the sha256 of the ACTUAL executable bytes (never the command
     string) against the 11-LADDER-RESULTS.json provenance constants. A
     rebuilt rustkmer or an upgraded jellyfish breaks predicted-vs-measured
     attribution — this raises naming both hashes; escalate, never rebuild.
+
+    Returns {"rustkmer": binary dict, "jellyfish": binary dict,
+    "provenance": the rustkmer release provenance block} — the block the
+    evidence documents carry (T-12-06: no artifact lands without complete
+    provenance, and it must attribute the hashed bytes themselves).
     """
-    rust_prov = binary_provenance(DEFAULT_RUSTKMER, "release")
-    jf_prov = binary_provenance("jellyfish", JELLYFISH_BUILD_PROFILE)
+    provenance_fn = binary_provenance if provenance_fn is None else provenance_fn
+    rust_prov = provenance_fn(DEFAULT_RUSTKMER, "release")
+    jf_prov = provenance_fn("jellyfish", JELLYFISH_BUILD_PROFILE)
     rust_sha = rust_prov["binary"]["sha256"]
     jf_sha = jf_prov["binary"]["sha256"]
     if rust_sha != RUSTKMER_BIN_SHA256 or jf_sha != JELLYFISH_BIN_SHA256:
@@ -211,7 +228,8 @@ def assert_binary_identity():
             f"{jf_sha} (expected {JELLYFISH_BIN_SHA256}) — a rebuilt or "
             "upgraded binary breaks predicted-vs-measured attribution "
             "(11-LADDER-RESULTS.json provenance); escalate, never rebuild")
-    return {"rustkmer": rust_prov["binary"], "jellyfish": jf_prov["binary"]}
+    return {"rustkmer": rust_prov["binary"], "jellyfish": jf_prov["binary"],
+            "provenance": rust_prov}
 
 
 # --- merge arm argv (defaults-only by construction) --------------------------
@@ -257,6 +275,568 @@ def merge_arm_argv(name, k, manifest, scratch, rustkmer=DEFAULT_RUSTKMER):
     inputs = _manifest_inputs(manifest, "jellyfish_inputs", k)
     out_jf = scratch / f"merged.k{k}.jf"
     return jellyfish_merge_cmd(out_jf, inputs)
+
+
+# --- round-0 revalidate stage (plan 12-04 Task 1) ----------------------------
+
+
+def _now_iso():
+    """UTC timestamp for evidence `created` fields (merge_characterize)."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+# The .rkdb entry size (16-byte k-mer + 4-byte count, format.rs KmerEntry):
+# the budget's timed-transient term prices the largest merged output at this
+# ladder-fitted rate (11-FLOOR-DERIVATION.md §3). A budget input, never a
+# measurement.
+RKDB_BYTES_PER_ENTRY = 20
+
+
+def session_budget(inputs_bytes=None, entries=None,
+                   dump_bytes_per_line=DUMP_BYTES_PER_LINE,
+                   rkdb_bytes_per_entry=RKDB_BYTES_PER_ENTRY):
+    """D-12 session-budget arithmetic (pure, deterministic).
+
+    The budget prices the whole session's working set in GiB:
+
+    - inputs: the recorded artifact bytes (default MEASURED_INPUT_ARTIFACTS_
+      BYTES, 11-PREPARE-RECORD.md §11);
+    - parity transients per k: union Distinct x DUMP_BYTES_PER_LINE x 3 —
+      raw+norm coexistence ~2x dump text per side + the sorted output ~1x
+      (research A3; the sort's peak is sorted-A + norm-B + sorted-B = 3x);
+    - timed transient: largest merged .rkdb output = max union Distinct x
+      RKDB_BYTES_PER_ENTRY.
+
+    # Arguments
+    inputs_bytes: recorded input-artifact bytes; None uses the D-10 measured
+        inventory constant.
+    entries: union Distinct per k; None uses UNION_DISTINCT_ANCHORS — the
+        11-LADDER-RESULTS.json summary.extrapolated_full_scale.
+        full_scale_entries values (imported from the harness constant that
+        wrote them, never re-transcribed).
+
+    # Returns
+    A breakdown dict whose `session_budget_gb` is the GiB integer the
+    round-0 stage passes explicitly to check_disk_floor (D-12).
+    """
+    inputs = (MEASURED_INPUT_ARTIFACTS_BYTES if inputs_bytes is None
+              else int(inputs_bytes))
+    if inputs <= 0:
+        raise ValueError(
+            "session_budget: inputs_bytes must be > 0 (got "
+            f"{inputs_bytes!r}) — a budget derived from nothing guards "
+            "nothing")
+    entry_map = ({str(k): int(v) for k, v in UNION_DISTINCT_ANCHORS.items()}
+                 if entries is None
+                 else {str(k): int(v) for k, v in entries.items()})
+    if not entry_map:
+        raise ValueError(
+            "session_budget: entries must cover the union ks (got empty) — "
+            "the deep-gate and merged-output transients price from the "
+            "ladder's full_scale_entries")
+    parity = {k: math.ceil(v * dump_bytes_per_line * 3 / BYTES_PER_GIB)
+              for k, v in sorted(entry_map.items())}
+    timed = math.ceil(max(entry_map.values()) * rkdb_bytes_per_entry
+                      / BYTES_PER_GIB)
+    inputs_gb = math.ceil(inputs / BYTES_PER_GIB)
+    return {
+        "session_budget_gb": inputs_gb + sum(parity.values()) + timed,
+        "inputs_bytes": inputs,
+        "inputs_gb": inputs_gb,
+        "parity_transient_gb": parity,
+        "parity_transient_terms": (
+            "union Distinct x DUMP_BYTES_PER_LINE x 3 (raw+norm coexistence "
+            "~2x dump text per side + the sorted output ~1x)"),
+        "timed_transient_gb": timed,
+        "timed_transient_terms": (
+            "largest merged .rkdb output: max union Distinct x "
+            "RKDB_BYTES_PER_ENTRY (20 B/entry)"),
+        "constants": {
+            "dump_bytes_per_line": dump_bytes_per_line,
+            "rkdb_bytes_per_entry": rkdb_bytes_per_entry,
+            "entries_source": (
+                "UNION_DISTINCT_ANCHORS — 11-LADDER-RESULTS.json summary."
+                "extrapolated_full_scale.full_scale_entries"),
+        },
+    }
+
+
+def session_budget_gb(inputs_bytes=None, entries=None):
+    """The GiB integer D-12 session budget (deterministic; see
+    session_budget for the terms)."""
+    return session_budget(inputs_bytes=inputs_bytes,
+                          entries=entries)["session_budget_gb"]
+
+
+def anchor_totals_from_manifest(manifest):
+    """Per-k summed per-part Totals from the manifest's artifact records.
+
+    The SUM-OF-COUNTS definition (PARITY-GATE.md §5): the manifest's `total`
+    records were read by the sanctioned stats reader at prepare time and
+    re-proved at revalidate time — never the DatabaseHeader record-count
+    field (IN-03).
+    """
+    totals = {}
+    for record in manifest.get("artifacts", []):
+        k = record.get("k")
+        if k not in PARITY_KS:
+            raise RuntimeError(
+                f"round-0 anchors: manifest records an artifact with "
+                f"k={k!r} outside the pinned ks {list(PARITY_KS)}")
+        totals[k] = totals.get(k, 0) + int(record["total"])
+    for k in PARITY_KS:
+        if k not in totals:
+            raise RuntimeError(
+                f"round-0 anchors: manifest records no per-part artifact "
+                f"Totals for k={k} — the union anchor cannot reconcile")
+    return totals
+
+
+def assert_anchor_equality(manifest):
+    """EXACT union-anchor equality per k (PARITY-GATE.md §2.1).
+
+    The per-part input Totals must sum to the committed Phase-10 union
+    anchors (8,967,099,203 at k=21; 8,275,694,030 at k=31) — recorded
+    constants, not new measurements. Raises naming the computed sum and the
+    expected anchor; otherwise returns the anchors dict keyed by the STRING
+    k values ('21'/'31'), each entry carrying exactly {sum, expected,
+    exact} — the layout plan 12-02's gates read.
+    """
+    totals = anchor_totals_from_manifest(manifest)
+    anchors = {}
+    for k in PARITY_KS:
+        computed = totals[k]
+        expected = UNION_TOTALS[k]
+        if computed != expected:
+            raise RuntimeError(
+                f"round-0 anchor equality failed for k={k}: summed per-part "
+                f"total {computed} != committed Phase-10 union anchor "
+                f"{expected} (sum-of-counts definition from the sanctioned "
+                "stats readers, never the header record-count field) — "
+                "dataset drift or harness bug")
+        anchors[str(k)] = {"sum": computed, "expected": expected,
+                           "exact": True}
+    return anchors
+
+
+def check_source_fingerprints(manifest, source_paths=None,
+                              fingerprint_fn=None):
+    """Source-swap defense: re-fingerprint the pinned part pair.
+
+    The prepared artifacts certify a specific pair of SOURCE read files
+    (11-PREPARE-RECORD.md §3). A swapped or regenerated source invalidates
+    everything downstream (Pitfall 8) — each pinned part is re-fingerprinted
+    and compared against the manifest's source_fingerprints records, raising
+    naming both hashes on any mismatch.
+    """
+    fingerprint_fn = fingerprint if fingerprint_fn is None else fingerprint_fn
+    source_paths = PART_PATHS if source_paths is None else source_paths
+
+    def record_for(name):
+        """The one manifest record for a part name.
+
+        The recorded paths name the real files (e.g.
+        CRR1936095_r1.part_001.fq.gz), so matching is token-based on the
+        file name/stem, never a bare equality against the part key.
+        """
+        matches = []
+        for record in manifest.get("source_fingerprints", []):
+            file_name = Path(record["path"]).name
+            stem = Path(record["path"]).stem
+            if (file_name == name
+                    or file_name.startswith(f"{name}.")
+                    or stem == name
+                    or stem.endswith(f".{name}")):
+                matches.append(record)
+        return matches
+
+    fingerprints = []
+    for name in sorted(source_paths):
+        path = Path(source_paths[name])
+        matches = record_for(name)
+        if not matches:
+            raise RuntimeError(
+                f"round-0 source cross-check: the manifest carries no "
+                f"source_fingerprints record for {name} — the manifest "
+                "predates the pinned part-pair contract "
+                "(11-PREPARE-RECORD.md §3)")
+        if len(matches) > 1:
+            raise RuntimeError(
+                f"round-0 source cross-check: ambiguous source_fingerprints "
+                f"records for {name}: "
+                f"{[record['path'] for record in matches]}")
+        record = matches[0]
+        if not path.is_file():
+            raise RuntimeError(
+                f"round-0 source cross-check: source part missing: {path}")
+        fp = fingerprint_fn(path)
+        if fp["sha256"] != record["sha256"]:
+            raise RuntimeError(
+                f"round-0 source cross-check: {name} sha256 {fp['sha256']} "
+                f"!= recorded {record['sha256']} — the source reads were "
+                "swapped or regenerated after the artifacts were prepared "
+                "(Pitfall 8); everything downstream is invalid")
+        if fp["size_bytes"] != record["size_bytes"]:
+            raise RuntimeError(
+                f"round-0 source cross-check: {name} size_bytes "
+                f"{fp['size_bytes']} != recorded {record['size_bytes']}")
+        fingerprints.append(fp)
+    return fingerprints
+
+
+def round0_doc(*, manifest_digest, anchors, budget, df_sample,
+               binary_identity, source_fingerprints, provenance,
+               artifacts_dir):
+    """The phase12-round0-revalidation evidence document.
+
+    `anchors` is keyed by the string k values ('21'/'31'), each entry
+    carrying exactly {sum, expected, exact} — the layout plan 12-02's
+    gates consume verbatim.
+    """
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "kind": KIND_ROUND0,
+        "phase": PHASE,
+        "session": "round0-revalidation",
+        "created": _now_iso(),
+        "artifacts_dir": str(artifacts_dir),
+        "manifest_digest": manifest_digest,
+        "anchors": anchors,
+        "anchors_definition": (
+            "per-part Totals summed across the pinned part pair and compared "
+            "EXACT against the committed Phase-10 union anchors — the "
+            "sum-of-counts definition from the sanctioned stats readers, "
+            "never the DatabaseHeader record-count field (PARITY-GATE.md §5)"),
+        "binary_identity": binary_identity,
+        "session_budget": budget,
+        "df_sample": df_sample,
+        "source_fingerprints": source_fingerprints,
+        "input_revalidation": (
+            "green (revalidate_stage re-hash + re-stats over every recorded "
+            "artifact; unrecorded artifacts rejected loudly)"),
+        "provenance": provenance,
+    }
+
+
+def run_revalidate(args, *, revalidate_fn=None, provenance_fn=None,
+                   fingerprint_fn=None, df_fn=None, budget_fn=None,
+                   disk_fn=None, source_paths=None, artifacts_dir=None,
+                   manifest_path=None):
+    """Round-0 gate: revalidate, anchor equality, budget, round-0 doc.
+
+    The controller invokes — never reimplements — the prepare-inputs
+    revalidation: revalidate_stage re-hashes and re-stats every recorded
+    artifact and rejects unrecorded ones (the tamper tripwire), and
+    assert_binary_identity pins the measured binaries to the ladder
+    provenance. A failure raises; the top-level handler maps raises to
+    exit 2 with NO artifact written — a failed gate never lands a doc.
+    """
+    revalidate_fn = revalidate_stage if revalidate_fn is None else revalidate_fn
+    provenance_fn = binary_provenance if provenance_fn is None else provenance_fn
+    fingerprint_fn = fingerprint if fingerprint_fn is None else fingerprint_fn
+    df_fn = shutil.disk_usage if df_fn is None else df_fn
+    budget_fn = session_budget if budget_fn is None else budget_fn
+    disk_fn = check_disk_floor if disk_fn is None else disk_fn
+    source_paths = PART_PATHS if source_paths is None else source_paths
+    artifacts_dir = (DEFAULT_ARTIFACTS_DIR if artifacts_dir is None
+                     else Path(artifacts_dir))
+    manifest_path = (artifacts_dir / "manifest.json"
+                     if manifest_path is None else Path(manifest_path))
+    identity = assert_binary_identity(provenance_fn=provenance_fn)
+    manifest = revalidate_fn(artifacts_dir)
+    anchors = assert_anchor_equality(manifest)
+    source_fingerprints = check_source_fingerprints(
+        manifest, source_paths=source_paths, fingerprint_fn=fingerprint_fn)
+    inputs_bytes = sum(
+        int(record["size_bytes"])
+        for record in [*manifest.get("artifacts", []),
+                       *manifest.get("jellyfish_inputs", [])])
+    budget = budget_fn(inputs_bytes=inputs_bytes)
+    # D-12: the COMPUTED session budget is passed explicitly — the floor is
+    # not a round number and the exit-3 block semantics stay untouched
+    # (override only via the explicit flag).
+    scratch = Path(args.scratch)
+    scratch.mkdir(parents=True, exist_ok=True)
+    disk_fn(scratch, budget["session_budget_gb"],
+            override=args.disk_floor_override, phase="round-0")
+    usage = df_fn(str(scratch))
+    df_sample = {"path": str(scratch), "total": usage.total,
+                 "used": usage.used, "free": usage.free}
+    doc = round0_doc(
+        manifest_digest=fingerprint_fn(manifest_path), anchors=anchors,
+        budget=budget, df_sample=df_sample,
+        binary_identity={"rustkmer": identity["rustkmer"],
+                         "jellyfish": identity["jellyfish"]},
+        source_fingerprints=source_fingerprints,
+        provenance=identity["provenance"],
+        artifacts_dir=artifacts_dir)
+    write_evidence_doc(doc, Path(args.out))
+    print(f"PHASE11 ROUND0 anchors=exact "
+          f"budget_gb={budget['session_budget_gb']} "
+          f"artifacts={len(manifest.get('artifacts', []))}")
+    return EXIT_OK
+
+
+# --- parity stage: three-way gate with the NEW Leg-2 recount diff ------------
+
+
+def recount_vs_merged_equal(recount_rkdb, merged_rkdb,
+                            rustkmer=DEFAULT_RUSTKMER, workdir=None, *,
+                            recount_dump_builder=None,
+                            merged_dump_builder=None):
+    """Leg 2 — the independent-recount diff (NEW code, no analog).
+
+    The only parity leg anchored OUTSIDE the two merge tools (PARITY-GATE.md
+    §3): the recount database (one count over both parts as a single input
+    list) is per-k-mer diffed against the merged database through the SAME
+    streaming pipeline as the cross-tool gate — two `_normalized_sorted_dump`
+    sides with via_stdout=False semantics (a rustkmer dump -o side writes
+    its own file; stdout is never captured), then the same streaming
+    zip-compare (first difference named with both sides, length equality
+    required, sorted files unlinked in finally).
+
+    Returns True on exact per-k-mer equality; raises RuntimeError otherwise.
+    """
+    workdir = Path(workdir) if workdir is not None else DEFAULT_SCRATCH / "leg2"
+    workdir.mkdir(parents=True, exist_ok=True)
+
+    def default_builder(db_path):
+        return lambda raw: [str(rustkmer), "dump", str(db_path), "-o",
+                            str(raw)]
+
+    recount_builder = (default_builder(recount_rkdb)
+                       if recount_dump_builder is None
+                       else recount_dump_builder)
+    merged_builder = (default_builder(merged_rkdb)
+                      if merged_dump_builder is None else merged_dump_builder)
+    recount_sorted, recount_lines = _normalized_sorted_dump(
+        recount_builder, workdir, "recount", "recount side", via_stdout=False)
+    merged_sorted, merged_lines = _normalized_sorted_dump(
+        merged_builder, workdir, "merged", "merged side", via_stdout=False)
+    try:
+        with open(recount_sorted, "r", encoding="utf-8") as fa, \
+                open(merged_sorted, "r", encoding="utf-8") as fb:
+            compared = 0
+            for la, lb in zip(fa, fb):
+                if la != lb:
+                    raise RuntimeError(
+                        f"recount-vs-merged gate: dumps differ at sorted "
+                        f"line {compared}: recount={la!r} vs "
+                        f"merged={lb!r} — per-k-mer parity violated")
+                compared += 1
+        if compared != recount_lines or compared != merged_lines:
+            raise RuntimeError(
+                f"recount-vs-merged gate: dumps differ in length: recount "
+                f"{recount_lines} lines vs merged {merged_lines} lines (the "
+                f"first {compared} sorted lines agree) — per-k-mer parity "
+                "violated")
+        return True
+    finally:
+        for leftover in (recount_sorted, merged_sorted):
+            try:
+                leftover.unlink()
+            except OSError:
+                pass
+
+
+def parity_doc(*, k, anchors_exact_total, merges, merged_stats,
+               recount_stats, input_revalidation, binary_identity,
+               transients_deleted, provenance, legs=None):
+    """The phase12-merge-parity evidence document.
+
+    Aggregate-only parity is never presented as parity: the doc records all
+    three gate legs, EXACT anchor equality, and the warmup-marked merges
+    (A5: the parity merges double as the protocol's discarded warmups — the
+    timed stage cites them as warmup_provenance and runs no additional
+    warmup). The builder never emits an inexact document.
+    """
+    if k not in PARITY_KS:
+        raise ValueError(
+            f"parity doc: k {k!r} is not one of {list(PARITY_KS)}")
+    if anchors_exact_total != UNION_TOTALS[k]:
+        raise ValueError(
+            f"parity k={k}: merged Total {anchors_exact_total} != union "
+            f"anchor {UNION_TOTALS[k]} — the builder never emits an inexact "
+            "parity document (PARITY-GATE.md §2 anchors are EXACT)")
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "kind": KIND_PARITY,
+        "phase": PHASE,
+        "session": "merge-parity",
+        "k": k,
+        "created": _now_iso(),
+        "legs_executed": list(PARITY_LEGS if legs is None else legs),
+        "anchors": {
+            "sum": anchors_exact_total,
+            "expected": UNION_TOTALS[k],
+            "actual": anchors_exact_total,
+            "exact": True,
+            "definition": "sum-of-counts",
+        },
+        "merges": list(merges),
+        "warmup_note": (
+            "the parity merges are the protocol's discarded warmups (A5): "
+            "their walls are recorded but never enter any timed median; the "
+            "timed stage records them as warmup_provenance"),
+        "merged_stats": merged_stats,
+        "recount": recount_stats,
+        "input_revalidation": input_revalidation,
+        "binary_identity": binary_identity,
+        "transients_deleted": list(transients_deleted),
+        "provenance": provenance,
+    }
+
+
+def run_parity(args, *, revalidate_fn=None, provenance_fn=None,
+               measure_fn=None):
+    """Three-way parity gate for one k; write the parity evidence doc.
+
+    One warmup-marked merge per tool (A5), then the three legs in order:
+    Leg 1 aggregate conservation (assert_merge_parity, sum-of-counts), the
+    NEW Leg 2 independent-recount diff through the streaming pipeline, and
+    Leg 3 the cross-tool streaming dump-vs-dump verdict gate. Deep legs run
+    ONLY the streaming form (WR-01). Transients are deleted in sequence and
+    the deletions are recorded. Any gate failure raises — exit 2, no doc.
+    """
+    revalidate_fn = revalidate_stage if revalidate_fn is None else revalidate_fn
+    provenance_fn = binary_provenance if provenance_fn is None else provenance_fn
+    measure_fn = measured_run if measure_fn is None else measure_fn
+    if not args.round0:
+        invalid("the parity stage requires --round0 <the round-0 "
+                "revalidation document> — parity runs only after the "
+                "round-0 gate (structural stage order, D-01)")
+    round0_path = Path(args.round0)
+    round0 = _load_json(round0_path)
+    if not isinstance(round0, dict) or round0.get("kind") != KIND_ROUND0:
+        invalid(f"{round0_path} is not a {KIND_ROUND0!r} document — the "
+                "parity stage refuses to run without a valid round-0 gate")
+    identity = assert_binary_identity(provenance_fn=provenance_fn)
+    manifest = revalidate_fn(DEFAULT_ARTIFACTS_DIR)
+    anchors = assert_anchor_equality(manifest)
+    input_revalidation = {
+        "revalidate": (
+            "green (revalidate_stage re-hash + re-stats at stage start — "
+            "input-swap defense)"),
+        "binary_identity": (
+            "green (pinned ladder sha256 verified at stage start)"),
+        "anchors": anchors,
+    }
+    k = args.k
+    rustkmer = args.rustkmer
+    scratch = Path(args.scratch)
+    scratch.mkdir(parents=True, exist_ok=True)
+    provenance = provenance_fn(rustkmer, "release")
+
+    # -- one merge per tool, warmup-marked (A5). Honest cache_state labels;
+    #    the walls are recorded but never enter any timed median.
+    rk_argv = merge_arm_argv("merge", k, manifest, scratch, rustkmer=rustkmer)
+    rk_cache = attempt_cache_purge()
+    rk_rep, _rk_stderr = measure_fn(rk_argv)
+    jf_argv = merge_arm_argv("jellyfish-merge", k, manifest, scratch,
+                             rustkmer=rustkmer)
+    jf_cache = attempt_cache_purge()
+    jf_rep, _jf_stderr = measure_fn(jf_argv)
+    merges = [
+        {"tool": "rustkmer", "warmup": True, "argv": rk_argv,
+         "wall_s": rk_rep["wall_s"], "cache_state": rk_cache},
+        {"tool": "jellyfish", "warmup": True, "argv": jf_argv,
+         "wall_s": jf_rep["wall_s"], "cache_state": jf_cache},
+    ]
+    merged_rkdb = scratch / f"merged.k{k}.rkdb"
+    merged_jf = scratch / f"merged.k{k}.jf"
+    rk_stats_d = stats(merged_rkdb, rustkmer)
+    jf_stats_d = jellyfish_stats(merged_jf)
+
+    # -- Leg 1: aggregate conservation (the fast pre-gate). Every value is
+    #    the SUM-OF-COUNTS definition carried by the sanctioned stats
+    #    readers — never the header record-count field (IN-03).
+    part_records = sorted(
+        (record for record in manifest.get("artifacts", [])
+         if record.get("k") == k),
+        key=lambda record: record["path"])
+    if len(part_records) != 2:
+        raise RuntimeError(
+            f"parity k={k}: manifest carries {len(part_records)} artifact "
+            "records (expected the pinned part_001+part_006 pair)")
+    count_a, count_b = part_records
+    by_name = {
+        "count-A": {"distinct_kmers": count_a["distinct"],
+                    "total_kmers": count_a["total"]},
+        "count-B": {"distinct_kmers": count_b["distinct"],
+                    "total_kmers": count_b["total"]},
+        "merge": {"distinct_kmers": rk_stats_d["unique_kmers"],
+                  "total_kmers": rk_stats_d["total_kmers"]},
+        "jellyfish-merge": {"distinct_kmers": jf_stats_d["distinct"],
+                            "total_kmers": jf_stats_d["total"]},
+    }
+    assert_merge_parity(by_name)
+    merged_total = by_name["merge"]["total_kmers"]
+
+    # -- Leg 2 (NEW, no analog): independent recount of the union — one
+    #    count over BOTH parts as a single input list — anchored outside the
+    #    two merge tools. Untimed (prepare_inputs.run_command), then
+    #    per-k-mer diffed against the merged db through the streaming
+    #    pipeline (WR-01: never any in-process form at full scale).
+    leg2_dir = scratch / f"leg2.k{k}"
+    recount_rkdb = scratch / f"recount.k{k}.rkdb"
+    recount_cfg = BenchmarkConfig(
+        k=k, canonical=True, threads=os.cpu_count(),
+        inputs=[PART_PATHS["part_001"], PART_PATHS["part_006"]])
+    run_command(rustkmer_count_cmd(recount_cfg, recount_rkdb,
+                                   rustkmer=rustkmer))
+    recount_stats_d = stats(recount_rkdb, rustkmer)
+    if recount_stats_d["unique_kmers"] <= 0:
+        raise RuntimeError(
+            f"parity k={k}: recount produced zero distinct k-mers — an "
+            "empty recount can never pass the gate (MBENCH-01/empty)")
+    if recount_stats_d["total_kmers"] != UNION_TOTALS[k]:
+        raise RuntimeError(
+            f"parity k={k}: recount Total {recount_stats_d['total_kmers']} "
+            f"!= union anchor {UNION_TOTALS[k]} (sum-of-counts definition) "
+            "— the independent recount does not reproduce the union; "
+            "aborting before the per-k-mer diff")
+    recount_vs_merged_equal(recount_rkdb, merged_rkdb, rustkmer,
+                            workdir=leg2_dir)
+    # Deletion sequencing (research Pitfall 5): the recount db is dead once
+    # its sorted dump exists — the compare's finally already unlinked the
+    # sorted transients, so unlink the recount db immediately.
+    recount_rkdb.unlink()
+    transients_deleted = [str(recount_rkdb)]
+
+    # -- Leg 3: the verdict gate — cross-tool dump-vs-dump, streamed.
+    leg3_dir = scratch / f"leg3.k{k}"
+    dump_vs_dump_equal_streaming(merged_rkdb, merged_jf, rustkmer,
+                                 workdir=leg3_dir)
+    # Merged outputs die only after Leg 3 is green; then the leg workdirs.
+    for merged_out in (merged_rkdb, merged_jf):
+        merged_out.unlink()
+        transients_deleted.append(str(merged_out))
+    for leg_dir in (leg2_dir, leg3_dir):
+        shutil.rmtree(leg_dir, ignore_errors=True)
+        transients_deleted.append(str(leg_dir) + "/")
+
+    doc = parity_doc(
+        k=k, anchors_exact_total=merged_total, merges=merges,
+        merged_stats={
+            "rustkmer": {"distinct": rk_stats_d["unique_kmers"],
+                         "total": rk_stats_d["total_kmers"],
+                         "definition": "sum-of-counts"},
+            "jellyfish": {"distinct": jf_stats_d["distinct"],
+                          "total": jf_stats_d["total"],
+                          "definition": "sum-of-counts"},
+        },
+        recount_stats={"distinct": recount_stats_d["unique_kmers"],
+                       "total": recount_stats_d["total_kmers"],
+                       "definition": "sum-of-counts"},
+        input_revalidation=input_revalidation,
+        binary_identity={"rustkmer": identity["rustkmer"],
+                         "jellyfish": identity["jellyfish"]},
+        transients_deleted=transients_deleted,
+        provenance=provenance)
+    write_evidence_doc(doc, Path(args.out))
+    print(f"PHASE11 PARITY k={k} legs=3/3 anchors_exact=true "
+          f"recount=identical")
+    return EXIT_OK
 
 
 # --- verdict stage: pure comparison of recorded medians ----------------------
@@ -997,8 +1577,8 @@ def build_parser():
                     "revalidate -> parity -> timed -> verdict -> render over "
                     "the parity-validated prepared artifacts, with the "
                     "0/1/2 exit-code contract as the verdict carrier "
-                    "(D-01; the revalidate/parity/timed stage functions "
-                    "land with plan 12-04).")
+                    "(D-01; the timed stage function lands with plan "
+                    "12-04's Task 2).")
     parser.add_argument("--stage", choices=STAGES, default="revalidate")
     parser.add_argument("--out", required=True,
                         help="results/decision document output path")
@@ -1048,14 +1628,19 @@ def main(argv=None):
     if args.cooldown_s < 0:
         parser.error("--cooldown-s must be >= 0")
 
+    if args.stage == "revalidate":
+        return run_revalidate(args)
+    if args.stage == "parity":
+        return run_parity(args)
     if args.stage == "verdict":
         return run_verdict(args)
     if args.stage == "render":
         return run_render(args)
-    # Dispatch stays TOTAL: a stage whose function plan 12-04 has not added
-    # yet is exit 2 naming the missing stage — never silence.
-    invalid(f"stage {args.stage!r} is not implemented yet (plan 12-04); "
-            "this skeleton implements the verdict and render stages")
+    # Dispatch stays TOTAL: a stage whose function has not landed yet is
+    # exit 2 naming the missing stage — never silence.
+    invalid(f"stage {args.stage!r} is not implemented yet (plan 12-04 "
+            "Task 2); this build implements revalidate/parity/verdict/"
+            "render")
     return EXIT_INVALID
 
 

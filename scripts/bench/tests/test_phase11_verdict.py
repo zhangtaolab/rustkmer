@@ -304,14 +304,18 @@ class TestStageContract(TempDirCase):
         self.assertEqual(ctx.exception.code, p11.EXIT_INVALID)
 
     def test_unimplemented_session_stage_exits_two_naming_it(self):
-        """A stage plan 12-04 has not added yet exits 2 naming the stage."""
+        """A stage whose function has not landed yet exits 2 naming it.
+
+        After 12-04 Task 1 the unimplemented stage is `timed` (Task 2's
+        target); the dispatch must keep naming it, never silence.
+        """
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr), \
                 self.assertRaises(SystemExit) as ctx:
-            p11.main(["--stage", "revalidate",
+            p11.main(["--stage", "timed",
                       "--out", str(self.tmp / "o.json")])
         self.assertEqual(ctx.exception.code, p11.EXIT_INVALID)
-        self.assertIn("revalidate", stderr.getvalue())
+        self.assertIn("timed", stderr.getvalue())
         self.assertIn("not implemented", stderr.getvalue())
 
     def test_verdict_stage_requires_two_results_docs(self):
@@ -742,20 +746,21 @@ PART_DISTINCT = {
 }
 
 
-def fake_identity_provenance(tool="rustkmer"):
+def fake_identity_provenance(executable=None, build_profile=None):
     """A validate-clean provenance block carrying the PINNED binary hashes.
 
     assert_binary_identity compares sha256s against the ladder constants, so
-    the happy-path fake must present the real pinned hashes to pass.
+    the happy-path fake must present the real pinned hashes to pass. Called
+    with the (executable, build_profile) provenance_fn shape.
     """
     prov = fake_provenance()
-    if tool == "rustkmer":
+    if "jellyfish" in str(executable):
+        prov = fake_jellyfish_provenance()
+        prov["binary"]["sha256"] = p11.JELLYFISH_BIN_SHA256
+    else:
         prov["binary"] = {"path": "/repo/target/release/rustkmer",
                           "size_bytes": 1234,
                           "sha256": p11.RUSTKMER_BIN_SHA256}
-    else:
-        prov = fake_jellyfish_provenance()
-        prov["binary"]["sha256"] = p11.JELLYFISH_BIN_SHA256
     return prov
 
 
@@ -1042,20 +1047,22 @@ class TestSourceFingerprintCrossCheck(TempDirCase):
         fps = p11.check_source_fingerprints(manifest, source_paths=paths)
         self.assertEqual(len(fps), 2)
         self.assertEqual({Path(fp["path"]).name for fp in fps},
-                         {"part_001", "part_006"})
+                         {"part_001.fq.gz", "part_006.fq.gz"})
 
     def test_swapped_source_raises_naming_both_hashes(self):
         """RED: a regenerated source names recorded vs computed hashes."""
         paths = self.write_sources()
         manifest = make_full_manifest(
             source_fingerprints=self.recorded_fingerprints(paths))
+        recorded_sha = {Path(record["path"]).name: record["sha256"]
+                        for record in manifest["source_fingerprints"]}
         paths["part_006"].write_text("swapped bytes", encoding="utf-8")
         with self.assertRaises(RuntimeError) as ctx:
             p11.check_source_fingerprints(manifest, source_paths=paths)
         message = str(ctx.exception)
         self.assertIn("part_006", message)
         self.assertIn(p11.fingerprint(paths["part_006"])["sha256"], message)
-        self.assertIn("s" * 64, message)
+        self.assertIn(recorded_sha["part_006.fq.gz"], message)
 
     def test_missing_record_raises_naming_the_part(self):
         """RED: a manifest without a part's source record is a loud error."""
@@ -1118,7 +1125,9 @@ class TestRunRevalidateStage(TempDirCase):
     def write_stage_sources(self):
         paths = {}
         for name, seed in (("part_001", "src-a"), ("part_006", "src-b")):
-            path = self.tmp / f"source-{name}"
+            # Named like the real parts (part_001.fq.gz) so the token-based
+            # record matching sees the part key.
+            path = self.tmp / f"{name}.fq.gz"
             path.write_text(seed, encoding="utf-8")
             paths[name] = path
         return paths
@@ -1179,8 +1188,7 @@ class TestRunRevalidateStage(TempDirCase):
                 args, revalidate_fn=fixture_revalidate,
                 provenance_fn=fake_identity_provenance,
                 source_paths=sources, disk_fn=lambda *a, **k: 1 << 40,
-                df_fn=fake_df, manifest_path=Path(artifacts_dir)
-                / "manifest.json")
+                df_fn=fake_df, artifacts_dir=artifacts_dir)
         return code, stdout.getvalue()
 
     def test_happy_path_writes_round0_doc_with_pinned_layout(self):
@@ -1255,7 +1263,9 @@ class TestBinaryIdentityTripwire(unittest.TestCase):
                          p11.RUSTKMER_BIN_SHA256)
         self.assertEqual(identity["jellyfish"]["sha256"],
                          p11.JELLYFISH_BIN_SHA256)
-        p11.validate_provenance(identity["provenance"])
+        # The carried provenance block is validate-clean (evidence docs
+        # embed it, so the validator sees the doc wrapper shape).
+        p11.validate_provenance({"provenance": identity["provenance"]})
 
 
 class TestParityDocBuilder(unittest.TestCase):
