@@ -14,7 +14,7 @@ The second load-bearing fact: the stock `rustkmer count` CLI does **not** expose
 
 Session budget is modest and matches the CONTEXT estimate: 4 arms × 2 k × 3 reps ≈ 24 heavy runs (~145-180 s each ≈ 1.2-1.6 h) plus cheap shell-level pure-read controls, decompression (~15-30 min), and the memo. Disk is ample: 428 GiB free (verified) against ~60 GB plain inputs + ~23 GB transient output per rep.
 
-**Primary recommendation:** Build one stdlib-only driver script (`scripts/bench/phase13.py` naming lineage is the planner's discretion per D-01) that materializes its probe binaries outside the repo, runs the counterbalanced A/B/C/D + control arm matrix at both k with 3 reps, computes the attribution table and the two-ceiling predicted-win model from recorded evidence only, and writes the evidence JSON + memo — with the D3 numeric bar pre-registered in the plan BEFORE any measurement runs (no numeric bar exists anywhere today — see Open Questions 1).
+**Primary recommendation:** Build one stdlib-only driver script (`scripts/bench/phase13.py` naming lineage is the planner's discretion per D-01) that materializes its probe binaries outside the repo, runs the counterbalanced A/B/C/D + control arm matrix at both k with 3 reps, computes the attribution table and the two-ceiling predicted-win model from recorded evidence only, and writes the evidence JSON + memo — with the D3 numeric bar pre-registered BEFORE any measurement runs: D-05 fixes a **predicted full-wall improvement >= 10.0% on the conservative (efficiency-derated, E = 0.5) model at 16 extractor threads, applied at both k** (see Open Questions 1, RESOLVED).
 
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
@@ -51,7 +51,7 @@ Session budget is modest and matches the CONTEXT estimate: 4 arms × 2 k × 3 re
 | ID | Description | Research Support |
 |----|-------------|------------------|
 | PEXT-01 | Producer stage attribution measured at FULL scale on the shipped engine, both k, fingerprinted builds — stage table (inflate / parse / extract / route-send) via plain-vs-gzip differential plus pure-read control; slice-scale numbers and pre-Phase-7 profiles never feed the gate | Arm matrix A/B/C/D + control fully specified (§Architecture Patterns); probe instrument verified live (builds, runs, emits JSON); stock-CLI limitation discovered (no diagnostics on count; probe is k=21-only) with the research-local materialization path verified as established precedent; fresh-base re-measure branch confirmed FIRING (fingerprint differs) |
-| PEXT-02 | Predicted-win model names both ceilings (parallelizable share × worker-side scaling), every input number cited to a named full-scale source run; D3-gate go/no-go recorded as the research deliverable | Model shape with measured inputs documented (§Attribution Arithmetic): parallelizable share from arm D, worker-side ceiling from aggregate `busy_nanos` (engine.rs:1320-1347 wraps the increment loop), composition correction (count-phase vs output-phase) from A − probe wall; every number traceable to an evidence-JSON run record; memo structure per D-02; NOTE: no numeric D3 bar is pre-registered anywhere — plan must fix it before measurement (Open Question 1) |
+| PEXT-02 | Predicted-win model names both ceilings (parallelizable share × worker-side scaling), every input number cited to a named full-scale source run; D3-gate go/no-go recorded as the research deliverable | Model shape with measured inputs documented (§Attribution Arithmetic): parallelizable share from arm D, worker-side ceiling from aggregate `busy_nanos` (engine.rs:1320-1347 wraps the increment loop), composition correction (count-phase vs output-phase) from A − probe wall; every number traceable to an evidence-JSON run record; memo structure per D-02; NOTE: the numeric D3 bar is pre-registered in CONTEXT D-05 (predicted full-wall improvement >= 10.0% on the conservative derated model, E = 0.5, 16 extractor threads, both-k conjunction) — Open Question 1 is resolved before measurement |
 </phase_requirements>
 
 ## Architectural Responsibility Map
@@ -339,21 +339,24 @@ serial_floor         = (inflate_s + route_send_s) / count_phase_wall_probe_s
 | A4 | Aggregate worker `busy_nanos` is a usable worker-side ceiling numerator (increment work currently done off the critical path) | Attribution arithmetic | Medium — if worker-side saturation dynamics at 16 threads prove unmodellable from busy_nanos alone, the memo states the worker ceiling as a bound + "what would need to be true", not a point prediction |
 | A5 | `cat > /dev/null` read rates approximate the engine's read cost per byte (NVMe sequential) | Attribution arithmetic | Low — δ is a correction term, not a decision axis; if δ is material the memo reports attribution bounds (Pitfall 13 discipline) |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **The D3 numeric bar is not pre-registered anywhere.**
-   - What we know: ROADMAP/CONTEXT say the memo records whether the predicted win "clears the D3 bar", and CONTEXT's specifics say an ~85% parse+extraction share "probably still says GO" — but no threshold (e.g. predicted full-scale wall improvement ≥ X% at the decision-relevant thread count) is written down.
-   - What's unclear: the number (or explicit qualitative bar) the memo applies.
-   - Recommendation: the PLAN must fix the bar BEFORE measurement (pre-registration discipline — the gate's credibility depends on the bar not being chosen after seeing the data). Either lock it in the plan as a decision, or add a `checkpoint:human-verify` task before the memo task asking the user to ratify the bar with the attribution table in front of them.
-2. **Decompression scope: pinned pair only (~17-19.5 GB) vs all six parts (~52-60 GB)?**
-   - What we know: the gate needs the pair (v2.0-arrangement comparability); D-04's text mentions "~60 GB for six parts"; per-part ×6 spread is a Deferred-item context question explicitly left to planning; disk supports either (428 GiB).
-   - Recommendation: decompress the pair for the arms; add the four extra parts only if the planner takes up the "per-part spread as context" discretion. Deletion-after-memo applies either way.
-3. **Does the memo re-measure the Python-surface base walls (165.05/178.22 s) or cite them as context?**
-   - What we know: D-03's gate as written compares the release binary (CLI). Python walls share the engine; a fresh Python base needs a profiling-independent stock wheel rebuild + a python_bench run (~3 reps × ~3 min).
-   - Recommendation: scope the predicted-win model to the CLI wall (primary decision axis); cite the Python walls as context with their recorded module fingerprint and the binary-fingerprint caveat stated. Re-measure only if the planner wants the memo's headline to cover both surfaces.
-4. **Should arm A/B runs write outputs to scratch (v2.0-comparable walls including sort+write) or run output-less?**
-   - What we know: v2.0's 144.69 s includes sort+write (`-o` was passed); count CLI `-o` is optional (args.rs:47-49) so an output-less run is possible but NOT comparable.
-   - Recommendation: pin `-o <scratch>` and delete per rep (temp-lifecycle discipline); the fresh base must measure the same workload as the walls it corroborates.
+> All four questions were resolved in the 2026-11-17 `--auto` discuss pass and are locked in
+> `13-CONTEXT.md` as D-05..D-10; Plans 13-01..13-03 implement the resolutions verbatim. No open
+> question remains before measurement.
+
+1. **The D3 numeric bar was not pre-registered anywhere at research time.** — **RESOLVED by D-05.**
+   - What we knew: ROADMAP/CONTEXT say the memo records whether the predicted win "clears the D3 bar", but no threshold was written down.
+   - Resolution: D-05 pre-registers a predicted full-wall improvement **>= 10.0%** on the **conservative (efficiency-derated, E = 0.5) model** at **16 extractor threads**, applied at **both k** as a conjunction (exactly 10.0% is GO; either k below is NO-GO). The idealized E=M bound is reported alongside but never used for the bar test. The constants are asserted in unit tests before any measurement runs (pre-registration discipline).
+2. **Decompression scope: pinned pair only (~17-19.5 GB) vs all six parts (~52-60 GB)?** — **RESOLVED by D-07 (with D-04's lifecycle).**
+   - What we knew: the gate needs the pair for v2.0-arrangement comparability; the per-part ×6 spread was explicitly left to planning; disk supported either (428 GiB).
+   - Resolution: D-07 decompresses **all six** parts — the pinned pair (`part_001` + `part_006`) feeds the gate arms, and the four non-pinned parts feed an arm-C per-part context matrix marked `context=true` / `excluded=true` (structurally invisible to `build_attribution` / `derive_gate_decision`). D-04 deletes the whole plain directory after the memo commit, with provenance recorded before deletion.
+3. **Does the memo re-measure the Python-surface base walls (165.05/178.22 s) or cite them as context?** — **RESOLVED by D-06.**
+   - What we knew: D-03's gate compares the release binary (CLI); a fresh Python base needs a profiling-independent wheel rebuild plus a `python_bench` session for a context-only number.
+   - Resolution: the predicted-win model and the gate decision are scoped to the **CLI count wall only**. The Python walls are cited as **context only**, with the v2.0-recorded module fingerprint (`6d526431…f5558ae3`) and the binary-fingerprint caveat stated; no Python wall is a denominator or a headline.
+4. **Should arm A/B runs write outputs to scratch (v2.0-comparable walls including sort+write) or run output-less?** — **RESOLVED by D-08.**
+   - What we knew: v2.0's 144.69 s includes sort+write (`-o` was passed); an output-less run is possible but NOT comparable.
+   - Resolution: arms A/B **write a `.rkdb` output to scratch via `-o` on every rep**, deleted immediately after that rep's stats are recorded, so the fresh base measures the same sort+write-inclusive workload as the walls it corroborates.
 
 ## Environment Availability
 
