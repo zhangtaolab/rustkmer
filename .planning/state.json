@@ -66,7 +66,7 @@
     {
       "number": "13",
       "name": "Producer Attribution Research",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "14",
@@ -79,5 +79,5 @@
     "label": "Advance to the next step",
     "reason": "Phase 3 of 4 · 50% · executing"
   },
-  "updated_at": "2026-11-17T11:52:54.589Z"
+  "updated_at": "2026-11-17T12:11:42.192Z"
 }
