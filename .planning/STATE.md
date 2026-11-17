@@ -4,17 +4,18 @@ milestone: v2.1
 milestone_name: Merge Verdict & Producer Research
 current_phase: 12
 current_phase_name: Full-Scale Merge Verdict
+current_plan: 2
 status: executing
-stopped_at: Phase 12 context gathered
-last_updated: "2026-11-17T00:55:40.783Z"
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-11-17T01:23:34.395Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 11 complete, transitioned to Phase 12
-state_head: 51cd54d6fae0cf417e944460788abb5ac37a1327
+state_head: 18c966e840b5fb87c891b46fa2e31114cbfa9e78
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 12
-  completed_plans: 8
+  completed_plans: 9
   percent: 25
 ---
 
@@ -29,9 +30,10 @@ See: .planning/PROJECT.md (updated 2026-11-16)
 
 ## Current Position
 
-Phase: 12 (Full-Scale Merge Verdict) — READY TO EXECUTE
-Plan: Not started
-Status: Ready to execute
+Phase: 12 (Full-Scale Merge Verdict) — EXECUTING
+Current Plan: 2
+Total Plans in Phase: 4
+Status: Executing plan 12-01
 Last activity: 2026-11-17 - Completed quick task 261117-ala: retarget archived test paths + WR-04 README fix (full suite green)
 
 Progress: [███░░░░░░░] 25%
@@ -66,6 +68,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 11 P05 | 63min | 3 tasks | 1 files |
 | Phase 11 P06 | 80min | 3 tasks | 2 files |
 | Phase 11 P07 | 24min | 3 tasks | 5 files |
+| Phase 12 P01 | 22 min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -97,6 +100,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 11]: [11-07]: D-11/D-12 live — every under-floor path states the GiB shortfall (exit-3 block; --disk-floor-override prints-and-continues), ensure_disk_headroom runs before each measured rep of any comparison protocol; slice/rehearsal runs pass scaled budgets explicitly
 - [Phase 11]: [11-07]: dress rehearsal green — 4 staged slice runs (A 50k×2 gate-proof / B 200k×3 full protocol, k=21+31), seven arms counterbalanced, parity + dump-vs-dump green pre-acceptance; B-k21 exactly reproduces 11-04 proof (29,730,885/51,936,393); RSS context-only, t1 = 2-thread pool contract at N=1 (A6)
 - [Phase 11]: [11-07]: HYG-04 WARNING-2 closed in the same README touch — 'requested + 1' replaced by exactly-2-at-N=1 / 2N+1-at-N>1 with tests/thread_pool_size_tests.rs cited; 999.1-999.3 remain not-triggered
+- [Phase 12]: 12-01: verdict stage publishes exactly one carrier doc (12-VERDICT.json); a measured NO publishes both per-k blocks with exit 1/INVEST
+- [Phase 12]: 12-01: results-doc arms carry per-arm provenance + unique_kmers/total_kmers/output_bytes so rates render mechanically; 12-04 timed docs must match this arm contract
+- [Phase 12]: 12-01: renderer refuses any ladder doc whose caveat != merge_characterize.FULL_SCALE_CAVEAT (docs not written by this harness cannot be rendered)
 
 ### Pending Todos
 
@@ -133,6 +139,6 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-16T23:23:33.570Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-full-scale-merge-verdict/12-CONTEXT.md
+Last session: 2026-11-17T01:22:45.747Z
+Stopped at: Completed 12-01-PLAN.md
+Resume file: None
