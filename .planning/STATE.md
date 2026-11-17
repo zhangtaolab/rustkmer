@@ -6,16 +6,16 @@ current_phase: 12
 current_phase_name: Full-Scale Merge Verdict
 current_plan: 4
 status: executing
-stopped_at: Completed 12-02-PLAN.md
-last_updated: "2026-11-17T09:09:39.235Z"
+stopped_at: Completed 12-03-PLAN.md
+last_updated: "2026-11-17T09:28:44.795Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 11 complete, transitioned to Phase 12
-state_head: 34635718c5ef28c4360da46aff12e43b96356caa
+state_head: 0c015dea57c6c3cb17dcb562173b61412c49a8ca
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 12
-  completed_plans: 11
+  completed_plans: 12
   percent: 25
 ---
 
@@ -71,6 +71,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 12 P01 | 22 min | 1 tasks | 2 files |
 | Phase 12 P04 | 45 min | 2 tasks | 2 files |
 | Phase 12 P02 | 6h 47min | 3 tasks | 10 files |
+| Phase 12 P03 | 12min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 12]: 12-02 full-scale session verdict NO-INVEST (exit 0): rustkmer merge median walls 63.34s (k=21) / 82.86s (k=31) beat jellyfish merge 88.44s / 114.70s — parity green at both k before any timed rep, exactly 3 counterbalanced reps per arm (D-02)
 - [Phase 12]: 12-02 findings recorded never smoothed: predicted-vs-measured +8.7..17.6% on all four rows (warmups landed within -6.4..+3.1%, suggesting a uniform timed-window host-state factor); k=31 merge-arm cv_warning (rep-0 101.51s); honest cache_state unavailable + route not-reported on all 18 reps
 - [Phase 12]: 12-02 Rule 1 fix: round-0 source-fingerprint lookup now tokenizes the dotted file name (Path.stem of CRR1936095_r1.part_001.fq.gz strips only .gz so suffix checks missed it); regression test added, suite 73 passed, fix committed before the session ran
+- [Phase 12]: 12-03: D-04 executed as one full-file rewrite of docs/benchmark-report.md bound to 12-MERGE-REPORT.md by the greppability gate; only the seven pinned context decimals (2.79/16.7/86.74/144.69/147.08/43.97/68.52) outside it, each labeled context
+- [Phase 12]: 12-03: D-03 deletion order held (evidence commits -> docs rewrite df81ba1 -> cleanup record 7c608e9); explicit-path deletion of the 8 artifacts (86.74 GiB), manifest.json retained, rebuild via prepare_inputs.py build
 
 ### Pending Todos
 
@@ -148,6 +151,6 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-17T09:09:39.102Z
-Stopped at: Completed 12-02-PLAN.md
+Last session: 2026-11-17T09:28:44.674Z
+Stopped at: Completed 12-03-PLAN.md
 Resume file: None

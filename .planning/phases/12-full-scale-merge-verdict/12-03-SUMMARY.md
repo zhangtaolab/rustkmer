@@ -159,3 +159,11 @@ None.
 ---
 *Phase: 12-full-scale-merge-verdict*
 *Completed: 2026-11-17*
+
+## Self-Check: PASSED
+
+- Key files verified on disk: docs/benchmark-report.md (rewritten), 12-WRAPUP.md, retained manifest.json at /Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/manifest.json
+- All commits verified ancestors of HEAD: df81ba1 (Task 1 D-04 rewrite), 7c608e9 (Task 2 D-03 cleanup record), 0c015de (this SUMMARY)
+- Measured commits 3557514..HEAD at SUMMARY-write: 2 task commits, +1 SUMMARY docs commit (3 total on this branch)
+- Plan-level verification re-run at HEAD: SUPERSEDED count 0; CRR2044018 count 0; numbers gate `numbers-ok`; committed-content gate `banner-gone-from-HEAD`; artifacts `.rkdb/.jf` count 0; `manifest-retained`; `rebuild` in 12-WRAPUP.md >= 1; `wrapup-committed`; git history ordering 3557514 -> df81ba1 -> 7c608e9 observable
+- Full harness suite: `python3 -m unittest discover -s scripts/bench/tests -t .` → Ran 717 tests … OK (skipped=1, the pre-existing flake-guard) — zero new failures
