@@ -1,0 +1,16 @@
+{
+  "bar_pct": 10.0,
+  "byte_identical": true,
+  "created": "2026-11-17T14:42:23.008756+00:00",
+  "decision": "NO-GO",
+  "evidence": {
+    "path": "/Users/forrest/GitHub/rustkmer/.planning/phases/13-producer-attribution-research/13-ATTRIBUTION.json",
+    "sha256": "4a0ad6e742b9e72addc27a879c03076e75a9f28c8e048148227aa21a80cbff1d",
+    "size_bytes": 219055
+  },
+  "first_render_sha256": "428d6040cfea12849a70b7aed4f2987acea4d1fca87dc07e6f8303458acced48",
+  "kind": "phase13-render-proof",
+  "phase": 13,
+  "schema_version": 1,
+  "second_render_sha256": "428d6040cfea12849a70b7aed4f2987acea4d1fca87dc07e6f8303458acced48"
+}

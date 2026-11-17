@@ -152,7 +152,7 @@ Plans:
 
 **Goal**: (Only if the Phase 13 D3 gate fires) the producer stage runs in parallel — records remain the unit of parallel work, the attach topology is decided in this phase's planning from Phase 13 attribution data — with all ten engine invariants preserved and the memory guardrail re-measured at full scale. If the gate does not fire, this phase does not execute and PEXT-03/PEXT-04 stay unexecuted by recorded decision.
 **Depends on**: Phase 13 (D3 gate verdict — research gates implementation) AND Phase 12 (provenance stability — a changed binary invalidates full-scale merge measurements, so the verdict must be recorded first); reuses Phase 11's extended harness for scaling and parity gates
-**Conditional**: D3 pattern (v2.0 precedent, reused) — executes ONLY if Phase 13's predicted-win memo says GO. On NO-GO the phase is marked NOT EXECUTED and PEXT-03/PEXT-04 remain unexecuted with the evidence trail.
+**Conditional**: D3 pattern (v2.0 precedent, reused) — executes ONLY if Phase 13's predicted-win memo says GO. On NO-GO the phase is marked NOT EXECUTED and PEXT-03/PEXT-04 remain unexecuted with the evidence trail. The recorded Phase-13 decision is NO-GO, recorded 2026-11-17 in `.planning/phases/13-producer-attribution-research/13-GATE-MEMO.md`.
 **Requirements**: PEXT-03 (CONDITIONAL), PEXT-04 (CONDITIONAL), MEM-01
 **Success Criteria** (what must be TRUE):
   1. Counts are exactly preserved under parallel extraction: `.rkdb` output byte-identical (sha256) across thread counts, 1-vs-N and old-vs-new differentials identical across the k × canonical × threads matrix, partition disjointness and conservation property tests green, and every new aggregate site fails loud with checked arithmetic (PEXT-03).
