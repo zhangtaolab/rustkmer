@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "kind": "phase12-render-proof",
+  "phase": 12,
+  "created": "2026-11-17T09:04:52.320236+00:00",
+  "first_render_sha256": "9adcc8924eefae5f1f0c7fbb872277ee28cc200facd62bb57db68021b5360cc7",
+  "second_render_sha256": "9adcc8924eefae5f1f0c7fbb872277ee28cc200facd62bb57db68021b5360cc7",
+  "byte_identical": true,
+  "renderer_commit": "68e2f3e5e753ac65c113aba9561bfbc1eaead2b5",
+  "inputs": [
+    {
+      "path": ".planning/phases/12-full-scale-merge-verdict/12-RESULTS-FULL-K21.json",
+      "size_bytes": 12616,
+      "sha256": "fd4cd5f0f1e794ac4adfb0fc092b806f604e60c133aa7b2a229a6acd4b91b97d"
+    },
+    {
+      "path": ".planning/phases/12-full-scale-merge-verdict/12-RESULTS-FULL-K31.json",
+      "size_bytes": 12637,
+      "sha256": "a2551ebbe768d70582c1a17228155b92d0b63fe49a6d99a6db90cdbebcb023d5"
+    },
+    {
+      "path": ".planning/phases/12-full-scale-merge-verdict/12-PARITY-K21.json",
+      "size_bytes": 3761,
+      "sha256": "35a5e0b6b868d4b84e6ddae4368327b76b41eceabe1d42aeb6349382d82c38d7"
+    },
+    {
+      "path": ".planning/phases/12-full-scale-merge-verdict/12-PARITY-K31.json",
+      "size_bytes": 3766,
+      "sha256": "aaf18a1b0c81a0ab11d07c3f372fa834db075a2fc4a3cde6a3d4aa552a29f712"
+    },
+    {
+      "path": ".planning/phases/12-full-scale-merge-verdict/12-VERDICT.json",
+      "size_bytes": 2550,
+      "sha256": "9e31509f708c3aaad63378f3c6323f2c98a3330b27574acc5c521250e2c41a57"
+    },
+    {
+      "path": ".planning/phases/11-merge-characterization-harness-prep/11-LADDER-RESULTS.json",
+      "size_bytes": 41851,
+      "sha256": "02000ab5f5ffd3d63123325ad5f58d979aec27e22087aef40371318e10d30c96"
+    }
+  ],
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 2966832,
+      "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b"
+    },
+    "git_commit": "e9df71af0ba086ed4d50e0bcc7901ab7766c2e5b",
+    "git_dirty": true,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-17T08:05:19.010323+00:00"
+  }
+}
