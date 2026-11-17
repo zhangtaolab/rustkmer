@@ -133,11 +133,11 @@ Plans:
   2. The predicted-win model names BOTH ceilings — the parallelizable share and worker-side scaling — with every input number cited to a named full-scale source run (v2.0 measured walls: CLI 144.69 s k=21 / 147.08 s k=31; Python 165.05 s / 178.22 s) (PEXT-02).
   3. The D3-gate go/no-go decision is recorded as the research deliverable: either Phase 14 executes with cited evidence, or it does not fire and PEXT-03/PEXT-04 remain unexecuted by recorded decision (PEXT-02).
 
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 13-01-PLAN.md — Measurement driver tracer: phase13.py skeleton + probe materialization + rehearsal-mode end-to-end + full-scale stage functions + Wave-0 unit module; D3 bar pre-registered (PEXT-01, PEXT-02)
+- [x] 13-01-PLAN.md — Measurement driver tracer: phase13.py skeleton + probe materialization + rehearsal-mode end-to-end + full-scale stage functions + Wave-0 unit module; D3 bar pre-registered (PEXT-01, PEXT-02)
 
 **Wave 2** *(blocked on Wave 1)*
 - [ ] 13-02-PLAN.md — Live session: D-03 fingerprint gate (re-measure) + D-04 decompression + full-scale counterbalanced A/B/C/D + control matrix at both k + attribution/predicted-win/decision blocks (PEXT-01, PEXT-02)
@@ -184,7 +184,7 @@ Plans:
 | 10. Benchmark Verdict | v2.0 | 4/4 | Complete | 2026-11-14 |
 | 11. Merge Characterization & Harness Prep | v2.1 | 8/8 | Complete    | 2026-11-17 |
 | 12. Full-Scale Merge Verdict | v2.1 | 4/4 | Complete    | 2026-11-17 |
-| 13. Producer Attribution Research | v2.1 | 0/TBD | Not started | - |
+| 13. Producer Attribution Research | v2.1 | 1/3 | In Progress | - |
 | 14. Parallel Extraction | v2.1 | 0/TBD | Not started (conditional — D3) | - |
 
 ## Backlog
