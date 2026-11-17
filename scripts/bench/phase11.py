@@ -14,7 +14,8 @@ streaming deep-leg form is the ONLY full-scale route, WR-01):
   parity       three-way parity gate per k; deep legs streamed (this file;
                Leg 2 is the NEW independent-recount diff through the
                streaming pipeline — the WR-01 structural fix)
-  timed        3 merge arms x 3 counterbalanced reps per k (plan 12-04)
+  timed        3 merge arms x 3 counterbalanced reps per k (this file;
+               warmups satisfied by the parity merges per A5)
   verdict      invest/no-invest from recorded medians (exit 0/1 — this file)
   render       mechanical report + byte-identical re-render proof (this file)
 
@@ -33,6 +34,7 @@ import hashlib
 import json
 import math
 import os
+import platform
 import shutil
 import statistics
 import subprocess
@@ -839,6 +841,292 @@ def run_parity(args, *, revalidate_fn=None, provenance_fn=None,
     return EXIT_OK
 
 
+# --- timed stage: 3-arm counterbalanced merge protocol -----------------------
+
+
+def _arm_medians(reps):
+    """The phase10.arm_medians shape: medians + CV over reduce_arm.
+
+    CV above CV_WARNING_THRESHOLD_PCT sets cv_warning WITHOUT failing —
+    a dirty measurement is a recorded finding, never smoothed away.
+    """
+    reduced = reduce_arm(reps)
+    peaks = [(rep["peak_bytes"] if rep.get("peak_bytes") is not None
+              else max(rep["peak_rss_bytes"],
+                       rep.get("peak_footprint_bytes") or 0))
+             for rep in reps]
+    return {
+        "wall_s": reduced["median_wall_s"],
+        "peak_rss_bytes": reduced["median_peak_rss_bytes"],
+        "peak_bytes": statistics.median(peaks),
+        "cv_wall_pct": reduced["cv_wall_pct"],
+        "cv_warning": reduced["cv_warning"],
+    }
+
+
+def _read_rep_output(out_path, name, rustkmer=DEFAULT_RUSTKMER):
+    """Read one rep's stats from that rep's OWN output (WR-06).
+
+    Runs immediately after each measured run — the next rep overwrites the
+    path. Counts are the SUM-OF-COUNTS definition from the sanctioned stats
+    readers only (IN-03), never the header record-count field; a
+    zero-distinct rep is a loud failure, never a measurement (RESEARCH
+    Pitfall 1).
+    """
+    out_path = Path(out_path)
+    output_bytes = out_path.stat().st_size
+    if name == "jellyfish-merge":
+        st = jellyfish_stats(out_path)
+        distinct, total = st["distinct"], st["total"]
+    else:
+        st = stats(out_path, rustkmer)
+        distinct, total = st["unique_kmers"], st["total_kmers"]
+    if distinct <= 0:
+        raise RuntimeError(
+            f"arm {name!r}: distinct == 0 in {out_path} — a zero-count rep "
+            "is a silent input failure, never a measurement (RESEARCH "
+            "Pitfall 1)")
+    return {"distinct": distinct, "total": total, "output_bytes": output_bytes}
+
+
+def _assert_cross_rep_conservation(name, reps):
+    """Cross-rep conservation per arm, enforced BEFORE any doc is written.
+
+    The prepared artifacts are deterministic inputs, so every rep of an arm
+    must produce identical distinct/total/output_bytes; a diverging rep
+    means a nondeterministic merge, which invalidates the medians — a gate
+    failure (exit-2 class), and no results doc is written.
+    """
+    for field in ("distinct", "total", "output_bytes"):
+        first = reps[0][field]
+        for idx, rep in enumerate(reps[1:], start=1):
+            if rep[field] != first:
+                raise RuntimeError(
+                    f"arm {name!r}: cross-rep conservation violated at rep "
+                    f"{idx}: {field} {rep[field]} != rep 0 {first} — a "
+                    "nondeterministic merge invalidates the medians (gate "
+                    "failure; no results doc is written)")
+    return {"distinct": reps[0]["distinct"], "total": reps[0]["total"],
+            "output_bytes": reps[0]["output_bytes"]}
+
+
+def _timed_arm(name, reps, conserved, argv, provenance):
+    """One timed arm dict — the recorded shape the stages/renderer consume
+    (per-arm provenance + unique_kmers/total_kmers/output_bytes so
+    entry-rate/byte-rate render mechanically; Plan 12-01's arm contract)."""
+    tool = "jellyfish" if name == "jellyfish-merge" else "rustkmer"
+    return {
+        "name": name,
+        "tool": tool,
+        "threads": 1 if name == "merge-t1" else None,
+        "command_line": list(argv),
+        "reps": [dict(rep) for rep in reps],
+        "medians": _arm_medians(reps),
+        "unique_kmers": conserved["distinct"],
+        "total_kmers": conserved["total"],
+        "output_bytes": conserved["output_bytes"],
+        "output_sha256": conserved["output_sha256"],
+        "route": reps[0]["route"],
+        "provenance": provenance,
+    }
+
+
+def _timed_rounds(k, manifest, scratch, floor_gb, reps, cooldown_s,
+                  disk_override, *, measure_fn=None, purge_fn=None,
+                  sleep_fn=None, guard_fn=None, counts_fn=None,
+                  fingerprint_fn=None):
+    """The counterbalanced per-rep loop (phase10.run_rounds shape).
+
+    Warmups are NOT run here: the parity-stage merges are the protocol's
+    discarded warmups (A5) — run_timed records them as warmup_provenance
+    and this loop goes straight into measured rounds. Arm ordering comes
+    from output_stage.rotation_schedule (never a hand-rolled loop). The
+    measured-run seam is merge_characterize.measured_run — NOT
+    bench.measure — because stderr must survive for route attribution.
+
+    Per rep, in order: attempt_cache_purge (honest cache_state) ->
+    ensure_disk_headroom (D-12 light re-check BEFORE the measured run) ->
+    measured_run -> route_from_stderr -> counts from that rep's OWN output
+    -> (final rep of the arm: hash the actual output bytes) -> delete the
+    rep output before the next rep (disk sequencing) -> cooldown between
+    measured runs.
+
+    The seams default to the module primitives at CALL time (phase10
+    precedent), so tests inject fixtures and still drive this entry point.
+
+    Returns (reps_by_arm, schedule, arm_sha) — arm_sha maps each arm to
+    its final rep's output sha256.
+    """
+    measure_fn = measured_run if measure_fn is None else measure_fn
+    purge_fn = attempt_cache_purge if purge_fn is None else purge_fn
+    sleep_fn = time.sleep if sleep_fn is None else sleep_fn
+    guard_fn = ensure_disk_headroom if guard_fn is None else guard_fn
+    counts_fn = _read_rep_output if counts_fn is None else counts_fn
+    fingerprint_fn = fingerprint if fingerprint_fn is None else fingerprint_fn
+    schedule = rotation_schedule(MERGE_ARMS, reps)
+    reps_by_arm = {name: [] for name in MERGE_ARMS}
+    arm_sha = {}
+    total = reps * len(MERGE_ARMS)
+    done = 0
+    for rnd, round_order in enumerate(schedule):
+        for position, name in enumerate(round_order):
+            cache_state = purge_fn()
+            guard_fn(scratch, floor_gb, phase=f"rep round {rnd}",
+                     override=disk_override)
+            argv = merge_arm_argv(name, k, manifest, scratch)
+            rep, stderr = measure_fn(argv)
+            rep["route"] = route_from_stderr(stderr)
+            out_path = Path(argv[argv.index("-o") + 1])
+            rep.update(counts_fn(out_path, name))
+            if rnd == reps - 1:
+                # The arm's final rep: hash the actual output bytes for the
+                # renderer's methodology row (before deletion).
+                arm_sha[name] = fingerprint_fn(out_path)["sha256"]
+            out_path.unlink(missing_ok=True)
+            done += 1
+            rep["cache_state"] = cache_state
+            rep["round"] = rnd
+            rep["arm_order"] = position
+            reps_by_arm[name].append(rep)
+            if done < total:
+                sleep_fn(cooldown_s)
+    return reps_by_arm, schedule, arm_sha
+
+
+def results_doc(*, k, arms, schedule, budget, cooldown_s, warmup_provenance,
+                input_fingerprint, provenance, comparator_provenance,
+                input_revalidation, scratch, reps, created=None):
+    """The schema-v1 timed results document (phase10.assemble_doc shape).
+
+    Built HERE, not imported, because phase10.assemble_doc pins phase10's
+    PHASE constant — the pinned-key structure is replicated with PHASE=12,
+    mode "full", session "merge". Schema v1 tolerates the extra keys (A6);
+    there is no second results schema (MBENCH-05).
+    """
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "mode": "full",
+        "phase": PHASE,
+        "session": "merge",
+        "params": {
+            "k": k,
+            "reps": reps,
+            "arms": list(MERGE_ARMS),
+            "cooldown_s": cooldown_s,
+            "disk_floor_gb": (budget["session_budget_gb"]
+                              if isinstance(budget, dict) else budget),
+            "warmup_provenance": list(warmup_provenance),
+        },
+        "platform": {
+            "system": platform.system(),
+            "release": platform.release(),
+            "machine": platform.machine(),
+            "python": platform.python_version(),
+        },
+        "created": created or _now_iso(),
+        "input_fingerprint": list(input_fingerprint),
+        "arms": arms,
+        "scratch": str(scratch),
+        "schedule": schedule,
+        "input_revalidation": input_revalidation,
+        "provenance": provenance,
+        "comparator_provenance": comparator_provenance,
+    }
+
+
+def run_timed(args, *, revalidate_fn=None, provenance_fn=None,
+              fingerprint_fn=None, measure_fn=None, purge_fn=None,
+              sleep_fn=None, guard_fn=None, counts_fn=None):
+    """Timed stage: 3 merge arms x 3 counterbalanced reps for one k.
+
+    Parity-before-timing is STRUCTURAL (D-01 stage order): the stage
+    refuses to run without a validated parity document for this k
+    (invalid(), exit 2 — no artifact). Warmups are satisfied by the
+    parity-stage merges (A5). Defaults-only flags during measurement
+    (ROADMAP Note: no flag/config sweep arms, no -s on any merge arm).
+    Cross-rep conservation is enforced per arm BEFORE any doc is written;
+    medians come from reduce_arm; the doc is written validate-then-write
+    (phase10.write_doc gates schema AND provenance — invalid docs never
+    land).
+    """
+    if not args.parity_doc:
+        invalid("the timed stage requires --parity-doc <the k's parity "
+                "evidence document> — parity-before-timing is structural "
+                "(stage order, D-01), not advisory")
+    if len(args.parity_doc) != 1:
+        invalid("the timed stage takes exactly one --parity-doc (one k per "
+                "run) — pass that k's own parity document")
+    parity = _validate_parity_document(
+        _load_json(args.parity_doc[0]), label=str(args.parity_doc[0]))
+    if parity.get("k") != args.k:
+        invalid(f"the parity document is for k={parity.get('k')!r}, not "
+                f"k={args.k} — pass the matching parity document")
+    revalidate_fn = revalidate_stage if revalidate_fn is None else revalidate_fn
+    provenance_fn = binary_provenance if provenance_fn is None else provenance_fn
+    fingerprint_fn = fingerprint if fingerprint_fn is None else fingerprint_fn
+    identity = assert_binary_identity(provenance_fn=provenance_fn)
+    manifest = revalidate_fn(DEFAULT_ARTIFACTS_DIR)
+    anchors = assert_anchor_equality(manifest)
+    input_revalidation = {
+        "revalidate": (
+            "green (revalidate_stage re-hash + re-stats at stage start — "
+            "input-swap defense)"),
+        "binary_identity": (
+            "green (pinned ladder sha256 verified at stage start)"),
+        "anchors": anchors,
+    }
+    k = args.k
+    rustkmer = args.rustkmer
+    scratch = Path(args.scratch)
+    scratch.mkdir(parents=True, exist_ok=True)
+    inputs_bytes = sum(
+        int(record["size_bytes"])
+        for record in [*manifest.get("artifacts", []),
+                       *manifest.get("jellyfish_inputs", [])])
+    budget = session_budget(inputs_bytes=inputs_bytes)
+    # A5/D-02: warmups already ran in the parity stage — record them and
+    # run no additional warmup here.
+    warmup_provenance = [record for record in parity.get("merges", [])
+                         if isinstance(record, dict) and record.get("warmup")]
+    if not warmup_provenance:
+        invalid("the parity document records no warmup-marked merges — "
+                "the timed stage's warmups come from the parity stage (A5)")
+    reps_by_arm, schedule, arm_sha = _timed_rounds(
+        k, manifest, scratch, budget["session_budget_gb"], args.reps,
+        args.cooldown_s, args.disk_floor_override, measure_fn=measure_fn,
+        purge_fn=purge_fn, sleep_fn=sleep_fn, guard_fn=guard_fn,
+        counts_fn=counts_fn, fingerprint_fn=fingerprint_fn)
+    prov_rk = provenance_fn(rustkmer, "release")
+    prov_jf = provenance_fn("jellyfish", JELLYFISH_BUILD_PROFILE)
+    arms = []
+    for name in MERGE_ARMS:
+        arm_reps = reps_by_arm[name]
+        conserved = _assert_cross_rep_conservation(name, arm_reps)
+        conserved["output_sha256"] = arm_sha[name]
+        argv = merge_arm_argv(name, k, manifest, scratch, rustkmer=rustkmer)
+        arms.append(_timed_arm(
+            name, arm_reps, conserved, argv,
+            prov_jf if name == "jellyfish-merge" else prov_rk))
+    k_records = [record for record in manifest.get("artifacts", [])
+                 if record.get("k") == k]
+    k_records += [record for record in manifest.get("jellyfish_inputs", [])
+                  if record.get("k") == k]
+    fps = [fingerprint_fn(record["path"]) for record in k_records]
+    doc = results_doc(
+        k=k, arms=arms, schedule=schedule, budget=budget,
+        cooldown_s=args.cooldown_s, warmup_provenance=warmup_provenance,
+        input_fingerprint=fps, provenance=prov_rk,
+        comparator_provenance={"rustkmer": prov_rk, "jellyfish": prov_jf},
+        input_revalidation=input_revalidation, scratch=scratch,
+        reps=args.reps)
+    write_doc(doc, Path(args.out))
+    for arm in arms:
+        print(f"PHASE11 TIMED k={k} arm={arm['name']} "
+              f"median_wall_s={arm['medians']['wall_s']!r} "
+              f"reps={len(arm['reps'])}")
+    return EXIT_OK
+
+
 # --- verdict stage: pure comparison of recorded medians ----------------------
 
 
@@ -1577,8 +1865,7 @@ def build_parser():
                     "revalidate -> parity -> timed -> verdict -> render over "
                     "the parity-validated prepared artifacts, with the "
                     "0/1/2 exit-code contract as the verdict carrier "
-                    "(D-01; the timed stage function lands with plan "
-                    "12-04's Task 2).")
+                    "(D-01).")
     parser.add_argument("--stage", choices=STAGES, default="revalidate")
     parser.add_argument("--out", required=True,
                         help="results/decision document output path")
@@ -1632,15 +1919,16 @@ def main(argv=None):
         return run_revalidate(args)
     if args.stage == "parity":
         return run_parity(args)
+    if args.stage == "timed":
+        return run_timed(args)
     if args.stage == "verdict":
         return run_verdict(args)
     if args.stage == "render":
         return run_render(args)
-    # Dispatch stays TOTAL: a stage whose function has not landed yet is
-    # exit 2 naming the missing stage — never silence.
-    invalid(f"stage {args.stage!r} is not implemented yet (plan 12-04 "
-            "Task 2); this build implements revalidate/parity/verdict/"
-            "render")
+    # Dispatch stays TOTAL: every pinned stage has a runner; argparse
+    # choices reject anything else (exit 2), never silence.
+    invalid(f"stage {args.stage!r} has no runner (expected one of "
+            f"{list(STAGES)})")
     return EXIT_INVALID
 
 

@@ -305,19 +305,16 @@ class TestStageContract(TempDirCase):
         self.assertEqual(ctx.exception.code, p11.EXIT_INVALID)
 
     def test_unimplemented_session_stage_exits_two_naming_it(self):
-        """A stage whose function has not landed yet exits 2 naming it.
+        """The dispatch is total: every pinned stage has a callable runner.
 
-        After 12-04 Task 1 the unimplemented stage is `timed` (Task 2's
-        target); the dispatch must keep naming it, never silence.
+        Plan 12-04 filled revalidate/parity/timed on top of 12-01's
+        verdict/render; the former "not implemented yet" placeholder is
+        now a total-dispatch pin (argparse choices reject unknown stages
+        with exit 2 — test_unknown_stage_exits_two covers that side).
         """
-        stderr = io.StringIO()
-        with contextlib.redirect_stderr(stderr), \
-                self.assertRaises(SystemExit) as ctx:
-            p11.main(["--stage", "timed",
-                      "--out", str(self.tmp / "o.json")])
-        self.assertEqual(ctx.exception.code, p11.EXIT_INVALID)
-        self.assertIn("timed", stderr.getvalue())
-        self.assertIn("not implemented", stderr.getvalue())
+        for stage in p11.STAGES:
+            self.assertTrue(callable(getattr(p11, f"run_{stage}")),
+                            f"stage {stage!r} has no runner")
 
     def test_verdict_stage_requires_two_results_docs(self):
         """Missing results documents are exit 2, never a verdict."""
@@ -1380,7 +1377,7 @@ class TestTimedRounds(TempDirCase):
         return (measure_fn, purge_fn, sleep_fn, guard_fn, counts_fn,
                 fingerprint_fn, calls)
 
-    def run_loop(self, reps=3, **seams):
+    def run_loop(self, reps=3, *seams):
         manifest = make_manifest(k=21)
         kwargs = dict(zip(
             ("measure_fn", "purge_fn", "sleep_fn", "guard_fn", "counts_fn",
