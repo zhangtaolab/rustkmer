@@ -90,6 +90,46 @@
 - Sessions: multi-session autonomous run (discuss → plan → execute waves → review/fix → verify → audit → archive)
 - Notable: the full-scale measurement stage (~3 h 20 min CLI + ~2 h Python) dominated wall time; review/fix and verification ran within normal context budgets
 
+## Milestone: v2.1 — Merge Verdict & Producer Research
+
+**Shipped:** 2026-11-18
+**Phases:** 3 executed (11-13; Phase 14 NOT EXECUTED by D3 NO-GO) | **Plans:** 15 | **Tasks:** 36 | **Requirements:** 11/14 satisfied; PEXT-03/PEXT-04 unexecuted by recorded decision; MEM-01 holds by status quo
+
+### What Was Built
+- Seven-arm counterbalanced merge comparison in bench.py + a prepare-inputs stage building 86.74 GiB of provenanced artifacts + the written three-way parity gate (`PARITY-GATE.md`) proven at slice scale and full scale (Phase 11)
+- Full-scale merge verdict: **NO-INVEST** — rustkmer merge beats jellyfish merge at both k (63.34 / 82.86 s vs 88.44 / 114.70 s), parity green before any timed rep, mechanically rendered report (Phase 12)
+- Full-scale producer stage attribution on the shipped engine + a two-ceiling predicted-win model + the recorded D3 **NO-GO** memo that leaves Phase 14 unexecuted (Phase 13)
+- v2.0 evidence debt closed: benchmark report rewritten from committed evidence, Nyquist records for Phases 5-8, SECURITY.md verification for Phases 9-10, six-part ~16.7 GB dataset correction
+
+### What Worked
+- Pre-registration: the D3 bar (10.0% both-k conjunction), the 0/1/2 exit-code contract, and parity-before-timing were fixed in writing before any measurement — the NO-GO is defended by the rule, not by post-hoc judgment
+- Protocol reuse: the Phase-10 staged-controller pattern scaled directly to merge (`phase11.py`) and to attribution (`phase13.py`); seams default to pinned constants but are injectable, keeping unit tests hermetic without real data
+- Mechanical determinism: memo/report rendering is byte-identical across independent re-renders, and the renderer refuses docs whose caveat does not match its own constant
+- Measurement refuted a stated expectation: route-send (not parse/extract) dominates the producer wall — recorded unsmoothed, and it is why extraction could not clear the bar
+
+### What Was Inefficient
+- Phase 12's live session hit a round-0 source-fingerprint lookup bug (dotted part names) that needed a Rule-1 fix + regression test mid-session; the session then ran 6 h 47 min
+- The pre-measurement expectation (parse+extract ~85% of producer wall) was directionally wrong; earlier cheap instrumentation could have flagged route-send dominance, though the bar itself still had to be pre-registered
+- Predicted-vs-measured merge walls missed by +8.7..17.6% on all four rows (warmups within −6.4..+3.1%), suggesting a uniform timed-window host-state factor
+- Audit closeout shape mismatch: table-shaped deferred items are un-acknowledgeable via the CLI writer (a known limitation); the close halted until the file was reshaped to heading/bullet form
+
+### Patterns Established
+- **Pre-register the decision rule, then measure**: the bar, the exit-code contract, and the parity protocol are written before the data; NO is a first-class outcome
+- **Staged controllers with injectable seams**: production byte-identical, unit tests hermetic
+- **Record contradictions, never smooth them**: route-send dominance and the +8.7..17.6% prediction miss are in the record
+- **Lifecycle-bound evidence**: artifacts are built, validated, and deleted by explicit path after the evidence commits; provenance survives the deletion
+
+### Key Lessons
+1. A pre-registered bar makes a NO-GO cheap to defend and impossible to retrofit.
+2. Measure the stage split before predicting the win — the dominant term was not the one assumed.
+3. Deleting multi-GiB measurement inputs is safe only after the evidence citing them is committed.
+4. Write deferred items in heading/bullet form: the audit scanner reads GFM table rows but the acknowledge writer cannot modify them.
+
+### Cost Observations
+- Model mix: not tracked
+- Sessions: multi-session autonomous run; full-scale measurement sessions dominated (Phase 12 P02: 6 h 47 min; Phase 13 P02: 2 h 19 min)
+- Notable: 15 plans / 36 tasks; per-plan averages ~29 min (Phase 11), ~1 h 51 min (Phase 12), ~52 min (Phase 13) — measurement wall-clock, not agent time, is the cost driver
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -98,6 +138,7 @@
 |-----------|----------|--------|------------|
 | v1.0 | multi | 4 | GSD adopted on brownfield v0.5.0; verification-driven gap-closure loop established |
 | v2.0 | multi | 6 | Autonomy scaled up: wave worktrees, two human checkpoints, adversarial review-fix loop, mechanical evidence rendering |
+| v2.1 | multi | 3 executed + 1 conditional NOT EXECUTED | Pre-registered decision gates (D3) scaled to merge and attribution; a conditional phase's NOT-EXECUTED decision recorded as a deliverable |
 
 ### Cumulative Quality
 
@@ -105,6 +146,7 @@
 |-----------|-------|----------|-------------------|
 | v1.0 | full suite 439/0 green | not tracked | stdlib-only benchmark harness (no new runtime deps) |
 | v2.0 | 571 harness + 508 Rust + 179 pytest green (1 known macOS sampling flake) | not tracked | Phase-10 controller + mechanical renderer (stdlib only; no new runtime deps) |
+| v2.1 | 644 harness + 508 Rust + 179 pytest green (1 known macOS sampling flake) | not tracked | Phase-11/12/13 controllers + renderers, parity gate, attribution driver (stdlib only; no new runtime deps) |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -112,3 +154,4 @@
 2. Make gates adversarial: mutation-RED proofs (v1.0) and inject-defect regression tests (v2.0 review fixes) are what distinguish a real gate from a vacuous green.
 3. Evidence must be regenerated after any change to its producer; a committed report that no longer matches its renderer is a defect.
 4. Honest NOs and disclosed outliers survive scrutiny; tuned or re-rolled numbers do not.
+5. Pre-registered decision rules turn a NO into a cheap, defensible outcome — and a conditional phase's NOT-EXECUTED record is a deliverable, not a hole.
