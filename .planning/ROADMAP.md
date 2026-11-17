@@ -105,14 +105,14 @@ Plans:
   3. The report's methodology block captures threads/flags/merge-route/sha256 per arm — including the like-for-like `rustkmer merge --num-threads 1` arm — and discloses the single-threaded-comparator asymmetry in one stated sentence: each tool merges its own representation of identical, parity-validated input data (MBENCH-03).
   4. The merge-verdict report is mechanically rendered with a byte-identical re-render proof (no measurement literals in code), entry-rate / byte-rate metrics that make the inherent format asymmetry visible (`.jf` ~10 B/entry vs `.rkdb` 20 B/entry), and a predicted-vs-measured cost-model check (linear-in-entries, single-threaded) (MBENCH-04).
 
-**Plans**: 1/4 plans executed
+**Plans**: 2/4 plans executed
 
 Plans:
 **Wave 1**
 - [x] 12-01-PLAN.md — Staged controller `phase11.py` (D-01) tracer slice: five-stage skeleton + 0/1/2 contract, verdict + render stages with byte-identity proof, defaults-only arm argv, contract test suite (MBENCH-03, MBENCH-04)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 12-04-PLAN.md — Controller expansion: round-0 revalidate stage (anchors + session budget), parity stage with the new Leg-2 recount diff (streaming, WR-01 fix), timed stage (3-arm counterbalanced), all unit-green on fixtures (MBENCH-03)
+- [x] 12-04-PLAN.md — Controller expansion: round-0 revalidate stage (anchors + session budget), parity stage with the new Leg-2 recount diff (streaming, WR-01 fix), timed stage (3-arm counterbalanced), all unit-green on fixtures (MBENCH-03)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 12-02-PLAN.md — Full-scale session: round-0 revalidation → parity (both k, streaming deep legs) → timed (3 arms × 3 reps) → verdict (exit-code contract) → render (byte-identical proof), evidence committed per stage (MBENCH-03, MBENCH-04)
@@ -173,7 +173,7 @@ Plans:
 | 9. Python Parity | v2.0 | 5/5 | Complete | 2026-11-13 |
 | 10. Benchmark Verdict | v2.0 | 4/4 | Complete | 2026-11-14 |
 | 11. Merge Characterization & Harness Prep | v2.1 | 8/8 | Complete    | 2026-11-17 |
-| 12. Full-Scale Merge Verdict | v2.1 | 1/4 | In Progress | - |
+| 12. Full-Scale Merge Verdict | v2.1 | 2/4 | In Progress | - |
 | 13. Producer Attribution Research | v2.1 | 0/TBD | Not started | - |
 | 14. Parallel Extraction | v2.1 | 0/TBD | Not started (conditional — D3) | - |
 

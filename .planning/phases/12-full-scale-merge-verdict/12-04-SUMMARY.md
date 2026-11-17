@@ -250,3 +250,10 @@ None — no external service configuration required.
 ---
 *Phase: 12-full-scale-merge-verdict*
 *Completed: 2026-11-17*
+
+## Self-Check: PASSED
+
+- Created/modified files verified on disk (scripts/bench/phase11.py, scripts/bench/tests/test_phase11_verdict.py, 12-04-SUMMARY.md)
+- All 5 commits verified ancestors of HEAD: 55ae5f5, ffdfc08, 4b3bb93, a888678, 40221cb
+- Measured commits 9d3fcd0..HEAD: 5 (4 task/TDD commits + 1 SUMMARY docs commit, matching the Task Commits section)
+- Plan-level verification re-run at HEAD: combined pytest 139 passed; full suite 716 OK (skipped=1); grep gates 0/0/1/4; boundary files untouched
