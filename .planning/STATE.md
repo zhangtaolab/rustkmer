@@ -2,59 +2,57 @@
 gsd_state_version: "1.0"
 milestone: v2.1
 milestone_name: Merge Verdict & Producer Research
-current_phase: 13
-current_phase_name: Producer Attribution Research
-current_plan: 3
-status: verifying
-stopped_at: Completed 13-03-PLAN.md
-last_updated: "2026-11-17T14:45:49.369Z"
+current_phase: 14
+current_phase_name: Parallel Extraction
+current_plan: Not started
+status: All phases complete (Phase 14 NOT EXECUTED — D3 NO-GO)
+stopped_at: Phase 13 complete — Phase 14 not executed (D3 NO-GO); v2.1 ready to close
+last_updated: "2026-11-17T15:30:17.669Z"
 last_activity: 2026-11-17
-last_activity_desc: Phase 13 execution started
-state_head: a46b9ea092a4d2be1b2f2d9542386bae4e1eaa99
+last_activity_desc: Phase 13 complete, transitioned to Phase 14
+state_head: f458dc91e42d4f273cde34ebb98bf03855b7bdd7
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 15
   completed_plans: 15
-  percent: 50
+  percent: 75
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-16)
+See: .planning/PROJECT.md (updated 2026-11-17)
 
 **Core value:** Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools (KMC / Jellyfish class), from both the CLI and Python.
-**Current focus:** Phase 13 — Producer Attribution Research
+**Current focus:** v2.1 milestone close — Phase 14 not executed (D3 NO-GO)
 
 ## Current Position
 
-Phase: 13 (Producer Attribution Research) — EXECUTING
-Current Plan: 3
-Total Plans in Phase: 3
-Status: Phase complete — ready for verification
-Last activity: 2026-11-17 — Phase 13 execution started
+Phase: 14 — Parallel Extraction (NOT EXECUTED — D3 NO-GO)
+Current Plan: Not started
+Total Plans in Phase: TBD (never planned)
+Status: All phases complete (Phase 14 NOT EXECUTED — D3 NO-GO)
+Last activity: 2026-11-17 — Phase 13 verified (UAT 3/3) and marked complete
 
-Progress: [█████░░░░░] 50%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
 **Velocity (v2.0):** 29 plans / 6 phases over 2026-11-12 → 2026-11-14; v1.0: 31 plans / 4 phases (per-plan metrics archived in `milestones/v1.0-phases/`). Post-v1.0 hygiene wave: 10 quick tasks (records in `.planning/quick/`).
 
-**By Phase (v2.1 — not started):**
+**By Phase (v2.1):**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 11. Merge Characterization & Harness Prep | 0/TBD | - | - |
-| 12. Full-Scale Merge Verdict | 0/TBD | - | - |
-| 13. Producer Attribution Research | 0/TBD | - | - |
-| 14. Parallel Extraction (conditional — D3) | 0/TBD | - | - |
-| 11 | 8 | - | - |
-| 12 | 4 | - | - |
+| 11. Merge Characterization & Harness Prep | 8/8 | 8 | ~29 min |
+| 12. Full-Scale Merge Verdict | 4/4 | 4 | ~1h 51min |
+| 13. Producer Attribution Research | 3/3 | 3 | ~52 min |
+| 14. Parallel Extraction (conditional — D3) | NOT EXECUTED | — | — |
 
 **Recent Trend:**
-- v2.1 not started; v2.0 baseline ~31 min/plan (see `milestones/v2.0-ROADMAP.md`)
+- v2.1 executable scope complete at Phase 13; v2.0 baseline ~31 min/plan (see `milestones/v2.0-ROADMAP.md`)
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -129,6 +127,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 13]: D3 gate memo rendered deterministically from 13-ATTRIBUTION.json: DECISION NO-GO — conservative derated predicted improvement 9.6235% at k=21 / 10.7965% at k=31 against the pre-registered 10.0% both-k conjunction; byte-identical re-render proof committed
 - [Phase 13]: Live-render seam fixed (c797bfe): the probe-vs-CLI topology methodology note now renders in both memo branches, committed before the memo so the memo is reproducible from the committed driver
 - [Phase 13]: D-04 lifecycle closed after the memo commit: six CRR1936095-plain parts (76,290,905,669 B) and /tmp/phase13-probe-scratch deleted by explicit path; gzip source root untouched; scratch_cleaned true
+- [Phase 13 UAT]: 3/3 pass (agent-audited at user request); combined parse_extract granularity accepted; api-coverage verify:pre gate resolved by 13-COVERAGE.md no-external-API declaration
 
 ### Pending Todos
 
@@ -165,6 +164,6 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-17T14:45:49.222Z
-Stopped at: Completed 13-03-PLAN.md
+Last session: 2026-11-17T15:30:17.153Z
+Stopped at: Phase 13 complete — Phase 14 not executed (D3 NO-GO); v2.1 ready to close
 Resume file: None

@@ -44,14 +44,16 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 
 - ✓ Root-cause profiling of the k=21 ~5x gap, then the fix: the gap was parallel-scaling efficiency (~3.5x) × single-thread cost (~1.4x), not data structures; the shared engine + thread-local partitioned tables + overlapping producer recovered it, confirmed at full scale in Phase 10 — v2.0 (Phases 5-7, PROF-01..05, PAR-01..03, ENGINE-01..03)
 
+- ✓ Merge verdict measured at full scale: `rustkmer merge` beats `jellyfish merge` at both k (medians 63.34 / 82.86 s vs 88.44 / 114.70 s) with three-way parity green before any timed rep; NO-INVEST recorded via the exit-code contract — v2.1 (Phase 12, MBENCH-03/04)
+- ✓ v2.0 carry-forward hygiene closed: Nyquist records for Phases 5-8, SECURITY.md for Phases 9/10, stale benchmark-report drift resolved, dataset description corrected — v2.1 (Phase 11, HYG-01..04)
+- ✓ Producer stage attribution measured at full scale on the shipped engine, both k, fingerprinted builds: inflate 26.25 / 21.02 s, parse+extract 20.96 / 20.85 s, route-send 91.80 / 92.99 s, output stage 22.39 / 41.84 s; fresh arm-A base 158.29 / 177.63 s (D-10 re-measure), v2.0 walls disclosed-fingerprint corroboration only; both ceilings modeled with every gate input cited to a named full-scale run — v2.1 (Phase 13, PEXT-01/PEXT-02)
+- ✓ D3 gate recorded **NO-GO**: derated predicted full-wall improvement 9.6235% at k=21 / 10.7965% at k=31 against the pre-registered 10.0% both-k conjunction; Phase 14 is **NOT EXECUTED** and PEXT-03/PEXT-04 remain unexecuted by recorded decision — v2.1 (Phase 13; memo `13-GATE-MEMO.md`, evidence `13-ATTRIBUTION.json`)
+
 ### Active
 
 <!-- v2.1 scope. Building toward these. -->
 
-- [ ] MERGE-BENCH: full-scale merge benchmark vs `jellyfish merge` with parity gate and counterbalanced protocol; verdict drives invest/no-invest
-- [ ] PEXT: producer-bound / parallel-extraction research with predicted-win sizing; conditional implementation phase gated on the verdict (D3 pattern)
-- [ ] HYG: Nyquist validation gaps for Phases 5–8; SECURITY.md for Phases 9/10; `docs/benchmark-report.md` drift resolved; backlog 999.1–999.3 opportunistic
-- [ ] MEM guardrail held: peak RSS < jellyfish at both k for any perf change (status quo; no new build item)
+- *(none — v2.1's executable scope is complete: MERGE-BENCH and HYG shipped in Phases 11-12, PEXT-01/02 shipped in Phase 13. Phase 14 (PEXT-03/04, MEM-01) is NOT EXECUTED per the recorded D3 NO-GO; its revisit conditions are named in `13-GATE-MEMO.md`.)*
 
 ### Out of Scope
 
@@ -125,7 +127,10 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 | Phase 9 Python parity: one shared engine, D2 skip-N, sort-once save, frozen API | Measured on the shipped tree: differential 9/9 cases equal with 0 divergence (33 Python-only chimeric k-mers eliminated); `--compare-baseline` PASS at speedup_t1 2.35x / speedup_default 8.71x vs the committed Phase 5 sequential baseline (N-free control exact counts 129,579,577 / 73,476,107 preserved); public `PyCounter` frozen at 12 names; `format.rs` grew by pure addition (78/0). Review found 0 critical / 4 warnings / 8 info; the 4 warnings were fixed and every gate + evidence artifact regenerated on the post-fix tree | ✅ Verified 38/38 (PY-01..02 complete) |
 | Phase 10 verdict: rustkmer matches-or-beats jellyfish on both surfaces at both k | Overall **YES** from recorded t16 medians in same-session comparisons: k=21 CLI 144.69 vs 194.85 s, Python 165.05 vs 197.95 s; k=31 CLI 147.08 vs 1380.92 s, Python 178.22 vs 187.14 s; exact three-way parity and identical two-part fingerprints; peak memory lower than jellyfish at both k. The k=31 jellyfish CLI-session median is a disclosed 7.38x outlier vs the Python session; the verdict is robust to using the faster reference (both rustkmer arms still win). Three code-review rounds fixed 27 findings (19 unique IDs), 0 open; no measured number or verdict changed | ✅ Verified 8/8 (BENCH-V2-02 complete) |
 | D3 revised 2026-11-14: Phase 11 (minimizer partitioning / memory ceiling) does NOT execute in v2.0 | The conditional trigger (Stage A misses parity OR a memory ceiling Stage A cannot meet) did not fire: Stage A hit parity on both k and both surfaces, and peak memory was below jellyfish (43.97 vs 46.84 GiB at k=21; 68.52 vs 88.00 GiB at k=31). MINIM-01..03 deferred to a later milestone | ✅ User decision 2026-11-14 |
-| v2.1 scope: merge verdict + producer research + hygiene; memory bar is "below jellyfish", MINIM permanently descoped, KMC3 dropped | User decisions 2026-11-16 — memory parity with jellyfish already holds at both k so MINIM-01..03 has no trigger; KMC3 is not a reference the user wants; merge investment is decided by measurement (vs `jellyfish merge`), not assumption; producer-bound parallel extraction researched first with a D3-pattern conditional phase | — Pending |
+| v2.1 scope: merge verdict + producer research + hygiene; memory bar is "below jellyfish", MINIM permanently descoped, KMC3 dropped | User decisions 2026-11-16 — memory parity with jellyfish already holds at both k so MINIM-01..03 has no trigger; KMC3 is not a reference the user wants; merge investment is decided by measurement (vs `jellyfish merge`), not assumption; producer-bound parallel extraction researched first with a D3-pattern conditional phase | ✅ Scope executed (Phases 11-13) |
+| Phase 13 D3 gate: NO-GO — Phase 14 (parallel extraction) does NOT execute | Pre-registered D-05 bar is 10.0% on the conservative derated model at both k (conjunction). Measured derated predicted improvement: 9.6235% at k=21 (below bar) and 10.7965% at k=31; the idealized E=M bound (10.4512% / 11.5300%) was disclosed alongside but is never the bar input. A NO-GO is a first-class recorded outcome; PEXT-03/PEXT-04 stay unexecuted with the evidence trail | ✅ Recorded 2026-11-17 (`13-GATE-MEMO.md`); Phase 14 NOT EXECUTED |
+| Phase 13 attribution finding: the producer wall is route-send-dominated, not parse/extract-dominated | Measured at full scale: route-send 91.80 / 92.99 s vs parse+extract 20.96 / 20.85 s (≈82% vs ≈18% of the plain producer probe) and inflate 26.25 / 21.02 s. This contradicted the pre-measurement expectation (parse+extraction ~85%) and is why extraction parallelization could not clear the bar | ✅ Measured 2026-11-17 (drives any revisit: the three conditions in `13-GATE-MEMO.md` §6) |
+| Phase 13 granularity accepted: parse+extract is measured as one combined term (`parse_extract_s`) | The shipped engine exposes only `producer_nanos` (open+parse+extract+routing+sends) and per-worker `busy_nanos`; separating parse from extract needs Rust changes the measurement-only phase forbids. Splitting out a serial parse term can only raise the predicted wall, so the granularity cannot flip the NO-GO; the combined term already shows route-send dominates | ✅ Accepted at Phase 13 UAT (2026-11-17); split instrumentation is an optional probe-only follow-up if Phase 14 is ever revisited |
 
 ## Evolution
 
@@ -145,4 +150,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-16 after v2.1 milestone start (Merge Verdict & Producer Research — MINIM descoped, KMC3 dropped, memory bar = below jellyfish)*
+*Last updated: 2026-11-17 after Phase 13 (Producer Attribution Research — D3 gate recorded NO-GO, Phase 14 not executed; v2.1 executable scope complete)*

@@ -45,8 +45,8 @@ Full detail: [milestones/v2.0-ROADMAP.md](milestones/v2.0-ROADMAP.md) · Require
 
 - [x] **Phase 11: Merge Characterization & Harness Prep** - Jellyfish-merge arms + the three-way parity gate defined in writing and proven at slice scale + intermediate-scale jellyfish merge characterization + full-protocol dress rehearsal; hygiene pulled forward (stale `docs/benchmark-report.md`, Nyquist 5-8, SECURITY.md 9/10) so nothing new cites stale evidence (completed 2026-11-17)
 - [x] **Phase 12: Full-Scale Merge Verdict** - Counterbalanced merge benchmark at BOTH k with parity executed before timing (including full-scale per-k-mer deep validation); invest/no-invest verdict recorded via the 0/1/2 exit-code contract; mechanical report with methodology block + predicted-vs-measured cost-model check (completed 2026-11-17)
-- [ ] **Phase 13: Producer Attribution Research** - Full-scale stage attribution (inflate / parse / extract / route-send) on the SHIPPED engine at both k with fingerprinted builds; predicted-win model naming both ceilings; recorded D3 go/no-go memo (independent — may overlap Phases 11-12)
-- [ ] **Phase 14: Parallel Extraction** - CONDITIONAL (D3 gate): parallel producer with all ten engine invariants + MEM guardrail re-measured at full scale — executes ONLY if Phase 13's memo says GO and Phase 12's verdict is recorded
+- [x] **Phase 13: Producer Attribution Research** - Full-scale stage attribution (inflate / parse / extract / route-send) on the SHIPPED engine at both k with fingerprinted builds; predicted-win model naming both ceilings; recorded D3 go/no-go memo (independent — may overlap Phases 11-12) (completed 2026-11-17)
+- [ ] **Phase 14: Parallel Extraction** - CONDITIONAL (D3 gate): parallel producer with all ten engine invariants + MEM guardrail re-measured at full scale — executes ONLY if Phase 13's memo says GO and Phase 12's verdict is recorded (**NOT EXECUTED** — Phase 13's recorded decision is NO-GO, 2026-11-17)
 
 ## Phase Details
 
@@ -133,7 +133,7 @@ Plans:
   2. The predicted-win model names BOTH ceilings — the parallelizable share and worker-side scaling — with every input number cited to a named full-scale source run (v2.0 measured walls: CLI 144.69 s k=21 / 147.08 s k=31; Python 165.05 s / 178.22 s) (PEXT-02).
   3. The D3-gate go/no-go decision is recorded as the research deliverable: either Phase 14 executes with cited evidence, or it does not fire and PEXT-03/PEXT-04 remain unexecuted by recorded decision (PEXT-02).
 
-**Plans**: 3/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -184,8 +184,8 @@ Plans:
 | 10. Benchmark Verdict | v2.0 | 4/4 | Complete | 2026-11-14 |
 | 11. Merge Characterization & Harness Prep | v2.1 | 8/8 | Complete    | 2026-11-17 |
 | 12. Full-Scale Merge Verdict | v2.1 | 4/4 | Complete    | 2026-11-17 |
-| 13. Producer Attribution Research | v2.1 | 3/3 | In Progress | - |
-| 14. Parallel Extraction | v2.1 | 0/TBD | Not started (conditional — D3) | - |
+| 13. Producer Attribution Research | v2.1 | 3/3 | Complete    | 2026-11-17 |
+| 14. Parallel Extraction | v2.1 | NOT EXECUTED | Not executed — D3 NO-GO (2026-11-17) | - |
 
 ## Backlog
 
