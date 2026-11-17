@@ -21,6 +21,15 @@
 - The complete full-scale producer-attribution session at both k: a re-measure fingerprint gate, six provenanced plain inputs, a 60-record counterbalanced gate matrix plus 16 excluded context records, the D-09 delta-corrected stage table, the two-ceiling predicted-win model, and a recorded NO-GO under the pre-registered 10.0 bar (k=21 9.62%, k=31 10.80%).
 - The D3 gate decision is recorded as a committed, mechanically rendered memo — DECISION: NO-GO under the pre-registered 10.0% both-k bar (9.6235% at k=21, 10.7965% at k=31) — with a byte-identical re-render proof, a scoped ROADMAP Phase 14 annotation, and the ~71 GiB plain-input lifecycle closed after the memo commit with provenance intact.
 
+**Closeout type:** `override_closeout` — Phase 11's verification digest read `stale` at the init projection because Phase 12's 12-03 legitimately rewrote a covered doc (`docs/benchmark-report.md`) after the verifier ran; the report itself is `status: passed` (8/8 must-haves, 2026-11-16). User decision: proceed and record the override.
+**Known verification overrides:** 4 items closed at the pre-close audit (1 quick task acknowledged — 261116-lhq, work committed 3655086; 2 deferred items acknowledged — the macOS sampling flake and the auto-generated `.claude/CLAUDE.md` dataset-line drift; 1 deferred item marked resolved after verified fix — the Phase-10 path retarget by quick 261117-ala, commit 20caf42), 2 carried forward from a prior close (see STATE.md Deferred Items).
+
+### Known Gaps
+
+- **PEXT-03** (CONDITIONAL): parallel extraction — NOT EXECUTED; Phase 13's pre-registered D3 gate recorded NO-GO on 2026-11-17 (derated predicted win 9.62% at k=21 below the 10.0% both-k bar)
+- **PEXT-04** (CONDITIONAL, paired with PEXT-03): post-change full-scale MEM re-measurement — NOT EXECUTED for the same recorded reason
+- **MEM-01**: holds by status quo — no performance change landed in v2.1, so full-scale peak RSS remains below the jellyfish references at both k (43.97 GiB k=21 / 68.52 GiB k=31)
+
 ---
 
 ## v2.0 k=21 Counting Parity (Shipped: 2026-11-14)
