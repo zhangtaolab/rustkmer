@@ -182,9 +182,11 @@ PLAIN_SIZE_FACTOR = 3.5
 REQUIRED_TRANSIENT_BYTES = LARGEST_SINGLE_ARM_TRANSIENT_BYTES
 
 # Record fields whose presence the memo derivation requires (threat T-13-04:
-# a record without provenance cannot be cited).
+# a record without provenance cannot be cited). `part` is identity, not
+# provenance, and is legitimately None for the pair-level arms (A/B/control);
+# arms C/D must carry it and that is checked per record below.
 REQUIRED_RECORD_KEYS = (
-    "arm", "k", "rep", "scale", "input_type", "part",
+    "arm", "k", "rep", "scale", "input_type",
     "wall_s", "peak_rss_bytes", "cache_state",
     "command_line", "binary_sha256", "input_sha256s",
 )
@@ -543,14 +545,39 @@ def probe_manifest(probe, repo_root=REPO_ROOT):
     return template.replace("@REPO_ROOT@", str(Path(repo_root).resolve()))
 
 
-def seed_and_verify_lockfile(crate_dir, fixture_path):
-    """Seed a scratch crate's Cargo.lock from its committed fixture, then
-    sha256-verify the seeded copy (contention_bench.verify_scratch_lockfile).
+def verify_scratch_lockfile(crate_dir, fixture_path):
+    """Verify a scratch crate's Cargo.lock against its committed fixture.
 
     Missing fixture, missing scratch lock, or any byte difference is a loud
-    abort: `cargo build --locked` cannot create a lock file, so an
-    unprovisioned crate must fail BEFORE the build — never build unlocked.
+    abort (contention_bench.verify_scratch_lockfile semantics): `cargo build
+    --locked` cannot create a lock file, so an unprovisioned crate must fail
+    BEFORE the build — never build unlocked.
     """
+    crate_dir = Path(crate_dir)
+    fixture_path = Path(fixture_path)
+    if not fixture_path.is_file():
+        raise RuntimeError(
+            f"committed probe lock fixture missing: {fixture_path} — "
+            "refusing to build a scratch probe crate without a provisioned "
+            "lock (cargo build --locked cannot create one)")
+    target = crate_dir / "Cargo.lock"
+    if not target.is_file():
+        raise RuntimeError(
+            f"scratch lockfile missing: {target} — refusing to build "
+            "unlocked (cargo build --locked cannot create one)")
+    fixture_sha = _sha256_file(fixture_path)
+    scratch_sha = _sha256_file(target)
+    if scratch_sha != fixture_sha:
+        raise RuntimeError(
+            f"scratch lockfile sha256 {scratch_sha} != committed fixture "
+            f"{fixture_sha} ({fixture_path}) — the measured dependency graph "
+            "would drift; refusing to build")
+    return scratch_sha
+
+
+def seed_and_verify_lockfile(crate_dir, fixture_path):
+    """Seed a scratch crate's Cargo.lock from its committed fixture, then
+    sha256-verify the seeded copy."""
     crate_dir = Path(crate_dir)
     fixture_path = Path(fixture_path)
     if not fixture_path.is_file():
@@ -565,14 +592,7 @@ def seed_and_verify_lockfile(crate_dir, fixture_path):
         raise RuntimeError(
             f"cannot seed scratch lockfile {target} from {fixture_path}: "
             f"{exc}") from exc
-    fixture_sha = _sha256_file(fixture_path)
-    scratch_sha = _sha256_file(target)
-    if scratch_sha != fixture_sha:
-        raise RuntimeError(
-            f"scratch lockfile sha256 {scratch_sha} != committed fixture "
-            f"{fixture_sha} ({fixture_path}) — the measured dependency graph "
-            "would drift; refusing to build")
-    return scratch_sha
+    return verify_scratch_lockfile(crate_dir, fixture_path)
 
 
 def materialize_probe_binaries(scratch_dir, repo_root=None, fixtures_dir=None,
@@ -1239,6 +1259,7 @@ def build_predicted_win(attribution, k, runs):
         "parallelizable_floor_derated_s": parallelizable_floor_derated_s,
         "parallelizable_floor_idealized_s": parallelizable_floor_idealized_s,
         "worker_floor_s": worker_floor_s,
+        "output_stage_s": output_stage_s,
         "predicted_full_wall_s": derated_full_wall_s,
         "predicted_improvement_pct": derated_improvement_pct,
         "idealized_predicted_full_wall_s": idealized_full_wall_s,
@@ -1527,9 +1548,7 @@ def render_memo_text(doc):
             f"[{_citation_text(citations.get('route_send_s') or [])}]")
         lines.append(
             f"- output stage (sort + write): "
-            f"{_format_seconds(block.get('output_stage_s',
-                                          (attribution.get(str(k)) or {}).get(
-                                              'output_stage_s', 0.0)))} s "
+            f"{_format_seconds(block['output_stage_s'])} s "
             f"[{_citation_text(citations.get('output_stage_s') or [])}]")
         lines.append(
             f"- anomaly criteria: probe_vs_cli_ratio="
@@ -1611,9 +1630,10 @@ def render_memo_text(doc):
         f"k=31 {V2_0_PYTHON_WALL_K31_S:.2f} s) are context only, recorded "
         f"against the v2.0 module fingerprint "
         f"`{V2_0_PYTHON_MODULE_SHA256}`. "
-        "Binary-fingerprint caveat: those Python walls were measured on a "
-        "different binary fingerprint than the current release build, so they "
-        "are neither a denominator nor a headline — context only.")
+        "The binary-fingerprint caveat applies: those Python walls were "
+        "measured on a different binary fingerprint than the current release "
+        "build, so they are neither a denominator nor a headline — context "
+        "only.")
     lines.append("")
 
     if decision == "GO":
@@ -2116,6 +2136,8 @@ def validate_memo_inputs(doc):
     for record in gate:
         missing = [key for key in REQUIRED_RECORD_KEYS
                    if _record_missing(record, key)]
+        if record.get("arm") in ("C", "D") and record.get("part") is None:
+            missing.append("part")
         if missing:
             raise ValueError(
                 "memo derivation: record "
