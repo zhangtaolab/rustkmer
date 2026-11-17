@@ -2,21 +2,17 @@
 
 ## What This Is
 
-rustkmer is a high-performance k-mer counting and querying toolkit written in Rust. It ships through two independent entry points that share a single core library: a CLI binary (`rustkmer`, via clap) and a Python extension module (`pyrustkmer`, via PyO3). Both surfaces read and write the same custom binary `.rkdb` format. It targets bioinformaticians who need to count, query, and merge k-mers at genome scale — either from the command line in pipelines or from Python notebooks/scripts. Since v1.0, counting and merging are performance-competitive at human-genome scale: multi-core lock-free counting, bounded-memory merging, and dense k ≤ 32 storage — measured faster and leaner than Jellyfish2 at k=31.
+rustkmer is a high-performance k-mer counting and querying toolkit written in Rust. It ships through two independent entry points that share a single core library: a CLI binary (`rustkmer`, via clap) and a Python extension module (`pyrustkmer`, via PyO3). Both surfaces read and write the same custom binary `.rkdb` format. It targets bioinformaticians who need to count, query, and merge k-mers at genome scale — either from the command line in pipelines or from Python notebooks/scripts. Since v2.0, counting matches or beats Jellyfish2 at both k on both surfaces; since v2.1, merge does too — `rustkmer merge` was measured faster than `jellyfish merge` at k=21 and k=31 at full scale, with three-way count parity green before any timed rep.
 
 ## Core Value
 
 Count, query, and merge k-mers at genome scale within practical memory — fast and lean enough to compete with best-in-class tools (KMC / Jellyfish class), from both the CLI and Python.
 
-## Current Milestone: v2.1 Merge Verdict & Producer Research
+## Current Milestone
 
-**Goal:** Decide where the next performance investment goes — benchmark merge against `jellyfish merge` at full scale for an invest/no-invest verdict; research the producer-bound counting bottleneck (parallel extraction) with a conditional implementation phase — while closing v2.0 carry-forward hygiene gaps and holding the memory-below-jellyfish guardrail.
+*(None — v2.1 shipped 2026-11-18. The next milestone is defined by `/gsd-new-milestone`; scope, requirements, and roadmap start fresh from the archived v2.1 record under `.planning/milestones/`.)*
 
-**Target features:**
-- **MERGE-BENCH**: full-scale rustkmer merge vs `jellyfish merge` (same inputs, parity gate, counterbalanced reps) → measured verdict + invest/no-invest decision
-- **PEXT**: deep research on the producer-bound count phase (single producer ≈99.99% of parallel wall) + predicted-win sizing → conditional implementation phase executes only if the verdict says the win is worth it (v2.0 D3 pattern)
-- **HYG**: Nyquist validation for Phases 5–8, SECURITY.md for Phases 9/10, stale `docs/benchmark-report.md` drift resolved (superseded banner added 2026-11-16 — the v1.0 k=21 +420% verdict there is historical), backlog 999.1–999.3 opportunistic
-- **MEM guardrail**: any performance change keeps full-scale peak RSS below jellyfish at both k (already true: k=21 43.97 vs 46.84 GiB; k=31 68.52 vs 88.00 GiB)
+**v2.1 (shipped 2026-11-18) delivered:** a full-scale merge verdict (NO-INVEST — `rustkmer merge` beats `jellyfish merge` at both k, three-way parity green before timing), full-scale producer stage attribution with a predicted-win model and a recorded D3 NO-GO that left Phase 14 unexecuted, and the v2.0 carry-forward hygiene debt closed. Memory guardrail held: no performance change landed, so peak RSS stays below jellyfish at both k (k=21 43.97 vs 46.84 GiB; k=31 68.52 vs 88.00 GiB).
 
 ## Requirements
 
@@ -59,7 +55,8 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 
 <!-- Explicit boundaries for this round. -->
 
-- Full-scale merge **implementation** investment — v2.1 measures merge vs `jellyfish merge` and decides; any gap-closing work is deferred until the verdict justifies it
+- Full-scale merge **implementation** investment — the Phase 12 verdict was NO-INVEST (rustkmer merge already beats jellyfish merge at both k); no gap-closing work is justified
+- Parallel extraction implementation (PEXT-03/PEXT-04, MEM-01) — NOT EXECUTED by the recorded Phase 13 D3 NO-GO (2026-11-17): the derated predicted full-wall win missed the pre-registered 10.0% both-k bar (9.62% at k=21, 10.80% at k=31); revisit conditions are named in `13-GATE-MEMO.md` §6
 - MINIM-01..03 minimizer/CQF memory restructuring — user decision 2026-11-16: the memory bar is "below jellyfish", which v2.0 already meets at both k; KMC-class RAM is not a goal
 - KMC3 comparison (BENCH-V2-01) — user decision 2026-11-16: not a reference for this project; jellyfish remains the sole comparator
 - New user-facing features / new commands — v2.1 is measurement, research, and hygiene, not feature expansion
@@ -71,9 +68,11 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 
 ## Context
 
-**Current state (v2.0 shipped 2026-11-14; v1.0 shipped 2026-10-20).** v1.0: 4 phases, 31 plans, 19 requirements (18 satisfied; BENCH-02 partial by user acceptance). Human-scale verdict vs Jellyfish2 2.3.1 on CRR2044018: k=31 faster (494 vs 843 s) and leaner (55.2 vs 84.0 GiB); k=21 ~5x slower — the gap v2.0 exists to close. Post-v1.0 hygiene wave (2026-11-11, quick tasks): memmap2 ≥0.9.11 security floor, Cargo.lock tracking + CI `--locked`, MSRV 1.80 enforced in both manifests, Python ≥3.11 policy normalized, unused deps removed, Phase-04 review findings triaged (11 fixed / 4 already-fixed / 3 deferred IN-06/07/09), both crates' clippy gates green. The codebase map under `.planning/codebase/` predates v1.0; refresh before the next milestone's research.
+**Current state (v2.1 shipped 2026-11-18; v2.0 shipped 2026-11-14; v1.0 shipped 2026-10-20).** v2.1: 3 executed phases (11-13), 15 plans, 36 tasks; Phase 14 NOT EXECUTED by the recorded D3 NO-GO. Merge verdict NO-INVEST measured at full scale over parity-validated inputs: rustkmer merge medians 63.34 s (k=21) / 82.86 s (k=31) vs jellyfish merge 88.44 / 114.70 s, 3 counterbalanced reps per arm, defaults-only flags, mechanically rendered report. Producer stage attribution at full scale: route-send dominates (91.80 / 92.99 s) over parse+extract (20.96 / 20.85 s) and inflate (26.25 / 21.02 s); the derated predicted extraction win (9.62% k=21 / 10.80% k=31) missed the pre-registered 10.0% both-k bar, so parallel extraction closed as NO-GO with evidence. Hygiene closed: benchmark report rewritten from committed evidence, Nyquist records for Phases 5-8, SECURITY.md verification for Phases 9-10, six-part ~16.7 GB dataset correction. Pre-close artifact audit clean (5 acknowledged items, see STATE.md Deferred Items). No performance change landed in v2.1, so the memory guardrail holds by status quo: k=21 43.97 vs 46.84 GiB, k=31 68.52 vs 88.00 GiB below jellyfish.
 
 **v2.0 shipped 2026-11-14 — overall YES on both surfaces at k=21 and k=31.** 6 phases, 29 plans, 73 tasks: measurement harness + profiling (5), parallelism correctness and hot path (6), the shared counting engine (7), output/`.rkdb` parity (8), Python parity (9), and the full-scale verdict (10). The k=21 gap was parallel-scaling efficiency, not data structures; the engine recovered it. Measured on the complete CRR1936095 r1 set (the pinned part_001 + part_006 pair, 16 threads, 3 counterbalanced reps): k=21 CLI 144.69 s / Python 165.05 s vs jellyfish 194.85 / 197.95 s; k=31 CLI 147.08 s / Python 178.22 s vs jellyfish 1380.92 / 187.14 s — lower peak memory than jellyfish at both k, exact count parity across every arm. BENCH-V2-01 (KMC3) was descoped 2026-11-13; Phase 11 (MINIM) was not triggered (D3, 2026-11-14) and its requirements are deferred. Harness: 571 tests; Rust 508; pytest 179 passed. Code review across three rounds closed 27 findings with 0 open; milestone audit status `tech_debt` (no blockers) with carry-forward items listed in ROADMAP.md.
+
+**v1.0 (shipped 2026-10-20).** 4 phases, 31 plans, 19 requirements (18 satisfied; BENCH-02 partial by user acceptance). Human-scale verdict vs Jellyfish2 2.3.1 on CRR2044018: k=31 faster (494 vs 843 s) and leaner (55.2 vs 84.0 GiB); k=21 ~5x slower — the gap v2.0 closed. Post-v1.0 hygiene wave (2026-11-11, quick tasks): memmap2 ≥0.9.11 security floor, Cargo.lock tracking + CI `--locked`, MSRV 1.80 enforced in both manifests, Python ≥3.11 policy normalized, unused deps removed, Phase-04 review findings triaged (11 fixed / 4 already-fixed / 3 deferred IN-06/07/09), both crates' clippy gates green. The codebase map under `.planning/codebase/` predates v1.0; refresh before the next milestone's research.
 
 **v2.0 research input (2026-11-11, Chorus3 investigation).** Sibling lab repo Chorus3 vendors rustkmer but worked AROUND its unbounded DashMap counter, not on it: chorus-kmer is a fixed-k=17 direct-address table of 2-bit saturating counters (clips counts at 3) + disk-spill; rusty_alloc is a binary-only global allocator. None of it transfers to rustkmer's k=21 exact-u32 counting of read sets (saturating counts break the exact-count contract; a 4^21 dense table is 1 TiB at 2 bits / 16 TiB at u32; rusty_alloc needs MSRV 1.87 and a global allocator is disqualified for PyO3). The v2 direction stands: minimizer/signature partitioning or CQF. Borrowable discipline: pre-registered peak-gate measurement max(rss, phys_footprint); never mmap spill files when RSS is the budget. The ~5x small-k direct-address-vs-DashMap result corroborates hashing overhead as the k=21 bottleneck hypothesis — but it was measured at k=17 on a 135 Mbp reference with saturating semantics, so it MUST be validated on rustkmer's actual workload before the architecture is chosen.
 
@@ -131,6 +130,7 @@ Count, query, and merge k-mers at genome scale within practical memory — fast 
 | Phase 13 D3 gate: NO-GO — Phase 14 (parallel extraction) does NOT execute | Pre-registered D-05 bar is 10.0% on the conservative derated model at both k (conjunction). Measured derated predicted improvement: 9.6235% at k=21 (below bar) and 10.7965% at k=31; the idealized E=M bound (10.4512% / 11.5300%) was disclosed alongside but is never the bar input. A NO-GO is a first-class recorded outcome; PEXT-03/PEXT-04 stay unexecuted with the evidence trail | ✅ Recorded 2026-11-17 (`13-GATE-MEMO.md`); Phase 14 NOT EXECUTED |
 | Phase 13 attribution finding: the producer wall is route-send-dominated, not parse/extract-dominated | Measured at full scale: route-send 91.80 / 92.99 s vs parse+extract 20.96 / 20.85 s (≈82% vs ≈18% of the plain producer probe) and inflate 26.25 / 21.02 s. This contradicted the pre-measurement expectation (parse+extraction ~85%) and is why extraction parallelization could not clear the bar | ✅ Measured 2026-11-17 (drives any revisit: the three conditions in `13-GATE-MEMO.md` §6) |
 | Phase 13 granularity accepted: parse+extract is measured as one combined term (`parse_extract_s`) | The shipped engine exposes only `producer_nanos` (open+parse+extract+routing+sends) and per-worker `busy_nanos`; separating parse from extract needs Rust changes the measurement-only phase forbids. Splitting out a serial parse term can only raise the predicted wall, so the granularity cannot flip the NO-GO; the combined term already shows route-send dominates | ✅ Accepted at Phase 13 UAT (2026-11-17); split instrumentation is an optional probe-only follow-up if Phase 14 is ever revisited |
+| Phase 12 merge verdict: NO-INVEST — `rustkmer merge` beats `jellyfish merge` at both k | Measured at full scale with three-way parity green before any timed rep (exact per k-mer, including the per-k-mer deep legs): medians 63.34 vs 88.44 s (k=21) and 82.86 vs 114.70 s (k=31), 3 counterbalanced reps per arm, defaults-only flags. Wall time is the primary decision axis; RSS is context-only for merge (jellyfish merge is streaming at ~6.8 MB) | ✅ Recorded 2026-11-17 (exit 0; `12-VERDICT.json`, mechanically rendered report with byte-identical re-render proof) |
 
 ## Evolution
 
@@ -150,4 +150,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-17 after Phase 13 (Producer Attribution Research — D3 gate recorded NO-GO, Phase 14 not executed; v2.1 executable scope complete)*
+*Last updated: 2026-11-18 after v2.1 milestone close (Merge Verdict & Producer Research — NO-INVEST merge verdict, D3 NO-GO closes parallel extraction, hygiene debt closed)*

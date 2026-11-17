@@ -1,5 +1,28 @@
 # Milestones
 
+## v2.1 Merge Verdict & Producer Research (Shipped: 2026-11-18)
+
+**Phases completed:** 3 phases, 15 plans, 36 tasks
+
+**Key accomplishments:**
+- Seven-arm merge comparison wired into bench.py — jellyfish merge + per-part count arms + single-thread rustkmer merge-t1 under the counterbalanced protocol, proven end-to-end at synthetic scale with the CI rung pinned in schema v1 (MBENCH-01/MBENCH-05)
+- Harness built-in prepare-inputs stage (build/revalidate/manifest) that constructs the 8 merge input artifacts with automatic sha256 + Total + command-line provenance, derives the per-k-pair jellyfish -s under a 0.75 occupancy assertion, reconciles Phase-10 union anchors mid-build, and revalidates from manifest records alone — proven end-to-end at synthetic scale including the tamper-negative case (MBENCH-01/D-01/D-04)
+- Superseded banner + six-part (~16.7 GB) dataset correction on the stale v1.0 benchmark report, a zero-unlabeled-cite D-06 sweep across README/PROJECT.md/docs, and the HYG-04 determination (WARNING-2 to 11-07; 999.1–999.3 not triggered) recorded in 11-HYGIENE-RECORD.md (HYG-01)
+- Three-way merge parity gate defined in writing (PARITY-GATE.md), implemented in bench.py as an aggregate pre-gate plus a per-k-mer dump-vs-dump verdict gate, GREEN/RED-proven by unit tests, and proven live at slice scale on real data before any median was trusted (MBENCH-02)
+- All 8 full-scale merge input artifacts (86.74 GiB) pre-built outside the repo through the Plan 11-02 stage with automatic provenance, per-part Totals reconciling exactly to the committed Phase-10 union anchors at both k (first live pre-gate green), derived-and-approved jellyfish -s per k-pair (1G/2G, occupancy ≤ 0.62), manifest complete and revalidation-green from records alone (D-01/D-02/D-03/D-04)
+- Two-point real-data merge ladder executed end-to-end (10%/40% part scale x k=21/31, seed 4242, pinned part_001+part_006 pairs): both tools ran the complete prepare->count->merge chain per side with exact cross-tool parity and green gates at every rung — rustkmer merge 15.2-44.9 s at 1.6-2.3 GB peak vs jellyfish merge 25.3-66.8 s at a constant 6.8 MB RSS, all four tool-k slopes linear, slopes + linearity + flagged full-scale extrapolations committed for Phase 12 scheduling and the D-10 floor term
+- Derived 136 GiB disk floor landed with block/override/per-rep mechanics (D-10/D-11/D-12), full seven-arm slice-scale dress rehearsal green at both k with parity + dump gates before trust, README stage docs with the WARNING-2 same-touch fix
+- Six milestone-archive records produced through their named GSD workflows: Nyquist VALIDATION.md for phases 5-8 (05/06/08 reconstructed, 07 draft completed) and SECURITY.md threat-model verification for phases 9-10 — every v2.0 evidence debt closed before Phase 12 creates new measurement evidence
+- Staged `phase11.py` controller (five-stage dispatch, 0/1/2 exit-code contract) with a pure match-or-beat merge-verdict stage, a byte-identical mechanical MBENCH-04 renderer, defaults-only `merge_arm_argv`, and a 36-test Wave-0 contract suite — all green, no binaries invoked
+- The milestone headline session executed live: round-0 gate green (anchors exact both k), three-way parity green at k=21 and k=31 (all three legs incl. the full-scale streaming per-k-mer deep legs), 3 arms x 3 counterbalanced reps timed at each k, and the verdict recorded as exit 0 / NO-INVEST — rustkmer merge median walls 63.34s (k=21) and 82.86s (k=31) beat jellyfish merge's 88.44s and 114.70s — with the mechanically rendered report byte-identical across independent re-renders
+- D-04 one-time rewrite of docs/benchmark-report.md from the committed Phase-12 merge-verdict evidence (banner and stale v1.0 CRR2044018 prose gone, numbers gate green, footer bound to the evidence JSONs) plus D-03 deletion of the 8 merge-input artifacts (93,135,484,166 B = 86.74 GiB) strictly after every evidence commit, with manifest.json retained and the prepare_inputs.py rebuild path documented
+- Completed the phase11.py controller's three session stages on the 12-01 skeleton — the round-0 gate (exact union anchors + D-12 session budget + source-swap defense), the three-leg parity stage with the NEW Leg-2 independent-recount diff through the streaming pipeline, and the 3-arm counterbalanced timed stage — all unit-proven GREEN/RED binary-free, with the doc layouts Plan 12-02's gates read pinned by tests
+- Stdlib-only Phase-13 measurement driver with materialized k=31/null probes, a fixture-scale rehearsal proving the whole attribution -> predicted-win -> D3-decision -> memo chain, and 80 Wave-0 unit tests — zero Rust changes.
+- The complete full-scale producer-attribution session at both k: a re-measure fingerprint gate, six provenanced plain inputs, a 60-record counterbalanced gate matrix plus 16 excluded context records, the D-09 delta-corrected stage table, the two-ceiling predicted-win model, and a recorded NO-GO under the pre-registered 10.0 bar (k=21 9.62%, k=31 10.80%).
+- The D3 gate decision is recorded as a committed, mechanically rendered memo — DECISION: NO-GO under the pre-registered 10.0% both-k bar (9.6235% at k=21, 10.7965% at k=31) — with a byte-identical re-render proof, a scoped ROADMAP Phase 14 annotation, and the ~71 GiB plain-input lifecycle closed after the memo commit with provenance intact.
+
+---
+
 ## v2.0 k=21 Counting Parity (Shipped: 2026-11-14)
 
 **Phases completed:** 6 phases, 29 plans, 73 tasks

@@ -2,21 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v2.1
 milestone_name: Merge Verdict & Producer Research
-current_phase: 14
-current_phase_name: Parallel Extraction
-current_plan: Not started
-status: All phases complete (Phase 14 NOT EXECUTED — D3 NO-GO)
+status: Awaiting next milestone
 stopped_at: Phase 13 complete — Phase 14 not executed (D3 NO-GO); v2.1 ready to close
-last_updated: "2026-11-17T15:30:17.669Z"
-last_activity: 2026-11-17
-last_activity_desc: Phase 13 complete, transitioned to Phase 14
-state_head: f458dc91e42d4f273cde34ebb98bf03855b7bdd7
+last_updated: "2026-11-17T16:08:34.388Z"
+last_activity: 2026-11-18
+last_activity_desc: Milestone v2.1 completed and archived
+state_head: fa71df5c0f8ab2183516870a9e2823ae1d0e27cb
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 15
   completed_plans: 15
   percent: 75
+current_phase: 14
+current_phase_name: Parallel Extraction
 ---
 
 # Project State
@@ -30,13 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-17)
 
 ## Current Position
 
-Phase: 14 — Parallel Extraction (NOT EXECUTED — D3 NO-GO)
-Current Plan: Not started
-Total Plans in Phase: TBD (never planned)
-Status: All phases complete (Phase 14 NOT EXECUTED — D3 NO-GO)
-Last activity: 2026-11-17 — Phase 13 verified (UAT 3/3) and marked complete
-
-Progress: [████████░░] 75%
+Phase: Milestone v2.1 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-11-18 — Milestone v2.1 completed and archived
 
 ## Performance Metrics
 
@@ -148,22 +144,28 @@ None yet.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 261117-ala | Retarget 3 test_phase10_verdict.py archived-path failures to .planning/milestones/v2.0-phases/ + fix WR-04 README rehearsal command flags | 2026-11-17 | 89b6776 | [261117-ala-retarget-3-test-phase10-verdict-py-archi](./quick/261117-ala-retarget-3-test-phase10-verdict-py-archi/) |
 
 ## Deferred Items
 
 Items acknowledged and carried forward, most recent first:
 
-| Category | Item | Status | Deferred At |
-|----------|------|--------|-------------|
-| Review findings | IN-06/07/09 (Phase-04 harness/test code) | Deferred (triaged 261111-spz) | 2026-11-11 |
-| Backlog | 999.1 pyo3 build.rs link args; 999.2 stale site-packages shadowing; 999.3 stale sweep claim | Opportunistic in v2.1 (HYG-04, Phase 11) | 2026-10-09 |
-| Review findings | 8 Info findings in `09-REVIEW.md` (Phase 9) | Info-only, tracked | 2026-11-14 |
-| Descoped | MINIM-01..03; KMC3 comparison (BENCH-V2-01) | Permanently descoped (user decision) | 2026-11-16 |
-| Deferred to v2.2+ | MBF-01 (merge flag sweep, post-INVEST); MBF-02 (N-way/r1+r2); PEXT-05 (extractor refinements) | Post-verdict follow-ons | 2026-11-16 |
+| Category | Item | Status | Deferred At | Milestone |
+|----------|------|--------|-------------|-----------|
+| quick_tasks | 261116-lhq (AtomicU64::fetch_update deprecation suppressed at src/hash/table.rs; work committed 3655086, all gates green) | Acknowledged (scanner status unknown; work complete) | 2026-11-18 | v2.1 |
+| deferred_items | 11/deferred-items.md: Pre-existing flake — test_verify_threads.py TestNegativeControls pre_engine_n_plus_one stub (~50% macOS sample-race) | acknowledged | 2026-11-18 | v2.1 |
+| deferred_items | 11/deferred-items.md: Docs drift — .claude/CLAUDE.md:17 mirrors pre-correction "~5.2 GB" dataset line (auto-generated; fix = regeneration) | acknowledged | 2026-11-18 | v2.1 |
+| Review findings | IN-06/07/09 (Phase-04 harness/test code) | Deferred (triaged 261111-spz) | 2026-11-11 | — |
+| Backlog | 999.1 pyo3 build.rs link args; 999.2 stale site-packages shadowing; 999.3 stale sweep claim | Opportunistic in v2.1 (HYG-04, Phase 11) | 2026-10-09 | — |
+| Review findings | 8 Info findings in `09-REVIEW.md` (Phase 9) | Info-only, tracked | 2026-11-14 | — |
+| Descoped | MINIM-01..03; KMC3 comparison (BENCH-V2-01) | Permanently descoped (user decision) | 2026-11-16 | — |
+| Deferred to v2.2+ | MBF-01 (merge flag sweep, post-INVEST); MBF-02 (N-way/r1+r2); PEXT-05 (extractor refinements) | Post-verdict follow-ons | 2026-11-16 | — |
 
 ## Session Continuity
 
 Last session: 2026-11-17T15:30:17.153Z
 Stopped at: Phase 13 complete — Phase 14 not executed (D3 NO-GO); v2.1 ready to close
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

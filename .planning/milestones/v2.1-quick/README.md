@@ -1,0 +1,16 @@
+# Archived Quick Tasks
+
+- [261021-p0z-fix-post-v1-0-ci-failures-fastq-path-dis](261021-p0z-fix-post-v1-0-ci-failures-fastq-path-dis/261021-p0z-SUMMARY.md)
+- [261111-rf2-bump-memmap2-to-0-9-11-security-floor-ru](261111-rf2-bump-memmap2-to-0-9-11-security-floor-ru/261111-rf2-SUMMARY.md)
+- [261111-s6h-start-tracking-cargo-lock-for-reproducib](261111-s6h-start-tracking-cargo-lock-for-reproducib/261111-s6h-SUMMARY.md)
+- [261111-spy-adopt-locked-in-ci-add-locked-to-cargo-build-test-clippy-che](261111-spy-adopt-locked-in-ci-add-locked-to-cargo-build-test-clippy-che/261111-spy-SUMMARY.md)
+- [261111-spz-triage-the-18-open-v1-0-phase-04-review-findings-in-planning](261111-spz-triage-the-18-open-v1-0-phase-04-review-findings-in-planning/261111-spz-SUMMARY.md)
+- [261111-sq0-normalize-the-msrv-python-version-policy-inconsistency-flagg](261111-sq0-normalize-the-msrv-python-version-policy-inconsistency-flagg/261111-sq0-SUMMARY.md)
+- [261111-sq1-clean-up-nightly-cargo-unused-dependencies-manifest-warnings](261111-sq1-clean-up-nightly-cargo-unused-dependencies-manifest-warnings/261111-sq1-SUMMARY.md)
+- [261111-uju-fix-5-clippy-incompatible-msrv-failures-](261111-uju-fix-5-clippy-incompatible-msrv-failures-/261111-uju-SUMMARY.md)
+- [261111-v69-close-windows-ledger-row-15-sole-gsd-shi](261111-v69-close-windows-ledger-row-15-sole-gsd-shi/261111-v69-SUMMARY.md)
+- [261112-jwl-raise-rust-msrv-1-80-1-82-user-approved-](261112-jwl-raise-rust-msrv-1-80-1-82-user-approved-/261112-jwl-SUMMARY.md)
+- [261116-ks7-fix-cargo-fmt-drift-across-source-files-](261116-ks7-fix-cargo-fmt-drift-across-source-files-/261116-ks7-SUMMARY.md)
+- [261116-lhq-silence-atomicu64-fetch-update-deprecati](261116-lhq-silence-atomicu64-fetch-update-deprecati/261116-lhq-SUMMARY.md)
+- [261116-mjo-fix-docs-getting-started-first-steps-md-](261116-mjo-fix-docs-getting-started-first-steps-md-/261116-mjo-SUMMARY.md)
+- [261117-ala-retarget-3-test-phase10-verdict-py-archi](261117-ala-retarget-3-test-phase10-verdict-py-archi/261117-ala-SUMMARY.md)

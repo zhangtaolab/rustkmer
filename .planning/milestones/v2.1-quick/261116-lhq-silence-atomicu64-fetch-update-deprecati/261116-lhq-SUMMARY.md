@@ -73,6 +73,10 @@ coverage:
         ref: "grep -c '261116-lhq' .planning/STATE.md >= 2"
         status: pass
     human_judgment: false
+audit_acknowledged:
+  milestone: v2.1
+  at: 2026-11-18
+  status: unknown
 ---
 
 # Quick Task 261116-lhq: Silence AtomicU64 fetch_update Deprecation Warning Summary
