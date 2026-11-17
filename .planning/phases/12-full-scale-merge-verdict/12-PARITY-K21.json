@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "kind": "phase12-merge-parity",
+  "phase": 12,
+  "session": "merge-parity",
+  "k": 21,
+  "created": "2026-11-17T04:13:57.776684+00:00",
+  "legs_executed": [
+    "leg1-aggregate-conservation",
+    "leg2-recount-vs-merged",
+    "leg3-dump-vs-dump"
+  ],
+  "anchors": {
+    "sum": 8967099203,
+    "expected": 8967099203,
+    "actual": 8967099203,
+    "exact": true,
+    "definition": "sum-of-counts"
+  },
+  "merges": [
+    {
+      "tool": "rustkmer",
+      "warmup": true,
+      "argv": [
+        "target/release/rustkmer",
+        "merge",
+        "-i",
+        "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k21.rkdb",
+        "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k21.rkdb",
+        "-o",
+        "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k21.rkdb"
+      ],
+      "wall_s": 50.42,
+      "cache_state": "unavailable"
+    },
+    {
+      "tool": "jellyfish",
+      "warmup": true,
+      "argv": [
+        "jellyfish",
+        "merge",
+        "-o",
+        "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k21.jf",
+        "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_001.k21.jf",
+        "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/part_006.k21.jf"
+      ],
+      "wall_s": 77.3,
+      "cache_state": "unavailable"
+    }
+  ],
+  "warmup_note": "the parity merges are the protocol's discarded warmups (A5): their walls are recorded but never enter any timed median; the timed stage records them as warmup_provenance",
+  "merged_stats": {
+    "rustkmer": {
+      "distinct": 897266581,
+      "total": 8967099203,
+      "definition": "sum-of-counts"
+    },
+    "jellyfish": {
+      "distinct": 897266581,
+      "total": 8967099203,
+      "definition": "sum-of-counts"
+    }
+  },
+  "recount": {
+    "distinct": 897266581,
+    "total": 8967099203,
+    "definition": "sum-of-counts"
+  },
+  "input_revalidation": {
+    "revalidate": "green (revalidate_stage re-hash + re-stats at stage start \u2014 input-swap defense)",
+    "binary_identity": "green (pinned ladder sha256 verified at stage start)",
+    "anchors": {
+      "21": {
+        "sum": 8967099203,
+        "expected": 8967099203,
+        "exact": true
+      },
+      "31": {
+        "sum": 8275694030,
+        "expected": 8275694030,
+        "exact": true
+      }
+    }
+  },
+  "binary_identity": {
+    "rustkmer": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 2966832,
+      "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b"
+    },
+    "jellyfish": {
+      "path": "/opt/homebrew/Cellar/jellyfish/2.3.1/bin/jellyfish",
+      "size_bytes": 374544,
+      "sha256": "e99c676bbead8f5f520b84359088740aa853b0a0b3b122a21373fe93ae8091ee"
+    }
+  },
+  "transients_deleted": [
+    "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/recount.k21.rkdb",
+    "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k21.rkdb",
+    "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/merged.k21.jf",
+    "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/leg2.k21/",
+    "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch/leg3.k21/"
+  ],
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 2966832,
+      "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b"
+    },
+    "git_commit": "68e2f3e5e753ac65c113aba9561bfbc1eaead2b5",
+    "git_dirty": true,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-17T02:56:45.798669+00:00"
+  }
+}

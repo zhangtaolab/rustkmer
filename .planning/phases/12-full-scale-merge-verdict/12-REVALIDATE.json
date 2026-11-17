@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "kind": "phase12-round0-revalidation",
+  "phase": 12,
+  "session": "round0-revalidation",
+  "created": "2026-11-17T02:44:43.731463+00:00",
+  "artifacts_dir": "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs",
+  "manifest_digest": {
+    "path": "/Users/forrest/Data/data/illumina/CRR1936095-merge-inputs/manifest.json",
+    "size_bytes": 7234,
+    "sha256": "2a9008984fa1d57cd7df342966acb12b260b8049e021397a76d3e57f43afbb84"
+  },
+  "anchors": {
+    "21": {
+      "sum": 8967099203,
+      "expected": 8967099203,
+      "exact": true
+    },
+    "31": {
+      "sum": 8275694030,
+      "expected": 8275694030,
+      "exact": true
+    }
+  },
+  "anchors_definition": "per-part Totals summed across the pinned part pair and compared EXACT against the committed Phase-10 union anchors \u2014 the sum-of-counts definition from the sanctioned stats readers, never the DatabaseHeader record-count field (PARITY-GATE.md \u00a75)",
+  "binary_identity": {
+    "rustkmer": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 2966832,
+      "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b"
+    },
+    "jellyfish": {
+      "path": "/opt/homebrew/Cellar/jellyfish/2.3.1/bin/jellyfish",
+      "size_bytes": 374544,
+      "sha256": "e99c676bbead8f5f520b84359088740aa853b0a0b3b122a21373fe93ae8091ee"
+    }
+  },
+  "session_budget": {
+    "session_budget_gb": 282,
+    "inputs_bytes": 93135484166,
+    "inputs_gb": 87,
+    "parity_transient_gb": {
+      "21": 76,
+      "31": 97
+    },
+    "parity_transient_terms": "union Distinct x DUMP_BYTES_PER_LINE x 3 (raw+norm coexistence ~2x dump text per side + the sorted output ~1x)",
+    "timed_transient_gb": 22,
+    "timed_transient_terms": "largest merged .rkdb output: max union Distinct x RKDB_BYTES_PER_ENTRY (20 B/entry)",
+    "constants": {
+      "dump_bytes_per_line": 30,
+      "rkdb_bytes_per_entry": 20,
+      "entries_source": "UNION_DISTINCT_ANCHORS \u2014 11-LADDER-RESULTS.json summary.extrapolated_full_scale.full_scale_entries"
+    }
+  },
+  "df_sample": {
+    "path": "/Users/forrest/Data/data/illumina/CRR1936095-phase12-scratch",
+    "total": 1995218165760,
+    "used": 1604884619264,
+    "free": 390333546496
+  },
+  "source_fingerprints": [
+    {
+      "path": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz",
+      "size_bytes": 2785381389,
+      "sha256": "dae91042e42c1a0562a2bda66b7a3409665cddc87e702d99b922e44160c1b0de"
+    },
+    {
+      "path": "/Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_006.fq.gz",
+      "size_bytes": 2785388289,
+      "sha256": "b197f16c31dd34094858adcb25f811194f532ed3ce95523df6ae709f2a37f07e"
+    }
+  ],
+  "input_revalidation": "green (revalidate_stage re-hash + re-stats over every recorded artifact; unrecorded artifacts rejected loudly)",
+  "provenance": {
+    "binary": {
+      "path": "/Users/forrest/GitHub/rustkmer/target/release/rustkmer",
+      "size_bytes": 2966832,
+      "sha256": "4539b893e8ece53bf2faa417f94a4a64d3e3d6c89f1ff94db38c21fafd6d023b"
+    },
+    "git_commit": "68e2f3e5e753ac65c113aba9561bfbc1eaead2b5",
+    "git_dirty": true,
+    "build_profile": "release",
+    "rust_toolchain": "rustc 1.101.0-nightly (07e526db9 2026-10-19)",
+    "platform": "darwin-arm64",
+    "created": "2026-11-17T02:33:15.692647+00:00"
+  }
+}
