@@ -4,18 +4,18 @@ milestone: v2.1
 milestone_name: Merge Verdict & Producer Research
 current_phase: 12
 current_phase_name: Full-Scale Merge Verdict
-current_plan: 3
+current_plan: 4
 status: executing
-stopped_at: Completed 12-04-PLAN.md
-last_updated: "2026-11-17T02:14:31.701Z"
+stopped_at: Completed 12-02-PLAN.md
+last_updated: "2026-11-17T09:09:39.235Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 11 complete, transitioned to Phase 12
-state_head: 40221cbf6c25e884ba48d4085a35c17507699030
+state_head: 34635718c5ef28c4360da46aff12e43b96356caa
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 25
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-16)
 ## Current Position
 
 Phase: 12 (Full-Scale Merge Verdict) — EXECUTING
-Current Plan: 3
+Current Plan: 4
 Total Plans in Phase: 4
 Status: Executing plan 12-01
 Last activity: 2026-11-17 - Completed quick task 261117-ala: retarget archived test paths + WR-04 README fix (full suite green)
@@ -70,6 +70,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 11 P07 | 24min | 3 tasks | 5 files |
 | Phase 12 P01 | 22 min | 1 tasks | 2 files |
 | Phase 12 P04 | 45 min | 2 tasks | 2 files |
+| Phase 12 P02 | 6h 47min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 12]: 12-04: results docs carry validator-clean provenance (rustkmer release block) plus comparator_provenance {rustkmer, jellyfish} — the plan's raw two-key provenance mapping would fail write_doc's validate_provenance
 - [Phase 12]: 12-04: session-budget entries read merge_characterize.UNION_DISTINCT_ANCHORS (the constant that wrote 11-LADDER-RESULTS.json full_scale_entries); budget on recorded values = 282 GiB (inputs 87 + parity 173 + timed 22)
 - [Phase 12]: 12-04: Leg-2 recount Total is asserted EXACT vs the union anchor before the per-k-mer diff; timed arms carry output_sha256 from the final rep's actual output bytes
+- [Phase 12]: 12-02 full-scale session verdict NO-INVEST (exit 0): rustkmer merge median walls 63.34s (k=21) / 82.86s (k=31) beat jellyfish merge 88.44s / 114.70s — parity green at both k before any timed rep, exactly 3 counterbalanced reps per arm (D-02)
+- [Phase 12]: 12-02 findings recorded never smoothed: predicted-vs-measured +8.7..17.6% on all four rows (warmups landed within -6.4..+3.1%, suggesting a uniform timed-window host-state factor); k=31 merge-arm cv_warning (rep-0 101.51s); honest cache_state unavailable + route not-reported on all 18 reps
+- [Phase 12]: 12-02 Rule 1 fix: round-0 source-fingerprint lookup now tokenizes the dotted file name (Path.stem of CRR1936095_r1.part_001.fq.gz strips only .gz so suffix checks missed it); regression test added, suite 73 passed, fix committed before the session ran
 
 ### Pending Todos
 
@@ -144,6 +148,6 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-17T02:14:31.574Z
-Stopped at: Completed 12-04-PLAN.md
+Last session: 2026-11-17T09:09:39.102Z
+Stopped at: Completed 12-02-PLAN.md
 Resume file: None
