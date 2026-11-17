@@ -91,7 +91,7 @@ None yet.
 - [Environment, OPEN] `scripts/bench/tests/test_verify_threads.py::TestNegativeControls::test_pre_engine_n_plus_one_stub_is_measured_red` is a pre-existing ~50% macOS `sample`-race flake. A shared `target/` across git worktrees can bake a deleted `CARGO_MANIFEST_DIR` into test binaries — purge stale artifacts before trusting a red result.
 - [Carried, OPEN] IN-06/07/09 (Phase-04 review findings) deferred per triage 261111-spz; backlog 999.1-999.3 remain tracked in ROADMAP.md Backlog (opportunistic, not gate-blocking).
 - [Phase 9, OPEN] 8 Info findings in `09-REVIEW.md` (info only).
-- [Carried W1, OPEN] push dev so local commits get remote CI validation.
+- [Carried W1, RESOLVED 2026-11-18] pushed dev (through f4e2dc9) and tag v2.1 to origin — remote CI now sees every local commit.
 - [v2.1 close, acknowledged] Deferred-item acknowledgments recorded in the Deferred Items table below — the macOS flake and the auto-generated `.claude/CLAUDE.md` dataset-line drift remain the two live carry-forwards.
 
 ### Quick Tasks Completed
