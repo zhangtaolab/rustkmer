@@ -1,7 +1,7 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v2.0 — k=21 Counting Parity",
+  "milestone": "v2.1 — Merge Verdict & Producer Research",
   "phases": [
     {
       "number": "1",
@@ -51,18 +51,33 @@
     {
       "number": "10",
       "name": "Benchmark Verdict",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "11",
-      "name": "Minimizer Partitioning & Memory Ceiling",
+      "name": "Merge Characterization & Harness Prep",
+      "status": "complete"
+    },
+    {
+      "number": "12",
+      "name": "Full-Scale Merge Verdict",
+      "status": "complete"
+    },
+    {
+      "number": "13",
+      "name": "Producer Attribution Research",
+      "status": "pending"
+    },
+    {
+      "number": "14",
+      "name": "Parallel Extraction",
       "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd-progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd-progress --next",
+    "label": "Advance to the next step (plan phase 13)",
+    "reason": "Phase 3 of 4 — needs a plan"
   },
-  "updated_at": "2026-11-14T04:39:24.837Z"
+  "updated_at": "2026-11-17T10:02:11.793Z"
 }
