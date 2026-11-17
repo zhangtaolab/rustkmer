@@ -468,24 +468,30 @@ route = route_from_stderr(stderr)                        # "prefix-cache"|"not-r
 | A6 | Timed-stage results docs reuse schema v1 via `phase10.assemble_doc`/`validate_schema` (schema tolerates extra keys; merge arms carry the required name/reps/wall_s/peak_rss_bytes) | Don't Hand-Roll | If a required phase10 field doesn't fit (e.g. per-arm `threads` semantics for jellyfish), fall back to a dedicated evidence `kind` like the ladder's — still not a results-schema fork |
 | A7 | rustkmer merge default route at full scale is whatever admission picks (likely in-memory given 50%-of-RAM default vs ~23 GB output) — recorded honestly as "not-reported" unless the tool states a marker | Pitfall 7 | None: the report records the honest label either way; only prose expectations would shift |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Exit-code polarity and verdict rule wording (A1/A2)**
+All four questions were resolved at plan time; each resolution is encoded in the adopting plan artifact. No open questions remain.
+
+1. **Exit-code polarity and verdict rule wording (A1/A2)** — RESOLVED
    - What we know: D-01 locks "0/1/2 exit-code contract as the verdict carrier"; phase10's contract maps 0 = measured YES / 1 = measured NO / 2 = invalid; wall is the primary axis; both outcomes valid; merge-t1 never enters YES/NO.
    - What's unclear: which polarity INVEST gets, and whether NO-INVEST requires winning at BOTH k or is per-k.
+   - Resolution: exit 0 = NO-INVEST (rustkmer matches-or-beats at both k — the phase10 "good-for-rustkmer" shape), exit 1 = INVEST (loses at either k); exact median-wall equality is match-or-beat, no tolerance band; the rule is stated verbatim in the verdict doc. Encoded in 12-01-PLAN.md Task 1 (behavior + action) and must_haves [adjacency]; consumed by 12-02-PLAN.md's exit-code gates.
    - Recommendation: exit 0 = NO-INVEST (rustkmer matches-or-beats at both k — the phase10 "good-for-rustkmer" shape), exit 1 = INVEST (loses at either k); state the rule verbatim in the verdict doc. Confirm at plan review; the JSON + greppable line make the choice auditable either way.
 
-2. **Parity-stage warmup reuse (A5)**
+2. **Parity-stage warmup reuse (A5)** — RESOLVED
    - What we know: the protocol includes one discarded warmup per tool; parity requires one merge per tool before timing.
    - What's unclear: whether the parity merges should be recorded AS the warmups (they are untimed-for-verdict either way).
+   - Resolution: yes — the parity merges are recorded as warmup-marked records in the parity doc, and the timed stage cites them via warmup_provenance with no additional warmups. Encoded in 12-04-PLAN.md Task 1 (warmup records per A5) and Task 2 (warmup_provenance consumption).
    - Recommendation: yes — record them as warmups in the parity evidence; keeps the timed stage's warmup slot explicit-free and the arm count clean.
 
-3. **Evidence artifact naming/location**
+3. **Evidence artifact naming/location** — RESOLVED
    - What we know: pattern is committed evidence JSONs in the phase dir (ladder/prepare/rehearsal precedents); exact names are planner discretion.
+   - Resolution: the names suggested in Recommended Project Structure are pinned verbatim as files_modified in 12-02-PLAN.md frontmatter (12-REVALIDATE.json, 12-PARITY-K21/K31.json, 12-RESULTS-FULL-K21/K31.json, 12-VERDICT.json, 12-MERGE-REPORT.md, 12-RENDER-PROOF.json), all in the phase dir.
    - Recommendation: the names suggested in Recommended Project Structure; keep the `12-` prefix and one file per stage per k for the resume contract.
 
-4. **WR-02 opportunistic fix scope**
+4. **WR-02 opportunistic fix scope** — RESOLVED
    - What we know: `--render-report` without `--out` clobbers the default results.json (open warning finding); CONTEXT allows a same-touch fix if the renderer is extended.
+   - Resolution: the same-touch trigger does NOT fire — the merge-verdict renderer extension lives entirely in phase11.py, so bench.py's render-report path is not extended and WR-02 stays an open tracked finding (11-REVIEW-DISPOSITION.md). Encoded in 12-01-PLAN.md success criteria.
    - Recommendation: fold it into the renderer-extension task (require explicit `--out`), keeping bench.py's diff minimal and test-covered.
 
 ## Environment Availability
