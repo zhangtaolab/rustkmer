@@ -439,7 +439,11 @@ def check_source_fingerprints(manifest, source_paths=None,
 
         The recorded paths name the real files (e.g.
         CRR1936095_r1.part_001.fq.gz), so matching is token-based on the
-        file name/stem, never a bare equality against the part key.
+        file name/stem, never a bare equality against the part key. The
+        token check splits the full file name on '.' — the real recorded
+        shape's Path.stem is 'CRR1936095_r1.part_001.fq' (stem strips only
+        the final suffix), so suffix checks alone cannot match it; the
+        dotted-token check does ('part_001' is a token of the name).
         """
         matches = []
         for record in manifest.get("source_fingerprints", []):
@@ -448,7 +452,8 @@ def check_source_fingerprints(manifest, source_paths=None,
             if (file_name == name
                     or file_name.startswith(f"{name}.")
                     or stem == name
-                    or stem.endswith(f".{name}")):
+                    or stem.endswith(f".{name}")
+                    or name in file_name.split(".")):
                 matches.append(record)
         return matches
 

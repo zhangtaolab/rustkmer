@@ -1070,6 +1070,23 @@ class TestSourceFingerprintCrossCheck(TempDirCase):
             p11.check_source_fingerprints(manifest, source_paths=paths)
         self.assertIn("part_001", str(ctx.exception))
 
+    def test_real_recorded_path_shape_matches(self):
+        """GREEN: the manifest's real recorded paths (CRR1936095_r1.part_NNN
+        .fq.gz) match the part keys — Path.stem of that shape is
+        'CRR1936095_r1.part_001.fq' (stem strips only the final suffix), so
+        the suffix checks alone miss it and the round-0 gate died on the
+        live manifest (12-02 session, Rule 1 regression)."""
+        paths = self.write_sources()
+        real_shape = {}
+        for name in ("part_001", "part_006"):
+            real = self.tmp / f"CRR1936095_r1.{name}.fq.gz"
+            real.write_bytes(paths[name].read_bytes())
+            real_shape[name] = real
+        manifest = make_full_manifest(
+            source_fingerprints=self.recorded_fingerprints(real_shape))
+        fps = p11.check_source_fingerprints(manifest, source_paths=real_shape)
+        self.assertEqual(len(fps), 2)
+
 
 class TestRound0DocBuilder(unittest.TestCase):
     """The round-0 evidence layout plan 12-02's gates consume."""
