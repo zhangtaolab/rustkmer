@@ -133,7 +133,17 @@ Plans:
   2. The predicted-win model names BOTH ceilings — the parallelizable share and worker-side scaling — with every input number cited to a named full-scale source run (v2.0 measured walls: CLI 144.69 s k=21 / 147.08 s k=31; Python 165.05 s / 178.22 s) (PEXT-02).
   3. The D3-gate go/no-go decision is recorded as the research deliverable: either Phase 14 executes with cited evidence, or it does not fire and PEXT-03/PEXT-04 remain unexecuted by recorded decision (PEXT-02).
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+**Wave 1**
+- [ ] 13-01-PLAN.md — Measurement driver tracer: phase13.py skeleton + probe materialization + rehearsal-mode end-to-end + full-scale stage functions + Wave-0 unit module; D3 bar pre-registered (PEXT-01, PEXT-02)
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 13-02-PLAN.md — Live session: D-03 fingerprint gate (re-measure) + D-04 decompression + full-scale counterbalanced A/B/C/D + control matrix at both k + attribution/predicted-win/decision blocks (PEXT-01, PEXT-02)
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 13-03-PLAN.md — Gate memo render + ROADMAP Phase 14 annotation (D-02) + D-04 input lifecycle (deletion after memo commit) (PEXT-02)
 
 **Research flag**: none — the phase IS research, and its measurement design (arms A-D: stock / pre-decompressed / stage sub-timers / null consumer; controls; sizing model) is already specified in the milestone research; planning is protocol scheduling, not investigation.
 **Note**: Expected outcome per current evidence — inflate ~13% of producer wall (below the ~20% zlib-rs gate), parse+extraction ~85%+, so zero-dependency extraction parallelization is the likely lever; no new instrumentation required for the headline numbers (`--features profiling` diagnostics exist). The dataset's six independent gzip parts give a producer-per-file topology six files to spread across if Phase 14 runs.
