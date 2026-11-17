@@ -984,5 +984,365 @@ class TestRunMemoSeams(unittest.TestCase):
                 phase13.run_memo(self._args(tmp, path))
 
 
+def _attribution_runs(*, median_a=150.0, median_b=120.0, read_gz=6.0,
+                      read_plain=18.0, arm_c_gzip=65.0,
+                      arm_c_plain_producer=25.0, arm_c_busy=60.0,
+                      arm_d=21.0, k=21, reps=(1, 2, 3)):
+    """A complete per-k run set for the attribution/model fixtures.
+
+    Each probe value is per PART; the pair sum doubles it. Defaults encode:
+    inflate 42, count-phase 130, producer-plain 50, busy 120, arm-D 42,
+    route_send 8, output_stage 20.
+    """
+    runs = []
+    for rep in reps:
+        runs.append(run_record("A", k, rep, wall=median_a))
+        runs.append(run_record("B", k, rep, wall=median_b))
+        runs.append(run_record("control", k, rep, input_type="gzip",
+                               wall=read_gz))
+        runs.append(run_record("control", k, rep, input_type="plain",
+                               wall=read_plain))
+        for part in phase13.PINNED_PAIR:
+            runs.append(probe_record(
+                part, "gzip", k, rep, wall_nanos=arm_c_gzip * 10 ** 9,
+                producer_nanos=30 * 10 ** 9,
+                busy_nanos=arm_c_busy * 10 ** 9))
+            runs.append(probe_record(
+                part, "plain", k, rep, wall_nanos=60 * 10 ** 9,
+                producer_nanos=arm_c_plain_producer * 10 ** 9,
+                busy_nanos=50 * 10 ** 9))
+            runs.append(probe_record(
+                part, "plain", k, rep, wall_nanos=arm_d * 10 ** 9, arm="D"))
+    return runs
+
+
+class TestBuildAttribution(unittest.TestCase):
+    """D-09 arithmetic: delta correction, unclamped sign, residuals, split."""
+
+    def test_delta_correction_adds_back_the_read_delta(self):
+        """inflate = (A-B) - (read_gz - read_plain) = 30 + 12 = 42."""
+        block = phase13.build_attribution(_attribution_runs(), 21)
+        self.assertEqual(block["raw_a_minus_b_s"], 30.0)
+        self.assertEqual(block["delta_correction_s"], -12.0)
+        self.assertEqual(block["inflate_s"], 42.0)
+        self.assertEqual(block["parse_extract_s"], 42.0)
+        self.assertEqual(block["route_send_s"], 8.0)
+        self.assertEqual(block["output_stage_s"], 20.0)
+        self.assertEqual(block["count_phase_wall_probe_s"], 130.0)
+        self.assertEqual(block["producer_plain_probe_s"], 50.0)
+        self.assertEqual(block["worker_busy_total_s"], 120.0)
+
+    def test_correction_works_in_the_other_direction(self):
+        """Plain reads faster than gz -> the correction SUBTRACTS 12."""
+        runs = _attribution_runs(read_gz=18.0, read_plain=6.0)
+        block = phase13.build_attribution(runs, 21)
+        self.assertEqual(block["delta_correction_s"], 12.0)
+        self.assertEqual(block["inflate_s"], 18.0)
+
+    def test_negative_corrected_share_is_unclamped(self):
+        """A negative corrected share is recorded exactly as measured."""
+        runs = _attribution_runs(read_gz=60.0, read_plain=0.0)
+        block = phase13.build_attribution(runs, 21)
+        self.assertEqual(block["delta_correction_s"], 60.0)
+        self.assertEqual(block["inflate_s"], -30.0)
+        self.assertEqual(block["raw_a_minus_b_s"], 30.0)
+
+    def test_stage_residuals_and_composition_split_are_exact(self):
+        """route_send = producer_plain - parse_extract; output = median_A -
+        count_phase_wall; both through the input-type-scoped reduction."""
+        runs = _attribution_runs(arm_c_plain_producer=33.0, arm_d=11.0,
+                                 arm_c_gzip=61.5)
+        block = phase13.build_attribution(runs, 21)
+        self.assertEqual(block["producer_plain_probe_s"], 66.0)
+        self.assertEqual(block["parse_extract_s"], 22.0)
+        self.assertEqual(block["route_send_s"], 44.0)
+        self.assertEqual(block["count_phase_wall_probe_s"], 123.0)
+        self.assertEqual(block["output_stage_s"], 27.0)
+
+    def test_missing_arm_d_records_raise_naming_the_arm(self):
+        """No null-consumer runs -> a loud refusal naming the missing arm."""
+        runs = [record for record in _attribution_runs() if record["arm"] != "D"]
+        with self.assertRaisesRegex(ValueError, "arm-D"):
+            phase13.build_attribution(runs, 21)
+
+    def test_missing_control_plain_records_raise(self):
+        """A missing control row would leave the correction uncited."""
+        runs = [record for record in _attribution_runs()
+                if not (record["arm"] == "control"
+                        and record["input_type"] == "plain")]
+        with self.assertRaisesRegex(ValueError, "control plain"):
+            phase13.build_attribution(runs, 21)
+
+    def test_every_value_carries_a_citation(self):
+        """Each attribution value names its source records."""
+        block = phase13.build_attribution(_attribution_runs(), 21)
+        for key in ("inflate_s", "parse_extract_s", "route_send_s",
+                    "output_stage_s", "raw_a_minus_b_s",
+                    "delta_correction_s", "count_phase_wall_probe_s",
+                    "producer_plain_probe_s", "worker_busy_total_s"):
+            self.assertTrue(block["citations"][key], msg=key)
+
+
+class TestBuildPredictedWin(unittest.TestCase):
+    """PEXT-02 model completeness: both ceilings, composition, citations."""
+
+    @staticmethod
+    def block():
+        runs = _attribution_runs()
+        attribution = phase13.build_attribution(runs, 21)
+        return phase13.build_predicted_win(attribution, 21, runs)
+
+    def test_serial_terms_and_derived_floors(self):
+        """serial=50; derated floor=55.25; idealized=52.625; worker=7.5."""
+        block = self.block()
+        self.assertEqual(block["serial_terms_s"], 50.0)
+        self.assertAlmostEqual(block["parallelizable_floor_derated_s"], 55.25)
+        self.assertAlmostEqual(
+            block["parallelizable_floor_idealized_s"], 52.625)
+        self.assertAlmostEqual(block["worker_floor_s"], 7.5)
+
+    def test_composition_is_max_of_floors_plus_output_stage(self):
+        """predicted_full_wall = max(floors) + output_stage = 75.25."""
+        block = self.block()
+        self.assertAlmostEqual(block["predicted_full_wall_s"], 75.25)
+        self.assertAlmostEqual(block["predicted_improvement_pct"], 49.8333333,
+                               places=5)
+        self.assertEqual(block["worker_scaling_ceiling"], 16)
+        self.assertEqual(block["extractor_count"], 16)
+        self.assertEqual(block["mode"], "point")
+
+    def test_anomaly_ratios_are_recorded(self):
+        """probe_vs_cli and worker_busy ratios are model outputs."""
+        block = self.block()
+        self.assertAlmostEqual(block["probe_vs_cli_ratio"], 130.0 / 150.0)
+        self.assertAlmostEqual(block["worker_busy_ratio"],
+                               120.0 / (16 * 130.0))
+
+    def test_every_floor_fields_citation_is_named(self):
+        """Each model input carries its source record keys."""
+        block = self.block()
+        for key in ("parse_extract_s", "worker_busy_total_s", "route_send_s",
+                    "output_stage_s", "arm_a_median_s"):
+            self.assertTrue(block["citations"][key], msg=key)
+
+    def test_missing_input_raises_naming_it(self):
+        """An unresolved attribution input is a loud refusal, never a 0."""
+        runs = _attribution_runs()
+        attribution = phase13.build_attribution(runs, 21)
+        attribution.pop("worker_busy_total_s")
+        with self.assertRaisesRegex(ValueError, "worker_busy_total_s"):
+            phase13.build_predicted_win(attribution, 21, runs)
+
+    def test_missing_arm_a_median_raises(self):
+        """Without arm-A records or a recorded median the model refuses."""
+        runs = _attribution_runs()  # k=21 only
+        attribution = phase13.build_attribution(runs, 21)
+        attribution.pop("arm_a_median_s", None)
+        with self.assertRaisesRegex(ValueError, "arm_a_median_s"):
+            phase13.build_predicted_win(attribution, 31, runs)
+
+
+class TestAnomalyBoundsMode(unittest.TestCase):
+    """A3/A4: anomaly criteria drive mode='bounds' with a conservative end."""
+
+    def test_probe_ratio_outside_band_bounds(self):
+        """count-phase probe outside (0.25, 1.0] of median_A -> bounds."""
+        runs = _attribution_runs(arm_c_gzip=100.0)  # pair sum 200 / 150
+        attribution = phase13.build_attribution(runs, 21)
+        block = phase13.build_predicted_win(attribution, 21, runs)
+        self.assertEqual(block["mode"], "bounds")
+        self.assertGreater(block["probe_vs_cli_ratio"], 1.0)
+
+    def test_worker_busy_ratio_over_max_bounds(self):
+        """Worker busy over the pinned max -> bounds."""
+        runs = _attribution_runs(arm_c_busy=1300.0)  # pair sum 2600
+        attribution = phase13.build_attribution(runs, 21)
+        block = phase13.build_predicted_win(attribution, 21, runs)
+        self.assertEqual(block["mode"], "bounds")
+        self.assertGreater(block["worker_busy_ratio"], 1.0)
+
+    def test_zero_busy_total_bounds_with_interval_and_assumptions(self):
+        """A non-positive worker busy total -> bounds + assumptions list."""
+        runs = _attribution_runs()
+        attribution = phase13.build_attribution(runs, 21)
+        attribution["worker_busy_total_s"] = 0.0
+        block = phase13.build_predicted_win(attribution, 21, runs)
+        self.assertEqual(block["mode"], "bounds")
+        self.assertTrue(block["what_would_need_to_be_true"])
+        walls = block["bounds"]["predicted_full_wall_s"]
+        pcts = block["bounds"]["predicted_improvement_pct"]
+        self.assertLessEqual(walls["upper_s"], walls["lower_s"])
+        self.assertGreaterEqual(pcts["upper_pct"], pcts["lower_pct"])
+        self.assertAlmostEqual(block["predicted_full_wall_s"],
+                               walls["lower_s"])
+        self.assertAlmostEqual(block["predicted_improvement_pct"],
+                               pcts["lower_pct"])
+
+    def test_bounds_conservative_end_drives_the_decision(self):
+        """A bounds fixture at 9.99 conservative is NO-GO though its upper
+        bound clears the bar."""
+        by_k = {
+            "21": {"predicted_improvement_pct": 9.99,
+                   "bounds": {"predicted_improvement_pct": {
+                       "lower_pct": 9.99, "upper_pct": 15.0}}},
+            "31": {"predicted_improvement_pct": 12.0},
+        }
+        decision = phase13.derive_gate_decision(by_k)
+        self.assertEqual(decision["decision"], "NO-GO")
+        self.assertTrue(decision["conservative_bound_used"])
+
+
+class TestDeriveGateDecision(unittest.TestCase):
+    """D-05: >= bar, both-k conjunction, derated input only."""
+
+    def test_exactly_the_bar_at_both_k_is_go(self):
+        """>= semantics: 10.0 at both k is GO."""
+        decision = phase13.derive_gate_decision({
+            "21": {"predicted_improvement_pct": 10.0},
+            "31": {"predicted_improvement_pct": 10.0}})
+        self.assertEqual(decision["decision"], "GO")
+        self.assertEqual(decision["bar_pct"], 10.0)
+        self.assertTrue(decision["conservative_bound_used"])
+
+    def test_either_k_below_the_bar_is_no_go(self):
+        """Conjunction: 9.99 at one k is NO-GO even if the other clears."""
+        decision = phase13.derive_gate_decision({
+            "21": {"predicted_improvement_pct": 10.0},
+            "31": {"predicted_improvement_pct": 9.99}})
+        self.assertEqual(decision["decision"], "NO-GO")
+
+    def test_idealized_only_clearance_is_no_go(self):
+        """The idealized E=M bound never participates in the bar test."""
+        decision = phase13.derive_gate_decision({
+            "21": {"predicted_improvement_pct": 5.0,
+                   "idealized_predicted_improvement_pct": 20.0},
+            "31": {"predicted_improvement_pct": 5.0,
+                   "idealized_predicted_improvement_pct": 20.0}})
+        self.assertEqual(decision["decision"], "NO-GO")
+
+    def test_missing_k_raises_not_silently_no_go(self):
+        """The bar applies at both k: a missing k is a loud refusal."""
+        with self.assertRaisesRegex(ValueError, "no predicted-win block"):
+            phase13.derive_gate_decision({
+                "21": {"predicted_improvement_pct": 20.0}})
+
+    def test_python_context_never_feeds_the_decision(self):
+        """D-06: the Python walls are context and never a bar input."""
+        cleared = phase13.derive_gate_decision({
+            "21": {"predicted_improvement_pct": 20.0,
+                   "python_wall_s": phase13.V2_0_PYTHON_WALL_K21_S},
+            "31": {"predicted_improvement_pct": 20.0,
+                   "python_wall_s": phase13.V2_0_PYTHON_WALL_K31_S}})
+        below = phase13.derive_gate_decision({
+            "21": {"predicted_improvement_pct": 5.0,
+                   "python_wall_s": phase13.V2_0_PYTHON_WALL_K21_S},
+            "31": {"predicted_improvement_pct": 5.0,
+                   "python_wall_s": phase13.V2_0_PYTHON_WALL_K31_S}})
+        self.assertEqual(cleared["decision"], "GO")
+        self.assertEqual(below["decision"], "NO-GO")
+
+
+class TestControlArmArgv(unittest.TestCase):
+    """The pure-read control reads BOTH pinned-pair parts per invocation."""
+
+    def test_one_argv_per_input_type_with_both_parts(self):
+        """Each control argv is list-form `cat` over the two pinned parts."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = _measure_ctx(tmp)
+            seen = []
+            ctx["run_devnull"] = lambda argv: (
+                seen.append(list(argv)), _rep_dict(6.0))[1]
+            records = phase13._control_records(21, 1, ctx)
+            self.assertEqual(len(seen), 2)
+            self.assertEqual(len(records), 2)
+            gzip_argv, plain_argv = seen
+            self.assertEqual(gzip_argv[0], "cat")
+            self.assertIn(str(ctx["inputs"]["part_001"]["gzip"]), gzip_argv)
+            self.assertIn(str(ctx["inputs"]["part_006"]["gzip"]), gzip_argv)
+            self.assertEqual(len(gzip_argv), 3)
+            self.assertIn(str(ctx["inputs"]["part_001"]["plain"]), plain_argv)
+            self.assertIn(str(ctx["inputs"]["part_006"]["plain"]), plain_argv)
+            self.assertEqual({record["input_type"] for record in records},
+                             {"gzip", "plain"})
+
+
+class TestMemoBranches(unittest.TestCase):
+    """render_memo_text: section contract, decision flip, bounds branch."""
+
+    def test_render_carries_every_pinned_section(self):
+        """Decision line, both ceilings, stage table, fresh base, gate
+        provenance, bar statement, and the D-06 block are all present."""
+        memo = phase13.render_memo_text(_gate_fixture_doc())
+        for token in ("DECISION: GO", "Pre-registered D-05 bar",
+                      "PARALLELIZABLE CEILING", "WORKER-SIDE CEILING",
+                      "Stage attribution", "k=21", "k=31",
+                      "Fresh base", "D-03/D-10 gate provenance",
+                      "Python-surface context (D-06)", "165.05", "178.22",
+                      phase13.V2_0_PYTHON_MODULE_SHA256, "context only",
+                      "binary-fingerprint caveat", "Lifecycle / deletion"):
+            self.assertIn(token, memo)
+
+    def test_flipping_the_decision_changes_the_text(self):
+        """GO and NO-GO renders differ on the decision line and branches."""
+        go_doc = _gate_fixture_doc()
+        no_go_doc = _gate_fixture_doc()
+        no_go_doc["predicted_win"]["decision"] = "NO-GO"
+        go_text = phase13.render_memo_text(go_doc)
+        no_go_text = phase13.render_memo_text(no_go_doc)
+        self.assertNotEqual(go_text, no_go_text)
+        self.assertIn("DECISION: GO", go_text)
+        self.assertIn("DECISION: NO-GO", no_go_text)
+
+    def test_bounds_mode_renders_the_interval_and_assumptions(self):
+        """A bounds model replaces point shares with the interval + list."""
+        doc = _gate_fixture_doc()
+        doc["predicted_win"]["decision"] = "NO-GO"
+        block = doc["predicted_win"]["per_k"]["21"]
+        block["mode"] = "bounds"
+        block["bounds"] = {
+            "predicted_full_wall_s": {"lower_s": 90.0, "upper_s": 70.0},
+            "predicted_improvement_pct": {"lower_pct": 40.0,
+                                          "upper_pct": 53.3333},
+        }
+        block["what_would_need_to_be_true"] = [
+            "the probe topology must match the CLI pair-run"]
+        memo = phase13.render_memo_text(doc)
+        self.assertIn("BOUNDS MODE", memo)
+        self.assertIn("What would need to be true", memo)
+        self.assertIn("40.0000", memo)
+
+    def test_go_memo_lists_all_six_parts(self):
+        """The GO per-part block names every dataset part token."""
+        memo = phase13.render_memo_text(_gate_fixture_doc())
+        self.assertIn("Phase-14 sizing context", memo)
+        self.assertIn("probe-vs-CLI topology", memo)
+        for part in phase13.EXPECTED_PARTS:
+            self.assertIn(part, memo)
+
+
+class TestPreRegisteredConstants(unittest.TestCase):
+    """D-05/A3/A4 constants are load-bearing and asserted, never drifted."""
+
+    def test_bar_and_model_constants(self):
+        """Bar 10.0, 16 extractors, E=0.5, ceiling == 16, band, busy max."""
+        self.assertEqual(phase13.D3_BAR_FULL_WALL_IMPROVEMENT_PCT, 10.0)
+        self.assertEqual(phase13.EXTRACTOR_COUNT, 16)
+        self.assertEqual(phase13.EXTRACTOR_EFFICIENCY_DERATED, 0.5)
+        self.assertEqual(phase13.WORKER_SCALING_CEILING,
+                         phase13.EXTRACTOR_COUNT)
+        self.assertEqual(phase13.PROBE_VS_CLI_RATIO_BAND, (0.25, 1.0))
+        self.assertEqual(phase13.WORKER_BUSY_RATIO_MAX, 1.0)
+
+    def test_gate_shape_constants(self):
+        """Both k, 3 reps, the pinned pair, and the phase kind."""
+        self.assertEqual(phase13.GATE_KS, (21, 31))
+        self.assertEqual(phase13.GATE_REPS, 3)
+        self.assertEqual(phase13.PINNED_PAIR, ("part_001", "part_006"))
+        self.assertEqual(phase13.KIND, "phase13-producer-attribution")
+        self.assertEqual(phase13.V2_0_RUSTKMER_SHA256,
+                         "8f38d20c2e3dc77dfc0ef80c9a2475613da1aa7ad131bd240"
+                         "d5ec74fc87c3d23")
+
+
 if __name__ == "__main__":
     unittest.main()
