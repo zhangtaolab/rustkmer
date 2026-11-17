@@ -17,7 +17,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Producer Research & Conditional Extraction
 
-- [ ] **PEXT-01**: Producer stage attribution is measured at FULL scale on the shipped engine, both k, with fingerprinted builds — stage table (inflate / parse / extract / route-send) via the plain-vs-gzip differential plus a pure-read control; slice-scale numbers and pre-Phase-7 profiles never feed the gate
+- [x] **PEXT-01**: Producer stage attribution is measured at FULL scale on the shipped engine, both k, with fingerprinted builds — stage table (inflate / parse / extract / route-send) via the plain-vs-gzip differential plus a pure-read control; slice-scale numbers and pre-Phase-7 profiles never feed the gate
 - [ ] **PEXT-02**: Predicted-win model names both ceilings (parallelizable share × worker-side scaling) and the D3-gate go/no-go decision is recorded as the research deliverable
 - [ ] **PEXT-03**: CONDITIONAL — executes only if the D3 gate fires: parallel extraction implemented with the topology decided in phase planning from attribution data, preserving all ten engine invariants (partition disjointness; byte-exact differentials; `.rkdb` sha256 identity across thread counts; honestly-extended thread-observability gate; flush/token happens-before; true t1 sequential path; bounded in-flight memory; frozen 12-name `PyCounter` surface; no-unwrap/error contracts; clean teardown with error-injection tests)
 - [ ] **PEXT-04**: CONDITIONAL (paired with PEXT-03) — MEM guardrail re-measured at full scale post-change: peak RSS stays below the jellyfish references at both k
@@ -65,7 +65,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MBENCH-03 | Phase 12 | Complete |
 | MBENCH-04 | Phase 12 | Complete |
 | MBENCH-05 | Phase 11 | Complete |
-| PEXT-01 | Phase 13 | Pending |
+| PEXT-01 | Phase 13 | Complete |
 | PEXT-02 | Phase 13 | Pending |
 | PEXT-03 | Phase 14 (conditional — D3) | Pending (gated) |
 | PEXT-04 | Phase 14 (conditional — D3) | Pending (gated) |

@@ -4,18 +4,18 @@ milestone: v2.1
 milestone_name: Merge Verdict & Producer Research
 current_phase: 13
 current_phase_name: Producer Attribution Research
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-11-17T12:11:49.015Z"
+stopped_at: Completed 13-02-PLAN.md
+last_updated: "2026-11-17T14:37:15.066Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 13 execution started
-state_head: d992f6fce6df6f00076f4ea6a9cc99d4c799bef8
+state_head: a13457f0bf188ad5e59c24cc4db7484844e3ad6c
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 15
-  completed_plans: 13
+  completed_plans: 14
   percent: 50
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-16)
 ## Current Position
 
 Phase: 13 (Producer Attribution Research) — EXECUTING
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 3
 Status: Ready to execute
 Last activity: 2026-11-17 — Phase 13 execution started
@@ -74,6 +74,7 @@ Progress: [█████░░░░░] 50%
 | Phase 12 P02 | 6h 47min | 3 tasks | 10 files |
 | Phase 12 P03 | 12min | 2 tasks | 2 files |
 | Phase 13 P01 | 14 min | 3 tasks | 4 files |
+| Phase 13 P02 | 2h 19min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -120,6 +121,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 13]: Phase-13 driver implements D-09 attribution exactly as researched (delta-corrected inflate unclamped; route_send/output_stage residuals) and reduces probe nanos through the input-type-scoped pair-sum median, never bench.reduce_arm
 - [Phase 13]: A3/A4 anomaly criteria drive bounds mode; the conservative (derated) end remains the D-05 bar input in both modes
 - [Phase 13]: Materialized probe crates share one scratch CARGO_TARGET_DIR and are built only after seeding + sha256-verifying their committed lock fixtures
+- [Phase 13]: 13-02: fresh arm-A base measured 158.29 s k=21 / 177.63 s k=31 (D-10 re-measure); v2.0 walls remain disclosed-fingerprint corroboration only
+- [Phase 13]: 13-02: D-09 attribution (unclamped): inflate 26.25/21.02 s, parse_extract 20.96/20.85 s, route_send 91.80/92.99 s, output_stage 22.39/41.84 s; read-delta corrections -1.13/-1.29 s recorded negative as measured
+- [Phase 13]: 13-02: D-05 decision NO-GO — derated predicted improvement 9.62% (k=21) below the 10.0 bar, 10.80% (k=31) above; both-k conjunction fails on k=21; both model modes point (A3/A4 not tripped)
+- [Phase 13]: 13-02: plain inputs measured 4.57x gzip (76.29 GB vs 16.71 GB); cache_state and thermal unavailable on every rep (honest labels); per-rep .rkdb outputs deleted
 
 ### Pending Todos
 
@@ -156,6 +161,6 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-17T12:11:43.014Z
-Stopped at: Completed 13-01-PLAN.md
+Last session: 2026-11-17T14:37:14.927Z
+Stopped at: Completed 13-02-PLAN.md
 Resume file: None
