@@ -21,6 +21,8 @@ The load-bearing rules encoded here (plan 12-01 Wave 0):
 Stdlib unittest only — no pytest.
 """
 
+import argparse
+import collections
 import contextlib
 import copy
 import io
@@ -39,6 +41,7 @@ if __package__ in (None, ""):
 
 from scripts.bench import phase11 as p11
 from scripts.bench import merge_characterize as mc
+from scripts.bench.prepare_inputs import write_manifest
 
 # Fixture-only wall medians. They are asserted ABSENT from the controller
 # source text (the renderer must carry no measurement literals).
@@ -721,6 +724,585 @@ class TestRenderDeterminism(TempDirCase):
         # The renderer carries no fixture measurement literals.
         for literal in FIXTURE_FLOATS:
             self.assertNotIn(literal, source)
+
+
+# ---------------------------------------------------------------------------
+# Plan 12-04 session stages: round-0 revalidate + parity (Leg-2 recount diff)
+# ---------------------------------------------------------------------------
+
+# 11-PREPARE-RECORD.md §3 recorded per-part values — fixtures use the REAL
+# recorded integers so the anchor arithmetic exercises the true scale.
+PART_TOTALS = {
+    21: {"part_001": 4_483_548_820, "part_006": 4_483_550_383},
+    31: {"part_001": 4_137_846_285, "part_006": 4_137_847_745},
+}
+PART_DISTINCT = {
+    21: {"part_001": 664_641_739, "part_006": 664_724_158},
+    31: {"part_001": 590_112_236, "part_006": 590_173_812},
+}
+
+
+def fake_identity_provenance(tool="rustkmer"):
+    """A validate-clean provenance block carrying the PINNED binary hashes.
+
+    assert_binary_identity compares sha256s against the ladder constants, so
+    the happy-path fake must present the real pinned hashes to pass.
+    """
+    prov = fake_provenance()
+    if tool == "rustkmer":
+        prov["binary"] = {"path": "/repo/target/release/rustkmer",
+                          "size_bytes": 1234,
+                          "sha256": p11.RUSTKMER_BIN_SHA256}
+    else:
+        prov = fake_jellyfish_provenance()
+        prov["binary"]["sha256"] = p11.JELLYFISH_BIN_SHA256
+    return prov
+
+
+def make_full_manifest(source_fingerprints=None):
+    """Both-k manifest shaped like the recorded one (all 8 records)."""
+    artifacts = []
+    jellyfish_inputs = []
+    for k in (21, 31):
+        for part in ("part_001", "part_006"):
+            artifacts.append({
+                "path": f"/inputs/{part}.k{k}.rkdb", "k": k,
+                "sha256": f"{k}{part[-1]}".ljust(64, "0"),
+                "size_bytes": 10 + k, "tool": "rustkmer",
+                "canonical": True,
+                "distinct": PART_DISTINCT[k][part],
+                "total": PART_TOTALS[k][part],
+            })
+            jellyfish_inputs.append({
+                "path": f"/inputs/{part}.k{k}.jf", "k": k,
+                "sha256": f"jf{k}{part[-1]}".ljust(64, "0"),
+                "size_bytes": 5 + k, "hash_size": "1G",
+            })
+    manifest = {
+        "kind": "merge-input-manifest", "schema_version": 1,
+        "artifacts": artifacts, "jellyfish_inputs": jellyfish_inputs,
+        "source_fingerprints": (source_fingerprints
+                                if source_fingerprints is not None else
+                                [{"path": str(p11.PART_PATHS[name]),
+                                  "sha256": "s" * 64, "size_bytes": 100}
+                                 for name in sorted(p11.PART_PATHS)]),
+    }
+    return manifest
+
+
+def fixture_revalidate(artifacts_dir):
+    """The revalidate contract over a tempdir fixture (identity-only).
+
+    Mirrors prepare_inputs.revalidate_stage's loud identity contract —
+    fingerprint every recorded artifact, reject drift, reject unrecorded
+    .rkdb/.jf files — without the binary-bound stats() re-check (that leg is
+    live-proven in test_prepare_inputs.py against the real artifacts).
+    """
+    artifacts_dir = Path(artifacts_dir)
+    manifest = json.loads(
+        (artifacts_dir / "manifest.json").read_text(encoding="utf-8"))
+    recorded_names = set()
+    for record in (manifest.get("artifacts", [])
+                   + manifest.get("jellyfish_inputs", [])):
+        path = Path(record["path"])
+        if not path.is_file():
+            raise RuntimeError(
+                f"revalidate: recorded artifact missing: {path}")
+        fp = p11.fingerprint(path)
+        if fp["sha256"] != record["sha256"]:
+            raise RuntimeError(
+                f"revalidate: {path.name} sha256 {fp['sha256']} != recorded "
+                f"{record['sha256']} — tampered or rebuilt artifact, never a "
+                "silent repair")
+        recorded_names.add(path.name)
+    for path in sorted(artifacts_dir.iterdir()):
+        if (path.is_file() and path.suffix in (".rkdb", ".jf")
+                and path.name not in recorded_names):
+            raise RuntimeError(
+                f"revalidate: artifact {path.name} has no manifest record — "
+                "an unrecorded artifact is a loud error, never a silent "
+                "rebuild (probe MBENCH-01/empty)")
+    return manifest
+
+
+class TestAnchorEquality(unittest.TestCase):
+    """EXACT union-anchor equality over the manifest's per-part records."""
+
+    def test_exact_per_part_sums_pass_and_carry_layout(self):
+        """Real per-part Totals sum to the union anchors; layout is pinned."""
+        anchors = p11.assert_anchor_equality(make_full_manifest())
+        self.assertEqual(anchors["21"],
+                         {"sum": 8_967_099_203, "expected": 8_967_099_203,
+                          "exact": True})
+        self.assertEqual(anchors["31"],
+                         {"sum": 8_275_694_030, "expected": 8_275_694_030,
+                          "exact": True})
+
+    def test_one_off_sum_raises_naming_both_values(self):
+        """A one-off per-part total is a loud error naming computed/expected."""
+        manifest = make_full_manifest()
+        manifest["artifacts"][0]["total"] += 1
+        with self.assertRaises(RuntimeError) as ctx:
+            p11.assert_anchor_equality(manifest)
+        message = str(ctx.exception)
+        self.assertIn(str(8_967_099_203 + 1), message)
+        self.assertIn(str(8_967_099_203), message)
+        self.assertIn("sum-of-counts", message)
+
+    def test_missing_k_records_raise(self):
+        """A manifest missing one k's records cannot reconcile its anchor."""
+        manifest = make_full_manifest()
+        manifest["artifacts"] = [record for record in manifest["artifacts"]
+                                 if record["k"] != 31]
+        with self.assertRaises(RuntimeError) as ctx:
+            p11.assert_anchor_equality(manifest)
+        self.assertIn("k=31", str(ctx.exception))
+
+
+class TestSessionBudget(unittest.TestCase):
+    """D-12 session-budget arithmetic (deterministic, constants cited)."""
+
+    def test_recorded_inputs_exceed_floor_and_deterministic(self):
+        """The recorded inputs yield a GiB int above the derived floor."""
+        budget = p11.session_budget_gb(
+            inputs_bytes=93_135_484_166,
+            entries={"21": 897266581, "31": 1146353600})
+        self.assertIsInstance(budget, int)
+        self.assertGreater(budget, p11.DEFAULT_DISK_FLOOR_GB)
+        self.assertEqual(
+            budget, p11.session_budget_gb(
+                inputs_bytes=93_135_484_166,
+                entries={"21": 897266581, "31": 1146353600}))
+
+    def test_breakdown_cites_constants_and_terms(self):
+        """The breakdown names DUMP_BYTES_PER_LINE and the ladder source."""
+        breakdown = p11.session_budget(
+            inputs_bytes=93_135_484_166,
+            entries={"21": 897266581, "31": 1146353600})
+        constants = breakdown["constants"]
+        self.assertEqual(constants["dump_bytes_per_line"],
+                         p11.DUMP_BYTES_PER_LINE)
+        self.assertIn("11-LADDER-RESULTS.json", constants["entries_source"])
+        # The terms recompute exactly from the pinned formula.
+        gib = 1 << 30
+        self.assertEqual(breakdown["parity_transient_gb"],
+                         {"21": -(-897266581 * 30 * 3 // gib),
+                          "31": -(-1146353600 * 30 * 3 // gib)})
+        self.assertEqual(breakdown["timed_transient_gb"],
+                         -(-1146353600 * 20 // gib))
+        self.assertEqual(breakdown["session_budget_gb"],
+                         breakdown["inputs_gb"]
+                         + sum(breakdown["parity_transient_gb"].values())
+                         + breakdown["timed_transient_gb"])
+
+
+class TestRecountVsMergedEqual(TempDirCase):
+    """Leg-2 recount-vs-merged diff through the streaming dump pipeline."""
+
+    def write_dump(self, name, lines):
+        path = self.tmp / name
+        path.write_text("".join(line + "\n" for line in lines),
+                        encoding="utf-8")
+        return path
+
+    def builders(self, recount_lines, merged_lines):
+        """cp-style builders: each receives the raw output path argument and
+        writes the fixture bytes there itself (the via_stdout=False shape —
+        rustkmer dump -o writes its own file, nothing is captured)."""
+        recount_fixture = self.write_dump("recount.txt", recount_lines)
+        merged_fixture = self.write_dump("merged.txt", merged_lines)
+        received = []
+        recount_builder = lambda raw: (received.append(("recount", raw)),
+                                       ["cp", str(recount_fixture),
+                                        str(raw)])[-1]
+        merged_builder = lambda raw: (received.append(("merged", raw)),
+                                      ["cp", str(merged_fixture),
+                                       str(raw)])[-1]
+        return recount_builder, merged_builder, received
+
+    def test_identical_unordered_fixtures_pass_deterministically(self):
+        """GREEN: identical fixtures pass; unordered lines sort LC_ALL=C."""
+        lines = ["CCCC\t1", "AAAA\t2", "GGGG\t5", "TTTT\t3"]
+        recount_builder, merged_builder, received = self.builders(lines,
+                                                                  lines)
+        self.assertTrue(p11.recount_vs_merged_equal(
+            "unused.rkdb", "unused.rkdb", "unused",
+            workdir=self.tmp / "leg2",
+            recount_dump_builder=recount_builder,
+            merged_dump_builder=merged_builder))
+        # The builders received a raw output path argument each (the
+        # via_stdout=False contract: the dump command writes its own file).
+        self.assertEqual([name for name, _raw in received],
+                         ["recount", "merged"])
+        for _name, raw in received:
+            self.assertTrue(str(raw).endswith(".raw"))
+
+    def test_reordered_identical_lines_pass(self):
+        """GREEN: byte order across the two sides does not matter."""
+        recount_builder, merged_builder, _received = self.builders(
+            ["AAAA\t2", "CCCC\t1"], ["CCCC\t1", "AAAA\t2"])
+        self.assertTrue(p11.recount_vs_merged_equal(
+            "unused.rkdb", "unused.rkdb", "unused",
+            workdir=self.tmp / "leg2",
+            recount_dump_builder=recount_builder,
+            merged_dump_builder=merged_builder))
+
+    def test_altered_count_raises_naming_line_and_sides(self):
+        """RED: one differing count names the sorted line and both sides."""
+        recount_builder, merged_builder, _received = self.builders(
+            ["AAAA\t2", "CCCC\t2"], ["AAAA\t2", "CCCC\t1"])
+        with self.assertRaises(RuntimeError) as ctx:
+            p11.recount_vs_merged_equal(
+                "unused.rkdb", "unused.rkdb", "unused",
+                workdir=self.tmp / "leg2",
+                recount_dump_builder=recount_builder,
+                merged_dump_builder=merged_builder)
+        message = str(ctx.exception)
+        self.assertIn("line 1", message)
+        self.assertIn("recount", message)
+        self.assertIn("merged", message)
+        self.assertIn("CCCC\\t2", message)
+        self.assertIn("CCCC\\t1", message)
+
+    def test_empty_side_raises_loudly(self):
+        """RED: an empty dump can never pass the gate (MBENCH-02/empty)."""
+        recount_builder, merged_builder, _received = self.builders(
+            ["AAAA\t1"], [])
+        with self.assertRaises(RuntimeError) as ctx:
+            p11.recount_vs_merged_equal(
+                "unused.rkdb", "unused.rkdb", "unused",
+                workdir=self.tmp / "leg2",
+                recount_dump_builder=recount_builder,
+                merged_dump_builder=merged_builder)
+        self.assertIn("empty", str(ctx.exception))
+
+    def test_length_mismatch_raises(self):
+        """RED: differing line counts name the length mismatch."""
+        recount_builder, merged_builder, _received = self.builders(
+            ["AAAA\t1", "CCCC\t1"], ["AAAA\t1"])
+        with self.assertRaises(RuntimeError) as ctx:
+            p11.recount_vs_merged_equal(
+                "unused.rkdb", "unused.rkdb", "unused",
+                workdir=self.tmp / "leg2",
+                recount_dump_builder=recount_builder,
+                merged_dump_builder=merged_builder)
+        self.assertIn("length", str(ctx.exception))
+        self.assertIn("2 lines", str(ctx.exception))
+        self.assertIn("1 lines", str(ctx.exception))
+
+    def test_malformed_line_raises(self):
+        """RED: a non 'kmer count' line is a loud parse error."""
+        recount_builder, merged_builder, _received = self.builders(
+            ["AAAA\t1"], ["AAAA\t1", "garbage"])
+        with self.assertRaises(RuntimeError) as ctx:
+            p11.recount_vs_merged_equal(
+                "unused.rkdb", "unused.rkdb", "unused",
+                workdir=self.tmp / "leg2",
+                recount_dump_builder=recount_builder,
+                merged_dump_builder=merged_builder)
+        self.assertIn("dump parse", str(ctx.exception))
+
+    def test_stdout_only_builder_cannot_pass(self):
+        """RED: Leg 2 is via_stdout=False — stdout is never captured into
+        the raw dump file, so a stdout-only dump builder cannot pass."""
+        stdout_fixture = self.write_dump("stdout.txt", ["AAAA\t1"])
+        recount_builder = lambda raw: ["cat", str(stdout_fixture)]
+        merged_fixture = self.write_dump("merged.txt", ["AAAA\t1"])
+        merged_builder = lambda raw: ["cp", str(merged_fixture), str(raw)]
+        with self.assertRaises(RuntimeError):
+            p11.recount_vs_merged_equal(
+                "unused.rkdb", "unused.rkdb", "unused",
+                workdir=self.tmp / "leg2",
+                recount_dump_builder=recount_builder,
+                merged_dump_builder=merged_builder)
+
+
+class TestSourceFingerprintCrossCheck(TempDirCase):
+    """Source-swap defense: re-fingerprint the pinned part pair."""
+
+    def write_sources(self):
+        paths = {}
+        for name, seed in (("part_001", "src-a"), ("part_006", "src-b")):
+            path = self.tmp / f"{name}.fq.gz"
+            path.write_text(seed, encoding="utf-8")
+            paths[name] = path
+        return paths
+
+    def recorded_fingerprints(self, paths):
+        return [{"path": str(paths[name]),
+                 "sha256": p11.fingerprint(paths[name])["sha256"],
+                 "size_bytes": p11.fingerprint(paths[name])["size_bytes"]}
+                for name in sorted(paths)]
+
+    def test_matching_sources_pass(self):
+        """GREEN: re-fingerprinted sources match the manifest records."""
+        paths = self.write_sources()
+        manifest = make_full_manifest(
+            source_fingerprints=self.recorded_fingerprints(paths))
+        fps = p11.check_source_fingerprints(manifest, source_paths=paths)
+        self.assertEqual(len(fps), 2)
+        self.assertEqual({Path(fp["path"]).name for fp in fps},
+                         {"part_001", "part_006"})
+
+    def test_swapped_source_raises_naming_both_hashes(self):
+        """RED: a regenerated source names recorded vs computed hashes."""
+        paths = self.write_sources()
+        manifest = make_full_manifest(
+            source_fingerprints=self.recorded_fingerprints(paths))
+        paths["part_006"].write_text("swapped bytes", encoding="utf-8")
+        with self.assertRaises(RuntimeError) as ctx:
+            p11.check_source_fingerprints(manifest, source_paths=paths)
+        message = str(ctx.exception)
+        self.assertIn("part_006", message)
+        self.assertIn(p11.fingerprint(paths["part_006"])["sha256"], message)
+        self.assertIn("s" * 64, message)
+
+    def test_missing_record_raises_naming_the_part(self):
+        """RED: a manifest without a part's source record is a loud error."""
+        paths = self.write_sources()
+        manifest = make_full_manifest(source_fingerprints=[])
+        with self.assertRaises(RuntimeError) as ctx:
+            p11.check_source_fingerprints(manifest, source_paths=paths)
+        self.assertIn("part_001", str(ctx.exception))
+
+
+class TestRound0DocBuilder(unittest.TestCase):
+    """The round-0 evidence layout plan 12-02's gates consume."""
+
+    def test_anchors_keyed_by_string_k_with_pinned_fields(self):
+        """anchors is keyed '21'/'31', each carrying {sum, expected, exact}."""
+        manifest = make_full_manifest()
+        anchors = p11.assert_anchor_equality(manifest)
+        doc = p11.round0_doc(
+            manifest_digest={"path": "/inputs/manifest.json",
+                             "sha256": "m" * 64, "size_bytes": 10},
+            anchors=anchors,
+            budget=p11.session_budget(inputs_bytes=93_135_484_166),
+            df_sample={"path": "/scratch", "total": 1, "used": 0, "free": 1},
+            binary_identity={"rustkmer": {"sha256": "r" * 64},
+                             "jellyfish": {"sha256": "j" * 64}},
+            source_fingerprints=[],
+            provenance=fake_provenance(),
+            artifacts_dir="/inputs")
+        self.assertEqual(doc["kind"], p11.KIND_ROUND0)
+        self.assertEqual(sorted(doc["anchors"]), ["21", "31"])
+        for k_str, entry in doc["anchors"].items():
+            self.assertEqual(sorted(entry), ["exact", "expected", "sum"])
+            self.assertTrue(entry["exact"])
+            self.assertEqual(entry["expected"], p11.UNION_TOTALS[int(k_str)])
+        self.assertIn("session_budget_gb", doc["session_budget"])
+        self.assertIn("df_sample", doc)
+        self.assertIn("binary_identity", doc)
+        p11.validate_provenance(doc)
+
+    def test_doc_builder_carries_manifest_digest(self):
+        """The manifest digest rides the doc (re-hash provenance)."""
+        manifest = make_full_manifest()
+        doc = p11.round0_doc(
+            manifest_digest={"path": "/inputs/manifest.json",
+                             "sha256": "m" * 64, "size_bytes": 10},
+            anchors=p11.assert_anchor_equality(manifest),
+            budget=p11.session_budget(inputs_bytes=1),
+            df_sample={"path": "/scratch", "total": 1, "used": 0, "free": 1},
+            binary_identity={"rustkmer": {}, "jellyfish": {}},
+            source_fingerprints=[{"path": "/src", "sha256": "s" * 64,
+                                  "size_bytes": 1}],
+            provenance=fake_provenance(),
+            artifacts_dir="/inputs")
+        self.assertEqual(doc["manifest_digest"]["sha256"], "m" * 64)
+
+
+class TestRunRevalidateStage(TempDirCase):
+    """run_revalidate: loud drift, unrecorded artifacts, pinned doc layout."""
+
+    def write_stage_sources(self):
+        paths = {}
+        for name, seed in (("part_001", "src-a"), ("part_006", "src-b")):
+            path = self.tmp / f"source-{name}"
+            path.write_text(seed, encoding="utf-8")
+            paths[name] = path
+        return paths
+
+    def build_fixture_artifacts(self, flip=None, stray=False):
+        """A real tempdir artifacts dir with tiny recorded artifact files.
+
+        All 8 fixture artifacts are written and fingerprinted FIRST; the
+        `flip` target is tampered AFTER its fingerprint was recorded so the
+        recorded sha256 no longer matches the on-disk bytes (drift).
+        """
+        sources = self.write_stage_sources()
+        artifacts_dir = self.tmp / "artifacts"
+        artifacts_dir.mkdir()
+        manifest = make_full_manifest()
+        for record in manifest["artifacts"]:
+            path = artifacts_dir / Path(record["path"]).name
+            path.write_text(f"bytes-{record['k']}-"
+                            f"{Path(record['path']).stem}",
+                            encoding="utf-8")
+            fp = p11.fingerprint(path)
+            record["path"] = str(path)
+            record["sha256"], record["size_bytes"] = (
+                fp["sha256"], fp["size_bytes"])
+        for record in manifest["jellyfish_inputs"]:
+            path = artifacts_dir / Path(record["path"]).name
+            path.write_text(f"jf-{record['k']}-{Path(record['path']).stem}",
+                            encoding="utf-8")
+            fp = p11.fingerprint(path)
+            record["path"] = str(path)
+            record["sha256"], record["size_bytes"] = (
+                fp["sha256"], fp["size_bytes"])
+        manifest["source_fingerprints"] = [
+            {"path": str(sources[name]),
+             "sha256": p11.fingerprint(sources[name])["sha256"],
+             "size_bytes": p11.fingerprint(sources[name])["size_bytes"]}
+            for name in sorted(sources)]
+        write_manifest(artifacts_dir / "manifest.json", manifest)
+        if stray:
+            (artifacts_dir / "stray.rkdb").write_text("stray",
+                                                      encoding="utf-8")
+        if flip:
+            target = artifacts_dir / flip
+            target.write_text("tampered-bytes", encoding="utf-8")
+        return artifacts_dir, sources
+
+    def stage_args(self, out):
+        return argparse.Namespace(out=str(out), k=21, reps=3,
+                                  cooldown_s=5.0, scratch=str(self.tmp),
+                                  disk_floor_override=False)
+
+    def run_stage(self, args, artifacts_dir, sources):
+        usage = collections.namedtuple("usage", "total used free")
+        fake_df = lambda path: usage(1 << 42, 0, 1 << 40)
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            code = p11.run_revalidate(
+                args, revalidate_fn=fixture_revalidate,
+                provenance_fn=fake_identity_provenance,
+                source_paths=sources, disk_fn=lambda *a, **k: 1 << 40,
+                df_fn=fake_df, manifest_path=Path(artifacts_dir)
+                / "manifest.json")
+        return code, stdout.getvalue()
+
+    def test_happy_path_writes_round0_doc_with_pinned_layout(self):
+        """GREEN: anchors keyed '21'/'31', budget, df sample, digest."""
+        artifacts_dir, sources = self.build_fixture_artifacts()
+        out = self.tmp / "12-REVALIDATE.json"
+        code, printed = self.run_stage(self.stage_args(out), artifacts_dir,
+                                       sources)
+        self.assertEqual(code, p11.EXIT_OK)
+        doc = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(doc["kind"], p11.KIND_ROUND0)
+        self.assertEqual(sorted(doc["anchors"]), ["21", "31"])
+        for k_str, entry in doc["anchors"].items():
+            self.assertEqual(entry["sum"], entry["expected"])
+            self.assertTrue(entry["exact"])
+        self.assertGreater(doc["session_budget"]["session_budget_gb"],
+                           p11.DEFAULT_DISK_FLOOR_GB)
+        self.assertIn("free", doc["df_sample"])
+        self.assertIn("manifest_digest", doc)
+        self.assertEqual(len(doc["source_fingerprints"]), 2)
+
+    def test_drifted_artifact_raises_naming_the_record(self):
+        """RED: flipped artifact bytes are loud, never silent."""
+        artifacts_dir, sources = self.build_fixture_artifacts(
+            flip="part_001.k21.rkdb")
+        with self.assertRaises(RuntimeError) as ctx:
+            self.run_stage(self.stage_args(self.tmp / "o.json"),
+                           artifacts_dir, sources)
+        message = str(ctx.exception)
+        self.assertIn("part_001.k21.rkdb", message)
+        self.assertIn("sha256", message)
+        self.assertIn("tampered", message)
+
+    def test_unrecorded_stray_rkdb_raises(self):
+        """RED: a stray .rkdb without a manifest record is a loud error."""
+        artifacts_dir, sources = self.build_fixture_artifacts(stray=True)
+        with self.assertRaises(RuntimeError) as ctx:
+            self.run_stage(self.stage_args(self.tmp / "o.json"),
+                           artifacts_dir, sources)
+        self.assertIn("stray.rkdb", str(ctx.exception))
+
+    def test_no_artifact_written_on_drift(self):
+        """A failed round-0 gate writes no evidence doc."""
+        artifacts_dir, sources = self.build_fixture_artifacts(
+            flip="part_006.k31.rkdb")
+        out = self.tmp / "12-REVALIDATE.json"
+        with self.assertRaises(RuntimeError):
+            self.run_stage(self.stage_args(out), artifacts_dir, sources)
+        self.assertFalse(out.exists())
+
+
+class TestBinaryIdentityTripwire(unittest.TestCase):
+    """The binary-identity tripwire names recorded and expected hashes."""
+
+    def test_wrong_sha256_raises_naming_both(self):
+        """A rebuilt binary is a loud error, never a silent rebuild."""
+        def drifted_provenance(executable, profile):
+            prov = fake_identity_provenance("rustkmer")
+            prov["binary"]["sha256"] = "f" * 64
+            return prov
+        with self.assertRaises(RuntimeError) as ctx:
+            p11.assert_binary_identity(provenance_fn=drifted_provenance)
+        message = str(ctx.exception)
+        self.assertIn("f" * 64, message)
+        self.assertIn(p11.RUSTKMER_BIN_SHA256, message)
+
+    def test_pinned_hashes_pass_and_return_identity(self):
+        """GREEN: the pinned hashes pass and the identity block returns."""
+        identity = p11.assert_binary_identity(
+            provenance_fn=fake_identity_provenance)
+        self.assertEqual(identity["rustkmer"]["sha256"],
+                         p11.RUSTKMER_BIN_SHA256)
+        self.assertEqual(identity["jellyfish"]["sha256"],
+                         p11.JELLYFISH_BIN_SHA256)
+        p11.validate_provenance(identity["provenance"])
+
+
+class TestParityDocBuilder(unittest.TestCase):
+    """The parity-doc contract Plan 12-01's validator gates."""
+
+    def test_builder_emits_three_legs_exact_anchors_warmup_merges(self):
+        """legs_executed == the three legs; anchors.exact; warmup records."""
+        doc = p11.parity_doc(
+            k=21, anchors_exact_total=8_967_099_203,
+            merges=[{"tool": "rustkmer", "warmup": True,
+                     "argv": ["/bin/rustkmer", "merge"], "wall_s": 1.0},
+                    {"tool": "jellyfish", "warmup": True,
+                     "argv": ["jellyfish", "merge"], "wall_s": 2.0}],
+            merged_stats={"rustkmer": {"distinct": 897266581,
+                                       "total": 8_967_099_203},
+                          "jellyfish": {"distinct": 897266581,
+                                        "total": 8_967_099_203}},
+            recount_stats={"distinct": 897266581, "total": 8_967_099_203,
+                           "definition": "sum-of-counts"},
+            input_revalidation={"anchors": "exact"},
+            binary_identity={"rustkmer": {}, "jellyfish": {}},
+            transients_deleted=["/scratch/recount.k21.rkdb"],
+            provenance=fake_provenance())
+        self.assertEqual(doc["legs_executed"],
+                         ["leg1-aggregate-conservation",
+                          "leg2-recount-vs-merged", "leg3-dump-vs-dump"])
+        self.assertTrue(doc["anchors"]["exact"])
+        self.assertEqual(doc["anchors"]["expected"], 8_967_099_203)
+        self.assertEqual(doc["anchors"]["sum"], 8_967_099_203)
+        for merge in doc["merges"]:
+            self.assertTrue(merge["warmup"])
+            self.assertIn("argv", merge)
+        self.assertIn("/scratch/recount.k21.rkdb", doc["transients_deleted"])
+        # Interface-first check: the emitted dict passes Plan 12-01's gate.
+        p11._validate_parity_document(doc)
+
+    def test_builder_rejects_inexact_anchors(self):
+        """The builder never emits a doc whose anchors are not exact."""
+        with self.assertRaises(ValueError):
+            p11.parity_doc(
+                k=21, anchors_exact_total=8_967_099_202,
+                merges=[{"tool": "rustkmer", "warmup": True}],
+                merged_stats={"rustkmer": {"distinct": 1, "total": 2},
+                              "jellyfish": {"distinct": 1, "total": 2}},
+                recount_stats={"distinct": 1, "total": 2},
+                input_revalidation={}, binary_identity={},
+                transients_deleted=[], provenance=fake_provenance())
 
 
 if __name__ == "__main__":
