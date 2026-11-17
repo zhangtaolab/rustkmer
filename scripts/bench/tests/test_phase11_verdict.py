@@ -41,6 +41,7 @@ if __package__ in (None, ""):
 
 from scripts.bench import phase11 as p11
 from scripts.bench import merge_characterize as mc
+from scripts.bench.output_stage import rotation_schedule
 from scripts.bench.prepare_inputs import write_manifest
 
 # Fixture-only wall medians. They are asserted ABSENT from the controller
@@ -1313,6 +1314,287 @@ class TestParityDocBuilder(unittest.TestCase):
                 recount_stats={"distinct": 1, "total": 2},
                 input_revalidation={}, binary_identity={},
                 transients_deleted=[], provenance=fake_provenance())
+
+
+# ---------------------------------------------------------------------------
+# Plan 12-04 Task 2: timed stage — 3-arm counterbalanced protocol
+# ---------------------------------------------------------------------------
+
+
+class TestRotationSchedule(unittest.TestCase):
+    """Arm ordering comes from output_stage.rotation_schedule, never hand-rolled."""
+
+    def test_three_arms_three_reps_counterbalanced(self):
+        """3 rounds; every arm exactly once per round; round r starts at r%3."""
+        schedule = rotation_schedule(p11.MERGE_ARMS, 3)
+        self.assertEqual(len(schedule), 3)
+        for r, round_order in enumerate(schedule):
+            self.assertEqual(sorted(round_order), sorted(p11.MERGE_ARMS))
+            self.assertEqual(len(set(round_order)), len(p11.MERGE_ARMS))
+            expected_start = list(p11.MERGE_ARMS).index(round_order[0])
+            self.assertEqual(expected_start, r % 3)
+        self.assertEqual(schedule[0], ["merge", "merge-t1",
+                                       "jellyfish-merge"])
+        self.assertEqual(schedule[1], ["merge-t1", "jellyfish-merge",
+                                       "merge"])
+        self.assertEqual(schedule[2], ["jellyfish-merge", "merge",
+                                       "merge-t1"])
+
+
+class TestTimedRounds(TempDirCase):
+    """The per-rep loop with injected seams (phase10.run_rounds shape)."""
+
+    def build_seams(self, walls, stderrs=None, counts_fn=None):
+        """Fixture seams; every call is recorded for the assertions."""
+        calls = {"guard": [], "sleep": [], "purge": [], "measure": []}
+        walls = list(walls)
+        stderrs = list(stderrs or [])
+        usage = collections.namedtuple("usage", "total used free")
+
+        def measure_fn(argv):
+            calls["measure"].append(argv)
+            wall = walls.pop(0)
+            rep = {"wall_s": wall, "peak_rss_bytes": 1000 + int(wall * 10),
+                   "peak_footprint_bytes": None,
+                   "peak_bytes": 1000 + int(wall * 10)}
+            stderr_text = stderrs.pop(0) if stderrs else ""
+            return rep, stderr_text
+
+        def purge_fn():
+            calls["purge"].append(1)
+            return "unavailable"
+
+        def sleep_fn(seconds):
+            calls["sleep"].append(seconds)
+
+        def guard_fn(directory, floor_gb, phase="rep", override=False):
+            calls["guard"].append((str(directory), floor_gb, phase,
+                                   override))
+
+        if counts_fn is None:
+            def counts_fn(out_path, name):
+                return {"distinct": 100, "total": 300, "output_bytes": 6000}
+        fingerprint_fn = lambda path: {"path": str(path),
+                                       "sha256": "c" * 64,
+                                       "size_bytes": 1}
+        return (measure_fn, purge_fn, sleep_fn, guard_fn, counts_fn,
+                fingerprint_fn, calls)
+
+    def run_loop(self, reps=3, **seams):
+        manifest = make_manifest(k=21)
+        kwargs = dict(zip(
+            ("measure_fn", "purge_fn", "sleep_fn", "guard_fn", "counts_fn",
+             "fingerprint_fn"), seams))
+        return p11._timed_rounds(
+            21, manifest, self.tmp / "scratch", 282, reps, 5.0,
+            False, **kwargs)
+
+    def test_per_rep_loop_records_every_field(self):
+        """cache_state/round/arm_order/route/output fields land per rep."""
+        walls = [float(i + 1) for i in range(9)]
+        stderrs = ["prefix cache route"] + [""] * 8
+        seams = self.build_seams(walls, stderrs)
+        reps_by_arm, schedule, arm_sha = self.run_loop(3, *seams)
+        measure_fn, purge_fn, sleep_fn, guard_fn, counts_fn, fp_fn, calls = \
+            seams
+        # All three arms, three reps each.
+        for name in p11.MERGE_ARMS:
+            self.assertEqual(len(reps_by_arm[name]), 3)
+        first_merge = reps_by_arm["merge"][0]
+        self.assertEqual(first_merge["cache_state"], "unavailable")
+        self.assertEqual(first_merge["round"], 0)
+        self.assertEqual(first_merge["arm_order"], 0)
+        self.assertEqual(first_merge["route"], "prefix-cache")
+        self.assertEqual(first_merge["distinct"], 100)
+        self.assertEqual(first_merge["total"], 300)
+        self.assertEqual(first_merge["output_bytes"], 6000)
+        # Silence is recorded as not-reported, never guessed.
+        self.assertEqual(reps_by_arm["merge"][1]["route"], "not-reported")
+        # The guard ran before EVERY measured rep.
+        self.assertEqual(len(calls["guard"]), 9)
+        self.assertTrue(all(phase.startswith("rep round")
+                            for _d, _f, phase, _o in calls["guard"]))
+        # Cooldown between measured runs only: rep count - 1.
+        self.assertEqual(len(calls["sleep"]), 8)
+        self.assertEqual(calls["sleep"], [5.0] * 8)
+        # One purge per rep (honest cache_state labels).
+        self.assertEqual(len(calls["purge"]), 9)
+        # Each arm's final rep hashed its actual output bytes.
+        self.assertEqual(sorted(arm_sha), sorted(p11.MERGE_ARMS))
+        self.assertTrue(all(sha == "c" * 64 for sha in arm_sha.values()))
+
+    def test_guard_receives_floor_and_override(self):
+        """The disk guard is the explicit floor (D-12), override passed."""
+        seams = self.build_seams([1.0] * 3)
+        measure_fn, purge_fn, sleep_fn, guard_fn, counts_fn, fp_fn, calls = \
+            seams
+        manifest = make_manifest(k=21)
+        p11._timed_rounds(21, manifest, self.tmp / "scratch", 282, 1, 5.0,
+                          True, measure_fn=measure_fn, purge_fn=purge_fn,
+                          sleep_fn=sleep_fn, guard_fn=guard_fn,
+                          counts_fn=counts_fn, fingerprint_fn=fp_fn)
+        for directory, floor_gb, phase, override in calls["guard"]:
+            self.assertEqual(floor_gb, 282)
+            self.assertTrue(override)
+
+
+class TestCrossRepConservation(unittest.TestCase):
+    """A nondeterministic merge is a gate failure, before any doc."""
+
+    def make_reps(self, totals):
+        return [{"wall_s": 1.0, "peak_rss_bytes": 100, "peak_bytes": 100,
+                 "cache_state": "unavailable", "round": i, "arm_order": i,
+                 "route": "not-reported", "distinct": 100,
+                 "total": total, "output_bytes": 6000}
+                for i, total in enumerate(totals)]
+
+    def test_identical_reps_conserved(self):
+        """GREEN: identical distinct/total/output_bytes across reps."""
+        conserved = p11._assert_cross_rep_conservation(
+            "merge", self.make_reps([300, 300, 300]))
+        self.assertEqual(conserved, {"distinct": 100, "total": 300,
+                                     "output_bytes": 6000})
+
+    def test_diverging_total_raises_naming_arm_and_rep(self):
+        """RED: a diverging rep names the arm and the rep index."""
+        with self.assertRaises(RuntimeError) as ctx:
+            p11._assert_cross_rep_conservation(
+                "merge", self.make_reps([300, 300, 301]))
+        message = str(ctx.exception)
+        self.assertIn("merge", message)
+        self.assertIn("rep 2", message)
+        self.assertIn("301", message)
+        self.assertIn("nondeterministic", message)
+
+
+class TestResultsDocBuilder(TempDirCase):
+    """The schema-v1 results doc contract (PHASE=12, session merge)."""
+
+    def make_arm(self, name, wall=1.0):
+        reps = [{"wall_s": wall, "peak_rss_bytes": 1000 + i,
+                 "peak_footprint_bytes": None, "peak_bytes": 1000 + i,
+                 "cache_state": "unavailable", "round": i, "arm_order": i,
+                 "route": "not-reported", "distinct": 100, "total": 300,
+                 "output_bytes": 6000}
+                for i in range(3)]
+        conserved = {"distinct": 100, "total": 300, "output_bytes": 6000,
+                     "output_sha256": "c" * 64}
+        argv = ["/bin/rustkmer", "merge", "-i", "/inputs/a.rkdb",
+                "/inputs/b.rkdb", "-o", "/scratch/merged.k21.rkdb"]
+        if name == "merge-t1":
+            argv = argv + ["--num-threads", "1"]
+        if name == "jellyfish-merge":
+            argv = ["jellyfish", "merge", "-o", "/scratch/merged.k21.jf",
+                    "/inputs/a.jf", "/inputs/b.jf"]
+        provenance = (fake_jellyfish_provenance()
+                      if name == "jellyfish-merge" else fake_provenance())
+        return p11._timed_arm(name, reps, conserved, argv, provenance)
+
+    def build_doc(self):
+        arms = [self.make_arm(name) for name in p11.MERGE_ARMS]
+        warmup = [{"tool": "rustkmer", "warmup": True, "wall_s": 1.0},
+                  {"tool": "jellyfish", "warmup": True, "wall_s": 2.0}]
+        return p11.results_doc(
+            k=21, arms=arms,
+            schedule=rotation_schedule(p11.MERGE_ARMS, 3),
+            budget=p11.session_budget(inputs_bytes=93_135_484_166),
+            cooldown_s=5.0, warmup_provenance=warmup,
+            input_fingerprint=[{"path": "/inputs/part_001.k21.rkdb",
+                                "sha256": "1" * 64, "size_bytes": 10}],
+            provenance=fake_provenance(),
+            comparator_provenance={"rustkmer": fake_provenance(),
+                                   "jellyfish": fake_jellyfish_provenance()},
+            input_revalidation={"anchors": "exact"},
+            scratch="/scratch/phase12", reps=3,
+            created="2026-11-17T00:00:00+00:00")
+
+    def test_doc_passes_schema_and_validators(self):
+        """validate_schema + _validate_results_document + write_doc land."""
+        doc = self.build_doc()
+        p11.validate_schema(doc)
+        self.assertEqual(doc["phase"], 12)
+        self.assertEqual(doc["session"], "merge")
+        self.assertEqual(doc["mode"], "full")
+        self.assertEqual(len(doc["arms"]), 3)
+        for arm in doc["arms"]:
+            self.assertEqual(len(arm["reps"]), 3)
+            self.assertIn("wall_s", arm["medians"])
+            self.assertIn("peak_rss_bytes", arm["medians"])
+            self.assertIn("cv_warning", arm["medians"])
+        # The 12-02 gate: the emitted doc must pass the controller's own
+        # results-document validator (interface-first check).
+        p11._validate_results_document(doc)
+        out = self.tmp / "results-k21.json"
+        p11.write_doc(doc, out)
+        self.assertTrue(out.exists())
+
+    def test_warmup_provenance_cites_parity_merges(self):
+        """params.warmup_provenance carries the parity-stage merge records."""
+        doc = self.build_doc()
+        warmup = doc["params"]["warmup_provenance"]
+        self.assertEqual(len(warmup), 2)
+        self.assertTrue(all(entry["warmup"] for entry in warmup))
+        self.assertEqual(doc["params"]["reps"], 3)
+        self.assertEqual(doc["params"]["arms"], list(p11.MERGE_ARMS))
+        self.assertEqual(doc["params"]["k"], 21)
+
+    def test_medians_from_recorded_reps(self):
+        """Medians come from reduce_arm over the recorded reps."""
+        arms = [self.make_arm("merge", wall=2.0),
+                self.make_arm("merge-t1", wall=8.0),
+                self.make_arm("jellyfish-merge", wall=4.0)]
+        doc = p11.results_doc(
+            k=21, arms=arms,
+            schedule=rotation_schedule(p11.MERGE_ARMS, 3),
+            budget=p11.session_budget(inputs_bytes=1), cooldown_s=5.0,
+            warmup_provenance=[], input_fingerprint=[],
+            provenance=fake_provenance(),
+            comparator_provenance={"rustkmer": fake_provenance(),
+                                   "jellyfish": fake_jellyfish_provenance()},
+            input_revalidation={}, scratch="/scratch", reps=3)
+        self.assertEqual(doc["arms"][0]["medians"]["wall_s"], 2.0)
+        self.assertEqual(doc["arms"][1]["medians"]["wall_s"], 8.0)
+        self.assertEqual(doc["arms"][2]["medians"]["wall_s"], 4.0)
+
+
+class TestTimedStageGuards(TempDirCase):
+    """Parity-before-timing is structural, not advisory."""
+
+    def test_timed_without_parity_doc_exits_two_naming_parity(self):
+        """run_timed without --parity-doc is exit 2 naming the stage."""
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr), \
+                self.assertRaises(SystemExit) as ctx:
+            p11.main(["--stage", "timed", "--k", "21",
+                      "--out", str(self.tmp / "o.json")])
+        self.assertEqual(ctx.exception.code, p11.EXIT_INVALID)
+        self.assertIn("parity", stderr.getvalue())
+
+    def test_timed_rejects_two_parity_docs(self):
+        """One k per timed run — exactly one parity document."""
+        parity = make_parity_doc(k=21)
+        d21 = self.tmp / "p21.json"
+        d21b = self.tmp / "p21b.json"
+        write_json(d21, parity)
+        write_json(d21b, parity)
+        with self.assertRaises(SystemExit) as ctx:
+            p11.main(["--stage", "timed", "--k", "21",
+                      "--parity-doc", str(d21), str(d21b),
+                      "--out", str(self.tmp / "o.json")])
+        self.assertEqual(ctx.exception.code, p11.EXIT_INVALID)
+
+    def test_timed_rejects_mismatched_k_parity_doc(self):
+        """A k=31 parity doc cannot time a k=21 run."""
+        d31 = self.tmp / "p31.json"
+        write_json(d31, make_parity_doc(k=31))
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr), \
+                self.assertRaises(SystemExit) as ctx:
+            p11.main(["--stage", "timed", "--k", "21",
+                      "--parity-doc", str(d31),
+                      "--out", str(self.tmp / "o.json")])
+        self.assertEqual(ctx.exception.code, p11.EXIT_INVALID)
+        self.assertIn("k=21", stderr.getvalue())
 
 
 if __name__ == "__main__":
