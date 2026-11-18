@@ -667,7 +667,9 @@ fn to_path_and_in_ram_entry_points_agree_byte_for_byte() -> Result<()> {
                     &probe,
                     &dir.path().join("probe_streaming.rkdb"),
                 )
-                .expect_err("{route}: the streaming route must fail on a nonexistent temp_dir");
+                .expect_err(&format!(
+                    "{route:?}: the streaming route must fail on a nonexistent temp_dir"
+                ));
                 assert_streaming_route_proved(&err, &missing);
             }
             Route::PrefixCache => {
@@ -676,7 +678,9 @@ fn to_path_and_in_ram_entry_points_agree_byte_for_byte() -> Result<()> {
                     &probe,
                     &dir.path().join("probe_prefix.rkdb"),
                 )
-                .expect_err("{route}: the prefix-cache route must fail on a nonexistent temp_dir");
+                .expect_err(&format!(
+                    "{route:?}: the prefix-cache route must fail on a nonexistent temp_dir"
+                ));
                 assert_prefix_cache_route_proved(&err, &missing);
             }
         }

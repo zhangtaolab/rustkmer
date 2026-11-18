@@ -280,10 +280,19 @@ def validate_path(path):
     Accepts only characters within letters, digits, dot, slash, underscore,
     and hyphen; anything else (spaces, metacharacters, $()/` forms) raises
     ValueError naming the offending path. Returns the path as a string.
+
+    A path whose FIRST character is a hyphen is rejected too, even though
+    hyphen is legal inside a name: at the head of an argv slot a tool parses
+    it as an option, the T-04-03 option-injection edge. An explicit `./`
+    prefix is the supported escape hatch — both characters are already
+    inside the allowlist, so `./-o.fq` passes unchanged.
     """
     text = str(path)
     if not text:
         raise ValueError("path rejected (empty)")
+    if text.startswith("-"):
+        raise ValueError(f"path rejected (leading hyphen would parse as an "
+                         f"option; use a ./ prefix): {text!r}")
     if not SAFE_PATH_RE.match(text):
         raise ValueError(f"path rejected (unsafe characters): {text!r}")
     return text
@@ -2287,7 +2296,18 @@ def _methodology_lines(files_data):
     lines.append("### Input fingerprints (size + sha256 per file, as recorded)")
     lines.append("")
     for results in files_data:
-        for fp in results.get("input_fingerprint") or []:
+        file_fps = results.get("input_fingerprint") or []
+        if not file_fps:
+            # IN-09: a fingerprint-less results file must not disappear from
+            # the provenance listing — a missing row would hide that its
+            # input identity is unverifiable from this report.
+            lines.append(
+                f"- {_results_label(results)}: "
+                f"**no input_fingerprint recorded** — this results file "
+                f"does not record input size/sha256, so its input identity "
+                f"cannot be verified from this report")
+            continue
+        for fp in file_fps:
             lines.append(f"- {_results_label(results)}: `{fp['path']}` "
                          f"({fp['size_bytes']:,} bytes) sha256 "
                          f"`{fp['sha256']}`")

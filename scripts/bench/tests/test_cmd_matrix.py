@@ -205,6 +205,33 @@ class TestValidatePath(unittest.TestCase):
             with self.assertRaises(ValueError):
                 _fn("jellyfish_count_cmd")(cfg, "/abs/o.jf")
 
+    def test_rejects_leading_hyphen_paths(self):
+        """A first-character hyphen can occupy an argv slot where a tool
+        parses it as an option (T-04-03 option-injection edge). An explicit
+        ./ prefix is the documented escape hatch; interior hyphens stay
+        legal."""
+        for hostile in ("-o", "--help", "-/abs/x.fq.gz", "-"):
+            with self.assertRaises(ValueError) as ctx:
+                _fn("validate_path")(hostile)
+            msg = str(ctx.exception)
+            self.assertIn("leading hyphen", msg)
+            self.assertTrue(hostile in msg or repr(hostile) in msg,
+                            f"message must name the offending path "
+                            f"{hostile!r}: got {msg!r}")
+        self.assertEqual(_fn("validate_path")("./-o.fq"), "./-o.fq")
+
+    def test_jellyfish_cmd_refuses_leading_hyphen_paths(self):
+        """The builder — the one sh -c assembly point — refuses a
+        leading-hyphen input or output before forming a string."""
+        with self.assertRaises(ValueError) as ctx:
+            _fn("jellyfish_count_cmd")(make_config(inputs=["-x.fq.gz"]),
+                                       "/abs/o.jf")
+        self.assertIn("leading hyphen", str(ctx.exception))
+        with self.assertRaises(ValueError) as ctx:
+            _fn("jellyfish_count_cmd")(make_config(inputs=["/abs/a.fq.gz"]),
+                                       "-o.jf")
+        self.assertIn("leading hyphen", str(ctx.exception))
+
     def test_jellyfish_cmd_refuses_hostile_hash_size(self):
         """--hash-size crosses into the sh -c string; only ^\\d+[KMG]?$."""
         for hostile in HOSTILE_HASH_SIZES:

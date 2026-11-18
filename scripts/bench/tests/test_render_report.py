@@ -329,6 +329,70 @@ class TestMethodologyFigure(RenderFixtureBase):
         self.assertNotIn(f"{self.SLICE_SIZE:,}-byte input", report)
 
 
+class TestFingerprintListingNotes(RenderFixtureBase):
+    """IN-09: a results file without an input_fingerprint must not vanish
+    from the provenance listing — it gets one explicit note instead."""
+
+    def _slice_results(self):
+        return build_results(
+            mode="slice",
+            arms=[
+                build_arm("count-A", "rustkmer", (16.0, 16.0, 16.0),
+                          (5 * (1 << 30),) * 3, distinct=100, total=1000),
+                build_arm("count-B", "rustkmer", (16.0, 16.0, 16.0),
+                          (5 * (1 << 30),) * 3, distinct=120, total=1100),
+                build_arm("jellyfish-count-A", "jellyfish", (22.0, 22.0,
+                                                             22.0),
+                          (80 * (1 << 30),) * 3, distinct=100, total=1000),
+                build_arm("merge", "rustkmer", (7.5, 7.5, 7.5),
+                          (16 * (1 << 30),) * 3, distinct=150, total=2100),
+            ],
+            fingerprints=[])
+
+    def _render_with_slice(self, slice_dict):
+        return self.render([self.write_results(typical_full_results()),
+                            self.write_results(slice_dict, "slice.json")])
+
+    def test_fingerprint_less_results_file_gets_explicit_note(self):
+        """An empty input_fingerprint list renders the note for that label."""
+        report = self._render_with_slice(self._slice_results())
+        self.assertIn(
+            "- mode=slice k=31: **no input_fingerprint recorded** — this "
+            "results file does not record input size/sha256, so its input "
+            "identity cannot be verified from this report", report)
+
+    def test_missing_fingerprint_key_gets_explicit_note(self):
+        """An absent input_fingerprint key is handled exactly like empty."""
+        slice_dict = self._slice_results()
+        del slice_dict["input_fingerprint"]
+        report = self._render_with_slice(slice_dict)
+        self.assertIn("mode=slice k=31: **no input_fingerprint recorded**",
+                      report)
+
+    def test_fingerprint_bearing_file_lists_path_size_sha256(self):
+        """The positive control: a fingerprinted file still lists one
+        path/size/sha256 line per fingerprint and carries no note."""
+        report = self.render([self.write_results(typical_full_results())])
+        self.assertIn("input.fq.gz", report)
+        self.assertIn("12,345 bytes", report)
+        self.assertIn("sha256", report)
+        self.assertNotIn("**no input_fingerprint recorded**", report)
+
+    def test_full_mode_guard_still_raises_named_value_error(self):
+        """The note must not swallow the existing mode=full guard."""
+        empty = self.write_results(
+            build_results(mode="full", arms=[
+                build_arm("count-A", "rustkmer", (100.0,) * 3,
+                          (10 * (1 << 30),) * 3),
+                build_arm("jellyfish-count-A", "jellyfish", (200.0,) * 3,
+                          (80 * (1 << 30),) * 3),
+            ], fingerprints=[]),
+            "empty.json")
+        with self.assertRaisesRegex(ValueError,
+                                    "input_fingerprint.*mode=full"):
+            render_report([str(empty)], self.root / "out.md")
+
+
 class TestErrorClasses(RenderFixtureBase):
     """Loud failures, never silent skips."""
 
