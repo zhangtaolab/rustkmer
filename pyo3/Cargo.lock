@@ -1299,6 +1299,7 @@ dependencies = [
  "memmap2",
  "parking_lot",
  "pyo3",
+ "pyo3-build-config",
  "rayon",
  "rustkmer",
  "serde",

@@ -64,6 +64,10 @@ log = "0.4"
 bzip2 = "0.4"
 xz2 = "0.1"
 
+[build-dependencies]
+# Emits the macOS extension-module link args from build.rs (already in the lockfile via pyo3).
+pyo3-build-config = "0.27.2"
+
 [features]
 default = []
 extension-module = ["pyo3/extension-module"]
