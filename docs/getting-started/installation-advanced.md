@@ -234,10 +234,11 @@ cargo build --release
 
 **解决**:
 ```bash
-# 设置正确的链接标志
-export RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup"
+# macOS 链接参数由 pyo3/build.rs 自动输出，无需手动设置 RUSTFLAGS
 cargo build
 ```
+
+当前 `pyo3/build.rs` 已调用 `pyo3_build_config::add_extension_module_link_args()`，在 macOS 上自动输出 `-undefined dynamic_lookup` 链接参数；仅当构建缺少该调用的旧代码树时，才需要手动导出 `RUSTFLAGS` 为 `-C link-arg=-undefined -C link-arg=dynamic_lookup` 作为兜底。
 
 #### 3. 内存不足
 

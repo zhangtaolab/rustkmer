@@ -145,10 +145,11 @@ print(f"数据库统计: kmer_size={stats.kmer_size}, unique_kmers={stats.unique
 ### 1. 构建PyO3扩展
 ```bash
 cd rustkmer/pyo3
-export RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup"
 export PYO3_PYTHON=/usr/bin/python3
 cargo build
 ```
+
+说明：macOS 的 `-undefined dynamic_lookup` 链接参数由 `pyo3/build.rs` 通过 `pyo3_build_config::add_extension_module_link_args()` 自动输出，正常构建无需手动导出 RUSTFLAGS；只有在构建缺少该 build.rs 调用的旧代码树时，才需要手动导出 `RUSTFLAGS` 作为兜底。
 
 ### 2. 设置Python路径
 ```bash

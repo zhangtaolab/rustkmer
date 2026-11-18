@@ -13,7 +13,7 @@ echo "Python路径: $PYTHON_PATH"
 echo "Python前缀: $PYTHON_PREFIX"
 
 # 设置构建环境变量
-export RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup"
+# 链接参数 （-undefined dynamic_lookup）现由 pyo3/build.rs 自动输出，无需手动设置
 export PYO3_PYTHON=/usr/bin/python3
 
 echo "🚀 开始构建PyO3扩展..."
