@@ -144,7 +144,18 @@ def _thread_count(pid, sampler):
             txt = Path(m.group(1)).read_text()
         except OSError:
             return None
-    return parse_thread_count(txt)
+    count = parse_thread_count(txt)
+    # A live process always has at least one OS thread, so a SUCCESSFUL sample
+    # whose report carries no thread lines is a transient sampling artifact
+    # (typically a sample straddling the child's exit) — never evidence.
+    # Return None so the poll loop retries; a zero can never become
+    # last_observed, so a child that exits after only empty reports ends as
+    # exit 2 (never observed) instead of a spurious measured RED. The check
+    # sits AFTER the redirect handling so a redirected empty report is
+    # retried too.
+    if count == 0:
+        return None
+    return count
 
 
 def observe(proc, timeout_s, sampler, expected):

@@ -250,6 +250,44 @@ class TestThreadCountParsing(unittest.TestCase):
         self.assertEqual(mod.parse_thread_count(text), 4)
 
 
+class TestThreadCountTransient(unittest.TestCase):
+    """A zero-thread sample report is a transient artifact, never evidence."""
+
+    def test_zero_thread_report_is_retried(self):
+        """A header-only sample report parses to 0 and must be retried (None)."""
+        mod = load_helper_module()
+        report = subprocess.CompletedProcess(
+            args=["sample", "4242", "1"],
+            returncode=0,
+            stdout=(
+                "Analysis of sampling process 4242 every 1 millisecond\n"
+                "Call graph:\n"
+                "Total number in stack (recursive counted multiple, when >=5):\n"
+            ),
+        )
+        with mock.patch.object(mod.subprocess, "run", return_value=report):
+            self.assertIsNone(
+                mod._thread_count(4242, "sample"),
+                "a successful sample with no thread lines must be retried, "
+                "never recorded as a zero-thread observation",
+            )
+
+    def test_nonzero_thread_report_is_returned(self):
+        """A report with real thread sections still returns the true count."""
+        mod = load_helper_module()
+        report = subprocess.CompletedProcess(
+            args=["sample", "4242", "1"],
+            returncode=0,
+            stdout=(
+                "Call graph:\n"
+                "    618 Thread_100   DispatchQueue_1: com.apple.main-thread  (serial)\n"
+                "    617 Thread_101\n"
+            ),
+        )
+        with mock.patch.object(mod.subprocess, "run", return_value=report):
+            self.assertEqual(mod._thread_count(4242, "sample"), 2)
+
+
 # --- End-to-end negative controls against real child processes --------------
 
 # Holds the PRE-ENGINE thread model (main + N sleeping threads = N+1) and
