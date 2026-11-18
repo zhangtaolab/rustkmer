@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v2.1
 status: Awaiting next milestone
 stopped_at: context exhaustion at 97% (2026-11-18)
-last_updated: "2026-11-18T01:39:10.360Z"
+last_updated: "2026-11-18T02:45:20.566Z"
 last_activity: 2026-11-18
 last_activity_desc: Milestone v2.1 completed and archived
-state_head: e324f556f8943eb0b04ca1e8147c7e4aee3b9010
+state_head: b0b893f52af036bcc885f277a9f7a1d5edc297e6
 progress:
   total_phases: 4
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-18 - Completed quick task 261118-d69: resolve the dev-venv site-packages shadowing pitfall (backlog 999.2)
+Last activity: 2026-11-18 - Completed quick task 261118-epn: refresh the paused-handoff snapshot after backlog 999.2 resolution
 
 ## Performance Metrics
 
@@ -101,6 +101,7 @@ None yet.
 | 261118-c2r | Backlog 999.1: make pyo3/build.rs call pyo3_build_config::add_extension_module_link_args() and re-add pyo3-build-config as a build-dependency so the documented manual-build workaround links as-is under pyo3 0.27 | 2026-11-18 | 78b8542 | [261118-c2r-backlog-999-1-make-pyo3-build-rs-call-py](./quick/261118-c2r-backlog-999-1-make-pyo3-build-rs-call-py/) |
 | 261118-csg | Backlog 999.3: correct the stale Phase 03 deferred-items record claiming loose *.chunk files are never swept — CHUNK_FILE_PREFIXES now sweeps them (plan 03-11, commit 83a6ac2, test sweep_reclaims_stale_loose_chunk_files); mark the sweep-coverage entry resolved and close ROADMAP backlog 999.3 | 2026-11-18 | 1d9aaee | [261118-csg-backlog-999-3-correct-the-stale-phase-03](./quick/261118-csg-backlog-999-3-correct-the-stale-phase-03/) |
 | 261118-d69 | Backlog 999.2: resolve the dev-venv site-packages shadowing pitfall by documenting it in pyo3/README.md and adding a structural shadowing guard to pyo3/tests/test_version.py, then close ROADMAP backlog 999.2 | 2026-11-18 | e324f55 | [261118-d69-backlog-999-2-resolve-the-dev-venv-site-](./quick/261118-d69-backlog-999-2-resolve-the-dev-venv-site-/) |
+| 261118-epn | Refresh .planning/.continue-here.md so the paused-handoff snapshot reflects the resolution of backlog 999.2 (quick 261118-d69): add the d69 row to the session summary, update Current State, remove 999.2 from Remaining Backlog since 999.1-999.3 are all resolved, and update the Resume section | 2026-11-18 | b0b893f | [261118-epn-refresh-planning-continue-here-md-so-the](./quick/261118-epn-refresh-planning-continue-here-md-so-the/) |
 
 ## Deferred Items
 
