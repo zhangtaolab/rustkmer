@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v2.1
 status: Awaiting next milestone
 stopped_at: context exhaustion at 97% (2026-11-18)
-last_updated: "2026-11-18T10:13:12.093Z"
+last_updated: "2026-11-18T10:36:06.529Z"
 last_activity: 2026-11-18
 last_activity_desc: Milestone v2.1 completed and archived
-state_head: 71c8c3fcdda66c92d764f60f545210fbd2e0d057
+state_head: 7dd2a8fce1a077b4f82666aa4b4984e174f6544a
 progress:
   total_phases: 4
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-18 - Completed quick task 261118-oy5: milestone-prep consistency check (20 findings; three stale texts repaired)
+Last activity: 2026-11-18 - Completed quick task 261118-pja: WARNING-1 structurally closed (cli stage requires --pre-gate)
 
 ## Performance Metrics
 
@@ -110,6 +110,7 @@ None yet.
 | 261118-o67 | Record the W019 health-scanner registry gap as a known GSD tooling bug in .planning/.continue-here.md: entry 3 in Known Tooling Bugs names the false positive, cites CANONICAL_EXACT in bin/lib/artifacts.cjs (line 18 declaration, line 50 membership test), notes the pause/resume provenance and the resume-breaking move/delete fix, and states the upstream fix; the snapshot last_updated was refreshed to 2026-11-18T09:32:41Z; all other sections byte-identical | 2026-11-18 | 3cd0e0f | [261118-o67-record-the-w019-health-scanner-registry-](./quick/261118-o67-record-the-w019-health-scanner-registry-/) |
 | 261118-op9 | Refresh .planning/.continue-here.md so the paused-handoff snapshot reflects the eight quick tasks landed this session: Session Summary extended from four to eight rows (jp1/cc641d8, n53/68b3995, nss/1180d9c, o67/3cd0e0f), Current State updated with the execution-time HEAD, the n53 macOS flake closure (peak guard, 22-test file, stress 10/10), the o67 W019 known-tooling-bug record, and fresh audit-uat/windows counter values; frontmatter last_updated refreshed to 2026-11-18T09:53:20Z | 2026-11-18 | acb8ac8 | [261118-op9-refresh-planning-continue-here-md-so-the](./quick/261118-op9-refresh-planning-continue-here-md-so-the/) |
 | 261118-oy5 | Milestone-prep consistency check across PROJECT.md, ROADMAP.md, STATE.md, MILESTONES.md, and .continue-here.md: 20 findings recorded (12 CONSISTENT, 7 STALE, 1 UNRECONCILED — WARNING-1 has no recorded resolution); three proven stale texts repaired (ROADMAP 09-REVIEW info-only claim, ROADMAP 999.x opportunistic note, two PROJECT.md — Pending v2.0 outcome cells); everything else recorded as recommendations (STATE current_phase 14 on a closed milestone, remote-CI/push wording, etc.) | 2026-11-18 | 71c8c3f | [261118-oy5-run-a-milestone-prep-consistency-check-a](./quick/261118-oy5-run-a-milestone-prep-consistency-check-a/) |
+| 261118-pja | Resolve benchmark-harness WARNING-1: --stage cli now requires --pre-gate, validates the slice-gate artifact (provenance, same input fingerprint, same pinned slice source, file sha256) before any measured work, records a pre_gate {path, sha256} block in the CLI document, and exits 2 with no artifact on failure; four new tests (missing flag, different inputs before any measurement, different slice source, missing session k) bring the full-arm module to 46 tests; render and preflight-python remain compatible with the committed historical docs; ROADMAP carry-forward closes WARNING-1 and WARNING-2 | 2026-11-18 | 7dd2a8f | [261118-pja-resolve-benchmark-harness-warning-1-the-](./quick/261118-pja-resolve-benchmark-harness-warning-1-the-/) |
 
 ## Deferred Items
 
