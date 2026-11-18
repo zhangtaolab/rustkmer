@@ -85,13 +85,27 @@ Full detail: [milestones/v2.1-ROADMAP.md](milestones/v2.1-ROADMAP.md) · Require
 
 **Resolution (2026-11-18, quick 261118-c2r, commit aaacda3):** `pyo3/build.rs` now calls `pyo3_build_config::add_extension_module_link_args()` unconditionally and `pyo3-build-config = "0.27.2"` is re-added as a `[build-dependencies]` entry (lockfile delta: one line). Proven end-to-end: `cargo build --manifest-path pyo3/Cargo.toml --features extension-module --locked` exits 0 with RUSTFLAGS/CARGO_ENCODED_RUSTFLAGS unset and the cdylib link carries `-C link-arg=-undefined -C link-arg=dynamic_lookup`; the pre-fix build failed with exit 101 (`_PyBaseObject_Type` undefined). The three documented RUSTFLAGS exports were replaced with the automatic-mechanism note.
 
-### Phase 999.2: Follow-up — Phase 03 deferred UAT follow-up: Test 22 (BACKLOG)
+### Phase 999.2: Follow-up — Phase 03 deferred UAT follow-up: Test 22 (RESOLVED 2026-11-18)
 
 **Goal:** Resolve the UAT checkpoint deferred during Phase 03 verification
 **Source phase:** 03
 **Deferred at:** 2026-10-09 during /gsd-verify-work 03 session completion
 **Follow-ups:**
-- [ ] Test 22: dev-venv pitfall: a stale pyrustkmer 0.4.1 package directory in site-packages silently shadows a manually installed pyrustkmer.so extension (deferred 2026-10-09)
+- [x] Test 22: dev-venv pitfall: a stale pyrustkmer 0.4.1 package directory in site-packages silently shadows a manually installed pyrustkmer.so extension (deferred 2026-10-09)
+
+**Resolution (2026-11-18, quick 261118-d69):** the pitfall is documented in
+`pyo3/README.md` under Installation: a `pyrustkmer/` package directory wins
+import resolution over a same-named top-level extension file in the same
+`sys.path` entry, so a hand-copied `pyrustkmer.so` is silently never loaded. The
+section gives the detection commands (the `sysconfig` site-packages listing for
+`pyrustkmer*` plus `pyrustkmer.__file__`) and the remediation (prefer
+`maturin develop --release`; remove the shadowing package directory before
+hand-installing the `.so`). `pyo3/tests/test_version.py` now also fails
+structurally when a `pyrustkmer/__init__.py` package directory coexists with a
+top-level `pyrustkmer` extension file on any import root, exercised against
+synthetic `tmp_path` layouts plus the live interpreter. Observed result:
+`pytest pyo3/tests/test_version.py` reports 7 passed on 2026-11-18 in the
+healthy 0.5.0 layout.
 
 ### Phase 999.3: Follow-up — Phase 03 deferred UAT follow-up: Test 21 (RESOLVED 2026-11-18)
 

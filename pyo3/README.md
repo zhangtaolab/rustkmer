@@ -43,6 +43,39 @@ maturin develop --release
 pip install pyrustkmer
 ```
 
+### Dev-venv pitfall: a stale package directory shadows a hand-copied extension
+
+A hand-installed `pyrustkmer.so` can be present and still never load: Python
+gives a regular package directory precedence over a same-named extension module
+inside the same `sys.path` entry. If `site-packages/` contains both a
+`pyrustkmer/` package directory (left behind by an older install, e.g. the stale
+0.4.1 layout) and a top-level `pyrustkmer.so` copied in by hand, the package
+directory wins — the new `.so` is silently never imported and you keep running
+old code with no error.
+
+```bash
+# Everything named pyrustkmer* in this environment's site-packages
+python -c "import sysconfig, pathlib; sp = pathlib.Path(sysconfig.get_paths()['platlib']); print('\n'.join(str(p) for p in sorted(sp.glob('pyrustkmer*'))))"
+
+# The file Python actually imported
+python -c "import pyrustkmer; print(pyrustkmer.__file__)"
+```
+
+If the listing shows both a `pyrustkmer` directory and a top-level
+`pyrustkmer.so`, the `.so` is shadowed. The `__file__` line alone cannot
+distinguish the states, because it names `pyrustkmer/__init__.py` in the healthy
+maturin layout too — the coexistence in the listing is the decisive signal.
+`pyo3/tests/test_version.py` fails with a structural diagnostic on exactly this
+layout.
+
+Prefer `maturin develop --release`, whose package layout is self-consistent. If
+the `.so` must be hand-installed, first remove the shadowing package directory:
+delete `site-packages/pyrustkmer/` and its `pyrustkmer-*.dist-info/`, then copy
+`pyrustkmer.so` into `site-packages/`. The correct modern layout is a
+`pyrustkmer/` package directory containing `__init__.py` (the shim) plus the
+native extension inside it; a top-level `.so` alongside that directory is the
+broken shape.
+
 ## Quick Start
 
 ```python
