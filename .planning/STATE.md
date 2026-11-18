@@ -5,7 +5,7 @@ status: Awaiting next milestone
 stopped_at: context exhaustion at 97% (2026-11-18)
 last_updated: "2026-11-18T11:59:52.012Z"
 last_activity: 2026-11-18
-last_activity_desc: Milestone v2.1 completed and archived
+last_activity_desc: "Completed quick task 261118-rkz: corrected the stale remote-CI claim in STATE.md"
 state_head: 582d618d669ffc9c2df0637df2c828439077bf7d
 progress:
   total_phases: 4
