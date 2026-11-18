@@ -90,7 +90,7 @@ None yet.
 - [Environment, RESOLVED 2026-11-18] The macOS `scripts/bench/tests/test_verify_threads.py::TestNegativeControls::test_pre_engine_n_plus_one_stub_is_measured_red` flake is closed by quick 261118-n53: `observe()` records the peak nonzero observation, so a truncated exit-window `sample` report can never overwrite a correct earlier count (the zero-report retry landed in 261118-bhr), and the pre-engine negative control passed 10/10 stress runs. A shared `target/` across git worktrees can still bake a deleted `CARGO_MANIFEST_DIR` into test binaries — purge stale artifacts before trusting a red result.
 - [Carried, RESOLVED 2026-11-18] IN-06/07/09 (Phase-04 review findings) closed by quick 261118-f80; backlog 999.1-999.3 also resolved (c2r/d69/csg) — no gate-blocking backlog remains.
 - [Phase 9, RESOLVED 2026-11-18] 8 Info findings in `09-REVIEW.md` closed by quick 261118-fsk (7 Fixed, 1 Accepted as a no-code-change preservation-gate rationale).
-- [Carried W1, RESOLVED 2026-11-18] pushed dev (through f4e2dc9) and tag v2.1 to origin — remote CI now sees every local commit.
+- [Carried W1, RESOLVED 2026-11-18] pushed dev to origin (origin/dev tip b3d3ff3, which includes f4e2dc9) and tag v2.1 (ec7f329); commits after b3d3ff3 — including subsequent quick-task work — remain local-only, so the earlier claim that remote CI tracked every local commit is retired.
 - [v2.1 close, acknowledged] Deferred-item acknowledgments recorded in the Deferred Items table below — no live carry-forward remains: the macOS flake was closed by quick 261118-n53, and the `.claude/CLAUDE.md` dataset-line drift was verified already corrected (line 17 reads ~16.7 GB / six single-member split parts) and its record is closed.
 
 ### Quick Tasks Completed
