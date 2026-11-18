@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v2.1
 status: Awaiting next milestone
 stopped_at: context exhaustion at 97% (2026-11-18)
-last_updated: "2026-11-18T03:39:06.199Z"
+last_updated: "2026-11-18T06:19:07.212Z"
 last_activity: 2026-11-18
 last_activity_desc: Milestone v2.1 completed and archived
-state_head: fcbe3d24424b4a38682ea47b964d47087a346775
+state_head: cc641d8190c3fa1a67cc09a127e64c4e0a691c05
 progress:
   total_phases: 4
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-18 - Completed quick task 261118-fsk: resolved the 8 Phase-09 info-only review findings
+Last activity: 2026-11-18 - Completed quick task 261118-jp1: closed the stale carry-forward records for the resolved .claude/CLAUDE.md dataset-line drift
 
 ## Performance Metrics
 
@@ -91,7 +91,7 @@ None yet.
 - [Carried, RESOLVED 2026-11-18] IN-06/07/09 (Phase-04 review findings) closed by quick 261118-f80; backlog 999.1-999.3 also resolved (c2r/d69/csg) — no gate-blocking backlog remains.
 - [Phase 9, RESOLVED 2026-11-18] 8 Info findings in `09-REVIEW.md` closed by quick 261118-fsk (7 Fixed, 1 Accepted as a no-code-change preservation-gate rationale).
 - [Carried W1, RESOLVED 2026-11-18] pushed dev (through f4e2dc9) and tag v2.1 to origin — remote CI now sees every local commit.
-- [v2.1 close, acknowledged] Deferred-item acknowledgments recorded in the Deferred Items table below — the macOS flake and the auto-generated `.claude/CLAUDE.md` dataset-line drift remain the two live carry-forwards.
+- [v2.1 close, acknowledged] Deferred-item acknowledgments recorded in the Deferred Items table below — the macOS flake is the only live carry-forward; the `.claude/CLAUDE.md` dataset-line drift was verified already corrected (line 17 reads ~16.7 GB / six single-member split parts) and its record is closed.
 
 ### Quick Tasks Completed
 
@@ -104,6 +104,7 @@ None yet.
 | 261118-epn | Refresh .planning/.continue-here.md so the paused-handoff snapshot reflects the resolution of backlog 999.2 (quick 261118-d69): add the d69 row to the session summary, update Current State, remove 999.2 from Remaining Backlog since 999.1-999.3 are all resolved, and update the Resume section | 2026-11-18 | b0b893f | [261118-epn-refresh-planning-continue-here-md-so-the](./quick/261118-epn-refresh-planning-continue-here-md-so-the/) |
 | 261118-f80 | Resolve Phase-04 deferred review findings IN-06/IN-07/IN-09: interpolate {route:?} in the two merge_bounded_memory_tests expect_err messages; reject leading-hyphen paths in scripts/bench/bench.py validate_path; emit explicit no-input_fingerprint notes in the bench.py render listing; pin each with targeted Rust/Python tests and mark the 04-REVIEW-DISPOSITION records fixed | 2026-11-18 | 1b91b5e | [261118-f80-resolve-phase-04-deferred-review-finding](./quick/261118-f80-resolve-phase-04-deferred-review-finding/) |
 | 261118-fsk | Resolve the 8 Phase-09 info-only review findings: IN-01 accepted (no code change); IN-02/IN-03/IN-07 PyO3 docstring and defensive-arm documentation; IN-04 guard --previous against non-divergence/empty prior state; IN-05 scope record_boundary plus a test-local N-free cross-record-join probe; IN-06 make the missing-extension test deterministic under -S; IN-08 require reps>=3 and CV-clean arms in compare mode; update 09-REVIEW.md to 7 Fixed / 1 Accepted | 2026-11-18 | fcbe3d2 | [261118-fsk-resolve-the-8-phase-09-info-only-review-](./quick/261118-fsk-resolve-the-8-phase-09-info-only-review-/) |
+| 261118-jp1 | Close the stale carry-forward records for the already-resolved .claude/CLAUDE.md dataset-line drift: verified the generated line reads ~16.7 GB / six single-member split parts; updated .continue-here.md Remaining Backlog/Resume to drop the resolved Phase-04 IN-06/07/09, Phase-09 8 Info findings, and the dataset drift; closed the matching STATE.md rows | 2026-11-18 | cc641d8 | [261118-jp1-close-the-stale-carry-forward-records-fo](./quick/261118-jp1-close-the-stale-carry-forward-records-fo/) |
 
 ## Deferred Items
 
@@ -113,7 +114,7 @@ Items acknowledged and carried forward, most recent first:
 |----------|------|--------|-------------|-----------|
 | quick_tasks | 261116-lhq (AtomicU64::fetch_update deprecation suppressed at src/hash/table.rs; work committed 3655086, all gates green) | Acknowledged (scanner status unknown; work complete) | 2026-11-18 | v2.1 |
 | deferred_items | 11/deferred-items.md: Pre-existing flake — test_verify_threads.py TestNegativeControls pre_engine_n_plus_one stub (~50% macOS sample-race) | acknowledged | 2026-11-18 | v2.1 |
-| deferred_items | 11/deferred-items.md: Docs drift — .claude/CLAUDE.md:17 mirrors pre-correction "~5.2 GB" dataset line (auto-generated; fix = regeneration) | acknowledged | 2026-11-18 | v2.1 |
+| deferred_items | 11/deferred-items.md: Docs drift — .claude/CLAUDE.md:17 pre-correction two-parts dataset line | Resolved (quick 261118-bhr; verified 2026-11-18 in quick 261118-jp1: line reads ~16.7 GB / six single-member split parts) | 2026-11-18 | v2.1 |
 | Review findings | IN-06/07/09 (Phase-04 harness/test code) | Resolved (quick 261118-f80, 2026-11-18) | 2026-11-11 | — |
 | Backlog | 999.1 pyo3 build.rs link args; 999.2 stale site-packages shadowing; 999.3 stale sweep claim | Resolved 2026-11-18 (999.1 c2r; 999.2 d69; 999.3 csg) | 2026-10-09 | — |
 | Review findings | 8 Info findings in `09-REVIEW.md` (Phase 9) | Resolved (quick 261118-fsk, 2026-11-18; 7 fixed, 1 accepted) | 2026-11-14 | — |
