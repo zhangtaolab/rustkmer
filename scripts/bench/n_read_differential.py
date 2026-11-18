@@ -96,10 +96,15 @@ def build_cases():
     N positions are chosen against the FIRST k-window (bases 0..20):
     window_end puts N on its last base (kills every CLI window),
     window_start on the base just past it (kills all but the first).
-    record_boundary uses two 25 bp reads with N at read1's end and read2's
-    start — terminal Ns create no chimeras, so equality here proves there
-    are no cross-record joins. short_read (15 bp < k) yields zero windows
-    on both surfaces.
+    record_boundary predates D2 — its terminal Ns sit in the boundary
+    windows, so under skip-N it only covers the pre-D2 strip-and-join form
+    (joining the N-free flanks) and does NOT prove the absence of
+    cross-record joins. The N-free two-read probe in the unit suite
+    (`TestCrossRecordJoinProbe`) is the shape that would expose a
+    join-based implementation; it stays out of this fixture because adding
+    a live case would break `--previous`'s exact case-name check against
+    the immutable pre-D2 artifact and require regenerating the committed
+    evidence. short_read (15 bp < k) yields zero windows on both surfaces.
     """
     return [
         {"name": CONTROL_NAME, "reads": [BASE_30]},
@@ -144,10 +149,12 @@ def _validated_surface_counts(record, surface, name, path):
 def load_previous(path):
     """Load and validate a prior differential artifact for a `before` block.
 
-    Validate-before-embed (compare.py's load_results habit): a prior with a
-    different k or canonical setting, a different case-name set, or a
-    malformed per-case record is invalid — never an empty pass. An
-    unreadable file raises OSError and unparseable JSON raises
+    Validate-before-embed (compare.py's load_results habit): a prior must
+    itself record the pre-D2 divergence (`expectation == "divergence"` and a
+    positive integer `totals.python_only_total`) in addition to matching k,
+    canonical, the exact case-name set, and the per-case count shape — a
+    structurally valid post-D2 record is not a before state, never an empty
+    pass. An unreadable file raises OSError and unparseable JSON raises
     json.JSONDecodeError; main() maps both to exit 2.
     """
     prior_path = Path(path)
@@ -162,6 +169,26 @@ def load_previous(path):
         raise ValueError(
             f"prior artifact canonical={data.get('canonical')!r} is not "
             f"true: {path}")
+    # Prior-state guard (IN-04): only a record that itself observed the
+    # pre-D2 divergence can serve as the `before` state. A post-D2 or
+    # arbitrary differential with the right case set is not history.
+    expectation = data.get("expectation")
+    if expectation != "divergence":
+        raise ValueError(
+            f"prior artifact expectation={expectation!r} is not 'divergence': "
+            f"only a pre-D2 divergence record can be a before state: {path}")
+    totals = data.get("totals")
+    if not isinstance(totals, dict):
+        raise ValueError(
+            f"prior artifact has no totals block (got {totals!r}): {path}")
+    python_only_total = totals.get("python_only_total")
+    if (not isinstance(python_only_total, int)
+            or isinstance(python_only_total, bool)
+            or python_only_total <= 0):
+        raise ValueError(
+            f"prior artifact totals.python_only_total={python_only_total!r} "
+            f"is not a positive integer: a prior with no recorded divergence "
+            f"cannot be a before state: {path}")
     records = data.get("cases")
     if not isinstance(records, list):
         raise ValueError(f"prior artifact has no cases list: {path}")
@@ -188,8 +215,8 @@ def load_previous(path):
     return {
         "path": str(path),
         "sha256": hashlib.sha256(raw).hexdigest(),
-        "expectation": data.get("expectation"),
-        "totals": data.get("totals"),
+        "expectation": expectation,
+        "totals": totals,
         "cases": cases,
     }
 

@@ -14,7 +14,10 @@ and it never contributes to `total_kmers` or to any k-mer's count.
   window does not truncate the sequence; later windows are still counted.
 - Windows never span record boundaries. Each FASTA/FASTQ record is counted on
   its own; the end of one record and the start of the next are never joined
-  into a k-mer.
+  into a k-mer. This is enforced by per-record window extraction. The
+  differential harness's `record_boundary` case only
+  covers the pre-D2 strip-and-join form — its terminal Ns suppress the
+  boundary-spanning windows under skip-N, so it is not the post-D2 proof.
 
 ## The D2 change: Python now matches the CLI
 

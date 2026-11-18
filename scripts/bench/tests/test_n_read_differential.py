@@ -10,6 +10,8 @@ a collection/import fault (05-05 precedent).
 
 import hashlib
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -161,6 +163,59 @@ class TestFixtures(ImplementedGate):
             self.assertEqual(nrd.fastq_bytes(case), nrd.fastq_bytes(case))
 
 
+class TestCrossRecordJoinProbe(ImplementedGate):
+    """N-free two-read probe: the shape a cross-record join would fail.
+
+    The live `record_boundary` case cannot detect a join — its terminal Ns
+    are skipped under skip-N, so per-record and concatenated extraction
+    agree. This probe is test-local because the committed pre-D2 artifact
+    carries exactly the nine legacy cases and `load_previous` requires an
+    exact case-name set; adding a live case would invalidate the immutable
+    before state and require regenerating the delivered Phase 9 evidence
+    and the docs table.
+    """
+
+    READS = ("A" * 25, "C" * 25)
+
+    def test_probe_case_is_two_n_free_reads_longer_than_k(self):
+        self.require()
+        self.assertEqual(len(self.READS), 2)
+        for read in self.READS:
+            self.assertNotIn("N", read)
+            self.assertNotIn("n", read)
+            self.assertGreater(len(read), nrd.K)
+        data = nrd.fastq_bytes({"name": "records_no_n_boundary",
+                                "reads": list(self.READS)})
+        lines = data.decode().splitlines()
+        self.assertEqual(len(lines), 8)
+        for i in range(len(self.READS)):
+            header, seq, plus, qual = lines[4 * i:4 * i + 4]
+            self.assertTrue(header.startswith("@"))
+            self.assertEqual(seq, self.READS[i])
+            self.assertTrue(plus.startswith("+"))
+            self.assertEqual(len(qual), len(seq))
+
+    def test_concatenation_creates_chimeric_windows_not_produced_per_record(self):
+        self.require()
+        k = nrd.K
+
+        def windows(sequence):
+            return [sequence[i:i + k]
+                    for i in range(len(sequence) - k + 1)]
+
+        per_record = [w for read in self.READS for w in windows(read)]
+        concatenated = windows("".join(self.READS))
+        per_record_keys = set(per_record)
+        concat_keys = set(concatenated)
+        chimeric = concat_keys - per_record_keys
+        self.assertEqual((len(per_record_keys), len(per_record)), (2, 10))
+        self.assertEqual((len(concat_keys), len(concatenated)), (22, 30))
+        self.assertEqual(len(chimeric), 20)
+        self.assertIn("A" * 20 + "C", chimeric)
+        self.assertIn("A" + "C" * 20, chimeric)
+        self.assertEqual(chimeric & per_record_keys, set())
+
+
 def case_record(name, python_only=(), cli_only=(), count_deltas=()):
     return {"name": name, "python_only": list(python_only),
             "cli_only": list(cli_only), "count_deltas": list(count_deltas)}
@@ -258,15 +313,22 @@ class TestInvalidArtifacts(ImplementedGate):
 
     def test_missing_extension_exits_2(self):
         self.require()
-        # Under the system python3 (no PyO3), a valid binary path still
-        # cannot produce a differential: the missing extension is invalid.
+        # Force the import failure itself (IN-06): run the real script under
+        # an extension-free interpreter (`-S` skips site-packages) with
+        # PYTHONPATH dropped, so neither an installed extension nor an env
+        # entry can satisfy the lazy `import pyrustkmer` guard. Deterministic
+        # under both system python3 and .venv313/bin/python.
         with tempfile.TemporaryDirectory() as tmp:
-            code, _, err = self.run_main(
-                ["--rustkmer", sys.executable,
-                 "--out", str(Path(tmp) / "out.json")])
-            self.assertEqual(code, 2)
-            self.assertIn("pyrustkmer", err)
-            self.assertFalse(Path(tmp, "out.json").exists())
+            out = Path(tmp) / "out.json"
+            env = dict(os.environ)
+            env.pop("PYTHONPATH", None)
+            proc = subprocess.run(
+                [sys.executable, "-S", str(Path(nrd.__file__)),
+                 "--rustkmer", sys.executable, "--out", str(out)],
+                capture_output=True, text=True, env=env)
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+            self.assertIn("cannot import pyrustkmer", proc.stderr)
+            self.assertFalse(out.exists())
 
 
 class TestUnifiedSemantics(ImplementedGate):
@@ -394,6 +456,42 @@ class TestPreviousLoading(ImplementedGate):
         for mutate in mutations:
             prior = self.valid_prior()
             mutate(prior["cases"][0])
+            with tempfile.TemporaryDirectory() as tmp:
+                self.assert_invalid(tmp, prior)
+
+    def test_non_divergence_expectation_raises(self):
+        self.require()
+        for mutate in (
+                lambda prior: prior.__setitem__("expectation", "unified"),
+                lambda prior: prior.pop("expectation")):
+            prior = self.valid_prior()
+            mutate(prior)
+            with tempfile.TemporaryDirectory() as tmp:
+                self.assert_invalid(tmp, prior)
+
+    def test_missing_or_malformed_totals_raise(self):
+        self.require()
+        # A prior that never recorded the pre-D2 divergence cannot be a
+        # before state. bool and float are explicitly rejected: Python's
+        # bool is an int, and a float total is not a count.
+        mutations = [
+            lambda prior: prior.pop("totals"),
+            lambda prior: prior.__setitem__("totals", None),
+            lambda prior: prior["totals"].pop("python_only_total"),
+            lambda prior: prior["totals"].__setitem__(
+                "python_only_total", 0),
+            lambda prior: prior["totals"].__setitem__(
+                "python_only_total", -3),
+            lambda prior: prior["totals"].__setitem__(
+                "python_only_total", "33"),
+            lambda prior: prior["totals"].__setitem__(
+                "python_only_total", 33.0),
+            lambda prior: prior["totals"].__setitem__(
+                "python_only_total", True),
+        ]
+        for mutate in mutations:
+            prior = self.valid_prior()
+            mutate(prior)
             with tempfile.TemporaryDirectory() as tmp:
                 self.assert_invalid(tmp, prior)
 

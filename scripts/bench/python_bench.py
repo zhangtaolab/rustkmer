@@ -86,6 +86,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from scripts.bench.bench import (
+    CV_WARNING_THRESHOLD_PCT,
     DEFAULT_COOLDOWN_S,
     DEFAULT_RUSTKMER,
     SCHEMA_VERSION,
@@ -869,6 +870,13 @@ def run_controller(args):
                 f"--compare-baseline file not found: {args.compare_baseline}")
     if args.reps < 1:
         raise ValueError(f"--reps must be >= 1, got {args.reps}")
+    if args.compare_baseline is not None and args.reps < 3:
+        # IN-08: a PASS/FAIL verdict must never be computed from a single
+        # sample (which cannot even carry a CV) or a two-sample arm.
+        raise ValueError(
+            "--compare-baseline requires --reps >= 3: a comparison verdict "
+            "must rest on at least three measured samples per arm (got "
+            f"--reps {args.reps})")
     if not 1 <= args.k <= 64:
         raise ValueError(f"--k must be in 1..64, got {args.k}")
     threads_value = parse_threads(args.threads)
@@ -1007,6 +1015,19 @@ def run_controller(args):
                 args, info, control_path, scratch, default_name, gap,
                 expected_counts=warmup_counts, threads_text="default")
             default_arm["evidence_class"] = CONTROL_EVIDENCE_CLASS
+            # IN-08: measurement validity is a gate, not a warning. A noisy
+            # arm (CV above the threshold) would let a speedup threshold be
+            # cleared by variance, so no verdict is computed from one.
+            noisy = [
+                arm["name"] for arm in (control_arm, default_arm)
+                if arm["medians"].get("cv_warning")
+            ]
+            if noisy:
+                raise ValueError(
+                    f"compare mode requires quality-controlled measurements: "
+                    f"arm(s) {', '.join(noisy)} set cv_warning (wall-time CV "
+                    f"above the {CV_WARNING_THRESHOLD_PCT:g}% threshold); no "
+                    f"verdict is computed from noisy arms")
             control_block = {
                 "input_fingerprint": fingerprint(control_path),
                 "source_selection_manifest": selection_manifest,

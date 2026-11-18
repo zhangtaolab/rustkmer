@@ -54,14 +54,14 @@ No Critical findings: I found no incorrect count, byte divergence, GIL-bound cap
 | WR-02 | Warning | `scripts/bench/python_bench.py` | Compare mode silently ignores `--threads` and never observes the worker's actual thread configuration | Fixed — `266492a` |
 | WR-03 | Warning | `pyo3/tests/test_save_database_byte_identity.py`, `.github/workflows/{ci,benchmark}.yml` | The cross-surface byte-identity suite skips in every CI job, including the fixture-only Python arm | Fixed — `669e91f` |
 | WR-04 | Warning | `mkdocs.yml`, `mkdocs.docs.yml`, `docs/user-guide/index.md` | The N-read semantics page is absent from the deployed docs config's nav; the strict docs build was never run | Fixed — `af4d954` |
-| IN-01 | Info | `pyo3/tests/test_save_database_byte_identity.py`, `pyo3/tests/test_counter_concurrency.py` | These preservation gates also pass on the parent implementation; they do not prove the single-sort/GIL-release change | Open — out of fix scope |
-| IN-02 | Info | `pyo3/tests/test_counter.py` | Stale docstring still describes the retired `LocalKmerCounts` file path | Open — out of fix scope |
-| IN-03 | Info | `pyo3/src/counter.rs` | `save_database`'s non-linearizable snapshot under concurrent mutation is undocumented | Open — out of fix scope |
-| IN-04 | Info | `scripts/bench/n_read_differential.py` | `--previous` accepts any structurally valid differential as the "before" state; no prior-state/sha guard | Open — out of fix scope |
-| IN-05 | Info | `scripts/bench/n_read_differential.py`, `docs/user-guide/n-read-semantics.md` | The `record_boundary` case cannot detect cross-record joins under skip-N | Open — out of fix scope |
-| IN-06 | Info | `scripts/bench/tests/test_n_read_differential.py` | `test_missing_extension_exits_2` fails when the extension is importable (demonstrated under `.venv313`) | Open — out of fix scope |
-| IN-07 | Info | `pyo3/src/counter.rs` | `SaveDatabaseError::Database` is an unreachable error arm | Open — out of fix scope |
-| IN-08 | Info | `scripts/bench/python_bench.py`, `scripts/bench/bench.py` | Compare mode accepts `--reps 1` and ignores CV warnings, so a single noisy sample can PASS | Open — out of fix scope |
+| IN-01 | Info | `pyo3/tests/test_save_database_byte_identity.py`, `pyo3/tests/test_counter_concurrency.py` | These preservation gates also pass on the parent implementation; they do not prove the single-sort/GIL-release change | Accepted — no code change (quick 261118-fsk) |
+| IN-02 | Info | `pyo3/tests/test_counter.py` | Stale docstring still describes the retired `LocalKmerCounts` file path | Fixed — quick 261118-fsk |
+| IN-03 | Info | `pyo3/src/counter.rs` | `save_database`'s non-linearizable snapshot under concurrent mutation is undocumented | Fixed — quick 261118-fsk |
+| IN-04 | Info | `scripts/bench/n_read_differential.py` | `--previous` accepts any structurally valid differential as the "before" state; no prior-state/sha guard | Fixed — quick 261118-fsk |
+| IN-05 | Info | `scripts/bench/n_read_differential.py`, `docs/user-guide/n-read-semantics.md` | The `record_boundary` case cannot detect cross-record joins under skip-N | Fixed — quick 261118-fsk |
+| IN-06 | Info | `scripts/bench/tests/test_n_read_differential.py` | `test_missing_extension_exits_2` fails when the extension is importable (demonstrated under `.venv313`) | Fixed — quick 261118-fsk |
+| IN-07 | Info | `pyo3/src/counter.rs` | `SaveDatabaseError::Database` is an unreachable error arm | Fixed — quick 261118-fsk |
+| IN-08 | Info | `scripts/bench/python_bench.py`, `scripts/bench/bench.py` | Compare mode accepts `--reps 1` and ignores CV warnings, so a single noisy sample can PASS | Fixed — quick 261118-fsk |
 
 ## Critical Issues
 
@@ -182,6 +182,70 @@ if len(matches) != 1:
 **Issue:** `--reps` is validated only as `>= 1`, so `--compare-baseline --reps 1` runs one measured sample per arm (`reduce_arm` then records `cv_wall_pct: null`). The verdict is computed from the median regardless of `cv_warning`; `reduce_arm` deliberately treats high CV as a warning, not an error. The README states "There is no noise band", so a one-sample or high-variance run can clear 1.2x by noise and still exit 0. The artifact records `reps` and CV (the delivered run used 3 reps at 1.0% / 0.46% CV), so it is auditable, but the gate itself does not enforce measurement quality.
 
 **Fix:** Require `--reps >= 3` in compare mode, and either exit 2 or record and require a `measurement_quality: PASS` field when either arm's `cv_warning` is true.
+
+## Resolution 2026-11-18 (quick-261118-fsk)
+
+All eight Info findings are closed. The finding bodies and frontmatter above
+are the historical review record and are unchanged; this section records the
+resolution.
+
+- **IN-01** (quick-261118-fsk): Accepted, no code change. The two suites remain preservation
+  gates and also pass on the parent implementation, so they are not cited as
+  proof that the double sort was removed. That property remains proven by
+  code inspection and the 09-02 static greps.
+- **IN-02** (quick-261118-fsk): `TestPyCounterLocalAccumulationParity`'s docstring now names the
+  per-call `CountEngine` and the checked `merge_local_counts` bridge;
+  `add_sequence` stays on the shared increment path. The stale
+  "one `LocalKmerCounts` per file call" wording is gone.
+- **IN-03** (quick-261118-fsk): `save_database` and `save_database_on_counter` now document the
+  lock-free, non-linearizable snapshot (a concurrent `add_*`/`reset` may or
+  may not be reflected; the emitted file is always internally consistent)
+  and the CLI-identity claim is qualified to "with no concurrent mutation".
+  No behavior, signature, or error string changed.
+- **IN-04** (quick-261118-fsk): `load_previous` now requires `expectation == "divergence"` and a
+  positive integer `totals.python_only_total` (bool/float/zero/absent
+  rejected). The committed pre-D2 artifact still loads unchanged
+  (`expectation` divergence, `python_only_total` 33, nine cases); pinned by
+  `test_non_divergence_expectation_raises` and
+  `test_missing_or_malformed_totals_raise`.
+- **IN-05** (quick-261118-fsk): The `build_cases` docstring and the N-read semantics page now
+  scope `record_boundary` to the pre-D2 strip-and-join form. The N-free
+  two-read probe is pinned in the unit suite (`TestCrossRecordJoinProbe`:
+  per-record 2 distinct/10 total vs concatenated 22 distinct/30 total, 20
+  chimeric windows). It is test-local because the immutable pre-D2 artifact
+  carries exactly nine cases, `load_previous` requires exact case-name
+  parity, and a live case would require regenerating the delivered Phase 9
+  evidence artifact and the docs table.
+- **IN-06** (quick-261118-fsk): `test_missing_extension_exits_2` now runs the script under
+  `sys.executable -S` with `PYTHONPATH` dropped, asserts exit 2 and
+  `cannot import pyrustkmer`, writes no artifact, and has no skip;
+  deterministic under both system `python3` and `.venv313/bin/python`.
+- **IN-07** (quick-261118-fsk): `SaveDatabaseError::Database` is kept and documented as a
+  defensive arm (`from_sorted_kmer_pairs` currently cannot fail); no
+  signature, behavior, or error string change.
+- **IN-08** (quick-261118-fsk): Compare mode now requires `--reps >= 3` and exits 2 when either
+  control arm's `cv_warning` is set; the README and tests are updated
+  (`test_compare_requires_three_reps`, `test_compare_high_cv_exits_2`, plus a
+  low-CV fake measure that preserves the existing verdict-math assertions).
+  The delivered 3-rep run (1.0%/0.46% CV) remains valid. `bench.py`'s
+  separate `--reps >= 2` comparison protocol was inspected and left
+  unchanged: a single rep cannot enter it and it emits measurements, not a
+  PASS/FAIL verdict.
+
+**Observed results** (2026-11-18, this tree):
+
+- `python3 -m unittest scripts.bench.tests.test_n_read_differential` — 37
+  tests OK (was 33).
+- `python3 -m unittest scripts.bench.tests.test_python_bench` — 95 tests OK,
+  1 skipped (was 93, 1 skipped).
+- Combined `test_n_read_differential` + `test_python_bench` — 132 tests OK,
+  1 skipped.
+- `test_missing_extension_exits_2` — OK under both system `python3` and
+  `.venv313/bin/python`.
+- Committed pre-D2 artifact reload — exit 0 (`python_only_total` 33, nine
+  cases).
+- `cargo check --manifest-path pyo3/Cargo.toml` — exit 0.
+- `cargo fmt --manifest-path pyo3/Cargo.toml --check` — exit 0.
 
 ---
 

@@ -468,8 +468,12 @@ impl PyCounter {
     ///   header/entry writer — no second sort
     /// - The whole sort + write runs with the GIL released, so other Python
     ///   threads keep running during a large save (Phase 9, PY-01)
-    /// - The emitted bytes are identical to the CLI `count` output for the
-    ///   same input and thread-count independent
+    /// - With no concurrent mutation, the emitted bytes match the CLI `count`
+    ///   output for the same input and are thread-count independent
+    /// - The counter snapshot is taken without locking, so a concurrent
+    ///   `add_*` or `reset` from another Python thread may or may not be
+    ///   reflected in the emitted file; the emitted file is always internally
+    ///   consistent
     /// - Database can be loaded using rustkmer.Database
     ///
     /// # Raises
@@ -697,7 +701,10 @@ fn count_file_into_counter(
 enum SaveDatabaseError {
     /// The counter holds no k-mers, so there is nothing to write.
     Empty,
-    /// Building the `RKDatabase` from the sorted snapshot failed.
+    /// Defensive arm: this variant is unreachable today —
+    /// `RKDatabase::from_sorted_kmer_pairs` currently cannot fail; it exists
+    /// only because that constructor returns `ProcessingResult`, so a future
+    /// validation error would surface here instead of being discarded.
     Database(String),
     /// Creating the output file failed.
     CreateFile(String),
@@ -726,6 +733,11 @@ impl std::fmt::Display for SaveDatabaseError {
 /// again), and writes through the frozen header/entry writers with an explicit
 /// final flush. Counter keys are unique, so the resulting order is a strict
 /// total order and the emitted bytes are thread-count independent.
+///
+/// The snapshot is lock-free: `get_all_counts` may observe a concurrent
+/// `add_*`/`reset` partially or not at all. The writer always emits an
+/// internally consistent database, but it is not promised to be any
+/// point-in-time state.
 fn save_database_on_counter(
     counter: &Arc<RustPyCounter>,
     path: &str,
@@ -746,6 +758,8 @@ fn save_database_on_counter(
     // unstable/parallel mandate. No stable re-sort, no second sort downstream.
     pairs.par_sort_unstable_by_key(|&(kmer, _)| kmer);
 
+    // Defensive arm: the constructor currently cannot fail; see
+    // SaveDatabaseError::Database for why the mapping is kept.
     let db = RKDatabase::from_sorted_kmer_pairs(
         pairs,
         counter.kmer_length() as u8,

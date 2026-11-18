@@ -43,9 +43,10 @@ def fake_provenance(executable, build_profile):
 
 
 def make_fake_measure(module_path, total=100, unique=90, vary=False,
-                      write_stats=True, threads_resolved=None):
+                      write_stats=True, threads_resolved=None, walls=None):
     """Fake bench.measure: writes the worker stats file the controller reads
-    and returns deterministic wall/RSS (wall = 1.0 + call index).
+    and returns deterministic wall/RSS (wall = 1.0 + call index, unless a
+    ``walls`` sequence overrides the in-range calls).
 
     By default the fake models a binding that HONORS its thread
     configuration: ``threads_resolved`` follows the worker's ``--threads``
@@ -78,9 +79,22 @@ def make_fake_measure(module_path, total=100, unique=90, vary=False,
         }
         if write_stats:
             stats_out.write_text(json.dumps(payload), encoding="utf-8")
-        return {"wall_s": 1.0 + i, "peak_rss_bytes": 1_000_000 + i}
+        wall = walls[i] if walls is not None and i < len(walls) else 1.0 + i
+        return {"wall_s": wall, "peak_rss_bytes": 1_000_000 + i}
 
     return fake_measure
+
+
+# Compare-mode measure call order: parity warmup (0), t1 warmup (1) +
+# measured reps (2-4), default warmup (5) + measured reps (6-8). The t1
+# median stays 4.0 and the default median 8.0 (the same medians as the
+# monotone default), while each arm's CV is 2.5% — below the 10% gate.
+LOW_CV_COMPARE_WALLS = (0.5, 0.5, 3.9, 4.0, 4.1, 0.5, 7.9, 8.0, 8.1)
+
+
+def make_low_cv_measure(module_path):
+    """Compare-mode fake measure whose arms pass the CV quality gate."""
+    return make_fake_measure(module_path, walls=LOW_CV_COMPARE_WALLS)
 
 
 def fastq_record(name, seq):
@@ -969,9 +983,11 @@ class TestCompareController(ControllerHarness):
         return self.slice_argv("--compare-baseline", str(baseline_path),
                                *extra)
 
-    def run_compare(self, baseline_path, cli=None):
+    def run_compare(self, baseline_path, cli=None, measure=None):
         return self.run_main(
             self.compare_argv(baseline_path),
+            measure=(measure if measure is not None
+                     else make_low_cv_measure(self.module)),
             cli=(cli if cli is not None
                  else {"unique_kmers": 90, "total_kmers": 100}),
             fingerprint_value=self.CONTROL_SHA,
@@ -1092,6 +1108,30 @@ class TestCompareController(ControllerHarness):
             filter_counts=dict(self.FILTER))
         self.assertEqual(code, 2)
         self.assertIn("--threads", err)
+        self.assertFalse(self.out.exists())
+
+    def test_compare_requires_three_reps(self):
+        """A verdict must rest on >= 3 measured samples per arm (IN-08)."""
+        baseline = self.write_baseline(control_wall=12.0)
+        for reps in ("1", "2"):
+            argv = list(self.compare_argv(baseline))
+            argv[argv.index("--reps") + 1] = reps
+            code, _, err = self.run_main(
+                argv,
+                cli={"unique_kmers": 90, "total_kmers": 100},
+                fingerprint_value=self.CONTROL_SHA,
+                filter_counts=dict(self.FILTER))
+            self.assertEqual(code, 2, err)
+            self.assertIn("--reps >= 3", err)
+            self.assertFalse(self.out.exists())
+
+    def test_compare_high_cv_exits_2(self):
+        """A high-CV arm is an invalid measurement, never a FAIL verdict."""
+        baseline = self.write_baseline(control_wall=12.0)
+        code, _, err = self.run_compare(
+            baseline, measure=make_fake_measure(self.module))
+        self.assertEqual(code, 2, err)
+        self.assertIn("cv_warning", err)
         self.assertFalse(self.out.exists())
 
 

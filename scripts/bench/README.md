@@ -230,6 +230,13 @@ falls back to its lazy default. The arm is invalid unless both the reported
 count and the recorded pin match the configuration the arm requested, so a
 `PyCounter` that ignores its `threads` argument cannot produce a PASS.
 
+A comparison verdict also requires `--reps >= 3`: fewer measured samples per
+arm exits 2 before any measurement, because a single sample carries no CV at
+all. Each measured control arm's wall-time CV is itself a gate — if either
+arm's `cv_warning` is set (CV above the 10% warning threshold), the run exits
+2 as an invalid measurement and no verdict is computed. A high-variance run
+is therefore never reported as a PASS or a FAIL.
+
 ```bash
 .venv313/bin/python scripts/bench/python_bench.py --mode slice \
   --input /Users/forrest/Data/data/illumina/CRR1936095_r1.fq.gz.split/CRR1936095_r1.part_001.fq.gz \

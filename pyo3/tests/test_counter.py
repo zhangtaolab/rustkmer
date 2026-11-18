@@ -1118,11 +1118,11 @@ class TestPyCounterLocalAccumulationParity:
     local core and produce exactly the counts a pure-Python sliding-window
     reference computes.
 
-    The file helpers now create one `LocalKmerCounts` per file call and merge
-    it once at the end, so a parity failure here is either a local-accumulation
-    bug or a reduction bug. `add_sequence` deliberately stays on the shared
-    increment path; comparing both methods against the same reference pins that
-    both surfaces agree.
+    The file helpers count through a per-call `CountEngine` and merge its
+    partition tables via the checked `merge_local_counts` bridge, so a parity
+    failure here is either a local-accumulation bug or a reduction bug.
+    `add_sequence` deliberately stays on the shared increment path; comparing
+    both methods against the same reference pins that both surfaces agree.
     """
 
     # Deterministic, pure-ACGT sequences of 80 bases each, so k=64 has windows.
