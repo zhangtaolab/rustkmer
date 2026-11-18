@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-11-18T12:33:27.990Z",
+  "phase": null,
+  "phase_name": null,
+  "phase_dir": null,
+  "plan": null,
+  "task": null,
+  "total_tasks": 0,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": "261118-bhr", "name": "verify-work audit fixes (verify_threads zero-thread race, coverage schemas, deferred items, WINDOWS ledger)", "status": "done", "commit": "2bcfc9b"},
+    {"id": "261118-c2r", "name": "Backlog 999.1: pyo3 build.rs emits extension-module link args", "status": "done", "commit": "78b8542"},
+    {"id": "261118-csg", "name": "Backlog 999.3: correct stale Phase 03 loose-chunk sweep record", "status": "done", "commit": "1d9aaee"},
+    {"id": "261118-d69", "name": "Backlog 999.2: document dev-venv shadowing pitfall + structural guard", "status": "done", "commit": "e324f55"},
+    {"id": "261118-epn", "name": "Refresh .continue-here snapshot after 999.2 closure", "status": "done", "commit": "b0b893f"},
+    {"id": "261118-f80", "name": "Resolve Phase-04 deferred review findings IN-06/07/09", "status": "done", "commit": "1b91b5e"},
+    {"id": "261118-fsk", "name": "Resolve the 8 Phase-09 info-only review findings", "status": "done", "commit": "fcbe3d2"},
+    {"id": "261118-jp1", "name": "Close stale carry-forward records for the resolved CLAUDE.md dataset-line drift", "status": "done", "commit": "cc641d8"},
+    {"id": "261118-n53", "name": "Close the macOS test_verify_threads sample-race flake (peak-observation guard in observe())", "status": "done", "commit": "68b3995"},
+    {"id": "261118-nss", "name": "Planning-directory health diagnostic report", "status": "done", "commit": "1180d9c"},
+    {"id": "261118-o67", "name": "Record W019 scanner registry gap as known tooling bug 3", "status": "done", "commit": "3cd0e0f"},
+    {"id": "261118-op9", "name": "Refresh paused-handoff snapshot to the eight-task session state", "status": "done", "commit": "acb8ac8"},
+    {"id": "261118-oy5", "name": "Milestone-prep consistency check (20 findings; three stale texts repaired)", "status": "done", "commit": "71c8c3f"},
+    {"id": "261118-pja", "name": "Close benchmark-harness WARNING-1 (--stage cli requires and records --pre-gate)", "status": "done", "commit": "7dd2a8f"},
+    {"id": "261118-rkz", "name": "Correct the stale remote-CI claim in STATE.md", "status": "done", "commit": "582d618"},
+    {"id": "261118-s0k", "name": "Close remaining oy5 documentation recommendations (frontmatter desc, snapshot conventions)", "status": "done", "commit": "a165d77"}
+  ],
+  "remaining_tasks": [],
+  "blockers": [],
+  "async_jobs": [],
+  "human_actions_pending": [],
+  "decisions": [
+    {"decision": "observe() records the peak nonzero thread observation instead of the last one", "rationale": "A macOS sample window that straddles the child's exit can only under-count; the highest observation is the honest monotonic measurement (quick 261118-n53)", "phase": null},
+    {"decision": "--stage cli requires and validates --pre-gate before any measured work", "rationale": "Closes WARNING-1 structurally; a future full-scale CLI run can no longer omit the slice gate (quick 261118-pja)", "phase": null},
+    {"decision": "W019 accepted as an upstream registry gap, not repaired locally", "rationale": "continue-here.md is the live pause/resume artifact; the tool's move/delete advice would break resume, and the registry lives in the global GSD install (quick 261118-nss/o67)", "phase": null},
+    {"decision": "STATE frontmatter current_phase reset deferred to the next milestone init", "rationale": "Phase 14 was NOT EXECUTED; the next /gsd-new-milestone rewrites the phase pointer, so a hand edit now would be overwritten anyway (oy5 F03/F20)", "phase": null}
+  ],
+  "uncommitted_files": [],
+  "next_action": "Run /gsd-new-milestone to define the v2.2 milestone; at init, reset STATE.md current_phase/current_phase_name so the NOT-EXECUTED Phase 14 is not presented as current (oy5 F03/F20).",
+  "context_notes": "Milestone v2.1 is complete and archived. This session was a planning-hygiene run: 16 quick tasks closed every live carry-forward (backlog 999.1-999.3, Phase-04 IN-06/07/09, Phase-09 8 Info findings, the macOS test_verify_threads flake, W019 record, benchmark WARNING-1, remote-CI claim, and the oy5 consistency report). No code work is mid-flight; the tracked tree is clean at HEAD 6d437c2. Health is intentionally degraded by the single known non-repairable W019 warning. The only remaining items are the v2.2+ candidates in the ROADMAP Backlog (MBF-02, PEXT-05) and the two oy5 recommendations noted in the snapshot's Remaining Backlog."
+}
