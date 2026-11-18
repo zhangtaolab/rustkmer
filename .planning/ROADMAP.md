@@ -117,12 +117,12 @@ healthy 0.5.0 layout.
 
 **Resolution (2026-11-18, quick 261118-csg):** the Phase 03 deferred-items entry no longer makes the stale claim; it records the gap in past tense and carries a dated Resolved paragraph. The sweep-coverage gap was closed by plan 03-11 (commit `83a6ac2`, 2026-10-08): `sweep_stale_merge_dirs` selects loose chunk files via `CHUNK_FILE_PREFIXES` + `CHUNK_FILE_SUFFIX` under the same TTL and symlink refusal as the directory branch, pinned by `tests/merge_cleanup_tests.rs::sweep_reclaims_stale_loose_chunk_files` (re-run 2026-11-18: 1 passed, 0 failed).
 
-*999.1-999.3 are handled opportunistically in v2.1 under HYG-04 (Phase 11): resolved in the same touch whenever milestone work touches their files — not gate-blocking.*
+*999.1-999.3 were tracked opportunistically under HYG-04 (Phase 11) and all resolved 2026-11-18 (999.1 quick 261118-c2r; 999.2 quick 261118-d69; 999.3 quick 261118-csg) — not gate-blocking.*
 
 ### v2.0 carry-forward (from the milestone audit, 2026-11-14 — status updated 2026-11-16)
 
 - Phase 5/6/7/8 Nyquist coverage → **PROMOTED** to v2.1 requirement HYG-02 (Phase 11)
-- `SECURITY.md` absent for Phases 9 and 10 → **PROMOTED** to v2.1 requirement HYG-03 (Phase 11); the 8 Info findings in `09-REVIEW.md` remain info-only and tracked
+- `SECURITY.md` absent for Phases 9 and 10 → **PROMOTED** to v2.1 requirement HYG-03 (Phase 11); the 8 Info findings in `09-REVIEW.md` were **RESOLVED** 2026-11-18 by quick 261118-fsk (commit `fcbe3d2`; 7 Fixed, 1 Accepted)
 - `cargo fmt --all --check` drift → **RESOLVED** by quick 261116-ks7 (commit ee742dc)
 - Benchmark harness WARNING-1 (CLI stage does not structurally consume the slice gate) and WARNING-2 (README pool-size formula drift) → opportunistic when `scripts/bench/` is touched (Phase 11 does touch it)
 - MINIM-01..03 (minimizer partitioning / memory ceiling) → **PERMANENTLY DESCOPED** (user decision 2026-11-16: the memory bar is "below jellyfish", already met at both k; KMC-class RAM is not a goal)
