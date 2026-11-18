@@ -2,17 +2,16 @@
 gsd_state_version: "1.0"
 milestone: v2.1
 status: Awaiting next milestone
-stopped_at: "v2.1 milestone closed and archived 2026-11-18; next: /gsd-new-milestone"
-last_updated: "2026-11-18T00:51:22.578Z"
+stopped_at: context exhaustion at 97% (2026-11-18)
+last_updated: "2026-11-18T01:20:56.570Z"
 last_activity: 2026-11-18
 last_activity_desc: Milestone v2.1 completed and archived
-state_head: 78b8542e5579fe87134833d97906231622dc902c
+state_head: 1d9aaee27214752a30cef9baf0a6dc596033e580
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 15
   completed_plans: 15
-  percent: 75
 milestone_name: Merge Verdict & Producer Research
 current_phase: 14
 current_phase_name: Parallel Extraction
@@ -32,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-18 - Completed quick task 261118-c2r: pyo3 build.rs emits extension-module link args (backlog 999.1)
+Last activity: 2026-11-18 - Completed quick task 261118-csg: correct stale Phase 03 loose-chunk sweep record (backlog 999.3)
 
 ## Performance Metrics
 
@@ -100,6 +99,7 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 261118-bhr | Apply verify-work audit fixes: fix verify_threads zero-thread race and add unit test; correct 11-05 and 06-03 SUMMARY coverage schemas; sync .claude/CLAUDE.md dataset line; correct 11-PREPARE-RECORD free-space figure; mark 06/08 deferred items resolved; close WINDOWS ledger entries 26 and 27 | 2026-11-18 | 2bcfc9b | [261118-bhr-apply-verify-work-audit-fixes-fix-verify](./quick/261118-bhr-apply-verify-work-audit-fixes-fix-verify/) |
 | 261118-c2r | Backlog 999.1: make pyo3/build.rs call pyo3_build_config::add_extension_module_link_args() and re-add pyo3-build-config as a build-dependency so the documented manual-build workaround links as-is under pyo3 0.27 | 2026-11-18 | 78b8542 | [261118-c2r-backlog-999-1-make-pyo3-build-rs-call-py](./quick/261118-c2r-backlog-999-1-make-pyo3-build-rs-call-py/) |
+| 261118-csg | Backlog 999.3: correct the stale Phase 03 deferred-items record claiming loose *.chunk files are never swept — CHUNK_FILE_PREFIXES now sweeps them (plan 03-11, commit 83a6ac2, test sweep_reclaims_stale_loose_chunk_files); mark the sweep-coverage entry resolved and close ROADMAP backlog 999.3 | 2026-11-18 | 1d9aaee | [261118-csg-backlog-999-3-correct-the-stale-phase-03](./quick/261118-csg-backlog-999-3-correct-the-stale-phase-03/) |
 
 ## Deferred Items
 
@@ -118,8 +118,8 @@ Items acknowledged and carried forward, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-18
-Stopped at: v2.1 milestone closed and archived 2026-11-18
+Last session: 2026-11-18T01:19:19.410Z
+Stopped at: context exhaustion at 97% (2026-11-18)
 Resume file: None
 
 ## Operator Next Steps
