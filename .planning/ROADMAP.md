@@ -75,13 +75,15 @@ Full detail: [milestones/v2.1-ROADMAP.md](milestones/v2.1-ROADMAP.md) · Require
 | 14. Parallel Extraction | v2.1 | NOT EXECUTED | Not executed — D3 NO-GO (2026-11-17) | - |
 ## Backlog
 
-### Phase 999.1: Follow-up — Phase 03 deferred UAT follow-up: Test 22 (BACKLOG)
+### Phase 999.1: Follow-up — Phase 03 deferred UAT follow-up: Test 22 (RESOLVED 2026-11-18)
 
 **Goal:** Resolve the UAT checkpoint deferred during Phase 03 verification
 **Source phase:** 03
 **Deferred at:** 2026-10-09 during /gsd-verify-work 03 session completion
 **Follow-ups:**
-- [ ] Test 22: pyo3 0.27 no longer auto-emits -undefined dynamic_lookup; pyo3/build.rs should call pyo3_build_config::add_extension_module_link_args() so the documented manual-build workaround links as-is again (this session injected it via RUSTFLAGS) (deferred 2026-10-09). Caveat: if this lands, pyo3-build-config must be re-added as a `[build-dependencies]` entry in `pyo3/Cargo.toml` (removed by quick 261111-sq1 because build.rs does not call it today).
+- [x] Test 22: pyo3 0.27 no longer auto-emits -undefined dynamic_lookup; pyo3/build.rs should call pyo3_build_config::add_extension_module_link_args() so the documented manual-build workaround links as-is again (this session injected it via RUSTFLAGS) (deferred 2026-10-09). Caveat: if this lands, pyo3-build-config must be re-added as a `[build-dependencies]` entry in `pyo3/Cargo.toml` (removed by quick 261111-sq1 because build.rs does not call it today).
+
+**Resolution (2026-11-18, quick 261118-c2r, commit aaacda3):** `pyo3/build.rs` now calls `pyo3_build_config::add_extension_module_link_args()` unconditionally and `pyo3-build-config = "0.27.2"` is re-added as a `[build-dependencies]` entry (lockfile delta: one line). Proven end-to-end: `cargo build --manifest-path pyo3/Cargo.toml --features extension-module --locked` exits 0 with RUSTFLAGS/CARGO_ENCODED_RUSTFLAGS unset and the cdylib link carries `-C link-arg=-undefined -C link-arg=dynamic_lookup`; the pre-fix build failed with exit 101 (`_PyBaseObject_Type` undefined). The three documented RUSTFLAGS exports were replaced with the automatic-mechanism note.
 
 ### Phase 999.2: Follow-up — Phase 03 deferred UAT follow-up: Test 22 (BACKLOG)
 

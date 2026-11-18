@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v2.1
 status: Awaiting next milestone
 stopped_at: "v2.1 milestone closed and archived 2026-11-18; next: /gsd-new-milestone"
-last_updated: "2026-11-18T00:33:16.809Z"
+last_updated: "2026-11-18T00:51:22.578Z"
 last_activity: 2026-11-18
 last_activity_desc: Milestone v2.1 completed and archived
-state_head: 2bcfc9bbfe50df1e2d0276c0bb10b5495c87f090
+state_head: 78b8542e5579fe87134833d97906231622dc902c
 progress:
   total_phases: 4
   completed_phases: 3
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-18 - Completed quick task 261118-bhr: Apply verify-work audit fixes (verify_threads zero-thread race, coverage schemas, deferred items, WINDOWS 26/27)
+Last activity: 2026-11-18 - Completed quick task 261118-c2r: pyo3 build.rs emits extension-module link args (backlog 999.1)
 
 ## Performance Metrics
 
@@ -99,6 +99,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 261118-bhr | Apply verify-work audit fixes: fix verify_threads zero-thread race and add unit test; correct 11-05 and 06-03 SUMMARY coverage schemas; sync .claude/CLAUDE.md dataset line; correct 11-PREPARE-RECORD free-space figure; mark 06/08 deferred items resolved; close WINDOWS ledger entries 26 and 27 | 2026-11-18 | 2bcfc9b | [261118-bhr-apply-verify-work-audit-fixes-fix-verify](./quick/261118-bhr-apply-verify-work-audit-fixes-fix-verify/) |
+| 261118-c2r | Backlog 999.1: make pyo3/build.rs call pyo3_build_config::add_extension_module_link_args() and re-add pyo3-build-config as a build-dependency so the documented manual-build workaround links as-is under pyo3 0.27 | 2026-11-18 | 78b8542 | [261118-c2r-backlog-999-1-make-pyo3-build-rs-call-py](./quick/261118-c2r-backlog-999-1-make-pyo3-build-rs-call-py/) |
 
 ## Deferred Items
 
