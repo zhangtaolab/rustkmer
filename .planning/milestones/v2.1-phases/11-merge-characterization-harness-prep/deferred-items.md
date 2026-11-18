@@ -27,6 +27,7 @@ test_degradation 70), and the remaining ~464 tests are unaffected.
 - **Detail:** Reproduced during 11-01 (`requested=4 observed=0`); documented in STATE.md Blockers/Concerns as a ~50% macOS `sample`-race flake; purge stale `target/` artifacts before trusting a red result. Unrelated to the 11-01 diff.
 - **Status:** resolved
 - **Resolution:** Resolved in quick 261118-bhr (2026-11-18): `_thread_count` now returns None for a zero-thread macOS sample report (retry), with unit tests pinning the empty-report case; the negative controls and the full test_verify_threads suite are green.
+- **Resolution (2026-11-18, quick 261118-n53):** closed the residual late-sample race: `observe()` now records the highest nonzero observation (peak guard), so a truncated `sample` report produced at the child's exit window can never overwrite a correct earlier count; pinned by deterministic unit tests in `TestObservePeakGuard`, with the full `test_verify_threads` suite green (22 tests) and the pre-engine negative control stress-verified 10/10 sequential runs. The 261118-bhr zero-report retry remains in force; this paragraph extends, and does not replace, the recorded history above.
 
 ### Docs drift, out of D-06 sweep breadth — `.claude/CLAUDE.md:17`
 

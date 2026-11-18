@@ -87,11 +87,11 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Environment, OPEN] `scripts/bench/tests/test_verify_threads.py::TestNegativeControls::test_pre_engine_n_plus_one_stub_is_measured_red` is a pre-existing ~50% macOS `sample`-race flake. A shared `target/` across git worktrees can bake a deleted `CARGO_MANIFEST_DIR` into test binaries — purge stale artifacts before trusting a red result.
+- [Environment, RESOLVED 2026-11-18] The macOS `scripts/bench/tests/test_verify_threads.py::TestNegativeControls::test_pre_engine_n_plus_one_stub_is_measured_red` flake is closed by quick 261118-n53: `observe()` records the peak nonzero observation, so a truncated exit-window `sample` report can never overwrite a correct earlier count (the zero-report retry landed in 261118-bhr), and the pre-engine negative control passed 10/10 stress runs. A shared `target/` across git worktrees can still bake a deleted `CARGO_MANIFEST_DIR` into test binaries — purge stale artifacts before trusting a red result.
 - [Carried, RESOLVED 2026-11-18] IN-06/07/09 (Phase-04 review findings) closed by quick 261118-f80; backlog 999.1-999.3 also resolved (c2r/d69/csg) — no gate-blocking backlog remains.
 - [Phase 9, RESOLVED 2026-11-18] 8 Info findings in `09-REVIEW.md` closed by quick 261118-fsk (7 Fixed, 1 Accepted as a no-code-change preservation-gate rationale).
 - [Carried W1, RESOLVED 2026-11-18] pushed dev (through f4e2dc9) and tag v2.1 to origin — remote CI now sees every local commit.
-- [v2.1 close, acknowledged] Deferred-item acknowledgments recorded in the Deferred Items table below — the macOS flake is the only live carry-forward; the `.claude/CLAUDE.md` dataset-line drift was verified already corrected (line 17 reads ~16.7 GB / six single-member split parts) and its record is closed.
+- [v2.1 close, acknowledged] Deferred-item acknowledgments recorded in the Deferred Items table below — no live carry-forward remains: the macOS flake was closed by quick 261118-n53, and the `.claude/CLAUDE.md` dataset-line drift was verified already corrected (line 17 reads ~16.7 GB / six single-member split parts) and its record is closed.
 
 ### Quick Tasks Completed
 
@@ -113,7 +113,7 @@ Items acknowledged and carried forward, most recent first:
 | Category | Item | Status | Deferred At | Milestone |
 |----------|------|--------|-------------|-----------|
 | quick_tasks | 261116-lhq (AtomicU64::fetch_update deprecation suppressed at src/hash/table.rs; work committed 3655086, all gates green) | Acknowledged (scanner status unknown; work complete) | 2026-11-18 | v2.1 |
-| deferred_items | 11/deferred-items.md: Pre-existing flake — test_verify_threads.py TestNegativeControls pre_engine_n_plus_one stub (~50% macOS sample-race) | acknowledged | 2026-11-18 | v2.1 |
+| deferred_items | 11/deferred-items.md: Pre-existing flake — test_verify_threads.py TestNegativeControls pre_engine_n_plus_one stub (~50% macOS sample-race) | Resolved (quick 261118-n53, 2026-11-18; peak-observation guard in `observe()`) | 2026-11-18 | v2.1 |
 | deferred_items | 11/deferred-items.md: Docs drift — .claude/CLAUDE.md:17 pre-correction two-parts dataset line | Resolved (quick 261118-bhr; verified 2026-11-18 in quick 261118-jp1: line reads ~16.7 GB / six single-member split parts) | 2026-11-18 | v2.1 |
 | Review findings | IN-06/07/09 (Phase-04 harness/test code) | Resolved (quick 261118-f80, 2026-11-18) | 2026-11-11 | — |
 | Backlog | 999.1 pyo3 build.rs link args; 999.2 stale site-packages shadowing; 999.3 stale sweep claim | Resolved 2026-11-18 (999.1 c2r; 999.2 d69; 999.3 csg) | 2026-10-09 | — |
