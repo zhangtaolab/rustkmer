@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v2.1
 status: Awaiting next milestone
 stopped_at: context exhaustion at 97% (2026-11-18)
-last_updated: "2026-11-18T02:45:20.566Z"
+last_updated: "2026-11-18T03:11:05.219Z"
 last_activity: 2026-11-18
 last_activity_desc: Milestone v2.1 completed and archived
-state_head: b0b893f52af036bcc885f277a9f7a1d5edc297e6
+state_head: 1b91b5e5a98aa5c3e5f88f6d5866380fadb391f7
 progress:
   total_phases: 4
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-18 - Completed quick task 261118-epn: refresh the paused-handoff snapshot after backlog 999.2 resolution
+Last activity: 2026-11-18 - Completed quick task 261118-f80: resolved Phase-04 deferred review findings IN-06/IN-07/IN-09
 
 ## Performance Metrics
 
@@ -88,7 +88,7 @@ None yet.
 ### Blockers/Concerns
 
 - [Environment, OPEN] `scripts/bench/tests/test_verify_threads.py::TestNegativeControls::test_pre_engine_n_plus_one_stub_is_measured_red` is a pre-existing ~50% macOS `sample`-race flake. A shared `target/` across git worktrees can bake a deleted `CARGO_MANIFEST_DIR` into test binaries — purge stale artifacts before trusting a red result.
-- [Carried, OPEN] IN-06/07/09 (Phase-04 review findings) deferred per triage 261111-spz; backlog 999.1-999.3 remain tracked in ROADMAP.md Backlog (opportunistic, not gate-blocking).
+- [Carried, RESOLVED 2026-11-18] IN-06/07/09 (Phase-04 review findings) closed by quick 261118-f80; backlog 999.1-999.3 also resolved (c2r/d69/csg) — no gate-blocking backlog remains.
 - [Phase 9, OPEN] 8 Info findings in `09-REVIEW.md` (info only).
 - [Carried W1, RESOLVED 2026-11-18] pushed dev (through f4e2dc9) and tag v2.1 to origin — remote CI now sees every local commit.
 - [v2.1 close, acknowledged] Deferred-item acknowledgments recorded in the Deferred Items table below — the macOS flake and the auto-generated `.claude/CLAUDE.md` dataset-line drift remain the two live carry-forwards.
@@ -102,6 +102,7 @@ None yet.
 | 261118-csg | Backlog 999.3: correct the stale Phase 03 deferred-items record claiming loose *.chunk files are never swept — CHUNK_FILE_PREFIXES now sweeps them (plan 03-11, commit 83a6ac2, test sweep_reclaims_stale_loose_chunk_files); mark the sweep-coverage entry resolved and close ROADMAP backlog 999.3 | 2026-11-18 | 1d9aaee | [261118-csg-backlog-999-3-correct-the-stale-phase-03](./quick/261118-csg-backlog-999-3-correct-the-stale-phase-03/) |
 | 261118-d69 | Backlog 999.2: resolve the dev-venv site-packages shadowing pitfall by documenting it in pyo3/README.md and adding a structural shadowing guard to pyo3/tests/test_version.py, then close ROADMAP backlog 999.2 | 2026-11-18 | e324f55 | [261118-d69-backlog-999-2-resolve-the-dev-venv-site-](./quick/261118-d69-backlog-999-2-resolve-the-dev-venv-site-/) |
 | 261118-epn | Refresh .planning/.continue-here.md so the paused-handoff snapshot reflects the resolution of backlog 999.2 (quick 261118-d69): add the d69 row to the session summary, update Current State, remove 999.2 from Remaining Backlog since 999.1-999.3 are all resolved, and update the Resume section | 2026-11-18 | b0b893f | [261118-epn-refresh-planning-continue-here-md-so-the](./quick/261118-epn-refresh-planning-continue-here-md-so-the/) |
+| 261118-f80 | Resolve Phase-04 deferred review findings IN-06/IN-07/IN-09: interpolate {route:?} in the two merge_bounded_memory_tests expect_err messages; reject leading-hyphen paths in scripts/bench/bench.py validate_path; emit explicit no-input_fingerprint notes in the bench.py render listing; pin each with targeted Rust/Python tests and mark the 04-REVIEW-DISPOSITION records fixed | 2026-11-18 | 1b91b5e | [261118-f80-resolve-phase-04-deferred-review-finding](./quick/261118-f80-resolve-phase-04-deferred-review-finding/) |
 
 ## Deferred Items
 
@@ -112,8 +113,8 @@ Items acknowledged and carried forward, most recent first:
 | quick_tasks | 261116-lhq (AtomicU64::fetch_update deprecation suppressed at src/hash/table.rs; work committed 3655086, all gates green) | Acknowledged (scanner status unknown; work complete) | 2026-11-18 | v2.1 |
 | deferred_items | 11/deferred-items.md: Pre-existing flake — test_verify_threads.py TestNegativeControls pre_engine_n_plus_one stub (~50% macOS sample-race) | acknowledged | 2026-11-18 | v2.1 |
 | deferred_items | 11/deferred-items.md: Docs drift — .claude/CLAUDE.md:17 mirrors pre-correction "~5.2 GB" dataset line (auto-generated; fix = regeneration) | acknowledged | 2026-11-18 | v2.1 |
-| Review findings | IN-06/07/09 (Phase-04 harness/test code) | Deferred (triaged 261111-spz) | 2026-11-11 | — |
-| Backlog | 999.1 pyo3 build.rs link args; 999.2 stale site-packages shadowing; 999.3 stale sweep claim | Opportunistic in v2.1 (HYG-04, Phase 11) | 2026-10-09 | — |
+| Review findings | IN-06/07/09 (Phase-04 harness/test code) | Resolved (quick 261118-f80, 2026-11-18) | 2026-11-11 | — |
+| Backlog | 999.1 pyo3 build.rs link args; 999.2 stale site-packages shadowing; 999.3 stale sweep claim | Resolved 2026-11-18 (999.1 c2r; 999.2 d69; 999.3 csg) | 2026-10-09 | — |
 | Review findings | 8 Info findings in `09-REVIEW.md` (Phase 9) | Info-only, tracked | 2026-11-14 | — |
 | Descoped | MINIM-01..03; KMC3 comparison (BENCH-V2-01) | Permanently descoped (user decision) | 2026-11-16 | — |
 | Deferred to v2.2+ | MBF-01 (merge flag sweep, post-INVEST); MBF-02 (N-way/r1+r2); PEXT-05 (extractor refinements) | Post-verdict follow-ons | 2026-11-16 | — |
