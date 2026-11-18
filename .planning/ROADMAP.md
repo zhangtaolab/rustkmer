@@ -119,12 +119,28 @@ healthy 0.5.0 layout.
 
 *999.1-999.3 were tracked opportunistically under HYG-04 (Phase 11) and all resolved 2026-11-18 (999.1 quick 261118-c2r; 999.2 quick 261118-d69; 999.3 quick 261118-csg) — not gate-blocking.*
 
-### v2.0 carry-forward (from the milestone audit, 2026-11-14 — status updated 2026-11-16)
+### v2.0 carry-forward (from the milestone audit, 2026-11-14 — status updated 2026-11-18)
 
 - Phase 5/6/7/8 Nyquist coverage → **PROMOTED** to v2.1 requirement HYG-02 (Phase 11)
 - `SECURITY.md` absent for Phases 9 and 10 → **PROMOTED** to v2.1 requirement HYG-03 (Phase 11); the 8 Info findings in `09-REVIEW.md` were **RESOLVED** 2026-11-18 by quick 261118-fsk (commit `fcbe3d2`; 7 Fixed, 1 Accepted)
 - `cargo fmt --all --check` drift → **RESOLVED** by quick 261116-ks7 (commit ee742dc)
-- Benchmark harness WARNING-1 (CLI stage does not structurally consume the slice gate) and WARNING-2 (README pool-size formula drift) → opportunistic when `scripts/bench/` is touched (Phase 11 does touch it)
+- Benchmark harness WARNING-1 (CLI stage did not structurally consume the
+  slice gate) → **RESOLVED** (quick 261118-pja, 2026-11-18): `--stage cli`
+  now requires `--pre-gate` and validates it with `_load_slice_gate_doc`
+  (complete provenance, a gate for the session's k, the pinned k=21
+  counts/reference), asserts the gate's `input_fingerprint` equals the
+  current two parts AND its `slice_recipe.source_sha256` equals part_001's
+  sha256, all before the disk floor, preflight, or any measured round; a
+  failed gate exits 2 with no artifact. The CLI document pins the gate's
+  path+sha256 in a `pre_gate` block, pinned by four new unittest cases in
+  `scripts/bench/tests/test_python_full_arm.py`. Historical note: the two
+  committed v2.0 CLI documents predate the block and remain readable — the
+  schema tolerates the extra key and neither `render` nor `preflight-python`
+  reads the gate path (both re-run green on 2026-11-18).
+- Benchmark harness WARNING-2 (README pool-size formula drift) →
+  **RESOLVED** (commit `7e837f1`, 2026-11-17): the stale Phase-5
+  'requested + 1' sentence now states the pinned contract (exactly 2
+  threads at N=1, 2N+1 at N>1).
 - MINIM-01..03 (minimizer partitioning / memory ceiling) → **PERMANENTLY DESCOPED** (user decision 2026-11-16: the memory bar is "below jellyfish", already met at both k; KMC-class RAM is not a goal)
 
 ### Deferred to v2.2+ (post-verdict; from REQUIREMENTS.md)
