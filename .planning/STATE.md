@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v2.1
 status: Awaiting next milestone
 stopped_at: context exhaustion at 97% (2026-11-18)
-last_updated: "2026-11-18T03:11:05.219Z"
+last_updated: "2026-11-18T03:39:06.199Z"
 last_activity: 2026-11-18
 last_activity_desc: Milestone v2.1 completed and archived
-state_head: 1b91b5e5a98aa5c3e5f88f6d5866380fadb391f7
+state_head: fcbe3d24424b4a38682ea47b964d47087a346775
 progress:
   total_phases: 4
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-18 - Completed quick task 261118-f80: resolved Phase-04 deferred review findings IN-06/IN-07/IN-09
+Last activity: 2026-11-18 - Completed quick task 261118-fsk: resolved the 8 Phase-09 info-only review findings
 
 ## Performance Metrics
 
@@ -89,7 +89,7 @@ None yet.
 
 - [Environment, OPEN] `scripts/bench/tests/test_verify_threads.py::TestNegativeControls::test_pre_engine_n_plus_one_stub_is_measured_red` is a pre-existing ~50% macOS `sample`-race flake. A shared `target/` across git worktrees can bake a deleted `CARGO_MANIFEST_DIR` into test binaries — purge stale artifacts before trusting a red result.
 - [Carried, RESOLVED 2026-11-18] IN-06/07/09 (Phase-04 review findings) closed by quick 261118-f80; backlog 999.1-999.3 also resolved (c2r/d69/csg) — no gate-blocking backlog remains.
-- [Phase 9, OPEN] 8 Info findings in `09-REVIEW.md` (info only).
+- [Phase 9, RESOLVED 2026-11-18] 8 Info findings in `09-REVIEW.md` closed by quick 261118-fsk (7 Fixed, 1 Accepted as a no-code-change preservation-gate rationale).
 - [Carried W1, RESOLVED 2026-11-18] pushed dev (through f4e2dc9) and tag v2.1 to origin — remote CI now sees every local commit.
 - [v2.1 close, acknowledged] Deferred-item acknowledgments recorded in the Deferred Items table below — the macOS flake and the auto-generated `.claude/CLAUDE.md` dataset-line drift remain the two live carry-forwards.
 
@@ -103,6 +103,7 @@ None yet.
 | 261118-d69 | Backlog 999.2: resolve the dev-venv site-packages shadowing pitfall by documenting it in pyo3/README.md and adding a structural shadowing guard to pyo3/tests/test_version.py, then close ROADMAP backlog 999.2 | 2026-11-18 | e324f55 | [261118-d69-backlog-999-2-resolve-the-dev-venv-site-](./quick/261118-d69-backlog-999-2-resolve-the-dev-venv-site-/) |
 | 261118-epn | Refresh .planning/.continue-here.md so the paused-handoff snapshot reflects the resolution of backlog 999.2 (quick 261118-d69): add the d69 row to the session summary, update Current State, remove 999.2 from Remaining Backlog since 999.1-999.3 are all resolved, and update the Resume section | 2026-11-18 | b0b893f | [261118-epn-refresh-planning-continue-here-md-so-the](./quick/261118-epn-refresh-planning-continue-here-md-so-the/) |
 | 261118-f80 | Resolve Phase-04 deferred review findings IN-06/IN-07/IN-09: interpolate {route:?} in the two merge_bounded_memory_tests expect_err messages; reject leading-hyphen paths in scripts/bench/bench.py validate_path; emit explicit no-input_fingerprint notes in the bench.py render listing; pin each with targeted Rust/Python tests and mark the 04-REVIEW-DISPOSITION records fixed | 2026-11-18 | 1b91b5e | [261118-f80-resolve-phase-04-deferred-review-finding](./quick/261118-f80-resolve-phase-04-deferred-review-finding/) |
+| 261118-fsk | Resolve the 8 Phase-09 info-only review findings: IN-01 accepted (no code change); IN-02/IN-03/IN-07 PyO3 docstring and defensive-arm documentation; IN-04 guard --previous against non-divergence/empty prior state; IN-05 scope record_boundary plus a test-local N-free cross-record-join probe; IN-06 make the missing-extension test deterministic under -S; IN-08 require reps>=3 and CV-clean arms in compare mode; update 09-REVIEW.md to 7 Fixed / 1 Accepted | 2026-11-18 | fcbe3d2 | [261118-fsk-resolve-the-8-phase-09-info-only-review-](./quick/261118-fsk-resolve-the-8-phase-09-info-only-review-/) |
 
 ## Deferred Items
 
@@ -115,7 +116,7 @@ Items acknowledged and carried forward, most recent first:
 | deferred_items | 11/deferred-items.md: Docs drift — .claude/CLAUDE.md:17 mirrors pre-correction "~5.2 GB" dataset line (auto-generated; fix = regeneration) | acknowledged | 2026-11-18 | v2.1 |
 | Review findings | IN-06/07/09 (Phase-04 harness/test code) | Resolved (quick 261118-f80, 2026-11-18) | 2026-11-11 | — |
 | Backlog | 999.1 pyo3 build.rs link args; 999.2 stale site-packages shadowing; 999.3 stale sweep claim | Resolved 2026-11-18 (999.1 c2r; 999.2 d69; 999.3 csg) | 2026-10-09 | — |
-| Review findings | 8 Info findings in `09-REVIEW.md` (Phase 9) | Info-only, tracked | 2026-11-14 | — |
+| Review findings | 8 Info findings in `09-REVIEW.md` (Phase 9) | Resolved (quick 261118-fsk, 2026-11-18; 7 fixed, 1 accepted) | 2026-11-14 | — |
 | Descoped | MINIM-01..03; KMC3 comparison (BENCH-V2-01) | Permanently descoped (user decision) | 2026-11-16 | — |
 | Deferred to v2.2+ | MBF-01 (merge flag sweep, post-INVEST); MBF-02 (N-way/r1+r2); PEXT-05 (extractor refinements) | Post-verdict follow-ons | 2026-11-16 | — |
 
