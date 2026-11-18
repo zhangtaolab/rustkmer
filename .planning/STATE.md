@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v2.1
 status: Awaiting next milestone
 stopped_at: context exhaustion at 97% (2026-11-18)
-last_updated: "2026-11-18T11:59:52.012Z"
+last_updated: "2026-11-18T12:25:37.258Z"
 last_activity: 2026-11-18
 last_activity_desc: "Completed quick task 261118-rkz: corrected the stale remote-CI claim in STATE.md"
-state_head: 582d618d669ffc9c2df0637df2c828439077bf7d
+state_head: a165d77bd9ba994100e469caa55d50d83c5fd051
 progress:
   total_phases: 4
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-18 - Completed quick task 261118-rkz: corrected the stale remote-CI claim in STATE.md
+Last activity: 2026-11-18 - Completed quick task 261118-s0k: closed the remaining oy5 documentation recommendations
 
 ## Performance Metrics
 
@@ -112,6 +112,7 @@ None yet.
 | 261118-oy5 | Milestone-prep consistency check across PROJECT.md, ROADMAP.md, STATE.md, MILESTONES.md, and .continue-here.md: 20 findings recorded (12 CONSISTENT, 7 STALE, 1 UNRECONCILED — WARNING-1 has no recorded resolution); three proven stale texts repaired (ROADMAP 09-REVIEW info-only claim, ROADMAP 999.x opportunistic note, two PROJECT.md — Pending v2.0 outcome cells); everything else recorded as recommendations (STATE current_phase 14 on a closed milestone, remote-CI/push wording, etc.) | 2026-11-18 | 71c8c3f | [261118-oy5-run-a-milestone-prep-consistency-check-a](./quick/261118-oy5-run-a-milestone-prep-consistency-check-a/) |
 | 261118-pja | Resolve benchmark-harness WARNING-1: --stage cli now requires --pre-gate, validates the slice-gate artifact (provenance, same input fingerprint, same pinned slice source, file sha256) before any measured work, records a pre_gate {path, sha256} block in the CLI document, and exits 2 with no artifact on failure; four new tests (missing flag, different inputs before any measurement, different slice source, missing session k) bring the full-arm module to 46 tests; render and preflight-python remain compatible with the committed historical docs; ROADMAP carry-forward closes WARNING-1 and WARNING-2 | 2026-11-18 | 7dd2a8f | [261118-pja-resolve-benchmark-harness-warning-1-the-](./quick/261118-pja-resolve-benchmark-harness-warning-1-the-/) |
 | 261118-rkz | Correct the stale remote-CI claim in .planning/STATE.md: the Carried W1 blocker now records that dev was pushed to origin (origin/dev tip b3d3ff3, includes f4e2dc9) plus tag v2.1 (ec7f329), and that later quick-task commits remain local-only; the retired claim ('remote CI now sees every local commit') no longer appears anywhere in STATE.md; single-line diff, all other bytes preserved | 2026-11-18 | 582d618 | [261118-rkz-correct-the-stale-remote-ci-claim-in-pla](./quick/261118-rkz-correct-the-stale-remote-ci-claim-in-pla/) |
+| 261118-s0k | Close the remaining oy5 documentation recommendations: STATE.md frontmatter last_activity_desc synced to the latest quick task (rkz) while the tool-owned last_updated/state_head were left untouched; .continue-here.md now states that the eight-row Session Summary is representative (STATE.md's 15-row Quick Tasks table is canonical) and that the recorded tree-clean HEAD is the value at snapshot generation, so later commits are expected rather than drift; exactly three changed lines across two files, all other bytes preserved | 2026-11-18 | a165d77 | [261118-s0k-close-the-remaining-oy5-documentation-re](./quick/261118-s0k-close-the-remaining-oy5-documentation-re/) |
 
 ## Deferred Items
 
