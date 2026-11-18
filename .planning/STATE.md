@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v2.1
 status: Awaiting next milestone
 stopped_at: context exhaustion at 97% (2026-11-18)
-last_updated: "2026-11-18T09:19:04.346Z"
+last_updated: "2026-11-18T09:35:05.212Z"
 last_activity: 2026-11-18
 last_activity_desc: Milestone v2.1 completed and archived
-state_head: 1180d9c28561913cf61a08ed4f4bce1e0bb68683
+state_head: 3cd0e0fe10a186765b535427c46adbdd9ae08cec
 progress:
   total_phases: 4
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-18 - Completed quick task 261118-nss: planning-directory health diagnostic recorded (degraded; W019 accepted, no repairs)
+Last activity: 2026-11-18 - Completed quick task 261118-o67: recorded the W019 health-scanner registry gap as a known tooling bug
 
 ## Performance Metrics
 
@@ -107,6 +107,7 @@ None yet.
 | 261118-jp1 | Close the stale carry-forward records for the already-resolved .claude/CLAUDE.md dataset-line drift: verified the generated line reads ~16.7 GB / six single-member split parts; updated .continue-here.md Remaining Backlog/Resume to drop the resolved Phase-04 IN-06/07/09, Phase-09 8 Info findings, and the dataset drift; closed the matching STATE.md rows | 2026-11-18 | cc641d8 | [261118-jp1-close-the-stale-carry-forward-records-fo](./quick/261118-jp1-close-the-stale-carry-forward-records-fo/) |
 | 261118-n53 | Close the macOS test_verify_threads ~50% sample-race flake: harden observe() to record the peak nonzero thread observation (a truncated exit-window sample can no longer clobber a correct earlier count), pin it with deterministic TestObservePeakGuard unit tests (both observed RED pre-fix at 3 and 2, GREEN at 5 and 5 post-fix), stress-verify the pre-engine negative control 10/10, and close the stale records in STATE.md, .continue-here.md, and 11/deferred-items.md | 2026-11-18 | 2da9988 | [261118-n53-make-the-macos-test-verify-threads-pre-e](./quick/261118-n53-make-the-macos-test-verify-threads-pre-e/) |
 | 261118-nss | Run the GSD planning-directory health diagnostic and record a dated report in the quick task directory: live validate.health is degraded with 0 errors / 1 warning (W019) / 0 repairable; W019 (.continue-here.md not in the artifact registry) is accepted as a live pause/resume handoff rather than repaired; sentinel-free isolation inspection resolves harness-worktree and W025 does not fire; no repairs applied; one atomic product commit contains only the report | 2026-11-18 | 1180d9c | [261118-nss-diagnose-planning-directory-health-run-t](./quick/261118-nss-diagnose-planning-directory-health-run-t/) |
+| 261118-o67 | Record the W019 health-scanner registry gap as a known GSD tooling bug in .planning/.continue-here.md: entry 3 in Known Tooling Bugs names the false positive, cites CANONICAL_EXACT in bin/lib/artifacts.cjs (line 18 declaration, line 50 membership test), notes the pause/resume provenance and the resume-breaking move/delete fix, and states the upstream fix; the snapshot last_updated was refreshed to 2026-11-18T09:32:41Z; all other sections byte-identical | 2026-11-18 | 3cd0e0f | [261118-o67-record-the-w019-health-scanner-registry-](./quick/261118-o67-record-the-w019-health-scanner-registry-/) |
 
 ## Deferred Items
 
