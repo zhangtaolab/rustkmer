@@ -11,6 +11,10 @@ so a later plan or quick task can pick them up.
   (the file is untouched by this plan); left alone per the scope boundary.
   The plan's verify gates (`cargo test --locked`, clippy 1.82 both crates) do
   not include `cargo fmt --check`.
+  Resolved 2026-11-18: `cargo fmt --all --check` exits 0 at HEAD (verified
+  2026-11-18); the drift was cleared by quick task 261116-ks7 (commit
+  ee742dc).
+  status: resolved
 - `pyo3/src/counter.rs:197` is not `cargo fmt` clean at HEAD either (the
   `RustPyCounter::new(...)` call in `PyCounter::new`). Pre-existing and on a
   line this plan did not touch; left alone. The root `cargo fmt --check` gate
@@ -18,4 +22,4 @@ so a later plan or quick task can pick them up.
   **Resolved in 06-03:** plan 06-03 edits `pyo3/src/counter.rs` for PAR-03 and
   its formatting pass normalized the pre-existing drift (`RustPyCounter::new`
   call and the two compressed-file openers). No behavior change.
-  status: acknowledged
+  status: resolved
