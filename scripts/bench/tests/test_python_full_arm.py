@@ -147,6 +147,8 @@ class FullArmFixture(unittest.TestCase):
             p10, "PINNED_SOURCE_SHA256", self.pinned_source_sha256)
         pin_patch.start()
         self.addCleanup(pin_patch.stop)
+        self.pre_gate = self.tmp / "10-slice-gate.json"
+        self.write_pre_gate()
         self.site = self.tmp / "site-packages"
         self.site.mkdir()
         self.module = self.site / "pyrustkmer.cpython-313-darwin.so"
@@ -185,6 +187,36 @@ class FullArmFixture(unittest.TestCase):
             except SystemExit as exc:
                 code = exc.code
         return code, out.getvalue(), err.getvalue()
+
+    def write_pre_gate(self, distinct=None, total=None, sha=None):
+        doc = {
+            "schema_version": p10.SCHEMA_VERSION,
+            "kind": "phase10-slice-gate",
+            "phase": 10,
+            "input_fingerprint": [p10.fingerprint(self.part1),
+                                  p10.fingerprint(self.part2)],
+            "gates": [{
+                "k": 21,
+                "slice_recipe": {"mode": "slice", "k": 21,
+                                 "canonical": True, "threads": 16,
+                                 "hash_size": "2G",
+                                 "slice_selection": "head",
+                                 "slice_reads": 4_000_000,
+                                 "source_sha256":
+                                     p10.fingerprint(self.part1)["sha256"]},
+                "distinct": (p10.PINNED_HEAD4M["distinct"]
+                             if distinct is None else distinct),
+                "total": (p10.PINNED_HEAD4M["total"]
+                          if total is None else total),
+                "parity_reference": {
+                    "path": "scripts/bench/baselines/slice_parity.crr1936095.json",
+                    "sha256": p10.REFERENCE_SHA256 if sha is None else sha,
+                },
+                "reference_gate": "pinned-reference",
+            }],
+            "provenance": fake_provenance(),
+        }
+        self.pre_gate.write_text(json.dumps(doc), encoding="utf-8")
 
 
 class TestResolveTwoParts(FullArmFixture):
@@ -409,11 +441,14 @@ class CliStageFixture(FullArmFixture):
                               else {"distinct": 100, "total": 200}),
         ]
 
-    def cli_argv(self):
-        return ["--stage", "cli", "--k", "21", "--out", str(self.out),
+    def cli_argv(self, k=21, include_pre_gate=True):
+        argv = ["--stage", "cli", "--k", str(k), "--out", str(self.out),
                 "--data-dir", str(self.data), "--scratch", str(self.scratch),
                 "--rustkmer", self.rustkmer, "--python", sys.executable,
                 "--reps", "2", "--cooldown-s", "0"]
+        if include_pre_gate:
+            argv.extend(["--pre-gate", str(self.pre_gate)])
+        return argv
 
 
 class TestCliStageDocument(CliStageFixture):
@@ -457,6 +492,12 @@ class TestCliStageDocument(CliStageFixture):
         # pyrustkmer warmup in the recorded order.
         self.assertEqual(doc["schedule"]["warmup_order"],
                          ["rustkmer", "jellyfish"])
+        # The consumed slice gate is pinned by path and by the sha256 of the
+        # bytes validated before any measured work.
+        self.assertEqual(doc["pre_gate"]["path"], str(self.pre_gate))
+        self.assertEqual(doc["pre_gate"]["sha256"],
+                         hashlib.sha256(
+                             self.pre_gate.read_bytes()).hexdigest())
         # Scratch databases are deleted after their sha256 is recorded.
         self.assertFalse((self.scratch / "phase10-rk-t16.rkdb").exists())
         self.assertFalse((self.scratch / "phase10-jf-t16.jf").exists())
@@ -476,6 +517,47 @@ class TestCliStageDocument(CliStageFixture):
         self.assertEqual(code, p10.EXIT_INVALID)
         self.assertFalse(self.out.exists())
 
+    def test_missing_pre_gate_exits_2_with_no_artifact(self):
+        code, _out, err = self.run_main(
+            self.cli_argv(include_pre_gate=False), self.stage_patches())
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertIn("the cli stage requires --pre-gate", err)
+        self.assertFalse(self.out.exists())
+
+    def test_gate_for_different_inputs_exits_2_before_any_measurement(self):
+        doc = json.loads(self.pre_gate.read_text(encoding="utf-8"))
+        doc["input_fingerprint"][0]["sha256"] = "0" * 64
+        self.pre_gate.write_text(json.dumps(doc), encoding="utf-8")
+        run_rounds = mock.Mock()
+        code, _out, err = self.run_main(
+            self.cli_argv(),
+            self.stage_patches() + [
+                mock.patch.object(p10, "run_rounds", run_rounds)])
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertIn("different input bytes", err)
+        self.assertFalse(self.out.exists())
+        # The explicit `new=` object is observable after the ExitStack
+        # unwinds: a gate rejection must never reach a measured round.
+        self.assertEqual(run_rounds.call_count, 0)
+
+    def test_gate_from_a_different_slice_exits_2(self):
+        doc = json.loads(self.pre_gate.read_text(encoding="utf-8"))
+        doc["gates"][0]["slice_recipe"]["source_sha256"] = "0" * 64
+        self.pre_gate.write_text(json.dumps(doc), encoding="utf-8")
+        code, _out, err = self.run_main(self.cli_argv(),
+                                        self.stage_patches())
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertIn("pinned slice source", err)
+        self.assertFalse(self.out.exists())
+
+    def test_gate_missing_the_session_k_exits_2(self):
+        """A k=31 CLI session must not be authorized by a k=21-only gate."""
+        code, _out, err = self.run_main(
+            self.cli_argv(k=31), self.stage_patches())
+        self.assertEqual(code, p10.EXIT_INVALID)
+        self.assertIn("no gate for the session's k=31", err)
+        self.assertFalse(self.out.exists())
+
 
 class PythonStageFixture(FullArmFixture):
     """Committed-evidence fixtures + a fake Python session."""
@@ -484,41 +566,10 @@ class PythonStageFixture(FullArmFixture):
         super().setUp()
         (self.scratch / "phase10-jf-t16.jf").write_bytes(b"jellyfish-db")
         self.distinct = 1_050_000_000
-        self.pre_gate = self.tmp / "10-slice-gate.json"
-        self.write_pre_gate()
         self.cli_doc = self.tmp / "10-results-full-k21.json"
         self.write_cli_doc()
         self.preflight = self.tmp / "10-python-preflight.json"
         self.write_preflight()
-
-    def write_pre_gate(self, distinct=None, total=None, sha=None):
-        doc = {
-            "schema_version": p10.SCHEMA_VERSION,
-            "kind": "phase10-slice-gate",
-            "phase": 10,
-            "input_fingerprint": [p10.fingerprint(self.part1),
-                                  p10.fingerprint(self.part2)],
-            "gates": [{
-                "k": 21,
-                "slice_recipe": {"mode": "slice", "k": 21,
-                                 "canonical": True, "threads": 16,
-                                 "hash_size": "2G",
-                                 "slice_selection": "head",
-                                 "slice_reads": 4_000_000,
-                                 "source_sha256": "f" * 64},
-                "distinct": (p10.PINNED_HEAD4M["distinct"]
-                             if distinct is None else distinct),
-                "total": (p10.PINNED_HEAD4M["total"]
-                          if total is None else total),
-                "parity_reference": {
-                    "path": "scripts/bench/baselines/slice_parity.crr1936095.json",
-                    "sha256": p10.REFERENCE_SHA256 if sha is None else sha,
-                },
-                "reference_gate": "pinned-reference",
-            }],
-            "provenance": fake_provenance(),
-        }
-        self.pre_gate.write_text(json.dumps(doc), encoding="utf-8")
 
     def write_cli_doc(self, distinct=None):
         distinct = self.distinct if distinct is None else distinct
@@ -729,9 +780,11 @@ class TestPythonStageDocument(PythonStageFixture):
         self.assertEqual(code, p10.EXIT_INVALID)
         self.assertFalse(self.out.exists())
 
-    def _add_k31_gate(self, source_sha="f" * 64):
+    def _add_k31_gate(self, source_sha=None):
         doc = json.loads(self.pre_gate.read_text(encoding="utf-8"))
         gate21 = doc["gates"][0]
+        if source_sha is None:
+            source_sha = gate21["slice_recipe"]["source_sha256"]
         doc["gates"].append({
             "k": 31,
             "slice_recipe": dict(gate21["slice_recipe"], k=31,

@@ -2210,14 +2210,40 @@ def _cli_preflight():
 def run_cli_session(args):
     """Full-scale CLI session: `rk-t16`, `rk-t1` and `jf-t16` over both parts.
 
-    The disk floor and the PRE-RUN projection are checked BEFORE any measured
-    run; the post-arm exact counts are read once per arm; the two rustkmer
-    databases must be byte-identical; the scratch databases are deleted after
-    their sha256 is recorded. Any failure exits 2 with no artifact.
+    The session consumes the slice-gate artifact: `--pre-gate` is required and
+    validated for complete provenance, the session's k, the same input
+    fingerprints, and the gate's slice source sha256 against part_001 BEFORE
+    the disk floor, the PRE-RUN projection, the arm specs, or any measured
+    round. A failed gate exits 2 with no artifact and no measurement. The
+    recorded `pre_gate` block pins the consumed gate's path+sha256, with the
+    digest taken before any measured work. The post-arm exact counts are read
+    once per arm; the two rustkmer databases must be byte-identical; the
+    scratch databases are deleted after their sha256 is recorded. Any failure
+    exits 2 with no artifact.
     """
+    if not args.pre_gate:
+        invalid("the cli stage requires --pre-gate <10-slice-gate.json>")
     out_path, scratch = _stage_paths(args)
     try:
         inputs = _resolve_two_parts(args.data_dir)
+        gate_doc = _load_slice_gate_doc(args.pre_gate, args.k)
+        current_fingerprints = [fingerprint(path) for path in inputs]
+        if gate_doc.get("input_fingerprint") != current_fingerprints:
+            raise ValueError(
+                f"--pre-gate {args.pre_gate} was measured on different input "
+                f"bytes ({gate_doc.get('input_fingerprint')!r}) than the "
+                f"current two parts ({current_fingerprints!r})")
+        session_gate = next(
+            gate for gate in gate_doc["gates"] if gate.get("k") == args.k)
+        session_source_sha = session_gate["slice_recipe"]["source_sha256"]
+        part1_sha = current_fingerprints[0]["sha256"]
+        if session_source_sha != part1_sha:
+            raise ValueError(
+                f"--pre-gate {args.pre_gate}: the k={args.k} gate's slice "
+                f"source sha256 {session_source_sha!r} != part_001's "
+                f"{part1_sha!r} — "
+                "the gate must have been measured on the pinned slice source")
+        pre_gate_sha256 = file_sha256(args.pre_gate)
         check_disk_floor(scratch, DEFAULT_DISK_FLOOR_GB)
         preflight = _cli_preflight()
         if preflight["decision"] != "PROCEED":
@@ -2244,6 +2270,8 @@ def run_cli_session(args):
             inputs=inputs, arms=arms, scratch=scratch,
             provenance=build_session_provenance(args, arms),
             extra={"preflight": preflight,
+                   "pre_gate": {"path": str(args.pre_gate),
+                                "sha256": pre_gate_sha256},
                    "schedule": _stage_schedule(specs, args.reps)})
         assert_session_parity(doc, ARM_RK_T16, ARM_RK_T1, ARM_JF_T16)
         for spec in specs:
@@ -2571,7 +2599,7 @@ def build_parser():
                         help="python stage: the matching full-mode CLI "
                              "document (same k)")
     parser.add_argument("--pre-gate", default=None,
-                        help="python stage: the slice-gate artifact "
+                        help="cli and python stages: the slice-gate artifact "
                              "(10-slice-gate.json)")
     parser.add_argument("--preflight", default=None,
                         help="python stage: the Python preflight artifact "
