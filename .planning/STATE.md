@@ -1,19 +1,19 @@
 ---
 gsd_state_version: "1.0"
 milestone: v2.1
-milestone_name: Merge Verdict & Producer Research
 status: Awaiting next milestone
-stopped_at: v2.1 milestone closed and archived 2026-11-18; next: /gsd-new-milestone
-last_updated: "2026-11-17T16:08:34.388Z"
+stopped_at: "v2.1 milestone closed and archived 2026-11-18; next: /gsd-new-milestone"
+last_updated: "2026-11-18T00:33:16.809Z"
 last_activity: 2026-11-18
 last_activity_desc: Milestone v2.1 completed and archived
-state_head: fa71df5c0f8ab2183516870a9e2823ae1d0e27cb
+state_head: 2bcfc9bbfe50df1e2d0276c0bb10b5495c87f090
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 15
   completed_plans: 15
   percent: 75
+milestone_name: Merge Verdict & Producer Research
 current_phase: 14
 current_phase_name: Parallel Extraction
 ---
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-18)
 Phase: Milestone v2.1 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-18 — Milestone v2.1 completed and archived
+Last activity: 2026-11-18 - Completed quick task 261118-bhr: Apply verify-work audit fixes (verify_threads zero-thread race, coverage schemas, deferred items, WINDOWS 26/27)
 
 ## Performance Metrics
 
@@ -98,6 +98,7 @@ None yet.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 261118-bhr | Apply verify-work audit fixes: fix verify_threads zero-thread race and add unit test; correct 11-05 and 06-03 SUMMARY coverage schemas; sync .claude/CLAUDE.md dataset line; correct 11-PREPARE-RECORD free-space figure; mark 06/08 deferred items resolved; close WINDOWS ledger entries 26 and 27 | 2026-11-18 | 2bcfc9b | [261118-bhr-apply-verify-work-audit-fixes-fix-verify](./quick/261118-bhr-apply-verify-work-audit-fixes-fix-verify/) |
 
 ## Deferred Items
 
