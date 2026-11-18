@@ -93,13 +93,15 @@ Full detail: [milestones/v2.1-ROADMAP.md](milestones/v2.1-ROADMAP.md) · Require
 **Follow-ups:**
 - [ ] Test 22: dev-venv pitfall: a stale pyrustkmer 0.4.1 package directory in site-packages silently shadows a manually installed pyrustkmer.so extension (deferred 2026-10-09)
 
-### Phase 999.3: Follow-up — Phase 03 deferred UAT follow-up: Test 21 (BACKLOG)
+### Phase 999.3: Follow-up — Phase 03 deferred UAT follow-up: Test 21 (RESOLVED 2026-11-18)
 
 **Goal:** Resolve the UAT checkpoint deferred during Phase 03 verification
 **Source phase:** 03
 **Deferred at:** 2026-10-09 during /gsd-verify-work 03 session completion
 **Follow-ups:**
-- [ ] Test 21: deferred-items.md's claim that loose *.chunk files are never swept is stale — temp_lifecycle.rs now sweeps them (CHUNK_FILE_PREFIXES); update the record (deferred 2026-10-09)
+- [x] Test 21: deferred-items.md's claim that loose *.chunk files are never swept is stale — temp_lifecycle.rs now sweeps them (CHUNK_FILE_PREFIXES); update the record (deferred 2026-10-09)
+
+**Resolution (2026-11-18, quick 261118-csg):** the Phase 03 deferred-items entry no longer makes the stale claim; it records the gap in past tense and carries a dated Resolved paragraph. The sweep-coverage gap was closed by plan 03-11 (commit `83a6ac2`, 2026-10-08): `sweep_stale_merge_dirs` selects loose chunk files via `CHUNK_FILE_PREFIXES` + `CHUNK_FILE_SUFFIX` under the same TTL and symlink refusal as the directory branch, pinned by `tests/merge_cleanup_tests.rs::sweep_reclaims_stale_loose_chunk_files` (re-run 2026-11-18: 1 passed, 0 failed).
 
 *999.1-999.3 are handled opportunistically in v2.1 under HYG-04 (Phase 11): resolved in the same touch whenever milestone work touches their files — not gate-blocking.*
 

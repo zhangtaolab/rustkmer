@@ -215,13 +215,24 @@
   status: closed
   **What:** This closes the *normal-path* half of plan 03-02's open item that
   "streaming_merge chunks (`rustkmer_sort_*.chunk`) land loose in temp_dir and
-  are NOT covered by the orphan sweep". Normal cleanup is fine; what remains
-  open is **only** the sweep-coverage gap — a merge SIGKILLed or
-  `panic = "abort"`ed (this project's release profile) leaves chunks in
-  `temp_dir` that `sweep_stale_merge_dirs` will never reclaim, because it only
-  removes `rustkmer-merge-*` *directories* and never looks at loose `*.chunk`
-  files. **How to reproduce:** the earlier plan 03-02 item stands; this note
-  only narrows its scope so nobody re-investigates the RAII path.
+  are NOT covered by the orphan sweep". Normal cleanup is fine. When this
+  record was written, the only gap still open was the sweep-coverage one: a
+  merge SIGKILLed or `panic = "abort"`ed (this project's release profile) left
+  chunks in `temp_dir` that the then-current sweep did not reach, because it
+  removed `rustkmer-merge-*` *directories* only. That gap is closed below.
+  **How to reproduce:** the earlier plan 03-02 item stands; this note only
+  narrows its scope so nobody re-investigates the RAII path.
+
+  **Resolved (2026-11-18):** plan 03-11 (commit `83a6ac2`, 2026-10-08) closed
+  this gap — `sweep_stale_merge_dirs` (`src/database/temp_lifecycle.rs`)
+  selects loose chunk files by `CHUNK_FILE_PREFIXES` (`rustkmer_sort_`,
+  `rustkmer_merge_`) AND `CHUNK_FILE_SUFFIX` (`.chunk`), applies the same
+  `DEFAULT_MERGE_TEMP_TTL` mtime cutoff as the directory branch, and refuses
+  symlinks via `entry.file_type()`. Pinned by
+  `tests/merge_cleanup_tests.rs::sweep_reclaims_stale_loose_chunk_files`
+  (stale reclaimed, fresh survives the TTL, symlink refused with its target
+  intact); re-run green 2026-11-18 (1 passed, 0 failed). Both halves of this
+  entry are now closed; the entry's status line is unchanged.
 
 - Verification technique worth reusing: a plan's "streaming route" arm is only
   proven if the **route itself** is asserted. Plan 03-04's first draft used a
