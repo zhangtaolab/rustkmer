@@ -9,9 +9,10 @@ rustkmer binary or an OS sampler for the unit-level cases:
     model and GREEN on the exact 2N+1 records;
   * `observe` polls THROUGH the rayon-only N+1 intermediate state to the
     expected total, returns an over-count immediately (measured RED), returns
-    the last observation when the child exits below the expectation (measured
-    RED, not exit 2), and raises `ObservationError` only when the child was
-    never observed or the window expires with the child alive;
+    the HIGHEST observation when the child exits below the expectation
+    (measured RED, not exit 2; a truncated exit-window sample cannot lower
+    it), and raises `ObservationError` only when the child was never observed
+    or the window expires with the child alive;
   * invalid inputs (nonexistent --binary/--input, zero --threads,
     nonpositive --timeout-s) must exit 2 and print NO `THREAD REALITY`
     verdict line — an invalid run is never a verdict;
@@ -57,6 +58,25 @@ class FakeProc:
         self.returncode = returncode
 
     def poll(self):
+        return self.returncode
+
+
+class SequenceProc(FakeProc):
+    """A child that stays alive for `alive_polls` polls, then exits 0.
+
+    Scripted aliveness reproduces the exit-window race deterministically: the
+    observer takes samples while the child is alive, then the child dies and
+    the next poll reports the exit. No timing dependency.
+    """
+
+    def __init__(self, alive_polls, **kwargs):
+        super().__init__(returncode=0, **kwargs)
+        self._alive_polls = alive_polls
+
+    def poll(self):
+        if self._alive_polls > 0:
+            self._alive_polls -= 1
+            return None
         return self.returncode
 
 
@@ -129,6 +149,34 @@ class TestObservePolling(unittest.TestCase):
             5,
             "a child that exits below the expectation after a sample is a measured RED, "
             "not an unobservable exit 2",
+        )
+
+
+class TestObservePeakGuard(unittest.TestCase):
+    """A truncated late sample must never clobber the peak observation."""
+
+    def test_late_truncated_sample_does_not_clobber_the_peak(self):
+        """The exit-window truncated 3-thread sample must not overwrite the true 5."""
+        mod = load_helper_module()
+        proc = SequenceProc(2)
+        with mock.patch.object(mod, "_thread_count", side_effect=[5, 5, 3]):
+            observed = mod.observe(proc, 5.0, "proc-task", 9)
+        self.assertEqual(
+            observed,
+            5,
+            "the exit-window truncated 3-thread sample must not overwrite the true 5",
+        )
+
+    def test_peak_survives_retried_unobservable_samples(self):
+        """Retried unobservable samples and a truncated 2-thread report must not reset the peak."""
+        mod = load_helper_module()
+        proc = SequenceProc(3)
+        with mock.patch.object(mod, "_thread_count", side_effect=[5, None, 2, None]):
+            observed = mod.observe(proc, 5.0, "proc-task", 9)
+        self.assertEqual(
+            observed,
+            5,
+            "retried unobservable samples and a truncated 2-thread report must not reset the peak",
         )
 
 
@@ -294,7 +342,8 @@ class TestThreadCountTransient(unittest.TestCase):
 # exits 0 on its own after a bounded interval well inside the helper timeout.
 # `os._exit` terminates the process without Python's interpreter shutdown, so
 # there is no teardown window in which daemon threads disappear while the main
-# thread still runs — the last successful sample is the honest 5-thread state.
+# thread still runs. The observer's peak guard records the steady 5-thread
+# state even when the final `sample` window straddles the abrupt exit.
 PRE_ENGINE_STUB = """#!/usr/bin/env python3
 import os
 import sys

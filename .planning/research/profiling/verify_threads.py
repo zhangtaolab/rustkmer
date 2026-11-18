@@ -25,7 +25,7 @@ Exit contract (the 05-01 gate discipline):
   0 — every record has observed == expected_total(requested);
   1 — the MEASURED verdict: at least one mismatch, including a child that
       exits after at least one successful observation while still below the
-      expected total (its last observed count is measured RED);
+      expected total (its HIGHEST observed count is measured RED);
   2 — invalid input / unsupported platform / the child exited before ANY
       successful observation / the polling window timed out with the child
       still alive / any infrastructure failure. Exit-2 paths print NO verdict
@@ -149,7 +149,7 @@ def _thread_count(pid, sampler):
     # whose report carries no thread lines is a transient sampling artifact
     # (typically a sample straddling the child's exit) — never evidence.
     # Return None so the poll loop retries; a zero can never become
-    # last_observed, so a child that exits after only empty reports ends as
+    # peak_observed, so a child that exits after only empty reports ends as
     # exit 2 (never observed) instead of a spurious measured RED. The check
     # sits AFTER the redirect handling so a redirected empty report is
     # retried too.
@@ -169,34 +169,46 @@ def observe(proc, timeout_s, sampler, expected):
     accepted as the answer.
 
     A child that exits after at least one successful observation returns the
-    LAST observed count, so a below-expected run is recorded as a measured
-    RED mismatch (exit 1) rather than an unobservable exit 2.
+    HIGHEST (peak) observed count, so a below-expected run is recorded as a
+    measured RED mismatch (exit 1) rather than an unobservable exit 2. A
+    truncated exit-window sample cannot lower it: a late, partially reported
+    `sample` can only under-count.
     `ObservationError` is raised ONLY when the child was never successfully
     observed (it exited before the first sample) or the deadline expires
     with the child still alive; both are unobservable/infrastructure, never a
     PASS.
     """
     deadline = time.monotonic() + timeout_s
-    last_observed = None
+    peak_observed = None
     while time.monotonic() < deadline:
         count = _thread_count(proc.pid, sampler)
         if count is not None:
-            last_observed = count
+            # A macOS `sample <pid> 1` spans a ~1 s window, so the final
+            # sample of an undershooting child necessarily straddles its
+            # exit, and a truncated report can only UNDER-count. A counting
+            # child's OS thread set is monotonically non-decreasing before
+            # exit (persistent engine workers + rayon pools), so the highest
+            # nonzero observation is the honest measurement; last-sample
+            # semantics would let the exit-window artifact clobber a correct
+            # count. The guard is sampler-agnostic: Linux /proc reads can
+            # also race teardown.
+            if peak_observed is None or count > peak_observed:
+                peak_observed = count
             if count >= expected:
                 return count
         if proc.poll() is not None:
-            if last_observed is not None:
-                return last_observed
+            if peak_observed is not None:
+                return peak_observed
             raise ObservationError(
                 f"count process (pid {proc.pid}) exited rc={proc.returncode} "
                 "before a successful thread observation"
             )
         time.sleep(POLL_INTERVAL_S)
-    if last_observed is not None and proc.poll() is not None:
-        return last_observed
+    if peak_observed is not None and proc.poll() is not None:
+        return peak_observed
     raise ObservationError(
         f"pid {proc.pid} did not reach expected={expected} threads within "
-        f"{timeout_s}s (last observed={last_observed})"
+        f"{timeout_s}s (peak observed={peak_observed})"
     )
 
 
