@@ -79,6 +79,11 @@ notes: |
   PROJECT.md, and amend the deferred-items entry's "fix = regeneration, not a manual edit"
   wording to record that no generator is available in-repo.
 
+  Correction (2026-11-18, quick 261118-bhr): an in-repo generator does exist -
+  gsd-tools generate-claude-md, invoked through the gsd_run launcher; the file was
+  regenerated and line 17 now reads the corrected "~16.7 GB gzipped r1 across six
+  single-member split parts" line. The earlier no-in-repo-generator claim is superseded.
+
 ## Summary
 
 total: 3

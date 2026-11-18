@@ -103,7 +103,7 @@ coverage:
     description: "The rolling path is at most 0.75x the per-window duration on a release-build corpus of at least 200000 windows"
     requirement: PAR-03
     verification:
-      - kind: benchmark
+      - kind: integration
         ref: "cargo test --release --locked --test kmer_rolling_differential_tests -- --ignored -> windows=260000 ratio=0.452"
         status: pass
     human_judgment: false

@@ -43,7 +43,7 @@ key-files:
 
 key-decisions:
   - "Task 2 auto-selected option-a per plan auto_select (gate=blocking, AUTO_CFG=true): derived -s approved as computed — 1G for the k=21 pair (occupancy 0.6191), 2G for the k=31 pair (occupancy 0.3875); option-b (one rung up / -s 10G everywhere) rejected as the research anti-pattern (Pitfall 3)"
-  - "Budget approved on measured reality, not the estimate: 86.74 GiB actual vs D-01's ~70 GiB (estimate predates per-part Distinct; projection band 85.8-109.8 GiB was recorded before the spend; 359-372 GiB free throughout)"
+  - "Budget approved on measured reality, not the estimate: 86.74 GiB actual vs D-01's ~70 GiB (estimate predates per-part Distinct; projection band 85.8-109.8 GiB was recorded before the spend; 359-372 GiB free throughout (recorded-but-inconsistent free-space figure - see 11-PREPARE-RECORD.md section 11; not a D-10 derivation input))"
   - "A4 closed: per-part -s is derived, not 10G-everywhere; fairness carried by the k-pair hash-size equality precondition (identical -m/-s/-C) plus recorded occupancy, not oversized hashes"
   - "Merge-output occupancy pre-computed for Phase 12/11-07 from the union anchors riding input-0 capacity: k=21 merged 0.836 (above the count-time 0.75 target — the plan's option-a con; PARITY-GATE legs own it at merge time), k=31 merged 0.534"
 
@@ -81,7 +81,8 @@ coverage:
       - kind: other
         ref: "gate: checkpoint:decision auto-selected option-a per plan auto_select (gate=blocking, AUTO_CFG=true); premise verified against 359 GiB free before selection; outcome recorded in 11-PREPARE-RECORD.md §7 before Task 3 started"
         status: pass
-    human_judgment: true   # the -s + budget approval is the checkpoint's human-equivalent judgment, recorded in the evidence doc
+    human_judgment: true
+    rationale: "The -s + budget approval is the checkpoint's human-equivalent judgment, recorded in 11-PREPARE-RECORD.md section 7 before any .jf build."
   - id: D4
     description: "Nothing built in this plan landed inside the repo tree; retention (D-02) recorded; zero manual transcription (D-04)"
     requirement: MBENCH-01
@@ -162,7 +163,7 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 - Ready for 11-06 (characterization ladder): the stage has now run at full scale; the ladder exercises it on real slices (D-08)
-- Ready for 11-07 (floor derivation + dress rehearsal): 11-PREPARE-RECORD.md §5/§10/§11 carry the measured inputs term — .rkdb 55.75 GiB, .jf 30.98 GiB (10.000/12.000 B/entry, 6.19/4.65 B/slot), merged-occupancy projections 0.836/0.534, total 86.74 GiB vs 372.50 GiB free
+- Ready for 11-07 (floor derivation + dress rehearsal): 11-PREPARE-RECORD.md §5/§10/§11 carry the measured inputs term — .rkdb 55.75 GiB, .jf 30.98 GiB (10.000/12.000 B/entry, 6.19/4.65 B/slot), merged-occupancy projections 0.836/0.534, total 86.74 GiB vs 372.50 GiB free (recorded-but-inconsistent free-space figure - see 11-PREPARE-RECORD.md section 11; not a D-10 derivation input)
 - Ready for Phase 12 round 0: manifest revalidates from records alone (`revalidate` green post-completion); D-02 retention binds cleanup to the verdict landing
 - MBENCH-01: this plan's full-scale build portion is complete on top of 11-01 (arms) + 11-02 (stage) — requirement already marked; no new requirement IDs to mark
 
